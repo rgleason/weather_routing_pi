@@ -2184,14 +2184,16 @@ void IsoRoute::UpdateStatistics(int &routes, int &invroutes, int &skippositions,
 typedef  wxWeakRef<Shared_GribRecordSet> Shared_GribRecordSetRef;
 
 static std::map<time_t, Shared_GribRecordSetRef> grib_key;
+static wxMutex s_key_mutex;
 
 IsoChron::IsoChron(IsoRouteList r, wxDateTime t, Shared_GribRecordSet &g, bool grib_is_data_deficient)
     : routes(r), time(t), m_SharedGrib(g), m_Grib(0), m_Grib_is_data_deficient(grib_is_data_deficient)
 {
     m_Grib = m_SharedGrib.GetGribRecordSet();
-    if (m_Grib)
+    if (m_Grib ) {
+        wxMutexLocker lock(s_key_mutex);
         grib_key[m_Grib->m_Reference_Time] = &m_SharedGrib;
-
+    }
 }
 
 Shared_GribRecordSetData::~Shared_GribRecordSetData()
@@ -2572,13 +2574,16 @@ void RouteMap::SetNewGrib(GribRecordSet *grib)
        !grib->m_GribRecordPtrArray[Idx_WIND_VY])
         return;
 
-    std::map<time_t, Shared_GribRecordSetRef>::iterator it; 
-    it = grib_key.find(grib->m_Reference_Time);
-    if (it != grib_key.end() && it->second != 0 ) {
-        m_SharedNewGrib = *it->second;
-        m_NewGrib = m_SharedNewGrib.GetGribRecordSet();
-        if (m_NewGrib->m_ID == grib->m_ID) {
-            return;
+    {
+        std::map<time_t, Shared_GribRecordSetRef>::iterator it; 
+        wxMutexLocker lock(s_key_mutex);
+        it = grib_key.find(grib->m_Reference_Time);
+        if (it != grib_key.end() && it->second != 0 ) {
+            m_SharedNewGrib = *it->second;
+            m_NewGrib = m_SharedNewGrib.GetGribRecordSet();
+            if (m_NewGrib->m_ID == grib->m_ID) {
+                return;
+            }
         }
     }
     /* copy the grib record set */
