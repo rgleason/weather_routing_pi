@@ -24,6 +24,8 @@
  */
 
 #include "wx/datetime.h"
+#include <wx/object.h>
+#include <wx/weakref.h>
 
 #include <list>
 
@@ -146,11 +148,76 @@ public:
     IsoRouteList children; /* inner inverted regions */
 };
 
+// ------
+class Shared_GribRecordSetData: public wxRefCounter
+{
+public:
+    Shared_GribRecordSetData( GribRecordSet *gribset = 0 ) : m_GribRecordSet(gribset) { }
+    Shared_GribRecordSetData( const Shared_GribRecordSetData& data ) : m_GribRecordSet(data.m_GribRecordSet) { }
+
+    void SetGribRecordSet( GribRecordSet *gribset )  { m_GribRecordSet = gribset; }
+    GribRecordSet * GetGribRecordSet() const { return m_GribRecordSet; }
+
+    ~Shared_GribRecordSetData();
+
+protected:
+     GribRecordSet *m_GribRecordSet;
+                    
+};
+
+// ------
+class Shared_GribRecordSet: public wxTrackable
+{
+public:
+    // initializes this, assigning to the
+    // internal data pointer a new instance of Shared_GribRecordSetData
+    Shared_GribRecordSet( GribRecordSet * ptr = 0 ) : m_data( new Shared_GribRecordSetData(ptr) )
+    {
+    }
+    Shared_GribRecordSet& operator =( const Shared_GribRecordSet& tocopy )
+    {
+        // shallow copy: this is just a fast copy of pointers; the real
+        // memory-consuming data which typically is stored inside
+        m_data = tocopy.m_data;
+        return *this;
+    }
+
+    void SetGribRecordSet( GribRecordSet * ptr )
+    {
+        // make sure changes to this class do not affect other instances
+        // currently sharing our same refcounted data:
+        UnShare();
+        m_data->SetGribRecordSet( ptr );
+    }
+
+    GribRecordSet * GetGribRecordSet() const
+    {
+       return m_data->GetGribRecordSet();
+    }
+
+    bool operator == ( const Shared_GribRecordSet& other ) const
+    {
+        if (m_data.get() == other.m_data.get())
+            return true; // this instance and the 'other' one share the same data...
+        return (m_data->GetGribRecordSet() == other.m_data->GetGribRecordSet());
+    }
+
+    wxObjectDataPtr<Shared_GribRecordSetData> m_data;
+
+protected:
+    void UnShare()
+    {
+        if (m_data->GetRefCount() == 1)
+            return;
+        m_data.reset( new Shared_GribRecordSetData( *m_data ) );
+    }
+};
+
 /* list of routes with equal time to reach */
 class IsoChron
 {
 public:
-    IsoChron(IsoRouteList r, wxDateTime t, GribRecordSet *g, bool grib_is_data_deficient);
+    IsoChron(IsoRouteList r, wxDateTime t, Shared_GribRecordSet &g, bool grib_is_data_deficient);
     ~IsoChron();
 
     void PropagateIntoList(IsoRouteList &routelist, RouteMapConfiguration &configuration);
@@ -161,6 +228,7 @@ public:
 
     IsoRouteList routes;
     wxDateTime time;
+    Shared_GribRecordSet m_SharedGrib;
     GribRecordSet *m_Grib;
     bool m_Grib_is_data_deficient;
 };
@@ -285,6 +353,7 @@ protected:
 
     IsoChronList origin; /* list of route isos in order of time */
     bool m_bNeedsGrib;
+    Shared_GribRecordSet m_SharedNewGrib;
     GribRecordSet *m_NewGrib;
 
 private:

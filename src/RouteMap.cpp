@@ -70,6 +70,7 @@
 
 #include <stdlib.h>
 #include <math.h>
+#include <map>
 
 #include "ocpn_plugin.h"
 #include "GribRecordSet.h"
@@ -2180,22 +2181,30 @@ void IsoRoute::UpdateStatistics(int &routes, int &invroutes, int &skippositions,
     positions += Count();
 }
 
-IsoChron::IsoChron(IsoRouteList r, wxDateTime t, GribRecordSet *g, bool grib_is_data_deficient)
-    : routes(r), time(t), m_Grib(g), m_Grib_is_data_deficient(grib_is_data_deficient)
+typedef  wxWeakRef<Shared_GribRecordSet> Shared_GribRecordSetRef;
+
+static std::map<time_t, Shared_GribRecordSetRef> grib_key;
+static wxMutex s_key_mutex;
+
+IsoChron::IsoChron(IsoRouteList r, wxDateTime t, Shared_GribRecordSet &g, bool grib_is_data_deficient)
+    : routes(r), time(t), m_SharedGrib(g), m_Grib(0), m_Grib_is_data_deficient(grib_is_data_deficient)
 {
+    m_Grib = m_SharedGrib.GetGribRecordSet();
+    if (m_Grib ) {
+        wxMutexLocker lock(s_key_mutex);
+        grib_key[m_Grib->m_Reference_Time] = &m_SharedGrib;
+    }
+}
+
+Shared_GribRecordSetData::~Shared_GribRecordSetData()
+{ 
+    delete m_GribRecordSet; 
 }
 
 IsoChron::~IsoChron()
 {
     for(IsoRouteList::iterator it = routes.begin(); it != routes.end(); ++it)
         delete *it;
-
-    /* done with grib */
-    if(m_Grib) {
-        for(int i=0; i<Idx_COUNT; i++)
-            delete m_Grib->m_GribRecordPtrArray[i];
-        delete m_Grib;
-    }
 }
 
 void IsoChron::PropagateIntoList(IsoRouteList &routelist, RouteMapConfiguration &configuration)
@@ -2426,12 +2435,13 @@ bool RouteMap::Propagate()
         grib_is_data_deficient = true;
     }
 
-    GribRecordSet *grib = m_NewGrib;
+    Shared_GribRecordSet shared_grib = m_SharedNewGrib;
     wxDateTime time = m_NewTime;
 
     // request the next grib
     // in a different thread (grib record averaging going in parallel)
-    m_NewGrib = NULL;
+    m_NewGrib = 0;
+    m_SharedNewGrib.SetGribRecordSet(0);
     m_NewTime += wxTimeSpan(0, 0, configuration.dt);
     m_bNeedsGrib = configuration.UseGrib;
 
@@ -2467,11 +2477,6 @@ bool RouteMap::Propagate()
     IsoChron* update;
     if(routelist.empty()) {
         update = NULL;
-        if(grib) { // grib data isn't used after all
-            for(int i=0; i<Idx_COUNT; i++)
-                delete grib->m_GribRecordPtrArray[i];
-            delete grib;
-        }
     } else {
         IsoRouteList merged;
         if(!ReduceList(merged, routelist, configuration))
@@ -2480,7 +2485,7 @@ bool RouteMap::Propagate()
         for(IsoRouteList::iterator it = merged.begin(); it != merged.end(); ++it)
             (*it)->ReduceClosePoints();
 
-        update = new IsoChron(merged, time, grib, grib_is_data_deficient);
+        update = new IsoChron(merged, time, shared_grib, grib_is_data_deficient);
     }
 
     Lock();
@@ -2547,6 +2552,8 @@ void RouteMap::Reset()
     Clear();
 
     m_NewGrib = NULL;
+    m_SharedNewGrib.SetGribRecordSet(0);
+    
     m_NewTime = m_Configuration.StartTime;
     m_bNeedsGrib = m_Configuration.UseGrib;
 
@@ -2559,6 +2566,7 @@ void RouteMap::Reset()
     Unlock();
 }
 
+
 void RouteMap::SetNewGrib(GribRecordSet *grib)
 {
     if(!grib ||
@@ -2566,11 +2574,22 @@ void RouteMap::SetNewGrib(GribRecordSet *grib)
        !grib->m_GribRecordPtrArray[Idx_WIND_VY])
         return;
 
+    {
+        std::map<time_t, Shared_GribRecordSetRef>::iterator it; 
+        wxMutexLocker lock(s_key_mutex);
+        it = grib_key.find(grib->m_Reference_Time);
+        if (it != grib_key.end() && it->second != 0 ) {
+            m_SharedNewGrib = *it->second;
+            m_NewGrib = m_SharedNewGrib.GetGribRecordSet();
+            if (m_NewGrib->m_ID == grib->m_ID) {
+                return;
+            }
+        }
+    }
     /* copy the grib record set */
-    m_NewGrib = new GribRecordSet;
+    m_NewGrib = new GribRecordSet(grib->m_ID);
     m_NewGrib->m_Reference_Time = grib->m_Reference_Time;
     for(int i=0; i<Idx_COUNT; i++) {
-        m_NewGrib->m_GribRecordPtrArray[i] = NULL;
         switch (i) {
         case Idx_HTSIGW:
         case Idx_WIND_GUST:
@@ -2579,13 +2598,14 @@ void RouteMap::SetNewGrib(GribRecordSet *grib)
         case Idx_SEACURRENT_VX:
         case Idx_SEACURRENT_VY:
             if(grib->m_GribRecordPtrArray[i]) {
-                m_NewGrib->m_GribRecordPtrArray[i] = new GribRecord (*grib->m_GribRecordPtrArray[i]);
+                m_NewGrib->SetUnRefGribRecord(i, new GribRecord (*grib->m_GribRecordPtrArray[i]));
             }
             break;
         default:
             break;
         }
     }
+    m_SharedNewGrib.SetGribRecordSet(m_NewGrib);
 }
 
 void RouteMap::GetStatistics(int &isochrons, int &routes, int &invroutes, int &skippositions, int &positions)
