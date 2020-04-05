@@ -10,6 +10,8 @@ SET(SRC_PLUGINGL
           src/plugingl/TexFont.cpp
           src/plugingl/qtstylesheet.cpp
           )
-
-ADD_LIBRARY(${PACKAGE_NAME}_LIB_PLUGINGL SHARED ${SRC_PLUGINGL})
+if(UNIX)
+    add_definitions("-fpic")
+endif(UNIX)
+ADD_LIBRARY(${PACKAGE_NAME}_LIB_PLUGINGL STATIC ${SRC_PLUGINGL})
 TARGET_LINK_LIBRARIES( ${PACKAGE_NAME} ${PACKAGE_NAME}_LIB_PLUGINGL )
