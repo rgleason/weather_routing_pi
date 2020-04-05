@@ -186,7 +186,7 @@ if((NOT OPENGLES_FOUND) AND (NOT QT_ANDROID))
     message(STATUS "Found OpenGL...")
     message(STATUS "    Lib: " ${OPENGL_LIBRARIES})
     message(STATUS "    Include: " ${OPENGL_INCLUDE_DIR})
-    #add_definitions(-DocpnUSE_GL)
+    add_definitions(-DocpnUSE_GL)
 
     # We need to remove GLU from the OPENGL_LIBRARIES list
     foreach(_currentLibFile ${OPENGL_LIBRARIES})
