@@ -68,9 +68,9 @@ set(CLOUDSMITH_USER "rick-gleason")
 set(CLOUDSMITH_BASE_REPOSITORY "opencpn-plugins") #Rick's customization
 
 # Set Plugin info-url, summary and description
-set(XML_INFO_URL "https://opencpn.org/wiki/dokuwiki/doku.php?id=opencpn:opencpn_user_manual:plugins:safety:odraw1.6_pi")
-set(XML_SUMMARY "Plugin to test examples of the ODAPI and JSON interface for ODRAW 1234#")
-set(XML_DESCRIPTION "testplugin Plugin is used to test out the ODraw API and demonstrate how to use it successfully from another plugin")
+set(XML_INFO_URL "https://opencpn.org/OpenCPN/plugins/weatherroute.html")
+set(XML_SUMMARY "Plugin to complete optimal routing with weather files")
+set(XML_DESCRIPTION "Weather_Routing Plugin optimizes weather routing")
 
 ##
 ## ----- Modify above to include all the plugin details --------- ##
