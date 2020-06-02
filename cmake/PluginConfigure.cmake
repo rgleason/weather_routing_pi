@@ -2,9 +2,88 @@
 # Author:      Jon Gough (Based on the work of Sean D'Epagnier and Pavel Kalian) Copyright:   2019 License:     GPLv3+
 # ---------------------------------------------------------------------------
 
-set(PLUGIN_SOURCE_DIR .)
-
 message(STATUS "*** Staging to build ${PACKAGE_NAME} ***")
+
+message(STATUS "CIRCLECI: ${CIRCLECLI}, Env CIRCLECI: $ENV{CIRCLECI}")
+message(STATUS "TRAVIS: ${TRAVIS}, Env TRAVIS: $ENV{TRAVIS}")
+
+set(GIT_REPOSITORY "")
+
+if($ENV{CIRCLECI})
+    set(GIT_REPOSITORY "$ENV{CIRCLE_PROJECT_USERNAME}/$ENV{CIRCLE_PROJECT_REPONAME}")
+    set(GIT_REPOSITORY_BRANCH "$ENV{CIRCLE_BRANCH}")
+    set(GIT_REPOSITORY_TAG "$ENV{CIRCLE_TAG}")
+elseif($ENV{TRAVIS})
+    set(GIT_REPOSITORY "$ENV{TRAVIS_REPO_SLUG}")
+    set(GIT_REPOSITORY_BRANCH "$ENV{TRAVIS_BRANCH}")
+    set(GIT_REPOSITORY_TAG "$ENV{TRAVIS_TAG}")
+elseif($ENV{APPVEYOR})
+    set(GIT_REPOSITORY "$ENV{APPVEYOR_REPO_NAME}")
+    set(GIT_REPOSITORY_BRANCH "$ENV{APPVEYOR_REPO_BRANCH}")
+    set(GIT_REPOSITORY_TAG "$ENV{APPVEYOR_REPO_TAG_NAME}")
+else()
+    # Get the current working branch
+    execute_process(
+        COMMAND git rev-parse --abbrev-ref HEAD
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_REPOSITORY_BRANCH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+      )
+    if(${GIT_REPOSITORY_BRANCH} EQUAL "")
+        message(STATUS "Setting default GIT repository branch - master")
+        set(GIT_REPOSITORY_BRANCH "master")
+    endif()
+    execute_process(
+        COMMAND git tag --contains
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_REPOSITORY_TAG
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+      )
+    execute_process(
+        COMMAND git remote
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_REPOSITORY_REMOTE
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+      )
+    string(REGEX MATCH ".*[\n\r]" FIRST_LINE ${GIT_REPOSITORY_REMOTE})
+    if(NOT ${FIRST_LINE} STREQUAL "")
+        string(REGEX REPLACE "[\n\r]" "" GIT_REPOSITORY_REMOTE ${FIRST_LINE})
+    endif()
+    execute_process(
+        COMMAND git remote get-url ${GIT_REPOSITORY_REMOTE}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_REPOSITORY_URL
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+      )
+    message(STATUS "GIT_REPOSITORY_URL: ${GIT_REPOSITORY_URL}, GIT_REPOSITORY_SERVER: ${GIT_REPOSITORY_SERVER}")
+    string(FIND ${GIT_REPOSITORY_URL} ${GIT_REPOSITORY_SERVER} START_URL REVERSE)
+    string(LENGTH ${GIT_REPOSITORY_SERVER} STRING_LENGTH)
+    math(EXPR START_URL "${START_URL}+1+${STRING_LENGTH}")
+    string(LENGTH ${GIT_REPOSITORY_URL} STRING_LENGTH)
+    message(STATUS "START_URL: ${START_URL}, STRING_LENGTH: ${STRING_LENGTH}")
+    string(SUBSTRING ${GIT_REPOSITORY_URL} ${START_URL} ${STRING_LENGTH} GIT_REPOSITORY)
+endif()
+message(STATUS "GIT_REPOSITORY: ${GIT_REPOSITORY}")
+message(STATUS "Git Branch: \"${GIT_REPOSITORY_BRANCH}\"")
+message(STATUS "Git Tag: \"${GIT_REPOSITORY_TAG}\"")
+if("${GIT_REPOSITORY_BRANCH}" STREQUAL "")
+    set(GIT_BRANCH_OR_TAG "tag")
+    set(GIT_REPOSITORY_ITEM ${GIT_REPOSITORY_TAG})
+else()
+    set(GIT_BRANCH_OR_TAG "branch")
+    set(GIT_REPOSITORY_ITEM ${GIT_REPOSITORY_BRANCH})
+endif()
+message(STATUS "GIT_BRANCH_OR_TAG: ${GIT_BRANCH_OR_TAG}")
+message(STATUS "GIT_REPOSITORY_ITEM: ${GIT_REPOSITORY_ITEM}")
+
+if(NOT DEFINED CLOUDSMITH_BASE_REPOSITORY AND NOT ${GIT_REPOSITORY} STREQUAL "")
+    string(FIND ${GIT_REPOSITORY} "/"  START_NAME REVERSE)
+    math(EXPR START_NAME "${START_NAME}+1")
+    string(LENGTH ${GIT_REPOSITORY} STRING_LENGTH)
+    message(STATUS "START_NAME: ${START_NAME}, STRING_LENGTH: ${STRING_LENGTH}")
+    string(SUBSTRING ${GIT_REPOSITORY} ${START_NAME} ${STRING_LENGTH} CLOUDSMITH_BASE_REPOSITORY)
+endif()
+message(STATUS "CLOUDSMITH_BASE_REPOSITORY: ${CLOUDSMITH_BASE_REPOSITORY}")
 
 # Do the version.h & wxWTranslateCatalog configuration into the build output directory, thereby allowing building from a read-only source tree.
 if(NOT SKIP_VERSION_CONFIG)
@@ -15,18 +94,31 @@ if(NOT SKIP_VERSION_CONFIG)
 endif(NOT SKIP_VERSION_CONFIG)
 
 # configure xml file for circleci
+message(STATUS "OCPN_TARGET: $ENV{OCPN_TARGET}")
+if(NOT DEFINED $ENV{OCPN_TARGET})
+    set($ENV{OCPN_TARGET} ${PKG_TARGET})
+    message(STATUS "Setting OCPN_TARGET")
+endif(NOT DEFINED $ENV{OCPN_TARGET})
+if($ENV{OCPN_TARGET} MATCHES "(.*)gtk3")
+    set(PKG_TARGET_FULL "${PKG_TARGET}-gtk3")
+    message(STATUS "Found gtk3")
+else($ENV{OCPN_TARGET} MATCHES "(.*)gtk3")
+    set(PKG_TARGET_FULL "${PKG_TARGET}")
+endif($ENV{OCPN_TARGET} MATCHES "(.*)gtk3")
+
+message(STATUS "PKG_TARGET_FULL: ${PKG_TARGET_FULL}")
 message(STATUS "*.in files generated in ${CMAKE_CURRENT_BINARY_DIR}")
-configure_file(${CMAKE_SOURCE_DIR}/cmake/in-files/plugin.xml.in ${CMAKE_CURRENT_BINARY_DIR}/${PLUGIN_NAME}.xml)
+configure_file(${CMAKE_SOURCE_DIR}/cmake/in-files/plugin.xml.in ${CMAKE_CURRENT_BINARY_DIR}/${PACKAGING_NAME}.xml)
 configure_file(${CMAKE_SOURCE_DIR}/cmake/in-files/pkg_version.sh.in ${CMAKE_CURRENT_BINARY_DIR}/pkg_version.sh)
 configure_file(${CMAKE_SOURCE_DIR}/cmake/in-files/cloudsmith-upload.sh.in ${CMAKE_CURRENT_BINARY_DIR}/cloudsmith-upload.sh @ONLY)
-configure_file(${CMAKE_SOURCE_DIR}/cmake/in-files/appveyor-upload.sh.in ${CMAKE_CURRENT_BINARY_DIR}/appveyor-upload.sh @ONLY)
 
-message(STATUS "Checking OCPN_FLATPAK: ${OCPN_FLATPAK}")
+message(STATUS "Checking OCPN_FLATPAK_CONFIG: ${OCPN_FLATPAK_CONFIG}")
 if(OCPN_FLATPAK_CONFIG)
   configure_file(${CMAKE_SOURCE_DIR}/cmake/in-files/org.opencpn.OpenCPN.Plugin.yaml.in ${CMAKE_CURRENT_BINARY_DIR}/flatpak/org.opencpn.OpenCPN.Plugin.${PACKAGE}.yaml)
 
   message(STATUS "Done OCPN_FLATPAK CONFIG")
   message(STATUS "Directory used: ${CMAKE_CURRENT_BINARY_DIR}/flatpak")
+  message(STATUS "Git Branch: ${GIT_REPOSITORY_BRANCH}")
   return()
 endif(OCPN_FLATPAK_CONFIG)
 
@@ -35,27 +127,26 @@ set(CMAKE_VERBOSE_MAKEFILE ON)
 include_directories(${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/src)
 
 # SET(PROFILING 1)
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
   add_definitions("-DDEBUG_BUILD")
   set(CMAKE_INSTALL_DO_STRIP FALSE)
   set(CPACK_DEBIAN_DEBUGINFO_PACKAGE YES)
   message(STATUS "DEBUG available")
-endif(CMAKE_BUILD_TYPE STREQUAL "Debug")
+endif(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
 
 if(NOT WIN32 AND NOT APPLE)
-# Added -fPIC at Jon's suggestion to fix  issue when compiling json_value.cpp as it is not being compiled with '-fPIC'
-  add_definitions("-Wall -Wno-unused -fexceptions -rdynamic  -fPIC -fvisibility=hidden")
+  add_definitions("-Wall -Wno-unused -fexceptions -rdynamic -fvisibility=hidden")
   add_definitions(" -fno-strict-aliasing")
   message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
   if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_definitions(" -O0 -g")
     message(STATUS "Optimisation: -O0 -g")
   elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
-    add_definitions(" -O2 -march=native")
-    message(STATUS "Optimisation: -O2 -march=native")
+    add_definitions(" -O2 ")
+    message(STATUS "Optimisation: -O2")
   elseif(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
-    add_definitions(" -O2 -march=native -g")
-    message(STATUS "Optimisation: -O2 -march=native -g")
+    add_definitions(" -O2 -g")
+    message(STATUS "Optimisation: -O2 -g")
   else(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
     add_definitions(" -O2")
     message(STATUS "Optimisation: -O2")
@@ -129,7 +220,7 @@ set(wxWidgets_USE_LIBS
 option(USE_GL "Enable OpenGL support" ON)
 
 # Search for opengles, short of running a program to test the speed of acceleration, I simply use gles on "native linux" arm systems
-if(ARCH MATCHES "arm*" AND (NOT QT_ANDROID))
+if(ARCH MATCHES "arm*" AND (NOT QT_ANDROID) AND USE_GL MATCHES "ON")
   find_path(OPENGLESv1_INCLUDE_DIR GLES/gl.h)
   if(OPENGLESv1_INCLUDE_DIR)
     message(STATUS "Found OpenGLESv1")
@@ -147,7 +238,7 @@ if(ARCH MATCHES "arm*" AND (NOT QT_ANDROID))
 endif()
 
 # Building for QT_ANDROID involves a cross-building environment, So the include directories, flags, etc must be stated explicitly without trying to locate them on the host build system.
-if(QT_ANDROID)
+if(QT_ANDROID AND USE_GL MATCHES "ON")
   message(STATUS "Using GLESv1 for Android")
   add_definitions(-DocpnUSE_GLES)
   add_definitions(-DocpnUSE_GL)
@@ -158,15 +249,16 @@ if(QT_ANDROID)
 
   set(wxWidgets_USE_LIBS ${wxWidgets_USE_LIBS} gl)
   add_subdirectory(src/glshim)
-endif(QT_ANDROID)
+endif(QT_ANDROID AND USE_GL MATCHES "ON")
 
 if((NOT OPENGLES_FOUND) AND (NOT QT_ANDROID))
 
-  if(USE_GL)
+  if(USE_GL MATCHES "ON")
+    message(STATUS "Finding package OpenGL")
     find_package(OpenGL)
-  else(USE_GL)
+  else(USE_GL MATCHES "ON")
     message(STATUS "OpenGL disabled by option...")
-  endif(USE_GL)
+  endif(USE_GL MATCHES "ON")
 
   if(OPENGL_FOUND)
 
@@ -176,7 +268,7 @@ if((NOT OPENGLES_FOUND) AND (NOT QT_ANDROID))
     message(STATUS "Found OpenGL...")
     message(STATUS "    Lib: " ${OPENGL_LIBRARIES})
     message(STATUS "    Include: " ${OPENGL_INCLUDE_DIR})
-    #add_definitions(-DocpnUSE_GL)
+    add_definitions(-DocpnUSE_GL)
 
     # We need to remove GLU from the OPENGL_LIBRARIES list
     foreach(_currentLibFile ${OPENGL_LIBRARIES})
@@ -308,7 +400,5 @@ if(QT_ANDROID)
   )
 
 endif(QT_ANDROID)
-
-set(BUILD_SHARED_LIBS TRUE)
 
 find_package(Gettext REQUIRED)

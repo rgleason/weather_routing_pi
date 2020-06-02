@@ -35,13 +35,11 @@ if(COMMAND cmake_policy)
   endif(POLICY CMP0077)
 endif(COMMAND cmake_policy)
 
-set(PACKAGE_NAME "weather_routing_pi")
 set(VERBOSE_NAME "WeatherRouting") 
+set(COMMON_NAME "WeatherRouting")
 set(TITLE_NAME "weatherrouting")
 set(PACKAGE_CONTACT "Sean d'Epagnier")
-set(COMMON_NAME "WeatherRouting")
-# Search "getcommonname"in weather_routing_pi.cpp 
-# for the "CommonName" to avoid unmanaged plugins duplication.
+set(PACKAGE "weather_routing")
 
 set(VERSION_MAJOR "1")
 set(VERSION_MINOR "13")
@@ -54,24 +52,14 @@ set(OCPN_API_VERSION_MINOR "16")
 set(TP_COMMENT "  * Release for O5 using CI")
 
 set(PARENT "opencpn")
-set(PACKAGE "weather_routing")  #used for Package name
-#set(GIT_USER "seandepagnier")  #for Sean
-set(GIT_USER "rgleason")
 
-set(GIT_REPOSITORY_NAME "weather_routing_pi")
-message(STATUS "CIRCLECI: ${CIRCLECLI}, Env CIRCLECI: $ENV{CIRCLECI}")
+# The next line allows for setting up your own local webserver with git on it for testing purposes, the default is github.com
+set(GIT_REPOSITORY_SERVER "github.com")
 
-# Allows setup of a local webserver with git for testing
-if($ENV{CIRCLECI})
-  set(GIT_REPOSITORY_HOST "github.com")
-  set(GIT_REPOSITORY_DIR "${GIT_USER}/")
-  set(GIT_REPOSITORY_BRANCH "master")
-# else()
-#  set(GIT_REPOSITORY_HOST "git.eclipse.com.au")
-#  set(GIT_REPOSITORY_DIR "")
-#  set(GIT_REPOSITORY_BRANCH "cmake_flatpak_test")
-endif()
-message(STATUS "Git Branch: ${GIT_REPOSITORY_BRANCH}")
+# Specifies cloudsmith repository sufficies
+set(PROD "prod")    #Standard Repos
+set(BETA "beta")    #Standard Repos
+set(ALPHA "alpha")  #Standard Repos
 
 # set(CLOUDSMITH_USER "sean-depagnier")
 set(CLOUDSMITH_USER "rick-gleason")
@@ -80,106 +68,32 @@ set(CLOUDSMITH_USER "rick-gleason")
 set(CLOUDSMITH_BASE_REPOSITORY "opencpn-plugins") #Rick's customization
 
 # Set Plugin info-url, summary and description
-set(XML_INFO_URL "https://opencpn.org/OpenCPN/plugins/weatherroute.html")  
-set(XML_SUMMARY "Plugin to complete optimal routing with weather files")
-set(XML_DESCRIPTION "Weather_Routing Plugin optimizes weather routing")
-
-set(APPVEYOR_TEST_DEPLOY_TO_CLOUDSMITH "true")
-option(PLUGIN_USE_SVG "Use SVG graphics" ON)
+set(XML_INFO_URL "https://opencpn.org/wiki/dokuwiki/doku.php?id=opencpn:opencpn_user_manual:plugins:safety:odraw1.6_pi")
+set(XML_SUMMARY "Plugin to test examples of the ODAPI and JSON interface for ODRAW 1234#")
+set(XML_DESCRIPTION "testplugin Plugin is used to test out the ODraw API and demonstrate how to use it successfully from another plugin")
 
 ##
 ## ----- Modify above to include all the plugin details --------- ##
 ## ----- Modify below for plugin special requirements------------ ##
 ##
 
+option(PLUGIN_USE_SVG "Use SVG graphics" ON)
+
 set(CMAKE_CXX_STANDARD 11)
 
 # Prefer libGL.so to libOpenGL.so, see CMP0072
 set(OpenGL_GL_PREFERENCE "LEGACY")
 
-set(PACKAGE_NAME ${PACKAGE}_pi)
-set(PACKAGE_FILE_NAME "${PARENT}-plugin-${PACKAGE}")
-string(TOUPPER "${PACKAGE}" TITLE_NAME)
-
-project(${PACKAGE_NAME} VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}.${VERSION_TWEAK})
-
-set(PACKAGE_VERSION "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}")
-
-message(STATUS "${VERBOSE_NAME} Version: ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}.${VERSION_TWEAK}")
-message(STATUS "OPCN_FLATPAK: ${OCPN_FLATPAK}")
-
 # Don't use local version of GLU library
 set(USE_LOCAL_GLU FALSE)
-
-if("${CMAKE_BUILD_TYPE}" STREQUAL "")
-  set(CMAKE_BUILD_TYPE
-      "Release"
-      CACHE STRING "Choose the type of build" FORCE)
-elseif("${CMAKE_BUILD_TYPE}" STREQUAL "")
-  set(CMAKE_BUILD_TYPE
-      "Release"
-      CACHE STRING "Choose the type of build")
-endif("${CMAKE_BUILD_TYPE}" STREQUAL "")
-set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "" "Debug" "Release" "RelWithDebInfo" "MinSizeRel")
-message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
-
-set(PKG_NVR ${PACKAGE_NAME}-${PROJECT_VERSION}-${OCPN_MIN_VERSION}-${OCPN_API_VERSION_MAJOR}.${OCPN_API_VERSION_MINOR})
-
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm*")
-    set(PKG_URL
- "https://dl.cloudsmith.io/public/@pkg_repo@/raw/names/@name@/versions/@version@/@filename@")
-
- else(CMAKE_SYSTEM_PROCESSOR MATCHES "arm*")
- # This version works for the other environments
-    set(PKG_URL
- "https://dl.cloudsmith.io/public/--pkg_repo--/raw/names/--name--/versions/--version--/--filename--")
-
- endif(CMAKE_SYSTEM_PROCESSOR MATCHES "arm*")
 
 #=================================================================================
 INCLUDE("cmake/PluginSetup.cmake")
 #=================================================================================
 #========Below is specific to the plugin and is from testplugin  =================
 
-set(PLUGIN_NAME ${PACKAGE}-plugin-${PKG_TARGET}-${PKG_TARGET_VERSION})
-
 set(CMAKE_VERBOSE_MAKEFILE ON)
 
-message(STATUS "CMAKE version: ${CMAKE_VERSION}")
-if(CMAKE_VERSION VERSION_GREATER 3.4)
-  set(ENABLE_CLANG_TIDY
-      OFF
-      CACHE BOOL "Add clang-tidy automatically to builds")
-  if(ENABLE_CLANG_TIDY)
-    find_program(
-      CLANG_TIDY_EXE
-      NAMES "clang-tidy"
-      PATHS /usr/local/opt/llvm/bin)
-    if(CLANG_TIDY_EXE)
-      message(STATUS "clang-tidy found: ${CLANG_TIDY_EXE}")
-      # For more, see http://clang.llvm.org/extra/clang-tidy/ set(CLANG_TIDY_CHECKS "-*,modernize-*")
-      set(CLANG_TIDY_CHECKS "-*,performance-*")
-      set(CMAKE_CXX_CLANG_TIDY
-          "${CLANG_TIDY_EXE};-checks=${CLANG_TIDY_CHECKS};-header-filter='${CMAKE_SOURCE_DIR}/*'"
-          CACHE STRING "" FORCE)
-    else()
-      message(AUTHOR_WARNING "clang-tidy not found!")
-      set(CMAKE_CXX_CLANG_TIDY
-          ""
-          CACHE STRING "" FORCE) # delete it
-    endif()
-  endif()
-endif()
-
-if(CMAKE_VERSION VERSION_GREATER 3.9)
-  set(ENABLE_CPPCHECK
-      OFF
-      CACHE BOOL "Add cppcheck automatically to builds")
-  if(ENABLE_CPPCHECK)
-    find_program(CPPCHECK_EXECUTABLE NAMES "cppcheck")
-    set(CMAKE_CXX_CPPCHECK ${CPPCHECK_EXECUTABLE})
-  endif()
-endif()
 
 # SET_DIRECTORY_PROPERTIES(dummy ADDITIONAL_MAKE_CLEAN_FILES ${PROJECT_SOURCE_DIR}/include/version.h)
 
