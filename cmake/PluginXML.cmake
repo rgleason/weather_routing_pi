@@ -11,6 +11,10 @@ SET(SRC_TINYXML
             src/tinyxml/tinyxmlparser.cpp
             src/tinyxml/tinyxmlerror.cpp
 )
+if(UNIX)
+    add_definitions("-fpic")
+endif(UNIX)
+
 ADD_LIBRARY(${PACKAGE_NAME}_LIB_PLUGINXML STATIC ${SRC_TINYXML})
 TARGET_LINK_LIBRARIES( ${PACKAGE_NAME} ${PACKAGE_NAME}_LIB_PLUGINXML )
 ENDIF(WIN32)
