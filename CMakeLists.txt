@@ -52,7 +52,7 @@ set(LONG_DESCRIPTION "WR features include: optimal routing subject to various co
 
 set(VERSION_MAJOR "1")
 set(VERSION_MINOR "13")
-set(VERSION_PATCH "25")
+set(VERSION_PATCH "26")
 set(VERSION_TWEAK "0")
 set(VERSION_DATE "26/06/2021")#DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov50")
@@ -199,6 +199,18 @@ SET (HDRS
             include/georef.h
             include/GribRecord.h
 )
+set(EXTSRC
+)
+
+set(LIBHDRS
+    libs/GL/gl.h
+    libs/GL/gl_private.h
+    libs/GL/glext.h
+    libs/GL/glu.h
+    libs/wx/include/json_defs.h
+    libs/wx/include/jsonreader.h
+    libs/wx/include/jsonval.h
+    libs/wx/include/jsonwriter.h)
 
 add_definitions(-DPLUGIN_USE_SVG)
 
@@ -216,9 +228,16 @@ SET(SRC ${SRCS} ${HDRS} ${SRC_LIBTESS2} )
 # Modify/configure 'Include' Directories below for the Plugin
 ##=============================================================
 
+include_directories(BEFORE ${PROJECT_SOURCE_DIR}/include)
+# include_directories(BEFORE ${PROJECT_SOURCE_DIR}/ocpninclude)
+include_directories(BEFORE ${PROJECT_SOURCE_DIR}/ocpnsrc/glu/include)
 include_directories(BEFORE ${PROJECT_SOURCE_DIR}/${EXTINCLUDE_DIR})
 include_directories(BEFORE ${PROJECT_SOURCE_DIR}/libs/)
 include_directories(BEFORE ${PROJECT_SOURCE_DIR}/libs/ocpn-api)
+include_directories(BEFORE ${PROJECT_SOURCE_DIR}/libs/GL)
+#include_directories(BEFORE ${PROJECT_SOURCE_DIR}/libs/jsoncpp)
+#include_directories(BEFORE ${PROJECT_SOURCE_DIR}/libs/libtess2/include)
+#include_directories(BEFORE ${PROJECT_SOURCE_DIR}/libs/plugingl/include)
 include_directories(BEFORE ${PROJECT_SOURCE_DIR}/libs/wx/include)
 
 
