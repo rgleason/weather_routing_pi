@@ -52,7 +52,7 @@ set(LONG_DESCRIPTION "WR features include: optimal routing subject to various co
 
 set(VERSION_MAJOR "1")
 set(VERSION_MINOR "13")
-set(VERSION_PATCH "26")
+set(VERSION_PATCH "27")
 set(VERSION_TWEAK "0")
 set(VERSION_DATE "26/06/2021")#DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov50")
@@ -233,19 +233,17 @@ include_directories(BEFORE ${PROJECT_SOURCE_DIR}/include)
 include_directories(BEFORE ${PROJECT_SOURCE_DIR}/ocpnsrc/glu/include)
 include_directories(BEFORE ${PROJECT_SOURCE_DIR}/${EXTINCLUDE_DIR})
 include_directories(BEFORE ${PROJECT_SOURCE_DIR}/libs/)
+include_directories(BEFORE ${PROJECT_SOURCE_DIR}/libs/wx/include)
 include_directories(BEFORE ${PROJECT_SOURCE_DIR}/libs/ocpn-api)
 include_directories(BEFORE ${PROJECT_SOURCE_DIR}/libs/GL)
+# These 3 are included down below
 #include_directories(BEFORE ${PROJECT_SOURCE_DIR}/libs/jsoncpp)
 #include_directories(BEFORE ${PROJECT_SOURCE_DIR}/libs/libtess2/include)
 #include_directories(BEFORE ${PROJECT_SOURCE_DIR}/libs/plugingl/include)
-include_directories(BEFORE ${PROJECT_SOURCE_DIR}/libs/wx/include)
-
 
 ##=================================================
 target_sources(${PACKAGE_NAME} PUBLIC ${SRC})
 ##=================================================
-
-
 
 if(NOT OCPN_FLATPAK_CONFIG)
     # Build environment not available when flatpak is being configured so following statements will not work
