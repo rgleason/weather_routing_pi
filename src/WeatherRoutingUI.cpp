@@ -671,8 +671,8 @@ ConfigurationDialogBase::ConfigurationDialogBase( wxWindow* parent, wxWindowID i
 	m_staticText28->Wrap( -1 );
 	fgSizer111->Add( m_staticText28, 0, wxALIGN_CENTER_VERTICAL|wxALL, 5 );
 
-	m_dpStartDate = new wxDatePickerCtrl( sbStart->GetStaticBox(), wxID_ANY, wxDefaultDateTime, wxDefaultPosition, wxDefaultSize, wxDP_ALLOWNONE|wxDP_DEFAULT );
-	fgSizer111->Add( m_dpStartDate, 1, wxALIGN_CENTER_VERTICAL|wxALL|wxEXPAND, 5 );
+	//m_dpStartDate = new wxDatePickerCtrl( sbStart->GetStaticBox(), wxID_ANY, wxDefaultDateTime, wxDefaultPosition, wxDefaultSize, wxDP_ALLOWNONE|wxDP_DEFAULT );
+	//fgSizer111->Add( m_dpStartDate, 1, wxALIGN_CENTER_VERTICAL|wxALL|wxEXPAND, 5 );
 
 	m_bGribTime = new wxButton( sbStart->GetStaticBox(), wxID_ANY, _("Grib Time"), wxDefaultPosition, wxDefaultSize, 0 );
 	fgSizer111->Add( m_bGribTime, 1, wxALIGN_CENTER_VERTICAL|wxEXPAND|wxALL, 5 );

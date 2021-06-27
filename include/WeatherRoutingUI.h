@@ -320,7 +320,7 @@ class ConfigurationDialogBase : public wxDialog
 
 
 	public:
-		wxDatePickerCtrl* m_dpStartDate;
+		//wxDatePickerCtrl* m_dpStartDate;
 		wxCheckBox* m_cbCurrents;
 		wxCheckBox* m_cbUseGrib;
 		wxChoice* m_cClimatologyType;
