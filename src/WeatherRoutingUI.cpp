@@ -1231,7 +1231,7 @@ ConfigurationDialogBase::ConfigurationDialogBase( wxWindow* parent, wxWindowID i
 	// Connect Events
 	m_cStart->Connect( wxEVT_COMMAND_COMBOBOX_SELECTED, wxCommandEventHandler( ConfigurationDialogBase::OnUpdate ), NULL, this );
 	m_cStart->Connect( wxEVT_COMMAND_TEXT_UPDATED, wxCommandEventHandler( ConfigurationDialogBase::OnUpdate ), NULL, this );
-	m_dpStartDate->Connect( wxEVT_DATE_CHANGED, wxDateEventHandler( ConfigurationDialogBase::OnUpdateDate ), NULL, this );
+	//m_dpStartDate->Connect( wxEVT_DATE_CHANGED, wxDateEventHandler( ConfigurationDialogBase::OnUpdateDate ), NULL, this );
 	m_bGribTime->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( ConfigurationDialogBase::OnGribTime ), NULL, this );
 	//m_tpTime->Connect( wxEVT_TIME_CHANGED, wxDateEventHandler( ConfigurationDialogBase::OnUpdateTime ), NULL, this );
 	m_bCurrentTime->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( ConfigurationDialogBase::OnCurrentTime ), NULL, this );
@@ -1384,7 +1384,7 @@ ConfigurationDialogBase::~ConfigurationDialogBase()
 	// Disconnect Events
 	m_cStart->Disconnect( wxEVT_COMMAND_COMBOBOX_SELECTED, wxCommandEventHandler( ConfigurationDialogBase::OnUpdate ), NULL, this );
 	m_cStart->Disconnect( wxEVT_COMMAND_TEXT_UPDATED, wxCommandEventHandler( ConfigurationDialogBase::OnUpdate ), NULL, this );
-	m_dpStartDate->Disconnect( wxEVT_DATE_CHANGED, wxDateEventHandler( ConfigurationDialogBase::OnUpdateDate ), NULL, this );
+	//m_dpStartDate->Disconnect( wxEVT_DATE_CHANGED, wxDateEventHandler( ConfigurationDialogBase::OnUpdateDate ), NULL, this );
 	m_bGribTime->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( ConfigurationDialogBase::OnGribTime ), NULL, this );
 	//m_tpTime->Disconnect( wxEVT_TIME_CHANGED, wxDateEventHandler( ConfigurationDialogBase::OnUpdateTime ), NULL, this );
 	m_bCurrentTime->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( ConfigurationDialogBase::OnCurrentTime ), NULL, this );
