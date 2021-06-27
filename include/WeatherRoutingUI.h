@@ -239,7 +239,7 @@ class ConfigurationDialogBase : public wxDialog
 		wxStaticText* m_staticText28;
 		wxButton* m_bGribTime;
 		wxStaticText* m_staticText30;
-		wxTimePickerCtrl* m_tpTime;
+		//wxTimePickerCtrl* m_tpTime;
 		wxButton* m_bCurrentTime;
 		wxTextCtrl* m_tBoat;
 		wxButton* m_bBoatFilename;

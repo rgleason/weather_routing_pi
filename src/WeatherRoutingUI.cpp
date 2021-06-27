@@ -681,8 +681,8 @@ ConfigurationDialogBase::ConfigurationDialogBase( wxWindow* parent, wxWindowID i
 	m_staticText30->Wrap( -1 );
 	fgSizer111->Add( m_staticText30, 0, wxALIGN_CENTER_VERTICAL|wxALL, 5 );
 
-	m_tpTime = new wxTimePickerCtrl( sbStart->GetStaticBox(), wxID_ANY, wxDefaultDateTime, wxDefaultPosition, wxDefaultSize, wxDP_DEFAULT );
-	fgSizer111->Add( m_tpTime, 1, wxALIGN_CENTER_VERTICAL|wxALIGN_CENTER_HORIZONTAL|wxEXPAND|wxALL, 5 );
+	//m_tpTime = new wxTimePickerCtrl( sbStart->GetStaticBox(), wxID_ANY, wxDefaultDateTime, wxDefaultPosition, wxDefaultSize, wxDP_DEFAULT );
+	//fgSizer111->Add( m_tpTime, 1, wxALIGN_CENTER_VERTICAL|wxALIGN_CENTER_HORIZONTAL|wxEXPAND|wxALL, 5 );
 
 	m_bCurrentTime = new wxButton( sbStart->GetStaticBox(), wxID_ANY, _("Current Time"), wxDefaultPosition, wxDefaultSize, 0 );
 	fgSizer111->Add( m_bCurrentTime, 1, wxALIGN_CENTER_VERTICAL|wxEXPAND|wxALL, 5 );
@@ -1233,7 +1233,7 @@ ConfigurationDialogBase::ConfigurationDialogBase( wxWindow* parent, wxWindowID i
 	m_cStart->Connect( wxEVT_COMMAND_TEXT_UPDATED, wxCommandEventHandler( ConfigurationDialogBase::OnUpdate ), NULL, this );
 	m_dpStartDate->Connect( wxEVT_DATE_CHANGED, wxDateEventHandler( ConfigurationDialogBase::OnUpdateDate ), NULL, this );
 	m_bGribTime->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( ConfigurationDialogBase::OnGribTime ), NULL, this );
-	m_tpTime->Connect( wxEVT_TIME_CHANGED, wxDateEventHandler( ConfigurationDialogBase::OnUpdateTime ), NULL, this );
+	//m_tpTime->Connect( wxEVT_TIME_CHANGED, wxDateEventHandler( ConfigurationDialogBase::OnUpdateTime ), NULL, this );
 	m_bCurrentTime->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( ConfigurationDialogBase::OnCurrentTime ), NULL, this );
 	m_tBoat->Connect( wxEVT_COMMAND_TEXT_UPDATED, wxCommandEventHandler( ConfigurationDialogBase::OnUpdate ), NULL, this );
 	m_bBoatFilename->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( ConfigurationDialogBase::OnBoatFilename ), NULL, this );
@@ -1386,7 +1386,7 @@ ConfigurationDialogBase::~ConfigurationDialogBase()
 	m_cStart->Disconnect( wxEVT_COMMAND_TEXT_UPDATED, wxCommandEventHandler( ConfigurationDialogBase::OnUpdate ), NULL, this );
 	m_dpStartDate->Disconnect( wxEVT_DATE_CHANGED, wxDateEventHandler( ConfigurationDialogBase::OnUpdateDate ), NULL, this );
 	m_bGribTime->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( ConfigurationDialogBase::OnGribTime ), NULL, this );
-	m_tpTime->Disconnect( wxEVT_TIME_CHANGED, wxDateEventHandler( ConfigurationDialogBase::OnUpdateTime ), NULL, this );
+	//m_tpTime->Disconnect( wxEVT_TIME_CHANGED, wxDateEventHandler( ConfigurationDialogBase::OnUpdateTime ), NULL, this );
 	m_bCurrentTime->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( ConfigurationDialogBase::OnCurrentTime ), NULL, this );
 	m_tBoat->Disconnect( wxEVT_COMMAND_TEXT_UPDATED, wxCommandEventHandler( ConfigurationDialogBase::OnUpdate ), NULL, this );
 	m_bBoatFilename->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( ConfigurationDialogBase::OnBoatFilename ), NULL, this );
