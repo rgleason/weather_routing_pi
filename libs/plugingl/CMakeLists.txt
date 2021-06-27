@@ -24,6 +24,12 @@ if(UNIX)
 endif(UNIX)
 
 ADD_LIBRARY(${PACKAGE_NAME}_LIB_PLUGINGL STATIC ${SRC_PLUGINGL})
+
+# Needed for android builds
+if(QT_ANDROID)
+    include_directories(BEFORE ${qt_android_include})
+endif(QT_ANDROID)
+
 target_include_directories(${PACKAGE_NAME}_LIB_PLUGINGL PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 add_library(ocpn::plugingl ALIAS ${PACKAGE_NAME}_LIB_PLUGINGL)
 
