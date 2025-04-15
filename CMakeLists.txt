@@ -73,14 +73,14 @@ set(SHORT_DESCRIPTION "Compute optimal routes based on weather and constraints."
 set(LONG_DESCRIPTION "WR features include: optimal routing subject to various constraints based on weather data, automatic boat polar computation.")
 
 set(VERSION_MAJOR "1")
-set(VERSION_MINOR "15")
-set(VERSION_PATCH "24")
+set(VERSION_MINOR "16")
+set(VERSION_PATCH "0")
 set(VERSION_TWEAK "0")
 set(VERSION_DATE  "05/05/2025") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov58")
 
 set(OCPN_API_VERSION_MAJOR "1")
-set(OCPN_API_VERSION_MINOR "18")
+set(OCPN_API_VERSION_MINOR "20")
 set(TP_COMMENT "  * Release using CI")
 
 set(PARENT "opencpn")
