@@ -400,7 +400,7 @@ protected:
   wxSpinCtrl* m_sMaxApparentWindKnots;
   wxStaticText* m_staticText1282;
   wxStaticText* m_staticText27;
-  wxSpinCtrl* m_sMaxSwellMeters;
+  wxSpinCtrlDouble* m_sMaxSwellMeters;
   wxStaticText* m_staticText129;
   /** The end point of the route. */
   wxComboBox* m_cEnd;
