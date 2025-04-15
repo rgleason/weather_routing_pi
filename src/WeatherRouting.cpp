@@ -53,8 +53,8 @@ enum NEflag {
  * Used for precision argument to toSDMM_Plugin function from ocpn_plugin.h.
  **/
 enum Precision {
-  LO = 0,
-  HI = 1,
+  LO=0,
+  HI=1,
 };
 
 /* XPM */
@@ -668,6 +668,7 @@ void WeatherRouting::AddPosition(double lat, double lon, wxString name) {
         it.lon = lon;
         m_panel->m_lPositions->SetItem(index, POSITION_LAT, 
                                        toSDMM_PlugIn(NEflag::LAT, lat, Precision::HI));
+        m_panel->m_lPositions->SetColumnWidth(POSITION_LAT, wxLIST_AUTOSIZE);
         m_panel->m_lPositions->SetItem(index, POSITION_LON, 
                                        toSDMM_PlugIn(NEflag::LON, lon, Precision::HI));
         m_panel->m_lPositions->SetColumnWidth(POSITION_LON, wxLIST_AUTOSIZE);
@@ -687,7 +688,7 @@ void WeatherRouting::AddPosition(double lat, double lon, wxString name) {
 
   m_panel->m_lPositions->SetItem(index, POSITION_NAME, name);
   m_panel->m_lPositions->SetColumnWidth(POSITION_NAME, wxLIST_AUTOSIZE);
-  m_panel->m_lPositions->SetItem(index, POSITION_LAT, 
+  m_panel->m_lPositions->SetItem(index, POSITION_LAT,
                                  toSDMM_PlugIn(NEflag::LAT, lat, Precision::HI));
   m_panel->m_lPositions->SetColumnWidth(POSITION_LAT, wxLIST_AUTOSIZE);
   m_panel->m_lPositions->SetItem(index, POSITION_LON,
@@ -1102,7 +1103,7 @@ void WeatherRouting::OnUpdateBoat(wxCommandEvent& event) {
       m_panel->m_lPositions->SetItem(index, POSITION_LAT,
                                      toSDMM_PlugIn(NEflag::LAT, lat, Precision::HI));
       m_panel->m_lPositions->SetItem(index, POSITION_LON,
-                                         toSDMM_PlugIn(NEflag::LON, lon, Precision::HI));
+                                     toSDMM_PlugIn(NEflag::LON, lon, Precision::HI));
 
       (*it).lat = lat, (*it).lon = lon;
       UpdateConfigurations();
