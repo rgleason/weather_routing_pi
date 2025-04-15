@@ -40,6 +40,23 @@
 #include "icons.h"
 #include "navobj_util.h"
 
+/**
+ * Used for NEflag argument to toSDMM_Plugin function from ocpn_plugin.h.
+ * @todo Should probably be declared there instead, and probably be a boolean.
+ */
+enum NEflag {
+  LAT=1,
+  LON=2,
+};
+
+/** 
+ * Used for precision argument to toSDMM_Plugin function from ocpn_plugin.h.
+ **/
+enum Precision {
+  LO = 0,
+  HI = 1,
+};
+
 /* XPM */
 static const char* eye[] = {"20 20 7 1",
                             ". c none",
@@ -69,6 +86,8 @@ static const char* eye[] = {"20 20 7 1",
                             "....................",
                             "....................",
                             "...................."};
+
+
 
 WeatherRoute::WeatherRoute() : routemapoverlay(new RouteMapOverlay) {}
 WeatherRoute::~WeatherRoute() { delete routemapoverlay; }
@@ -567,10 +586,10 @@ void WeatherRouting::Render(piDC& dc, PlugIn_ViewPort& vp) {
     m_panel->m_lPositions->SetItem(index, POSITION_NAME, name);
     m_panel->m_lPositions->SetColumnWidth(POSITION_NAME, wxLIST_AUTOSIZE);
     m_panel->m_lPositions->SetItem(index, POSITION_LAT,
-                                   wxString::Format(_T("%.5f"), lat));
+                                   toSDMM_PlugIn(NEflag::LAT, lat, Precision::HI));
     m_panel->m_lPositions->SetColumnWidth(POSITION_LAT, wxLIST_AUTOSIZE);
     m_panel->m_lPositions->SetItem(index, POSITION_LON,
-                                   wxString::Format(_T("%.5f"), lon));
+                                   toSDMM_PlugIn(NEflag::LON, lon, Precision::HI));
     m_panel->m_lPositions->SetColumnWidth(POSITION_LON, wxLIST_AUTOSIZE);
     work = true;
   }
@@ -647,11 +666,10 @@ void WeatherRouting::AddPosition(double lat, double lon, wxString name) {
 
         it.lat = lat;
         it.lon = lon;
-        m_panel->m_lPositions->SetItem(index, POSITION_LAT,
-                                       wxString::Format(_T("%.5f"), lat));
-        m_panel->m_lPositions->SetColumnWidth(POSITION_LAT, wxLIST_AUTOSIZE);
-        m_panel->m_lPositions->SetItem(index, POSITION_LON,
-                                       wxString::Format(_T("%.5f"), lon));
+        m_panel->m_lPositions->SetItem(index, POSITION_LAT, 
+                                       toSDMM_PlugIn(NEflag::LAT, lat, Precision::HI));
+        m_panel->m_lPositions->SetItem(index, POSITION_LON, 
+                                       toSDMM_PlugIn(NEflag::LON, lon, Precision::HI));
         m_panel->m_lPositions->SetColumnWidth(POSITION_LON, wxLIST_AUTOSIZE);
         UpdateConfigurations();
       }
@@ -669,11 +687,11 @@ void WeatherRouting::AddPosition(double lat, double lon, wxString name) {
 
   m_panel->m_lPositions->SetItem(index, POSITION_NAME, name);
   m_panel->m_lPositions->SetColumnWidth(POSITION_NAME, wxLIST_AUTOSIZE);
-  m_panel->m_lPositions->SetItem(index, POSITION_LAT,
-                                 wxString::Format(_T("%.5f"), lat));
+  m_panel->m_lPositions->SetItem(index, POSITION_LAT, 
+                                 toSDMM_PlugIn(NEflag::LAT, lat, Precision::HI));
   m_panel->m_lPositions->SetColumnWidth(POSITION_LAT, wxLIST_AUTOSIZE);
   m_panel->m_lPositions->SetItem(index, POSITION_LON,
-                                 wxString::Format(_T("%.5f"), lon));
+                                 toSDMM_PlugIn(NEflag::LON, lon, Precision::HI));
   m_panel->m_lPositions->SetColumnWidth(POSITION_LON, wxLIST_AUTOSIZE);
 
   m_panel->m_lPositions->SetItemData(index, p.ID);
@@ -700,10 +718,10 @@ void WeatherRouting::AddPosition(double lat, double lon, wxString name,
       m_panel->m_lPositions->SetItem(index, POSITION_NAME, name);
       m_panel->m_lPositions->SetColumnWidth(POSITION_NAME, wxLIST_AUTOSIZE);
       m_panel->m_lPositions->SetItem(index, POSITION_LAT,
-                                     wxString::Format(_T("%.5f"), lat));
+                                     toSDMM_PlugIn(NEflag::LAT, lat, Precision::HI));
       m_panel->m_lPositions->SetColumnWidth(POSITION_LAT, wxLIST_AUTOSIZE);
       m_panel->m_lPositions->SetItem(index, POSITION_LON,
-                                     wxString::Format(_T("%.5f"), lon));
+                                     toSDMM_PlugIn(NEflag::LON, lon, Precision::HI));
       m_panel->m_lPositions->SetColumnWidth(POSITION_LON, wxLIST_AUTOSIZE);
       UpdateConfigurations();
       m_tAutoSaveXML.Start(5000, true);  // Schedule auto-save in 5 seconds
@@ -722,10 +740,10 @@ void WeatherRouting::AddPosition(double lat, double lon, wxString name,
   m_panel->m_lPositions->SetColumnWidth(POSITION_NAME, wxLIST_AUTOSIZE);
 
   m_panel->m_lPositions->SetItem(index, POSITION_LAT,
-                                 wxString::Format(_T("%.5f"), lat));
+                                 toSDMM_PlugIn(NEflag::LAT, lat, Precision::HI));
   m_panel->m_lPositions->SetColumnWidth(POSITION_LAT, wxLIST_AUTOSIZE);
   m_panel->m_lPositions->SetItem(index, POSITION_LON,
-                                 wxString::Format(_T("%.5f"), lon));
+                                 toSDMM_PlugIn(NEflag::LON, lon, Precision::HI));
   m_panel->m_lPositions->SetColumnWidth(POSITION_LON, wxLIST_AUTOSIZE);
   m_panel->m_lPositions->SetItemData(index, p.ID);
 
@@ -1082,9 +1100,9 @@ void WeatherRouting::OnUpdateBoat(wxCommandEvent& event) {
        it != RouteMap::Positions.end(); it++, index++)
     if ((*it).Name == _("Boat")) {
       m_panel->m_lPositions->SetItem(index, POSITION_LAT,
-                                     wxString::Format(_T("%.5f"), lat));
+                                     toSDMM_PlugIn(NEflag::LAT, lat, Precision::HI));
       m_panel->m_lPositions->SetItem(index, POSITION_LON,
-                                     wxString::Format(_T("%.5f"), lon));
+                                         toSDMM_PlugIn(NEflag::LON, lon, Precision::HI));
 
       (*it).lat = lat, (*it).lon = lon;
       UpdateConfigurations();
