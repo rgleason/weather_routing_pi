@@ -69,15 +69,15 @@ set(PACKAGE "weather_routing_pi")
 set(SHORT_DESCRIPTION "Compute optimal routes based on weather and constraints.")
 set(LONG_DESCRIPTION "WR features include: optimal routing subject to various constraints based on weather data, automatic boat polar computation.")
 
-set(VERSION_MAJOR "1")
-set(VERSION_MINOR "15")
-set(VERSION_PATCH "21")
-set(VERSION_TWEAK "25")
-set(VERSION_DATE  "11/04/2025")#DD/MM/YYYY format
+set(VERSION_MAJOR "2")
+set(VERSION_MINOR "0")
+set(VERSION_PATCH "0")
+set(VERSION_TWEAK "0")
+set(VERSION_DATE  "15/04/2025")#DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov58")
 
 set(OCPN_API_VERSION_MAJOR "1")
-set(OCPN_API_VERSION_MINOR "18")
+set(OCPN_API_VERSION_MINOR "20")
 set(TP_COMMENT "  * Release using CI")
 
 set(PARENT "opencpn")
