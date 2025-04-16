@@ -1316,7 +1316,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
 
   m_sMaxSwellMeters = new wxSpinCtrlDouble(
       sbConstraints->GetStaticBox(), wxID_ANY, wxEmptyString, wxDefaultPosition,
-      wxSize(-1, -1), wxSP_ARROW_KEYS, 0.0 /* min */, 100.0 /* max */, 0.0 /* initial */, 0.1 /* inc */);
+      wxSize(140, -1), wxSP_ARROW_KEYS, 0.0 /* min */, 100.0 /* max */, 0.0 /* initial */, 0.1 /* inc */);
   m_sMaxSwellMeters->SetToolTip(
       _("Maximum swell height to allow during routing.\nRoutes with swell "
         "heights above this value will be avoided."));
