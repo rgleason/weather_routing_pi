@@ -2131,62 +2131,62 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
       wxEVT_COMMAND_SPINCTRL_UPDATED,
       wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
   m_sMaxSwellMeters->Connect(
-      wxEVT_LEFT_DOWN, wxMouseEventHandler(ConfigurationDialogBase::EnableSpin),
+      wxEVT_LEFT_DOWN, wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble),
       NULL, this);
   m_sMaxSwellMeters->Connect(
-      wxEVT_LEFT_UP, wxMouseEventHandler(ConfigurationDialogBase::EnableSpin),
+      wxEVT_LEFT_UP, wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble),
       NULL, this);
   m_sMaxSwellMeters->Connect(
       wxEVT_MIDDLE_DOWN,
-      wxMouseEventHandler(ConfigurationDialogBase::EnableSpin), NULL, this);
+      wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble), NULL, this);
   m_sMaxSwellMeters->Connect(
-      wxEVT_MIDDLE_UP, wxMouseEventHandler(ConfigurationDialogBase::EnableSpin),
+      wxEVT_MIDDLE_UP, wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble),
       NULL, this);
   m_sMaxSwellMeters->Connect(
       wxEVT_RIGHT_DOWN,
-      wxMouseEventHandler(ConfigurationDialogBase::EnableSpin), NULL, this);
+      wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble), NULL, this);
   m_sMaxSwellMeters->Connect(
       wxEVT_RIGHT_UP, wxMouseEventHandler(ConfigurationDialogBase::EnableSpin),
       NULL, this);
   m_sMaxSwellMeters->Connect(
-      wxEVT_AUX1_DOWN, wxMouseEventHandler(ConfigurationDialogBase::EnableSpin),
+      wxEVT_AUX1_DOWN, wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble),
       NULL, this);
   m_sMaxSwellMeters->Connect(
-      wxEVT_AUX1_UP, wxMouseEventHandler(ConfigurationDialogBase::EnableSpin),
+      wxEVT_AUX1_UP, wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble),
       NULL, this);
   m_sMaxSwellMeters->Connect(
-      wxEVT_AUX2_DOWN, wxMouseEventHandler(ConfigurationDialogBase::EnableSpin),
+      wxEVT_AUX2_DOWN, wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble),
       NULL, this);
   m_sMaxSwellMeters->Connect(
-      wxEVT_AUX1_UP, wxMouseEventHandler(ConfigurationDialogBase::EnableSpin),
+      wxEVT_AUX1_UP, wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble),
       NULL, this);
   m_sMaxSwellMeters->Connect(
-      wxEVT_MOTION, wxMouseEventHandler(ConfigurationDialogBase::EnableSpin),
+      wxEVT_MOTION, wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble),
       NULL, this);
   m_sMaxSwellMeters->Connect(
       wxEVT_LEFT_DCLICK,
-      wxMouseEventHandler(ConfigurationDialogBase::EnableSpin), NULL, this);
+      wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble), NULL, this);
   m_sMaxSwellMeters->Connect(
       wxEVT_MIDDLE_DCLICK,
-      wxMouseEventHandler(ConfigurationDialogBase::EnableSpin), NULL, this);
+      wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble), NULL, this);
   m_sMaxSwellMeters->Connect(
       wxEVT_RIGHT_DCLICK,
-      wxMouseEventHandler(ConfigurationDialogBase::EnableSpin), NULL, this);
+      wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble), NULL, this);
   m_sMaxSwellMeters->Connect(
       wxEVT_AUX1_DCLICK,
-      wxMouseEventHandler(ConfigurationDialogBase::EnableSpin), NULL, this);
+      wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble), NULL, this);
   m_sMaxSwellMeters->Connect(
       wxEVT_AUX2_DCLICK,
-      wxMouseEventHandler(ConfigurationDialogBase::EnableSpin), NULL, this);
+      wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble), NULL, this);
   m_sMaxSwellMeters->Connect(
       wxEVT_LEAVE_WINDOW,
-      wxMouseEventHandler(ConfigurationDialogBase::EnableSpin), NULL, this);
+      wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble), NULL, this);
   m_sMaxSwellMeters->Connect(
       wxEVT_ENTER_WINDOW,
-      wxMouseEventHandler(ConfigurationDialogBase::EnableSpin), NULL, this);
+      wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble), NULL, this);
   m_sMaxSwellMeters->Connect(
       wxEVT_MOUSEWHEEL,
-      wxMouseEventHandler(ConfigurationDialogBase::EnableSpin), NULL, this);
+      wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble), NULL, this);
   m_sMaxSwellMeters->Connect(
       wxEVT_COMMAND_SPINCTRL_UPDATED,
       wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
@@ -2660,62 +2660,62 @@ ConfigurationDialogBase::~ConfigurationDialogBase() {
       wxEVT_COMMAND_SPINCTRL_UPDATED,
       wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
   m_sMaxSwellMeters->Disconnect(
-      wxEVT_LEFT_DOWN, wxMouseEventHandler(ConfigurationDialogBase::EnableSpin),
+      wxEVT_LEFT_DOWN, wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble),
       NULL, this);
   m_sMaxSwellMeters->Disconnect(
-      wxEVT_LEFT_UP, wxMouseEventHandler(ConfigurationDialogBase::EnableSpin),
+      wxEVT_LEFT_UP, wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble),
       NULL, this);
   m_sMaxSwellMeters->Disconnect(
       wxEVT_MIDDLE_DOWN,
-      wxMouseEventHandler(ConfigurationDialogBase::EnableSpin), NULL, this);
+      wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble), NULL, this);
   m_sMaxSwellMeters->Disconnect(
-      wxEVT_MIDDLE_UP, wxMouseEventHandler(ConfigurationDialogBase::EnableSpin),
+      wxEVT_MIDDLE_UP, wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble),
       NULL, this);
   m_sMaxSwellMeters->Disconnect(
       wxEVT_RIGHT_DOWN,
-      wxMouseEventHandler(ConfigurationDialogBase::EnableSpin), NULL, this);
+      wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble), NULL, this);
   m_sMaxSwellMeters->Disconnect(
-      wxEVT_RIGHT_UP, wxMouseEventHandler(ConfigurationDialogBase::EnableSpin),
+      wxEVT_RIGHT_UP, wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble),
       NULL, this);
   m_sMaxSwellMeters->Disconnect(
-      wxEVT_AUX1_DOWN, wxMouseEventHandler(ConfigurationDialogBase::EnableSpin),
+      wxEVT_AUX1_DOWN, wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble),
       NULL, this);
   m_sMaxSwellMeters->Disconnect(
-      wxEVT_AUX1_UP, wxMouseEventHandler(ConfigurationDialogBase::EnableSpin),
+      wxEVT_AUX1_UP, wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble),
       NULL, this);
   m_sMaxSwellMeters->Disconnect(
-      wxEVT_AUX2_DOWN, wxMouseEventHandler(ConfigurationDialogBase::EnableSpin),
+      wxEVT_AUX2_DOWN, wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble),
       NULL, this);
   m_sMaxSwellMeters->Disconnect(
-      wxEVT_AUX1_UP, wxMouseEventHandler(ConfigurationDialogBase::EnableSpin),
+      wxEVT_AUX1_UP, wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble),
       NULL, this);
   m_sMaxSwellMeters->Disconnect(
-      wxEVT_MOTION, wxMouseEventHandler(ConfigurationDialogBase::EnableSpin),
+      wxEVT_MOTION, wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble),
       NULL, this);
   m_sMaxSwellMeters->Disconnect(
       wxEVT_LEFT_DCLICK,
-      wxMouseEventHandler(ConfigurationDialogBase::EnableSpin), NULL, this);
+      wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble), NULL, this);
   m_sMaxSwellMeters->Disconnect(
       wxEVT_MIDDLE_DCLICK,
-      wxMouseEventHandler(ConfigurationDialogBase::EnableSpin), NULL, this);
+      wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble), NULL, this);
   m_sMaxSwellMeters->Disconnect(
       wxEVT_RIGHT_DCLICK,
-      wxMouseEventHandler(ConfigurationDialogBase::EnableSpin), NULL, this);
+      wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble), NULL, this);
   m_sMaxSwellMeters->Disconnect(
       wxEVT_AUX1_DCLICK,
-      wxMouseEventHandler(ConfigurationDialogBase::EnableSpin), NULL, this);
+      wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble), NULL, this);
   m_sMaxSwellMeters->Disconnect(
       wxEVT_AUX2_DCLICK,
-      wxMouseEventHandler(ConfigurationDialogBase::EnableSpin), NULL, this);
+      wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble), NULL, this);
   m_sMaxSwellMeters->Disconnect(
       wxEVT_LEAVE_WINDOW,
-      wxMouseEventHandler(ConfigurationDialogBase::EnableSpin), NULL, this);
+      wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble), NULL, this);
   m_sMaxSwellMeters->Disconnect(
       wxEVT_ENTER_WINDOW,
-      wxMouseEventHandler(ConfigurationDialogBase::EnableSpin), NULL, this);
+      wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble), NULL, this);
   m_sMaxSwellMeters->Disconnect(
       wxEVT_MOUSEWHEEL,
-      wxMouseEventHandler(ConfigurationDialogBase::EnableSpin), NULL, this);
+      wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble), NULL, this);
   m_sMaxSwellMeters->Disconnect(
       wxEVT_COMMAND_SPINCTRL_UPDATED,
       wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
