@@ -2787,10 +2787,10 @@ void WeatherRouting::SaveAsRoute(RouteMapOverlay& routemapoverlay) {
   newRoute->m_isVisible = true;
 
   for (auto const& it : plotdata) {
-    PlugIn_Waypoint_Ex* newPoint =
-        new PlugIn_Waypoint_Ex(it.lat, heading_resolve(it.lon), _T("circle"),
-                            _("Weather Route Point"));
-    //newPoint->m_PlannedSpeed = it.sog;
+    PlugIn_Waypoint_ExV2* newPoint =
+        new PlugIn_Waypoint_ExV2(it.lat, heading_resolve(it.lon), _T("circle"),
+                                 _("Weather Route Point"));
+    newPoint->m_PlannedSpeed = it.sog;
     newPoint->m_CreateTime = it.time;
     newRoute->pWaypointList->Append(newPoint);
   }
@@ -2798,7 +2798,7 @@ void WeatherRouting::SaveAsRoute(RouteMapOverlay& routemapoverlay) {
   // last point, missing if config didn't succeed
   Position* p = routemapoverlay.GetDestination();
   if (p) {
-    PlugIn_Waypoint_Ex* newPoint = new PlugIn_Waypoint_Ex(
+    PlugIn_Waypoint_ExV2* newPoint = new PlugIn_Waypoint_ExV2(
         p->lat, p->lon, _T("circle"), _("Weather Route Destination"));
     newPoint->m_CreateTime = routemapoverlay.EndTime();
     newRoute->pWaypointList->Append(newPoint);
