@@ -1,9 +1,4 @@
 /***************************************************************************
- *
- * Project:  OpenCPN Weather Routing plugin
- * Author:   Sean D'Epagnier
- *
- ***************************************************************************
  *   Copyright (C) 2016 by Sean D'Epagnier                                 *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
@@ -20,8 +15,7 @@
  *   along with this program; if not, write to the                         *
  *   Free Software Foundation, Inc.,                                       *
  *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,  USA.         *
- ***************************************************************************
- */
+ ***************************************************************************/
 
 #include "wx/datetime.h"
 #include <wx/object.h>
@@ -348,6 +342,14 @@ public:
   double currentDir;    //!< Sea current direction over ground in degrees.
   double WVHT;          //!< Significant swell height in meters.
   double VW_GUST;       //!< Gust wind speed in knots.
+
+  double cloud_cover;       //!< Cloud cover in percent (0-100%).
+  double rain_mm_per_hour;  //!< Rainfall in mm.
+  double air_temperature;   //!< Air temperature in degrees Celsius.
+  double
+      sea_surface_temperature;  //!< Sea surface temperature in degrees Celsius.
+  double cape;                  //!< The CAPE value in J/kg.
+  double relative_humidity;     //!< Relative humidity in percent (0-100%).
 };
 
 class SkipPosition;

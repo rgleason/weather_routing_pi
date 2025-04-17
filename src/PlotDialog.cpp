@@ -137,6 +137,18 @@ double PlotDialog::GetValue(PlotData& data, Variable variable) {
       return data.jibes;
     case SAIL_PLAN_CHANGES:
       return data.sail_plan_changes;
+    case CLOUD_COVER:
+      return data.cloud_cover;
+    case RAINFALL:
+      return data.rain_mm_per_hour;
+    case AIR_TEMPERATURE:
+      return data.air_temperature;
+    case SEA_SURFACE_TEMPERATURE:
+      return data.sea_surface_temperature;
+    case CAPE:
+      return data.cape;
+    case RELATIVE_HUMIDITY:
+      return data.relative_humidity;
   }
   return NAN;
 }
@@ -167,6 +179,8 @@ enum Type {
   TACKS_AND_JIBES,
   /** Absolute wind directions (meteorological) */
   WIND_COURSE,
+  /** Environmental data (cloud cover, rainfall, temperature, humidity) */
+  ENVIRONMENTAL,
   /** Invalid or undefined type */
   INVALID
 };
@@ -200,6 +214,13 @@ int PlotDialog::GetType(int var) {
     case JIBES:
     case SAIL_PLAN_CHANGES:
       return TACKS_AND_JIBES;
+    case CLOUD_COVER:
+    case RAINFALL:
+    case AIR_TEMPERATURE:
+    case SEA_SURFACE_TEMPERATURE:
+    case CAPE:
+    case RELATIVE_HUMIDITY:
+      return ENVIRONMENTAL;
   }
   return INVALID;
 }

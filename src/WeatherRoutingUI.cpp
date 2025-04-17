@@ -204,6 +204,12 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
                      wxEmptyString, wxITEM_NORMAL);
   m_mView->Append(m_mRoutePosition);
 
+  wxMenuItem* m_mWeatherTable;
+  m_mWeatherTable =
+      new wxMenuItem(m_mView, wxID_ANY, wxString(_("&Routing Table")),
+                     wxEmptyString, wxITEM_NORMAL);
+  m_mView->Append(m_mWeatherTable);
+
   m_menubar3->Append(m_mView, _("&View"));
 
   m_mHelp = new wxMenu();
@@ -320,7 +326,6 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
   m_menu1->Append(m_mRoutePosition1);
 
   m_mContextMenu->Append(m_menu1Item);
-
   this->Connect(
       wxEVT_RIGHT_DOWN,
       wxMouseEventHandler(WeatherRoutingBase::WeatherRoutingBaseOnContextMenu),
@@ -426,6 +431,9 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
   m_mView->Bind(wxEVT_COMMAND_MENU_SELECTED,
                 wxCommandEventHandler(WeatherRoutingBase::OnRoutePosition),
                 this, m_mRoutePosition->GetId());
+  m_mView->Bind(wxEVT_COMMAND_MENU_SELECTED,
+                wxCommandEventHandler(WeatherRoutingBase::OnWeatherTable), this,
+                m_mWeatherTable->GetId());
   m_mHelp->Bind(wxEVT_COMMAND_MENU_SELECTED,
                 wxCommandEventHandler(WeatherRoutingBase::OnInformation), this,
                 m_mInformation->GetId());
@@ -6237,4 +6245,68 @@ EditPolarDialogBase::~EditPolarDialogBase() {
   m_sdbSizer6Save->Disconnect(
       wxEVT_COMMAND_BUTTON_CLICKED,
       wxCommandEventHandler(EditPolarDialogBase::OnSave), NULL, this);
+}
+
+RoutingTableDialogBase::RoutingTableDialogBase(wxWindow* parent, wxWindowID id,
+                                               const wxString& title,
+                                               const wxPoint& pos,
+                                               const wxSize& size, long style)
+    : wxDialog(parent, id, title, pos, size, style) {
+  this->SetSizeHints(wxSize(600, 400), wxDefaultSize);
+
+  wxBoxSizer* bMainSizer = new wxBoxSizer(wxVERTICAL);
+
+  // Create the grid without initializing it - we'll do that in the derived
+  // class
+  m_gridWeatherTable =
+      new wxGrid(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, 0);
+
+  // Don't call CreateGrid here - we'll do it in the derived class
+
+  // Configure grid properties
+  m_gridWeatherTable->EnableEditing(false);
+  m_gridWeatherTable->EnableGridLines(true);
+  m_gridWeatherTable->EnableDragGridSize(false);
+  m_gridWeatherTable->SetMargins(0, 0);
+
+  // Columns
+  m_gridWeatherTable->EnableDragColMove(false);
+  m_gridWeatherTable->EnableDragColSize(true);
+  m_gridWeatherTable->SetColLabelAlignment(wxALIGN_CENTER, wxALIGN_CENTER);
+
+  // Rows
+  m_gridWeatherTable->EnableDragRowSize(true);
+  m_gridWeatherTable->SetRowLabelAlignment(wxALIGN_CENTER, wxALIGN_CENTER);
+
+  // Cell Defaults
+  m_gridWeatherTable->SetDefaultCellAlignment(wxALIGN_RIGHT, wxALIGN_CENTER);
+  m_gridWeatherTable->SetMinSize(wxSize(600, 350));
+
+  bMainSizer->Add(m_gridWeatherTable, 1, wxALL | wxEXPAND, 5);
+
+  wxBoxSizer* bButtonSizer = new wxBoxSizer(wxHORIZONTAL);
+
+  m_btnClose = new wxButton(this, wxID_ANY, _("Close"), wxDefaultPosition,
+                            wxDefaultSize, 0);
+  bButtonSizer->Add(m_btnClose, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
+
+  bMainSizer->Add(bButtonSizer, 0, wxALIGN_RIGHT, 5);
+
+  this->SetSizer(bMainSizer);
+  this->Layout();
+  bMainSizer->Fit(this);
+
+  this->Centre(wxBOTH);
+
+  // Connect Events
+  m_btnClose->Connect(wxEVT_COMMAND_BUTTON_CLICKED,
+                      wxCommandEventHandler(RoutingTableDialogBase::OnClose),
+                      NULL, this);
+}
+
+RoutingTableDialogBase::~RoutingTableDialogBase() {
+  // Disconnect Events
+  m_btnClose->Disconnect(wxEVT_COMMAND_BUTTON_CLICKED,
+                         wxCommandEventHandler(RoutingTableDialogBase::OnClose),
+                         NULL, this);
 }
