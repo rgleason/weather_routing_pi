@@ -18,6 +18,7 @@
  ***************************************************************************/
 
 #include <wx/wx.h>
+#include <wx/aui/aui.h>
 #include <wx/imaglist.h>
 #include <wx/progdlg.h>
 #include <wx/dir.h>
@@ -151,7 +152,8 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
       m_bShowPlot(false),
       m_bShowFilter(false),
       m_weather_routing_pi(plugin),
-      m_positionOnRoute(nullptr) {
+      m_positionOnRoute(nullptr),
+      m_RoutingTablePanel(nullptr) {
   wxFileConfig* pConf = GetOCPNConfigObject();
   pConf->SetPath(_T( "/Plugins/WeatherRouting" ));
 
@@ -471,6 +473,14 @@ WeatherRouting::~WeatherRouting() {
     delete *it;
   delete m_panel;
   delete m_colpane;
+
+  // Clean up routing table panel if it exists
+  if (m_RoutingTablePanel) {
+    wxAuiManager* pauimgr = ::GetFrameAuiManager();
+    pauimgr->DetachPane(m_RoutingTablePanel);
+    m_RoutingTablePanel->Destroy();
+    m_RoutingTablePanel = nullptr;
+  }
 }
 
 #ifdef __OCPN__ANDROID__
@@ -1630,6 +1640,14 @@ bool WeatherRouting::Show(bool show) {
 
     m_bShowRoutePosition = m_RoutePositionDialog.IsShown();
     m_RoutePositionDialog.Hide();
+
+    // Hide routing table panel if it exists
+    if (m_RoutingTablePanel) {
+      wxAuiManager* pauimgr = ::GetFrameAuiManager();
+      wxAuiPaneInfo& pane = pauimgr->GetPane(m_RoutingTablePanel);
+      if (pane.IsOk() && pane.IsShown()) pane.Hide();
+      pauimgr->Update();
+    }
   }
 
   return WeatherRoutingBase::Show(show);
@@ -1719,6 +1737,58 @@ void WeatherRouting::OnCursorPosition(wxCommandEvent& event) {
 void WeatherRouting::OnRoutePosition(wxCommandEvent& event) {
   m_RoutePositionDialog.Show(!m_RoutePositionDialog.IsShown());
   UpdateRoutePositionDialog();
+}
+
+void WeatherRouting::AddRoutingPanel() {
+  std::list<RouteMapOverlay*> currentroutemaps = CurrentRouteMaps(true);
+  if (currentroutemaps.empty()) return;
+
+  if (!m_RoutingTablePanel) {
+    // Create the panel if it doesn't exist yet
+    wxWindow* parent = m_weather_routing_pi.GetParentWindow();
+
+    // Create the panel directly with the updated RoutingTableDialog
+    m_RoutingTablePanel =
+        new RoutingTableDialog(parent, *this, currentroutemaps.front());
+
+    // Add the panel to the AUI manager
+    wxAuiManager* pauimgr = ::GetFrameAuiManager();
+    wxAuiPaneInfo pane = wxAuiPaneInfo()
+                             .Name(_T("Weather Routing Table"))
+                             .Caption(_T("Weather Routing Table"))
+                             .CaptionVisible(true)
+                             .Float()
+                             .FloatingPosition(100, 100)
+                             .FloatingSize(700, 400)
+                             .Dockable(true)
+                             .Movable(true)
+                             .CloseButton(true);
+
+    pauimgr->AddPane(m_RoutingTablePanel, pane);
+
+    // Set color scheme using GetAppColorScheme() from the OpenCPN API
+    PI_ColorScheme cs = GetAppColorScheme();
+    ((RoutingTableDialog*)m_RoutingTablePanel)->SetColorScheme(cs);
+
+    pauimgr->Update();
+  } else {
+    // Update data in existing panel
+    ((RoutingTableDialog*)m_RoutingTablePanel)->m_RouteMap =
+        currentroutemaps.front();
+    ((RoutingTableDialog*)m_RoutingTablePanel)->PopulateTable();
+
+    // Show the panel if it's hidden
+    wxAuiManager* pauimgr = ::GetFrameAuiManager();
+    wxAuiPaneInfo& pane = pauimgr->GetPane(m_RoutingTablePanel);
+    if (!pane.IsShown()) {
+      pane.Show(true);
+      pauimgr->Update();
+    }
+  }
+}
+
+void WeatherRouting::OnWeatherTable(wxCommandEvent& event) {
+  AddRoutingPanel();
 }
 
 void WeatherRouting::OnManual(wxCommandEvent& event) {

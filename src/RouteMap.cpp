@@ -114,8 +114,10 @@ static Json::Value RequestGRIB(const wxDateTime& t, const wxString& what,
   return error;
 }
 
-// Return the swell height at the specified lat/long location.
-// @return the swell height in meters. 0 if no data is available.
+/**
+ * Return the swell height at the specified lat/long location.
+ * @return the swell height in meters. 0 if no data is available.
+ */
 static double Swell(RouteMapConfiguration& configuration, double lat,
                     double lon) {
   WR_GribRecordSet* grib = configuration.grib;
@@ -138,7 +140,10 @@ static double Swell(RouteMapConfiguration& configuration, double lat,
   return height;
 }
 
-// Return the wind gust speed for the specified lat/long location, in knots.
+/**
+ * Return the wind gust speed for the specified lat/long location, in knots.
+ * @return the wind gust speed in knots. 0 if no data is available.
+ */
 static double Gust(RouteMapConfiguration& configuration, double lat,
                    double lon) {
   WR_GribRecordSet* grib = configuration.grib;
@@ -161,6 +166,149 @@ static double Gust(RouteMapConfiguration& configuration, double lat,
   return gust;
 }
 
+/**
+ * Return the cloud cover as percentage.
+ */
+static double CloudCover(RouteMapConfiguration& configuration, double lat,
+                         double lon) {
+  WR_GribRecordSet* grib = configuration.grib;
+
+  if (!grib && !configuration.RouteGUID.IsEmpty() && configuration.UseGrib) {
+    Json::Value r = RequestGRIB(configuration.time, "CLOUD", lat, lon);
+    if (!r.isMember("CLOUD")) return 0;
+    return r["CLOUD"].asDouble();
+  }
+
+  if (!grib) return 0;
+
+  GribRecord* grh = grib->m_GribRecordPtrArray[Idx_CLOUD_TOT];
+  if (!grh) return 0;
+
+  double cloud = grh->getInterpolatedValue(lon, lat, true);
+  if (cloud == GRIB_NOTDEF) return 0;
+  return cloud;
+}
+
+/**
+ * Return the rainfall rate at the specified lat/long location.
+ * @return the rainfall rate in mm/h. 0 if no data is available.
+ */
+static double Rainfall(RouteMapConfiguration& configuration, double lat,
+                       double lon) {
+  WR_GribRecordSet* grib = configuration.grib;
+
+  if (!grib && !configuration.RouteGUID.IsEmpty() && configuration.UseGrib) {
+    Json::Value r = RequestGRIB(configuration.time, "RAIN", lat, lon);
+    if (!r.isMember("RAIN")) return 0;
+    return r["RAIN"].asDouble();
+  }
+
+  if (!grib) return 0;
+
+  GribRecord* grh = grib->m_GribRecordPtrArray[Idx_PRECIP_TOT];
+  if (!grh) return 0;
+
+  double rain = grh->getInterpolatedValue(lon, lat, true);
+  if (rain == GRIB_NOTDEF) return 0;
+  return rain;
+}
+
+/**
+ * Return the air temperature at the specified lat/long location.
+ * @return the air temperature in degrees Celsius. 0 if no data is available.
+ */
+static double AirTemperature(RouteMapConfiguration& configuration, double lat,
+                             double lon) {
+  WR_GribRecordSet* grib = configuration.grib;
+
+  if (!grib && !configuration.RouteGUID.IsEmpty() && configuration.UseGrib) {
+    Json::Value r = RequestGRIB(configuration.time, "AIR TEMP", lat, lon);
+    if (!r.isMember("AIR TEMP")) return 0;
+    return r["AIR TEMP"].asDouble();
+  }
+
+  if (!grib) return 0;
+
+  GribRecord* grh = grib->m_GribRecordPtrArray[Idx_AIR_TEMP];
+  if (!grh) return 0;
+
+  double air_temp = grh->getInterpolatedValue(lon, lat, true);
+  if (air_temp == GRIB_NOTDEF) return 0;
+  return air_temp;
+}
+
+/**
+ * Return the sea temperature at the specified lat/long location.
+ * @return the sea temperature in degrees Celsius. 0 if no data is available.
+ */
+static double SeaTemperature(RouteMapConfiguration& configuration, double lat,
+                             double lon) {
+  WR_GribRecordSet* grib = configuration.grib;
+
+  if (!grib && !configuration.RouteGUID.IsEmpty() && configuration.UseGrib) {
+    Json::Value r = RequestGRIB(configuration.time, "SEA TEMP", lat, lon);
+    if (!r.isMember("SEA TEMP")) return 0;
+    return r["SEA TEMP"].asDouble();
+  }
+
+  if (!grib) return 0;
+
+  GribRecord* grh = grib->m_GribRecordPtrArray[Idx_SEA_TEMP];
+  if (!grh) return 0;
+
+  double sea_temp = grh->getInterpolatedValue(lon, lat, true);
+  if (sea_temp == GRIB_NOTDEF) return 0;
+  return sea_temp;
+}
+
+/**
+ * Return the CAPE (Convective Available Potential Energy) at the specified
+ * lat/long location.
+ * @return the CAPE in J/kg. 0 if no data is available.
+ */
+static double CAPE(RouteMapConfiguration& configuration, double lat,
+                   double lon) {
+  WR_GribRecordSet* grib = configuration.grib;
+
+  if (!grib && !configuration.RouteGUID.IsEmpty() && configuration.UseGrib) {
+    Json::Value r = RequestGRIB(configuration.time, "CAPE", lat, lon);
+    if (!r.isMember("CAPE")) return 0;
+    return r["CAPE"].asDouble();
+  }
+
+  if (!grib) return 0;
+
+  GribRecord* grh = grib->m_GribRecordPtrArray[Idx_CAPE];
+  if (!grh) return 0;
+
+  double cape = grh->getInterpolatedValue(lon, lat, true);
+  if (cape == GRIB_NOTDEF) return 0;
+  return cape;
+}
+
+/**
+ * Return the relative humidity at the specified lat/long location.
+ * @return the relative humidity in percent. 0 if no data is available.
+ */
+static double RelativeHumidity(RouteMapConfiguration& configuration, double lat,
+                               double lon) {
+  WR_GribRecordSet* grib = configuration.grib;
+
+  if (!grib && !configuration.RouteGUID.IsEmpty() && configuration.UseGrib) {
+    Json::Value r = RequestGRIB(configuration.time, "REL HUM", lat, lon);
+    if (!r.isMember("REL HUM")) return 0;
+    return r["REL HUM"].asDouble();
+  }
+
+  if (!grib) return 0;
+
+  GribRecord* grh = grib->m_GribRecordPtrArray[Idx_HUMID_RE];
+  if (!grh) return 0;
+
+  double rh = grh->getInterpolatedValue(lon, lat, true);
+  if (rh == GRIB_NOTDEF) return 0;
+  return rh;
+}
 /**
  * Retrieves wind data from GRIB file at a specified location.
  *
@@ -675,6 +823,13 @@ bool RoutePoint::GetPlotData(RoutePoint* next, double dt,
   data.WVHT = Swell(configuration, lat, lon);
   data.VW_GUST = Gust(configuration, lat, lon);
   data.delta = dt;
+
+  data.cloud_cover = CloudCover(configuration, lat, lon);
+  data.rain_mm_per_hour = Rainfall(configuration, lat, lon);
+  data.air_temperature = AirTemperature(configuration, lat, lon);
+  data.sea_surface_temperature = SeaTemperature(configuration, lat, lon);
+  data.cape = CAPE(configuration, lat, lon);
+  data.relative_humidity = RelativeHumidity(configuration, lat, lon);
 
   climatology_wind_atlas atlas;
   int data_mask = 0;  // not used for plotting yet

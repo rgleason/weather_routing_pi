@@ -185,6 +185,7 @@ SET(SRCS
             src/Boat.cpp
             src/RouteMap.cpp
             src/RouteMapOverlay.cpp
+            src/RoutingTableDialog.cpp
             src/Utilities.cpp
             src/LineBufferOverlay.cpp
             src/PolygonRegion.cpp
@@ -214,6 +215,7 @@ SET (HDRS
             include/Boat.h
             include/RouteMap.h
             include/RouteMapOverlay.h
+            include/RoutingTableDialog.h
             include/Utilities.h
             include/LineBufferOverlay.h
             include/PolygonRegion.h
