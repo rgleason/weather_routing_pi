@@ -867,11 +867,10 @@ void WeatherRouting::UpdateCursorPositionDialog() {
   dlg.m_stTime->SetLabel(display_time.Format(_T("%x %H:%M")));
 
   RouteMapConfiguration configuration = rmo->GetConfiguration();
-  wxString pos = wxString::Format(_T("%4.2f%c %4.2f%c"), fabs(p->lat),
-                                  p->lat < 0 ? 'S' : 'N', fabs(p->lon),
-                                  p->lon < 0 ? 'W' : 'E');
-  dlg.m_stPosition->SetLabel(pos);
-
+  auto latStr = toSDMM_PlugIn(NEflag::LAT, p->lat, Precision::HI);
+  auto lonStr = toSDMM_PlugIn(NEflag::LON, p->lon, Precision::HI);
+  dlg.m_stPosition->SetLabel(latStr + " " + lonStr);
+  
   if (p->polar == -1)
     dlg.m_stPolar->SetLabel(wxEmptyString);
   else {
@@ -959,13 +958,12 @@ void WeatherRouting::UpdateRoutePositionDialog() {
 
   wxString duration = calculateTimeDelta(startTime, cursorTime);
   dlg.m_stDuration->SetLabel(duration);
-
+  
   // POSITION
-  wxString pos = wxString::Format(_T("%4.2f%c %4.2f%c"), fabs(data.lat),
-                                  data.lat < 0 ? 'S' : 'N', fabs(data.lon),
-                                  data.lon < 0 ? 'W' : 'E');
-  dlg.m_stPosition->SetLabel(pos);
-
+  auto latStr = toSDMM_PlugIn(NEflag::LAT, data.lat, Precision::HI);
+  auto lonStr = toSDMM_PlugIn(NEflag::LON, data.lon, Precision::HI);
+  dlg.m_stPosition->SetLabel(latStr + _T(" ") + lonStr);
+  
   // POLAR
   if (data.polar == -1)
     dlg.m_stPolar->SetLabel(wxEmptyString);
