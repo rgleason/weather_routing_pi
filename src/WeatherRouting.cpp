@@ -1659,6 +1659,69 @@ void WeatherRouting::OnSaveAsRoute(wxCommandEvent& event) {
     SaveAsRoute(**it);
 }
 
+void WeatherRouting::OnSimplifyRoute(wxCommandEvent& event) {
+  std::list<RouteMapOverlay*> routemapoverlays = CurrentRouteMaps(true);
+
+  if (routemapoverlays.empty()) {
+    wxMessageDialog mdlg(this, _("No Weather Route selected"),
+                         _("Weather Routing"), wxOK | wxICON_WARNING);
+    mdlg.ShowModal();
+    return;
+  }
+
+  // Simple dialog to request epsilon value
+  wxTextEntryDialog dlg(this,
+                        _("Enter epsilon value for simplification (1-100, "
+                          "lower means more detail)"),
+                        _("Simplify Route"), _T("1"));
+
+  if (dlg.ShowModal() != wxID_OK) return;
+
+  // Convert string value to number
+  double value;
+  if (!dlg.GetValue().ToDouble(&value) || value <= 0 || value > 100) {
+    wxMessageDialog mdlg(
+        this, _("Invalid value. Please enter a number between 1 and 100."),
+        _("Weather Routing"), wxOK | wxICON_ERROR);
+    mdlg.ShowModal();
+    return;
+  }
+
+  int count = 0;
+  for (std::list<RouteMapOverlay*>::iterator it = routemapoverlays.begin();
+       it != routemapoverlays.end(); it++) {
+    if (!(*it)->ReachedDestination()) {
+      wxMessageDialog mdlg(this, _("Route has not reached the destination."),
+                           _("Weather Routing"), wxOK | wxICON_WARNING);
+      mdlg.ShowModal();
+      continue;
+    }
+
+    // Epsilon is a unitless value that's relative to the lat/lon dimensions
+    // We'll scale it down to make it more user-friendly in the dialog
+    long value;
+    dlg.GetValue().ToLong(&value);
+    double epsilon = value * 0.0001;
+
+    if ((*it)->GetMap()->SimplifyRouting(epsilon)) {
+      count++;
+      UpdateRouteMap(*it);
+    }
+  }
+
+  if (count > 0) {
+    GetParent()->Refresh();
+    wxMessageDialog mdlg(
+        this, wxString::Format(_("%d route(s) simplified successfully"), count),
+        _("Weather Routing"), wxOK | wxICON_INFORMATION);
+    mdlg.ShowModal();
+  } else {
+    wxMessageDialog mdlg(this, _("No routes were simplified"),
+                         _("Weather Routing"), wxOK | wxICON_WARNING);
+    mdlg.ShowModal();
+  }
+}
+
 void WeatherRouting::OnExportRouteAsGPX(wxCommandEvent& event) {
   std::list<RouteMapOverlay*> routemapoverlays = CurrentRouteMaps(true);
   int nfail = 0;
@@ -2166,6 +2229,7 @@ void WeatherRouting::SetEnableConfigurationMenu() {
   m_panel->m_bCompute->Enable(current);
   m_mSaveAsTrack->Enable(current);
   m_mSaveAsRoute->Enable(current);
+  m_mSimplifyRoute->Enable(current);
   m_mExportRouteAsGPX->Enable(current);
   m_panel->m_bSaveAsTrack->Enable(current);
   m_panel->m_bSaveAsRoute->Enable(current);

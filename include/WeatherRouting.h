@@ -479,6 +479,8 @@ private:
   void OnSaveAsTrack(wxCommandEvent& event);
   /** Callback invoked when user clicks "Save as Route" menu item. */
   void OnSaveAsRoute(wxCommandEvent& event);
+  /** Callback invoked when user clicks "Simplify Route" menu item. */
+  void OnSimplifyRoute(wxCommandEvent& event);
   /** Export route as GPX file. */
   void OnExportRouteAsGPX(wxCommandEvent& event);
   /** Callback invoked when user clicks "Save All as Tracks" menu item. */

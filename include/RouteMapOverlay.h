@@ -236,6 +236,12 @@ public:
   Position* GetDestination() { return destination_position; }
 
   /**
+   * Gets the underlying RouteMap for advanced operations.
+   * @return Pointer to the underlying RouteMap.
+   */
+  RouteMap* GetMap() { return this; }
+
+  /**
    * Checks if the route has been updated.
    * @return True if the route has been updated since last check.
    */

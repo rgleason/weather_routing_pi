@@ -153,6 +153,11 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
                      wxEmptyString, wxITEM_NORMAL);
   m_mConfiguration->Append(m_mSaveAsRoute);
 
+  m_mSimplifyRoute =
+      new wxMenuItem(m_mConfiguration, wxID_ANY, wxString(_("Simplify Route")),
+                     wxEmptyString, wxITEM_NORMAL);
+  m_mConfiguration->Append(m_mSimplifyRoute);
+
   m_mExportRouteAsGPX = new wxMenuItem(
       m_mConfiguration, wxID_ANY,
       wxString(_("E&xport routing as GPX file")) + wxT('\t') + wxT("Ctrl+X"),
@@ -397,6 +402,10 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
       wxEVT_COMMAND_MENU_SELECTED,
       wxCommandEventHandler(WeatherRoutingBase::OnSaveAsRoute), this,
       m_mSaveAsRoute->GetId());
+  m_mConfiguration->Bind(
+      wxEVT_COMMAND_MENU_SELECTED,
+      wxCommandEventHandler(WeatherRoutingBase::OnSimplifyRoute), this,
+      m_mSimplifyRoute->GetId());
   m_mConfiguration->Bind(
       wxEVT_COMMAND_MENU_SELECTED,
       wxCommandEventHandler(WeatherRoutingBase::OnExportRouteAsGPX), this,

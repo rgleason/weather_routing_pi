@@ -62,6 +62,10 @@
    Any inside routes may be discarded leaving only inverted subroutes
 */
 
+#include <algorithm>   // For std::find, std::sort
+#include <functional>  // For std::function
+#include <vector>
+
 #include <wx/wx.h>
 
 #include <stdlib.h>
@@ -76,7 +80,12 @@
 
 #include "georef.h"
 
-#define distance(X, Y) sqrt((X) * (X) + (Y) * (Y))  // much faster than hypot
+// External function for Douglas-Peucker algorithm from OpenCPN
+extern void DouglasPeucker(double* PointList, int fp, int lp, double epsilon,
+                           std::vector<int>* keep);
+
+#define distance_formula(X, Y) \
+  sqrt((X) * (X) + (Y) * (Y))  // much faster than hypot
 
 long RouteMapPosition::s_ID = 0;
 
@@ -298,7 +307,7 @@ static void GroundToWaterFrame(double groundDir, double groundMag,
   double Wx = groundMag * cos(deg2rad(groundDir)) - Cx,
          Wy = groundMag * sin(deg2rad(groundDir)) - Cy;
   waterDir = rad2deg(atan2(Wy, Wx));
-  waterMag = distance(Wx, Wy);
+  waterMag = distance_formula(Wx, Wy);
 }
 
 /**
@@ -344,7 +353,7 @@ static void TransformToGroundFrame(double directionWater, double magnitudeWater,
   double BGx = magnitudeWater * cos(deg2rad(directionWater)) + Cx,
          BGy = magnitudeWater * sin(deg2rad(directionWater)) + Cy;
   directionGround = rad2deg(atan2(BGy, BGx));
-  magnitudeGround = distance(BGx, BGy);
+  magnitudeGround = distance_formula(BGx, BGy);
 }
 
 /* find intersection of two line segments
@@ -3205,6 +3214,155 @@ bool RouteMap::Propagate() {
 
   Unlock();
 
+  return true;
+}
+
+Position* RouteMap::GetDestination() {
+  if (!m_bReachedDestination || origin.empty()) return nullptr;
+
+  // Find the position closest to the destination
+  double min_distance = INFINITY;
+  Position* destination = nullptr;
+
+  IsoChron* lastiso = origin.back();
+  for (IsoRouteList::iterator it = lastiso->routes.begin();
+       it != lastiso->routes.end(); it++) {
+    Position* p =
+        (*it)->ClosestPosition(m_Configuration.EndLat, m_Configuration.EndLon);
+    if (!p) continue;
+
+    double d;
+    // Calculate the distance to the destination
+    DistanceBearingMercator_Plugin(p->lat, p->lon, m_Configuration.EndLat,
+                                   m_Configuration.EndLon, NULL, &d);
+    if (d < min_distance) {
+      min_distance = d;
+      destination = p;
+    }
+  }
+
+  return destination;
+}
+
+bool RouteMap::SimplifyRouting(double epsilon) {
+  // Early validation
+  if (origin.empty()) return false;
+  if (!m_bReachedDestination) return false;
+
+  // Get the optimal route as a list of positions
+  std::vector<Position*> originalRoute;
+  Position* pos = GetDestination();
+  if (!pos) return false;
+
+  // Gather all positions in the optimal route by following parent links
+  while (pos) {
+    originalRoute.push_back(pos);
+    pos = pos->parent;
+  }
+
+  // Reverse the route to start from the beginning
+  std::reverse(originalRoute.begin(), originalRoute.end());
+
+  // Need at least 3 points to simplify
+  if (originalRoute.size() < 3) return false;
+
+  // Convert to array format for Douglas-Peucker algorithm
+  double* pointList = new double[originalRoute.size() * 2];
+  for (size_t i = 0; i < originalRoute.size(); i++) {
+    pointList[i * 2] = originalRoute[i]->lon;
+    pointList[i * 2 + 1] = originalRoute[i]->lat;
+  }
+
+  // Apply Douglas-Peucker algorithm to get indices of points to keep
+  std::vector<int> keepIndices;
+  DouglasPeucker(pointList, 0, originalRoute.size() - 1, epsilon, &keepIndices);
+
+  // Always include start and end points
+  if (::std::find(keepIndices.begin(), keepIndices.end(), 0) ==
+      keepIndices.end())
+    keepIndices.push_back(0);
+  if (::std::find(keepIndices.begin(), keepIndices.end(),
+                  originalRoute.size() - 1) == keepIndices.end())
+    keepIndices.push_back(originalRoute.size() - 1);
+
+  // Sort indices
+  std::sort(keepIndices.begin(), keepIndices.end());
+
+  // Create a new simplified route
+  std::vector<Position*> simplifiedRoute;
+  for (size_t i = 0; i < keepIndices.size(); i++) {
+    simplifiedRoute.push_back(originalRoute[keepIndices[i]]);
+  }
+
+  // Validate the simplified route by checking each segment
+  RouteMapConfiguration configuration = m_Configuration;
+
+  // Use a narrower search angle and finer degree steps for validation
+  double originalSearchAngle = configuration.MaxSearchAngle;
+  double originalDegreeSteps = configuration.ByDegrees;
+  configuration.MaxSearchAngle =
+      std::min(10.0, configuration.MaxSearchAngle / 4.0);
+  configuration.ByDegrees = 1.0;
+  configuration.Update();  // Regenerate DegreeSteps with new value
+
+  bool allSegmentsValid = true;
+
+  // Validate each segment by propagating between adjacent points
+  for (size_t i = 0; i < simplifiedRoute.size() - 1; i++) {
+    Position* start = simplifiedRoute[i];
+    Position* end = simplifiedRoute[i + 1];
+
+    double heading;
+    int data_mask = 0;
+
+    // Try to propagate directly from start to end
+    if (std::isnan(start->PropagateToPoint(end->lat, end->lon, configuration,
+                                           heading, data_mask, true))) {
+      // If direct propagation fails, this segment is invalid
+      // We'll need to add intermediate points from the original route
+
+      // Find indices in the original route
+      auto startIt =
+          ::std::find(originalRoute.begin(), originalRoute.end(), start);
+      auto endIt = ::std::find(originalRoute.begin(), originalRoute.end(), end);
+
+      if (startIt != originalRoute.end() && endIt != originalRoute.end()) {
+        size_t startIdx = ::std::distance(originalRoute.begin(), startIt);
+        size_t endIdx = ::std::distance(originalRoute.begin(), endIt);
+
+        // If not adjacent in the original route, add intermediate points
+        if (endIdx - startIdx > 1) {
+          for (size_t j = startIdx + 1; j < endIdx; j++) {
+            simplifiedRoute.push_back(originalRoute[j]);
+          }
+          // Mark as needing resort
+          allSegmentsValid = false;
+        }
+      }
+    }
+  }
+
+  // If we added points, resort the route by position
+  if (!allSegmentsValid) {
+    // Sort by original position in the route
+    std::sort(
+        simplifiedRoute.begin(), simplifiedRoute.end(),
+        [&originalRoute](Position* a, Position* b) {
+          auto aIt = ::std::find(originalRoute.begin(), originalRoute.end(), a);
+          auto bIt = ::std::find(originalRoute.begin(), originalRoute.end(), b);
+          return aIt < bIt;
+        });
+  }
+
+  // Clean up
+  delete[] pointList;
+
+  // Restore original configuration parameters
+  configuration.MaxSearchAngle = originalSearchAngle;
+  configuration.ByDegrees = originalDegreeSteps;
+  configuration.Update();
+
+  // Success if we have a valid simplified route
   return true;
 }
 

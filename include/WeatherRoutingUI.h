@@ -92,6 +92,8 @@ protected:
   wxMenuItem* m_mSaveAsTrack;
   /** Menu item to save weather routing as a route in OpenCPN core. */
   wxMenuItem* m_mSaveAsRoute;
+  /** Menu item to simplify a computed route. */
+  wxMenuItem* m_mSimplifyRoute;
   /** Menu item to export weather routing as GPX file. */
   wxMenuItem* m_mExportRouteAsGPX;
   /** Menu item to save all weather routing configurations as tracks in OpenCPN
@@ -172,6 +174,8 @@ protected:
   virtual void OnSaveAsTrack(wxCommandEvent& event) { event.Skip(); }
   /** Callback invoked when user clicks "Save as Route" menu item. */
   virtual void OnSaveAsRoute(wxCommandEvent& event) { event.Skip(); }
+  /** Callback invoked when user clicks "Simplify Route" menu item. */
+  virtual void OnSimplifyRoute(wxCommandEvent& event) { event.Skip(); }
   /** Callback invoked when user clicks "Export as GPX" menu item. */
   virtual void OnExportRouteAsGPX(wxCommandEvent& event) { event.Skip(); }
   /** Callback invoked when user clicks "Save All as Tracks" menu item. */
