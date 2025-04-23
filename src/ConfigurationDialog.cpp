@@ -274,7 +274,7 @@ void ConfigurationDialog::SetConfigurations(
   SET_SPIN(MaxTrueWindKnots);
   SET_SPIN(MaxApparentWindKnots);
 
-  SET_SPIN(MaxSwellMeters);
+  SET_SPIN_DOUBLE(MaxSwellMeters);
   SET_SPIN(MaxLatitude);
   SET_SPIN(TackingTime);
   SET_SPIN(JibingTime);

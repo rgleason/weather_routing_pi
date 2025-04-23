@@ -1970,7 +1970,7 @@ bool WeatherRouting::OpenXML(wxString filename, bool reportfailure) {
         configuration.MaxApparentWindKnots =
             AttributeDouble(e, "MaxApparentWindKnots", 50);
 
-        configuration.MaxSwellMeters = AttributeDouble(e, "MaxSwellMeters", 20);
+        configuration.MaxSwellMeters = AttributeDouble(e, "MaxSwellMeters", 20.);
         configuration.MaxLatitude = AttributeDouble(e, "MaxLatitude", 90);
         configuration.TackingTime = AttributeDouble(e, "TackingTime", 0);
         configuration.JibingTime = AttributeDouble(e, "JibingTime", 0);
@@ -2104,7 +2104,7 @@ void WeatherRouting::SaveXML(wxString filename) {
     c->SetAttribute("MaxTrueWindKnots", configuration.MaxTrueWindKnots);
     c->SetAttribute("MaxApparentWindKnots", configuration.MaxApparentWindKnots);
 
-    c->SetAttribute("MaxSwellMeters", configuration.MaxSwellMeters);
+    c->SetDoubleAttribute("MaxSwellMeters", configuration.MaxSwellMeters);
     c->SetAttribute("MaxLatitude", configuration.MaxLatitude);
     c->SetAttribute("TackingTime", configuration.TackingTime);
     c->SetAttribute("JibingTime", configuration.JibingTime);
@@ -3206,7 +3206,7 @@ RouteMapConfiguration WeatherRouting::DefaultConfiguration() {
   configuration.MaxTrueWindKnots = 50;      // Safety margin for wind speed
   configuration.MaxApparentWindKnots = 50;  // Safety margin for wind speed
 
-  configuration.MaxSwellMeters = 20;
+  configuration.MaxSwellMeters = 20.;
   configuration.MaxLatitude = 90;
   configuration.TackingTime = 0;
   configuration.JibingTime = 0;

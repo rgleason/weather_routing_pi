@@ -1316,7 +1316,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
 
   m_sMaxSwellMeters = new wxSpinCtrlDouble(
       sbConstraints->GetStaticBox(), wxID_ANY, wxEmptyString, wxDefaultPosition,
-      wxSize(140, -1), wxSP_ARROW_KEYS, 0.0 /* min */, 100.0 /* max */, 0.0 /* initial */, 0.1 /* inc */);
+      wxSize(140, -1), wxSP_ARROW_KEYS, 0. /* min */, 100. /* max */, 0. /* initial */, 0.1 /* inc */);
   m_sMaxSwellMeters->SetToolTip(
       _("Maximum swell height to allow during routing.\nRoutes with swell "
         "heights above this value will be avoided."));
@@ -2188,7 +2188,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
       wxEVT_MOUSEWHEEL,
       wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble), NULL, this);
   m_sMaxSwellMeters->Connect(
-      wxEVT_COMMAND_SPINCTRL_UPDATED,
+      wxEVT_COMMAND_SPINCTRLDOUBLE_UPDATED,
       wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
   m_cEnd->Connect(wxEVT_COMMAND_COMBOBOX_SELECTED,
                   wxCommandEventHandler(ConfigurationDialogBase::OnUpdate),
@@ -2717,7 +2717,7 @@ ConfigurationDialogBase::~ConfigurationDialogBase() {
       wxEVT_MOUSEWHEEL,
       wxMouseEventHandler(ConfigurationDialogBase::EnableSpinDouble), NULL, this);
   m_sMaxSwellMeters->Disconnect(
-      wxEVT_COMMAND_SPINCTRL_UPDATED,
+      wxEVT_COMMAND_SPINCTRLDOUBLE_UPDATED,
       wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
   m_cEnd->Disconnect(wxEVT_COMMAND_COMBOBOX_SELECTED,
                      wxCommandEventHandler(ConfigurationDialogBase::OnUpdate),
