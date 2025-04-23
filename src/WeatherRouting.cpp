@@ -2134,7 +2134,7 @@ void WeatherRouting::SaveXML(wxString filename) {
                           configuration.NightCumulativeEfficiency);
 
     c->SetAttribute("DetectLand", configuration.DetectLand);
-    c->SetAttribute("SafetyMarginLand", configuration.SafetyMarginLand);
+    c->SetDoubleAttribute("SafetyMarginLand", configuration.SafetyMarginLand);
     c->SetAttribute("DetectBoundary", configuration.DetectBoundary);
     c->SetAttribute("Currents", configuration.Currents);
     c->SetAttribute("OptimizeTacking", configuration.OptimizeTacking);
