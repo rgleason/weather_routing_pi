@@ -560,46 +560,70 @@ void WeatherRouting::CopyDataFiles(wxString from, wxString to) {
 }
 
 void WeatherRouting::Render(piDC& dc, PlugIn_ViewPort& vp) {
+  static int prevLocationFormat = -1; // Last time we rendered, which SDMM format was used
+  int currentLocationFormat; // To determine whether preferred SDMM format has changed.
+  bool locationFormatChanged = false;
+
   if (vp.bValid == false) return;
 
-  // polling is bad
-  bool work = false;
-  for (auto& it : RouteMap::Positions) {
-    if (it.GUID.IsEmpty()) continue;
+  currentLocationFormat = GetLatLonFormat();
+  if(currentLocationFormat != prevLocationFormat) {
+    prevLocationFormat = currentLocationFormat;
+    locationFormatChanged = true;
+  }
 
+  // polling is bad
+  bool work = false;  // Have any of the positions changed since we last rendered?
+  for (auto& it : RouteMap::Positions) {
     PlugIn_Waypoint waypoint;
+    bool gotWaypoint = false;
+    wxString name = it.Name;
     double lat = it.lat;
     double lon = it.lon;
-
-    if (!GetSingleWaypoint(it.GUID, &waypoint)) continue;
-    if (lat == waypoint.m_lat && lon == waypoint.m_lon &&
-        waypoint.m_MarkName.IsSameAs(it.Name))
-      continue;
-
+    if (!(it.GUID.IsEmpty())) {
+      gotWaypoint = GetSingleWaypoint(it.GUID, &waypoint);
+      if (gotWaypoint) {
+        if (lat == waypoint.m_lat && lon == waypoint.m_lon &&
+          waypoint.m_MarkName.IsSameAs(it.Name)) {
+            ; // nothing has changed; nothing to do
+        } else {
+          work = true;
+        }
+      }  
+    } 
+  
     long index = m_panel->m_lPositions->FindItem(0, it.ID);
     if (index < 0) {
       // corrupted data
       continue;
     }
 
-    wxString name = waypoint.m_MarkName;
-    lat = waypoint.m_lat;
-    lon = waypoint.m_lon;
-    it.Name = name;
-    it.lat = lat;
-    it.lon = lon;
+    if (gotWaypoint && work) {
+      name = waypoint.m_MarkName;
+      lat = waypoint.m_lat;
+      lon = waypoint.m_lon;
+      it.Name = name;
+      it.lat = lat;
+      it.lon = lon;
+    }
 
     // XXX FIXME there's already this name, update m_ConfigurationDialog source
-    m_panel->m_lPositions->SetItem(index, POSITION_NAME, name);
-    m_panel->m_lPositions->SetColumnWidth(POSITION_NAME, wxLIST_AUTOSIZE);
-    m_panel->m_lPositions->SetItem(
-        index, POSITION_LAT, toSDMM_PlugIn(NEflag::LAT, lat, Precision::HI));
-    m_panel->m_lPositions->SetColumnWidth(POSITION_LAT, wxLIST_AUTOSIZE);
-    m_panel->m_lPositions->SetItem(
-        index, POSITION_LON, toSDMM_PlugIn(NEflag::LON, lon, Precision::HI));
-    m_panel->m_lPositions->SetColumnWidth(POSITION_LON, wxLIST_AUTOSIZE);
-    work = true;
+    if (work || locationFormatChanged) {
+      m_panel->m_lPositions->SetItem(index, POSITION_NAME, name);
+      m_panel->m_lPositions->SetColumnWidth(POSITION_NAME, wxLIST_AUTOSIZE);
+      m_panel->m_lPositions->SetItem(index, POSITION_LAT,
+                                     toSDMM_PlugIn(NEflag::LAT, lat, Precision::HI));
+      m_panel->m_lPositions->SetColumnWidth(POSITION_LAT, wxLIST_AUTOSIZE);
+      m_panel->m_lPositions->SetItem(index, POSITION_LON,
+                                     toSDMM_PlugIn(NEflag::LON, lon, Precision::HI));
+      m_panel->m_lPositions->SetColumnWidth(POSITION_LON, wxLIST_AUTOSIZE);
+    }
   }
+
+  if (work || locationFormatChanged) {
+    GetParent()->Refresh();
+  }
+  
   if (work) {
     UpdateConfigurations();
     Reset();
