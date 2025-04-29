@@ -612,9 +612,13 @@ void WeatherRouting::Render(piDC& dc, PlugIn_ViewPort& vp) {
       m_panel->m_lPositions->SetItem(index, POSITION_LON,
                                      toSDMM_PlugIn(NEflag::LON, lon, Precision::HI));
       m_panel->m_lPositions->SetColumnWidth(POSITION_LON, wxLIST_AUTOSIZE);
-      GetParent()->Refresh();
     }
   }
+
+  if (work || locationFormatChanged) {
+    GetParent()->Refresh();
+  }
+  
   if (work) {
     UpdateConfigurations();
     Reset();
