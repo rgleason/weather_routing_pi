@@ -116,7 +116,7 @@ jobs:
         - DEPLOY_USE_ORB: true
         - INSTALL_PYTHON: true
         steps:
-        - run | # We don't use the checkout convenience command because we need skip fsck checks for a specific corrupt commit
+        - run | 
             echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ./fsck.skipList.txt
             git config --global fsck.skipList=./fsck.skipList.txt
             git config --global fetch.fsck.skipList=./fsck.skipList.txt
@@ -135,7 +135,7 @@ jobs:
         - DEPLOY_USE_ORB: true
         - INSTALL_PYTHON: true
         steps:
-        - run | # We don't use the checkout convenience command because we need skip fsck checks for a specific corrupt commit
+        - run | 
             echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ./fsck.skipList.txt
             git config --global fsck.skipList=./fsck.skipList.txt
             git config --global fetch.fsck.skipList=./fsck.skipList.txt
@@ -207,7 +207,7 @@ jobs:
         - SDK_VER: 22.08
         - DEPLOY_USE_ORB: true
         steps:
-        - run | # We don't use the checkout convenience command because we need skip fsck checks for a specific corrupt commit
+        - run |
             echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ./fsck.skipList.txt
             git config --global fsck.skipList=./fsck.skipList.txt
             git config --global fetch.fsck.skipList=./fsck.skipList.txt
@@ -228,7 +228,7 @@ jobs:
         - SDK_VER: 22.08
         - DEPLOY_USE_ORB: true
         steps:
-        - run | # We don't use the checkout convenience command because we need skip fsck checks for a specific corrupt commit
+        - run |
             echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ./fsck.skipList.txt
             git config --global fsck.skipList=./fsck.skipList.txt
             git config --global fetch.fsck.skipList=./fsck.skipList.txt
@@ -251,7 +251,7 @@ jobs:
         - SDK_VER: 24.08
         - DEPLOY_USE_ORB: true
         steps:
-        - run | # We don't use the checkout convenience command because we need skip fsck checks for a specific corrupt commit
+        - run |
             echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ./fsck.skipList.txt
             git config --global fsck.skipList=./fsck.skipList.txt
             git config --global fetch.fsck.skipList=./fsck.skipList.txt
@@ -272,7 +272,7 @@ jobs:
         - SDK_VER: 24.08
         - DEPLOY_USE_ORB: true
         steps:
-        - run | # We don't use the checkout convenience command because we need skip fsck checks for a specific corrupt commit
+        - run |
             echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ./fsck.skipList.txt
             git config --global fsck.skipList=./fsck.skipList.txt
             git config --global fetch.fsck.skipList=./fsck.skipList.txt
@@ -296,7 +296,7 @@ jobs:
         - BUILD_GTK3: true
         - DEPLOY_USE_ORB: true
         steps:
-        - run | # We don't use the checkout convenience command because we need skip fsck checks for a specific corrupt commit
+        - run |
             echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ./fsck.skipList.txt
             git config --global fsck.skipList=./fsck.skipList.txt
             git config --global fetch.fsck.skipList=./fsck.skipList.txt
@@ -320,7 +320,7 @@ jobs:
         - BUILD_GTK3: true
         - DEPLOY_USE_ORB: true
         steps:
-        - run | # We don't use the checkout convenience command because we need skip fsck checks for a specific corrupt commit
+        - run |
             echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ./fsck.skipList.txt
             git config --global fsck.skipList=./fsck.skipList.txt
             git config --global fetch.fsck.skipList=./fsck.skipList.txt
@@ -342,7 +342,7 @@ jobs:
         - BUILD_ENV=debian
         - DOCKER_IMAGE=debian:bookworm
         steps:
-        - run | # We don't use the checkout convenience command because we need skip fsck checks for a specific corrupt commit
+        - run |
             echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ./fsck.skipList.txt
             git config --global fsck.skipList=./fsck.skipList.txt
             git config --global fetch.fsck.skipList=./fsck.skipList.txt
@@ -365,7 +365,7 @@ jobs:
         - BUILD_GTK3: true
         - DEPLOY_USE_ORB: true
         steps:
-        - run | # We don't use the checkout convenience command because we need skip fsck checks for a specific corrupt commit
+        - run |
             echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ./fsck.skipList.txt
             git config --global fsck.skipList=./fsck.skipList.txt
             git config --global fetch.fsck.skipList=./fsck.skipList.txt
@@ -388,7 +388,7 @@ jobs:
         - BUILD_GTK3: true
         - DEPLOY_USE_ORB: true
         steps:
-        - run | # We don't use the checkout convenience command because we need skip fsck checks for a specific corrupt commit
+        - run |
             echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ./fsck.skipList.txt
             git config --global fsck.skipList=./fsck.skipList.txt
             git config --global fetch.fsck.skipList=./fsck.skipList.txt
@@ -408,7 +408,7 @@ jobs:
         - DEPLOY_USE_ORB: true
         - BUILD_ENV=debian
         steps:
-        - run | # We don't use the checkout convenience command because we need skip fsck checks for a specific corrupt commit
+        - run |
             echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ./fsck.skipList.txt
             git config --global fsck.skipList=./fsck.skipList.txt
             git config --global fetch.fsck.skipList=./fsck.skipList.txt
@@ -435,7 +435,7 @@ jobs:
         - DEPLOY_USE_ORB: true
         - BUILD_ENV=ubuntu
         steps:
-        - run | # We don't use the checkout convenience command because we need skip fsck checks for a specific corrupt commit
+        - run |
             echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ./fsck.skipList.txt
             git config --global fsck.skipList=./fsck.skipList.txt
             git config --global fetch.fsck.skipList=./fsck.skipList.txt
