@@ -116,7 +116,12 @@ jobs:
         - DEPLOY_USE_ORB: true
         - INSTALL_PYTHON: true
         steps:
-        - checkout
+        - run | # We don't use the checkout convenience command because we need skip fsck checks for a specific corrupt commit
+            echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ./fsck.skipList.txt
+            git config --global fsck.skipList=./fsck.skipList.txt
+            git config --global fetch.fsck.skipList=./fsck.skipList.txt
+            git config --global receive.fsck.skipList=./fsck.skipList.txt
+            git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
         - run: chmod a+x ci/*.sh
         - run: bash ci/circleci-build-android-arm64.sh
         - deploy-code:
@@ -130,7 +135,12 @@ jobs:
         - DEPLOY_USE_ORB: true
         - INSTALL_PYTHON: true
         steps:
-        - checkout
+        - run | # We don't use the checkout convenience command because we need skip fsck checks for a specific corrupt commit
+            echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ./fsck.skipList.txt
+            git config --global fsck.skipList=./fsck.skipList.txt
+            git config --global fetch.fsck.skipList=./fsck.skipList.txt
+            git config --global receive.fsck.skipList=./fsck.skipList.txt
+            git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
         - run: chmod a+x ci/*.sh
         - run: bash ci/circleci-build-android-armhf.sh
         - deploy-code:
@@ -197,7 +207,12 @@ jobs:
         - SDK_VER: 22.08
         - DEPLOY_USE_ORB: true
         steps:
-        - checkout
+        - run | # We don't use the checkout convenience command because we need skip fsck checks for a specific corrupt commit
+            echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ./fsck.skipList.txt
+            git config --global fsck.skipList=./fsck.skipList.txt
+            git config --global fetch.fsck.skipList=./fsck.skipList.txt
+            git config --global receive.fsck.skipList=./fsck.skipList.txt
+            git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
         - run: chmod a+x ci/*.sh
         - run:
             command: bash ci/circleci-build-flatpak.sh
@@ -213,7 +228,12 @@ jobs:
         - SDK_VER: 22.08
         - DEPLOY_USE_ORB: true
         steps:
-        - checkout
+        - run | # We don't use the checkout convenience command because we need skip fsck checks for a specific corrupt commit
+            echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ./fsck.skipList.txt
+            git config --global fsck.skipList=./fsck.skipList.txt
+            git config --global fetch.fsck.skipList=./fsck.skipList.txt
+            git config --global receive.fsck.skipList=./fsck.skipList.txt
+            git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
         - run: chmod a+x ci/*.sh
         - run:
             command: bash ci/circleci-build-flatpak.sh
@@ -231,7 +251,12 @@ jobs:
         - SDK_VER: 24.08
         - DEPLOY_USE_ORB: true
         steps:
-        - checkout
+        - run | # We don't use the checkout convenience command because we need skip fsck checks for a specific corrupt commit
+            echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ./fsck.skipList.txt
+            git config --global fsck.skipList=./fsck.skipList.txt
+            git config --global fetch.fsck.skipList=./fsck.skipList.txt
+            git config --global receive.fsck.skipList=./fsck.skipList.txt
+            git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
         - run: chmod a+x ci/*.sh
         - run:
             command: bash ci/circleci-build-flatpak.sh
@@ -247,7 +272,12 @@ jobs:
         - SDK_VER: 24.08
         - DEPLOY_USE_ORB: true
         steps:
-        - checkout
+        - run | # We don't use the checkout convenience command because we need skip fsck checks for a specific corrupt commit
+            echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ./fsck.skipList.txt
+            git config --global fsck.skipList=./fsck.skipList.txt
+            git config --global fetch.fsck.skipList=./fsck.skipList.txt
+            git config --global receive.fsck.skipList=./fsck.skipList.txt
+            git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
         - run: chmod a+x ci/*.sh
         - run:
             command: bash ci/circleci-build-flatpak.sh
@@ -266,7 +296,12 @@ jobs:
         - BUILD_GTK3: true
         - DEPLOY_USE_ORB: true
         steps:
-        - checkout
+        - run | # We don't use the checkout convenience command because we need skip fsck checks for a specific corrupt commit
+            echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ./fsck.skipList.txt
+            git config --global fsck.skipList=./fsck.skipList.txt
+            git config --global fetch.fsck.skipList=./fsck.skipList.txt
+            git config --global receive.fsck.skipList=./fsck.skipList.txt
+            git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
         - run: chmod a+x ./ci/*.sh
         - run:
             command: ci/circleci-build-ubuntu-docker.sh
@@ -285,7 +320,12 @@ jobs:
         - BUILD_GTK3: true
         - DEPLOY_USE_ORB: true
         steps:
-        - checkout
+        - run | # We don't use the checkout convenience command because we need skip fsck checks for a specific corrupt commit
+            echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ./fsck.skipList.txt
+            git config --global fsck.skipList=./fsck.skipList.txt
+            git config --global fetch.fsck.skipList=./fsck.skipList.txt
+            git config --global receive.fsck.skipList=./fsck.skipList.txt
+            git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
         - run: chmod a+x ./ci/*.sh
         - run:
             command: ci/circleci-build-ubuntu-docker.sh
@@ -302,7 +342,12 @@ jobs:
         - BUILD_ENV=debian
         - DOCKER_IMAGE=debian:bookworm
         steps:
-        - checkout
+        - run | # We don't use the checkout convenience command because we need skip fsck checks for a specific corrupt commit
+            echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ./fsck.skipList.txt
+            git config --global fsck.skipList=./fsck.skipList.txt
+            git config --global fetch.fsck.skipList=./fsck.skipList.txt
+            git config --global receive.fsck.skipList=./fsck.skipList.txt
+            git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
         - run: chmod a+x ci/*.sh
         - run:
             command: ci/circleci-build-ubuntu-docker.sh
@@ -320,7 +365,12 @@ jobs:
         - BUILD_GTK3: true
         - DEPLOY_USE_ORB: true
         steps:
-        - checkout
+        - run | # We don't use the checkout convenience command because we need skip fsck checks for a specific corrupt commit
+            echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ./fsck.skipList.txt
+            git config --global fsck.skipList=./fsck.skipList.txt
+            git config --global fetch.fsck.skipList=./fsck.skipList.txt
+            git config --global receive.fsck.skipList=./fsck.skipList.txt
+            git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
         - run: chmod a+x ./ci/*.sh
         - run:
             command: ci/circleci-build-ubuntu-docker.sh
@@ -338,7 +388,12 @@ jobs:
         - BUILD_GTK3: true
         - DEPLOY_USE_ORB: true
         steps:
-        - checkout
+        - run | # We don't use the checkout convenience command because we need skip fsck checks for a specific corrupt commit
+            echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ./fsck.skipList.txt
+            git config --global fsck.skipList=./fsck.skipList.txt
+            git config --global fetch.fsck.skipList=./fsck.skipList.txt
+            git config --global receive.fsck.skipList=./fsck.skipList.txt
+            git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
         - run: chmod a+x ./ci/*.sh
         - run:
             command: ci/circleci-build-ubuntu-docker.sh
@@ -353,7 +408,12 @@ jobs:
         - DEPLOY_USE_ORB: true
         - BUILD_ENV=debian
         steps:
-        - checkout
+        - run | # We don't use the checkout convenience command because we need skip fsck checks for a specific corrupt commit
+            echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ./fsck.skipList.txt
+            git config --global fsck.skipList=./fsck.skipList.txt
+            git config --global fetch.fsck.skipList=./fsck.skipList.txt
+            git config --global receive.fsck.skipList=./fsck.skipList.txt
+            git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
         - run: >
             echo "deb-src http://ftp.us.debian.org/debian bullseye main"
             | sudo tee -a /etc/apt/sources.list
@@ -375,7 +435,12 @@ jobs:
         - DEPLOY_USE_ORB: true
         - BUILD_ENV=ubuntu
         steps:
-        - checkout
+        - run | # We don't use the checkout convenience command because we need skip fsck checks for a specific corrupt commit
+            echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ./fsck.skipList.txt
+            git config --global fsck.skipList=./fsck.skipList.txt
+            git config --global fetch.fsck.skipList=./fsck.skipList.txt
+            git config --global receive.fsck.skipList=./fsck.skipList.txt
+            git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
         - run: >
             echo "deb-src http://us.archive.ubuntu.com/ubuntu/ jammy main" | sudo tee -a /etc/apt/sources.list
         - run: >
