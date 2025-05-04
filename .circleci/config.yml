@@ -139,10 +139,10 @@ jobs:
         steps:
         - run:
             command: |
-                echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ${TMPDIR}/fsck.skipList.txt
-                git config --global fsck.skipList=${TMPDIR}/fsck.skipList.txt
-                git config --global fetch.fsck.skipList=${TMPDIR}/fsck.skipList.txt
-                git config --global receive.fsck.skipList=${TMPDIR}/fsck.skipList.txt
+                echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > /tmp/fsck.skipList.txt
+                git config --global fsck.skipList=/tmp/fsck.skipList.txt
+                git config --global fetch.fsck.skipList=/tmp/fsck.skipList.txt
+                git config --global receive.fsck.skipList=/tmp/fsck.skipList.txt
                 git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
         - run: chmod a+x ci/*.sh
         - run: bash ci/circleci-build-android-arm64.sh
@@ -159,10 +159,10 @@ jobs:
         steps:
         - run:
             command: |
-                echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ${TMPDIR}/fsck.skipList.txt
-                git config --global fsck.skipList=${TMPDIR}/fsck.skipList.txt
-                git config --global fetch.fsck.skipList=${TMPDIR}/fsck.skipList.txt
-                git config --global receive.fsck.skipList=${TMPDIR}/fsck.skipList.txt
+                echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > /tmp/fsck.skipList.txt
+                git config --global fsck.skipList=/tmp/fsck.skipList.txt
+                git config --global fetch.fsck.skipList=/tmp/fsck.skipList.txt
+                git config --global receive.fsck.skipList=/tmp/fsck.skipList.txt
                 git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
 
         - run: chmod a+x ci/*.sh
@@ -233,10 +233,10 @@ jobs:
         steps:
         - run:
             command: |
-                echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ${TMPDIR}/fsck.skipList.txt
-                git config --global fsck.skipList=${TMPDIR}/fsck.skipList.txt
-                git config --global fetch.fsck.skipList=${TMPDIR}/fsck.skipList.txt
-                git config --global receive.fsck.skipList=${TMPDIR}/fsck.skipList.txt
+                echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > /tmp/fsck.skipList.txt
+                git config --global fsck.skipList=/tmp/fsck.skipList.txt
+                git config --global fetch.fsck.skipList=/tmp/fsck.skipList.txt
+                git config --global receive.fsck.skipList=/tmp/fsck.skipList.txt
                 git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
 
         - run: chmod a+x ci/*.sh
@@ -256,10 +256,10 @@ jobs:
         steps:
         - run:
             command: |
-                echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ${TMPDIR}/fsck.skipList.txt
-                git config --global fsck.skipList=${TMPDIR}/fsck.skipList.txt
-                git config --global fetch.fsck.skipList=${TMPDIR}/fsck.skipList.txt
-                git config --global receive.fsck.skipList=${TMPDIR}/fsck.skipList.txt
+                echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > /tmp/fsck.skipList.txt
+                git config --global fsck.skipList=/tmp/fsck.skipList.txt
+                git config --global fetch.fsck.skipList=/tmp/fsck.skipList.txt
+                git config --global receive.fsck.skipList=/tmp/fsck.skipList.txt
                 git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
 
         - run: chmod a+x ci/*.sh
@@ -281,10 +281,10 @@ jobs:
         steps:
         - run:
             command: |
-                echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ${TMPDIR}/fsck.skipList.txt
-                git config --global fsck.skipList=${TMPDIR}/fsck.skipList.txt
-                git config --global fetch.fsck.skipList=${TMPDIR}/fsck.skipList.txt
-                git config --global receive.fsck.skipList=${TMPDIR}/fsck.skipList.txt
+                echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > /tmp/fsck.skipList.txt
+                git config --global fsck.skipList=/tmp/fsck.skipList.txt
+                git config --global fetch.fsck.skipList=/tmp/fsck.skipList.txt
+                git config --global receive.fsck.skipList=/tmp/fsck.skipList.txt
                 git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
 
         - run: chmod a+x ci/*.sh
@@ -304,10 +304,10 @@ jobs:
         steps:
         - run:
             command: |
-                echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ${TMPDIR}/fsck.skipList.txt
-                git config --global fsck.skipList=${TMPDIR}/fsck.skipList.txt
-                git config --global fetch.fsck.skipList=${TMPDIR}/fsck.skipList.txt
-                git config --global receive.fsck.skipList=${TMPDIR}/fsck.skipList.txt
+                echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > /tmp/fsck.skipList.txt
+                git config --global fsck.skipList=/tmp/fsck.skipList.txt
+                git config --global fetch.fsck.skipList=/tmp/fsck.skipList.txt
+                git config --global receive.fsck.skipList=/tmp/fsck.skipList.txt
                 git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
 
         - run: chmod a+x ci/*.sh
@@ -330,10 +330,10 @@ jobs:
         steps:
         - run:
             command: |
-                echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ${TMPDIR}/fsck.skipList.txt
-                git config --global fsck.skipList=${TMPDIR}/fsck.skipList.txt
-                git config --global fetch.fsck.skipList=${TMPDIR}/fsck.skipList.txt
-                git config --global receive.fsck.skipList=${TMPDIR}/fsck.skipList.txt
+                echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > /tmp/fsck.skipList.txt
+                git config --global fsck.skipList=/tmp/fsck.skipList.txt
+                git config --global fetch.fsck.skipList=/tmp/fsck.skipList.txt
+                git config --global receive.fsck.skipList=/tmp/fsck.skipList.txt
                 git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
 
         - run: chmod a+x ./ci/*.sh
@@ -356,10 +356,10 @@ jobs:
         steps:
         - run:
             command: |
-                echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ${TMPDIR}/fsck.skipList.txt
-                git config --global fsck.skipList=${TMPDIR}/fsck.skipList.txt
-                git config --global fetch.fsck.skipList=${TMPDIR}/fsck.skipList.txt
-                git config --global receive.fsck.skipList=${TMPDIR}/fsck.skipList.txt
+                echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > /tmp/fsck.skipList.txt
+                git config --global fsck.skipList=/tmp/fsck.skipList.txt
+                git config --global fetch.fsck.skipList=/tmp/fsck.skipList.txt
+                git config --global receive.fsck.skipList=/tmp/fsck.skipList.txt
                 git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
 
         - run: chmod a+x ./ci/*.sh
@@ -380,10 +380,10 @@ jobs:
         steps:
         - run:
             command: |
-                echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ${TMPDIR}/fsck.skipList.txt
-                git config --global fsck.skipList=${TMPDIR}/fsck.skipList.txt
-                git config --global fetch.fsck.skipList=${TMPDIR}/fsck.skipList.txt
-                git config --global receive.fsck.skipList=${TMPDIR}/fsck.skipList.txt
+                echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > /tmp/fsck.skipList.txt
+                git config --global fsck.skipList=/tmp/fsck.skipList.txt
+                git config --global fetch.fsck.skipList=/tmp/fsck.skipList.txt
+                git config --global receive.fsck.skipList=/tmp/fsck.skipList.txt
                 git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
 
         - run: chmod a+x ci/*.sh
@@ -405,10 +405,10 @@ jobs:
         steps:
         - run:
             command: |
-                echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ${TMPDIR}/fsck.skipList.txt
-                git config --global fsck.skipList=${TMPDIR}/fsck.skipList.txt
-                git config --global fetch.fsck.skipList=${TMPDIR}/fsck.skipList.txt
-                git config --global receive.fsck.skipList=${TMPDIR}/fsck.skipList.txt
+                echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > /tmp/fsck.skipList.txt
+                git config --global fsck.skipList=/tmp/fsck.skipList.txt
+                git config --global fetch.fsck.skipList=/tmp/fsck.skipList.txt
+                git config --global receive.fsck.skipList=/tmp/fsck.skipList.txt
                 git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
 
         - run: chmod a+x ./ci/*.sh
@@ -430,10 +430,10 @@ jobs:
         steps:
         - run:
             command: |
-                echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ${TMPDIR}/fsck.skipList.txt
-                git config --global fsck.skipList=${TMPDIR}/fsck.skipList.txt
-                git config --global fetch.fsck.skipList=${TMPDIR}/fsck.skipList.txt
-                git config --global receive.fsck.skipList=${TMPDIR}/fsck.skipList.txt
+                echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > /tmp/fsck.skipList.txt
+                git config --global fsck.skipList=/tmp/fsck.skipList.txt
+                git config --global fetch.fsck.skipList=/tmp/fsck.skipList.txt
+                git config --global receive.fsck.skipList=/tmp/fsck.skipList.txt
                 git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
 
         - run: chmod a+x ./ci/*.sh
@@ -452,10 +452,10 @@ jobs:
         steps:
         - run:
             command: |
-                echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ${TMPDIR}/fsck.skipList.txt
-                git config --global fsck.skipList=${TMPDIR}/fsck.skipList.txt
-                git config --global fetch.fsck.skipList=${TMPDIR}/fsck.skipList.txt
-                git config --global receive.fsck.skipList=${TMPDIR}/fsck.skipList.txt
+                echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > /tmp/fsck.skipList.txt
+                git config --global fsck.skipList=/tmp/fsck.skipList.txt
+                git config --global fetch.fsck.skipList=/tmp/fsck.skipList.txt
+                git config --global receive.fsck.skipList=/tmp/fsck.skipList.txt
                 git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
 
         - run: >
@@ -481,10 +481,10 @@ jobs:
         steps:
         - run:
             command: |
-                echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > ${TMPDIR}/fsck.skipList.txt
-                git config --global fsck.skipList=${TMPDIR}/fsck.skipList.txt
-                git config --global fetch.fsck.skipList=${TMPDIR}/fsck.skipList.txt
-                git config --global receive.fsck.skipList=${TMPDIR}/fsck.skipList.txt
+                echo 23c07cc5d2be7ce68349f4b3719b6fa6fe90e0bf > /tmp/fsck.skipList.txt
+                git config --global fsck.skipList=/tmp/fsck.skipList.txt
+                git config --global fetch.fsck.skipList=/tmp/fsck.skipList.txt
+                git config --global receive.fsck.skipList=/tmp/fsck.skipList.txt
                 git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
         - run:
             name: "Update apt sources"
