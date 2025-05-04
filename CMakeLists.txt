@@ -184,6 +184,7 @@ SET(SRCS
             src/ConfigurationBatchDialog.cpp
             src/EditPolarDialog.cpp
             src/AboutDialog.cpp
+            src/ConstraintChecker.cpp
             src/Polar.cpp
             src/Boat.cpp
             src/RouteMap.cpp
@@ -198,6 +199,10 @@ SET(SRCS
             src/georef.c
             src/GribRecord.cpp
             src/navobj_util.cpp
+            src/WeatherDataProvider.cpp
+            src/RoutePoint.cpp
+            src/Position.cpp
+            src/IsoRoute.cpp
 )
 
 SET (HDRS
@@ -212,6 +217,7 @@ SET (HDRS
             include/ReportDialog.h
             include/FilterRoutesDialog.h
             include/ConfigurationBatchDialog.h
+            include/ConstraintChecker.h
             include/EditPolarDialog.h
             include/AboutDialog.h
             include/Polar.h
@@ -228,6 +234,10 @@ SET (HDRS
             include/georef.h
             include/GribRecord.h
             include/navobj_util.h
+            include/WeatherDataProvider.h
+            include/RoutePoint.h
+            include/Position.h
+            include/IsoRoute.h
 )
 
 add_definitions(-DPLUGIN_USE_SVG)

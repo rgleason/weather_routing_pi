@@ -30,6 +30,8 @@
 
 #include "Utilities.h"
 #include "Boat.h"
+#include "RoutePoint.h"
+#include "RouteMap.h"
 #include "RouteMapOverlay.h"
 #include "WeatherRouting.h"
 #include "weather_routing_pi.h"

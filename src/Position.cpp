@@ -1,0 +1,698 @@
+/***************************************************************************
+ *   Copyright (C) 2015 by OpenCPN development team                        *
+ *                                                                         *
+ *   This program is free software; you can redistribute it and/or modify  *
+ *   it under the terms of the GNU General Public License as published by  *
+ *   the Free Software Foundation; either version 3 of the License, or     *
+ *   (at your option) any later version.                                   *
+ *                                                                         *
+ *   This program is distributed in the hope that it will be useful,       *
+ *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
+ *   GNU General Public License for more details.                          *
+ *                                                                         *
+ *   You should have received a copy of the GNU General Public License     *
+ *   along with this program; if not, write to the                         *
+ *   Free Software Foundation, Inc.,                                       *
+ *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,  USA.         *
+ **************************************************************************/
+
+#include <wx/wx.h>
+
+#include "Position.h"
+#include "RouteMap.h"
+#include "Utilities.h"
+
+#include "georef.h"
+#include "ocpn_plugin.h"
+
+/* sufficient for routemap uses only.. is this faster than below? if not, remove
+ * it */
+int ComputeQuadrantFast(Position* p, Position* q) {
+  int quadrant;
+  if (q->lat < p->lat)
+    quadrant = 0;
+  else
+    quadrant = 2;
+
+  if (p->lon < q->lon) quadrant++;
+
+  return quadrant;
+}
+
+#if 0
+  /* works for all ranges */
+  static int ComputeQuadrant(Position *p, Position *q)
+  {
+      int quadrant;
+      if(q->lat < p->lat)
+          quadrant = 0;
+      else
+          quadrant = 2;
+  
+      double diff = p->lon - q->lon;
+      while(diff < -180) diff += 360;
+      while(diff >= 180) diff -= 360;
+      
+      if(diff < 0)
+          quadrant++;
+  
+      return quadrant;
+  }
+#endif
+
+#define EPSILON (2e-11)
+
+Position::Position(double latitude, double longitude, Position* p,
+                   double pheading, double pbearing, int polar_idx,
+                   int tack_count, int jibe_count, int sail_plan_change_count,
+                   int data_mask, bool data_deficient)
+    : RoutePoint(latitude, longitude, polar_idx, tack_count, jibe_count,
+                 sail_plan_change_count, data_mask, data_deficient),
+      parent_heading(pheading),
+      parent_bearing(pbearing),
+      parent(p),
+      propagated(false),
+      copied(false),
+      propagation_error(PROPAGATION_NO_ERROR) {
+  lat -= fmod(lat, EPSILON);
+  lon -= fmod(lon, EPSILON);
+}
+
+Position::Position(Position* p)
+    : RoutePoint(p->lat, p->lon, p->polar, p->tacks, p->jibes,
+                 p->sail_plan_changes, p->grib_is_data_deficient, p->data_mask),
+      parent_heading(p->parent_heading),
+      parent_bearing(p->parent_bearing),
+      parent(p->parent),
+      propagated(p->propagated),
+      copied(true),
+      propagation_error(p->propagation_error) {}
+
+SkipPosition* Position::BuildSkipList() {
+  /* build skip list of positions, skipping over strings of positions in
+     the same quadrant */
+  SkipPosition* skippoints = nullptr;
+  Position* p = this;
+  int firstquadrant, lastquadrant = -1, quadrant;
+  do {
+    Position* q = p->next;
+    quadrant = ComputeQuadrantFast(p, q);
+
+    if (lastquadrant == -1)
+      firstquadrant = lastquadrant = quadrant;
+    else if (quadrant != lastquadrant) {
+      SkipPosition* rs = new SkipPosition(p, quadrant);
+      if (skippoints) {
+        rs->prev = skippoints->prev;
+        rs->next = skippoints;
+        skippoints->prev->next = rs;
+        skippoints->prev = rs;
+      } else {
+        skippoints = rs;
+        rs->prev = rs->next = rs;
+      }
+      lastquadrant = quadrant;
+    }
+    p = q;
+  } while (p != this);
+
+  if (!skippoints) {
+    SkipPosition* rs = new SkipPosition(p, quadrant);
+    rs->prev = rs->next = rs;
+    skippoints = rs;
+  } else if (quadrant != firstquadrant) {
+    SkipPosition* rs = new SkipPosition(p, firstquadrant);
+
+    rs->prev = skippoints->prev;
+    rs->next = skippoints;
+    skippoints->prev->next = rs;
+    skippoints->prev = rs;
+
+    skippoints = rs;
+  }
+  return skippoints;
+}
+
+void DeletePoints(Position* point) {
+  Position* p = point;
+  do {
+    Position* dp = p;
+    p = p->next;
+    delete dp;
+  } while (p != point);
+}
+
+/**
+ * Performs a single Runge-Kutta integration step for route propagation.
+ *
+ * Takes a position and calculates the next position after a time step using
+ * current winds and boat polars. This function is used as part of the
+ * 4th order Runge-Kutta integration.
+ *
+ * @param p Current position
+ * @param timeseconds Time step in seconds
+ * @param cog Course over ground (degrees)
+ * @param dist Distance to travel (nm)
+ * @param twa True Wind Angle (degrees)
+ * @param configuration Route configuration parameters
+ * @param grib GRIB weather data
+ * @param time Current time
+ * @param newpolar Index of polar to use
+ * @param rk_BG [out] New bearing over ground (degrees)
+ * @param rk_dist [out] New distance traveled (nm)
+ * @param data_mask [out] Mask indicating data sources used
+ *
+ * @return true if step was successful, false if step failed
+ */
+bool Position::rk_step(double timeseconds, double cog, double dist, double twa,
+                       RouteMapConfiguration& configuration,
+                       WR_GribRecordSet* grib, const wxDateTime& time,
+                       int newpolar, double& rk_BG, double& rk_dist,
+                       int& data_mask) {
+  double k1_lat, k1_lon;
+  ll_gc_ll(lat, lon, cog, dist, &k1_lat, &k1_lon);
+
+  double twdOverGround, twsOverGround, twdOverWater, twsOverWater, currentDir,
+      currentSpeed;
+  climatology_wind_atlas atlas;
+  Position rk(k1_lat, k1_lon,
+              parent);  // parent so deficient data can find parent
+  if (!WeatherDataProvider::ReadWindAndCurrents(
+          configuration, &rk, twdOverGround, twsOverGround, twdOverWater,
+          twsOverWater, currentDir, currentSpeed, atlas, data_mask))
+    return false;
+
+  double ctw = twdOverWater + twa; /* rotated relative to true wind */
+
+  double stw, sog;  // outputs
+  if (!ComputeBoatSpeed(configuration, timeseconds, twdOverGround,
+                        twsOverGround, twdOverWater, twsOverWater, currentDir,
+                        currentSpeed, twa, atlas, ctw, stw, rk_BG, sog, rk_dist,
+                        newpolar, true /* check bounds */, "rk_step")) {
+    return false;
+  }
+
+  return true;
+}
+
+/* propagate to the end position in the configuration, and return the number of
+ * seconds it takes */
+double Position::PropagateToEnd(RouteMapConfiguration& cf, double& H,
+                                int& data_mask) {
+  return PropagateToPoint(cf.EndLat, cf.EndLon, cf, H, data_mask, true);
+}
+
+bool Position::Propagate(IsoRouteList& routelist,
+                         RouteMapConfiguration& configuration) {
+  /* already propagated from this position, don't need to again */
+  if (propagated) {
+    propagation_error = PROPAGATION_ALREADY_PROPAGATED;
+    return false;
+  }
+
+  propagated = true;
+
+  Position* points = nullptr;
+  /* through all angles relative to wind */
+  int count = 0;
+
+  if (!ConstraintChecker::CheckSwellConstraint(lat, lon, configuration,
+                                               propagation_error)) {
+    return false;
+  }
+
+  if (fabs(lat) > configuration.MaxLatitude) {
+    propagation_error = PROPAGATION_EXCEEDED_MAX_LATITUDE;
+    return false;
+  }
+
+  double twdOverGround, twsOverGround, twdOverWater, twsOverWater, currentDir,
+      currentSpeed;
+  climatology_wind_atlas atlas;
+  int data_mask = 0;
+  if (!WeatherDataProvider::ReadWindAndCurrents(
+          configuration, this, twdOverGround, twsOverGround, twdOverWater,
+          twsOverWater, currentDir, currentSpeed, atlas, data_mask)) {
+    propagation_error = PROPAGATION_WIND_DATA_FAILED;
+    wxString txt = _("No wind data for this position at that time");
+    configuration.wind_data_status =
+        wxString::Format("%s (lat=%f,lon=%f) : %s", txt, lat, lon,
+                         configuration.time.Format("%Y-%m-%d %H:%M:%S"));
+    return false;
+  }
+
+  // Check if wind exceeds configured maximum limit (safety limit)
+  if (twsOverWater > configuration.MaxTrueWindKnots) {
+    propagation_error = PROPAGATION_EXCEEDED_MAX_WIND;
+    return false;
+  }
+
+  // If wind exceeds polar data but is within safety limits, we'll continue with
+  // modified wind speed This is handled in the ComputeBoatSpeed function by
+  // passing inside_polar_bounds=false
+
+  if (configuration.WindVSCurrent) {
+    /* Calculate the wind vector (Wx, Wy) and ocean current vector (Cx, Cy). */
+    /* these are already computed in GroundToWaterFrame could optimize by
+     * reusing them
+     */
+    double Wx = twsOverWater * cos(deg2rad(twdOverWater)),
+           Wy = twsOverWater * sin(deg2rad(twdOverWater));
+    double Cx = currentSpeed * cos(deg2rad(currentDir) + M_PI),
+           Cy = currentSpeed * sin(deg2rad(currentDir) + M_PI);
+
+    if (Wx * Cx + Wy * Cy + configuration.WindVSCurrent < 0) {
+      propagation_error = PROPAGATION_EXCEEDED_WIND_VS_CURRENT;
+      return false;
+    }
+  }
+
+  bool first_avoid = true;
+  Position* rp;
+
+  double bearing1 = NAN, bearing2 = NAN;
+  if (parent && configuration.MaxSearchAngle < 180) {
+    bearing1 = heading_resolve(parent_bearing - configuration.MaxSearchAngle);
+    bearing2 = heading_resolve(parent_bearing + configuration.MaxSearchAngle);
+  }
+
+  for (auto it = configuration.DegreeSteps.begin();
+       it != configuration.DegreeSteps.end(); it++) {
+    double timeseconds = configuration.UsedDeltaTime;
+    double dist;
+
+    double twa = heading_resolve(*it);
+    double ctw, stw, cog, sog;
+
+    ctw = twdOverWater + twa; /* rotated relative to true wind */
+
+    // Do no waste time exploring directions outside the configured search
+    // angle.
+    if (!std::isnan(bearing1)) {
+      double bearing3 = heading_resolve(ctw);
+      if ((bearing1 > bearing2 && bearing3 > bearing2 && bearing3 < bearing1) ||
+          (bearing1 < bearing2 &&
+           (bearing3 > bearing2 || bearing3 < bearing1))) {
+        if (first_avoid) {
+          /* add a position behind the lines to ensure our route intersects
+          with the previous one to nicely merge the resulting graph */
+          first_avoid = false;
+          rp = new Position(this);
+          double dp = .95;
+          rp->lat = (1 - dp) * lat + dp * parent->lat;
+          rp->lon = (1 - dp) * lon + dp * parent->lon;
+          rp->propagated =
+              true;  // not a "real" position so we don't propagate it either.
+          goto add_position;
+        } else {
+          continue;
+        }
+      }
+    }
+
+    {
+      double swell = WeatherDataProvider::GetSwell(configuration, lat, lon);
+      PolarSpeedStatus status;
+      int newpolar = configuration.boat.FindBestPolarForCondition(
+          polar, twsOverWater, twa, swell, configuration.OptimizeTacking,
+          &status);
+      bool sail_plan_changed = false;
+      bool inside_polar_bounds = true;
+      if (newpolar == -1 || status != PolarSpeedStatus::POLAR_SPEED_SUCCESS) {
+        if (newpolar == -1 && polar >= 0) {
+          newpolar = polar;
+        }
+        if (status == PolarSpeedStatus::POLAR_SPEED_WIND_TOO_LIGHT ||
+            status == PolarSpeedStatus::POLAR_SPEED_WIND_TOO_STRONG) {
+          // In light winds, FindBestPolarForCondition() may return a polar
+          // where the heading and wind are not in the sail plan, but this is
+          // the best we can do. This is not an error, the boat will just not
+          // move in this direction, and perhaps the wind will pick up later.
+          // case PolarSpeedStatus::POLAR_SPEED_ANGLE_TOO_LOW:
+          // case PolarSpeedStatus::POLAR_SPEED_ANGLE_TOO_HIGH:
+          // For strong wind, we use the max wind in the polar
+          // If the polar goes to 30 knots and the wind is 31 knots,
+          // we use the boat speed for 30 knots.
+          inside_polar_bounds = false;
+        } else {
+          configuration.polar_status = status;
+          continue;
+        }
+      }
+      if (polar > 0 && newpolar != polar) {
+        // Apply penalty for changing sail plan.
+        timeseconds -= configuration.SailPlanChangeTime;
+        sail_plan_changed = true;
+      }
+
+      /* did we tack thru the wind? apply penalty */
+      bool tacked = false;
+      if (parent_heading * twa < 0 && fabs(parent_heading - twa) < 180) {
+        timeseconds -= configuration.TackingTime;
+        tacked = true;
+      }
+
+      /* did we jibe through the wind? apply penalty */
+      bool jibed = false;
+      if (parent_heading * twa < 0 && fabs(parent_heading - twa) >= 180) {
+        timeseconds -= configuration.JibingTime;
+        jibed = true;
+      }
+
+      // In light winds, we don't want to check the polar bounds, because
+      // we already know the wind is too light for the polar.
+
+      if (!ComputeBoatSpeed(configuration, timeseconds, twdOverGround,
+                            twsOverGround, twdOverWater, twsOverWater,
+                            currentDir, currentSpeed, twa, atlas, ctw, stw, cog,
+                            sog, dist, newpolar,
+                            inside_polar_bounds /* when using out-of-bound sail
+                                                    plan, set bound=false */
+                            ,
+                            "Propagate")) {
+        continue;
+      }
+
+      double dlat, dlon;
+      if (configuration.Integrator == RouteMapConfiguration::RUNGE_KUTTA) {
+        double k2_dist, k2_BG, k3_dist, k3_BG, k4_dist, k4_BG;
+        // a lot more experimentation is needed here, maybe use grib for the
+        // right time??
+        wxDateTime rk_time_2 =
+            configuration.time + wxTimeSpan::Seconds(timeseconds / 2);
+        wxDateTime rk_time =
+            configuration.time + wxTimeSpan::Seconds(timeseconds);
+        if (!rk_step(timeseconds, cog, dist / 2, twa, configuration,
+                     configuration.grib, rk_time_2, newpolar, k2_BG, k2_dist,
+                     data_mask) ||
+            !rk_step(timeseconds, cog, k2_dist / 2, twa + k2_BG - cog,
+                     configuration, configuration.grib, rk_time_2, newpolar,
+                     k3_BG, k3_dist, data_mask) ||
+            !rk_step(timeseconds, cog, k3_dist, twa + k3_BG - cog,
+                     configuration, configuration.grib, rk_time, newpolar,
+                     k4_BG, k4_dist, data_mask)) {
+          continue;
+        }
+
+        ll_gc_ll(lat, lon, cog,
+                 dist / 6 + k2_dist / 3 + k3_dist / 3 + k4_dist / 6, &dlat,
+                 &dlon);
+      } else /* newtons method */
+#if 1
+        ll_gc_ll(lat, lon, heading_resolve(cog), dist, &dlat, &dlon);
+#else
+      {
+        double d = dist / 60;
+        dlat = lat + d * cos(deg2rad(cog));
+        dlon = lon + d * sin(deg2rad(cog));
+        dlon = heading_resolve(dlon);
+      }
+#endif
+
+      if (configuration.positive_longitudes && dlon < 0) dlon += 360;
+
+      if (configuration.MaxCourseAngle < 180) {
+        double bearing;
+        // this is faster than gc distance, and actually works better in higher
+        // latitudes
+        double d1 = dlat - configuration.StartLat,
+               d2 = dlon - configuration.StartLon;
+        d2 *= cos(deg2rad(dlat)) / 2;  // correct for latitude
+        bearing = rad2deg(atan2(d2, d1));
+
+        if (fabs(heading_resolve(configuration.StartEndBearing - bearing)) >
+            configuration.MaxCourseAngle) {
+          continue;
+        }
+      }
+
+      if (configuration.MaxDivertedCourse < 180) {
+        double bearing, dist;
+        double bearing1, dist1;
+
+        double d1 = dlat - configuration.EndLat,
+               d2 = dlon - configuration.EndLon;
+        d2 *= cos(deg2rad(dlat)) / 2;  // correct for latitude
+        bearing = rad2deg(atan2(d2, d1));
+        dist = sqrt(pow(d1, 2) + pow(d2, 2));
+
+        d1 = configuration.StartLat - dlat, d2 = configuration.StartLon - dlon;
+        bearing1 = rad2deg(atan2(d2, d1));
+        dist1 = sqrt(pow(d1, 2) + pow(d2, 2));
+
+        double term = (dist1 + dist) / dist;
+        term = pow(term / 16, 4) + 1;  // make 1 until the end, then make big
+
+        if (fabs(heading_resolve(bearing1 - bearing)) >
+            configuration.MaxDivertedCourse * term) {
+          continue;
+        }
+      }
+
+      /* quick test first to avoid slower calculation */
+      if (stw + twsOverWater > configuration.MaxApparentWindKnots &&
+          Polar::VelocityApparentWind(stw, twa, twsOverWater) >
+              configuration.MaxApparentWindKnots) {
+        continue;
+      }
+
+      if (configuration.DetectLand || configuration.DetectBoundary) {
+        double dlat1, dlon1;
+        double bearing, dist2end;
+        double dist2test;
+
+        // it's not an error if there's boundaries after we reach destination
+        ll_gc_ll_reverse(lat, lon, configuration.EndLat, configuration.EndLon,
+                         &bearing, &dist2end);
+        if (dist2end < dist) {
+          dist2test = dist2end;
+          ll_gc_ll(lat, lon, heading_resolve(cog), dist2test, &dlat1, &dlon1);
+        } else {
+          dist2test = dist;
+          dlat1 = dlat;
+          dlon1 = dlon;
+        }
+
+        /* landfall test */
+        if (configuration.DetectLand) {
+          double ndlon1 = dlon1;
+
+          // Check first if crossing land.
+          if (ndlon1 > 360) {
+            ndlon1 -= 360;
+          }
+          if (CrossesLand(dlat1, ndlon1)) {
+            configuration.land_crossing = true;
+            continue;
+          }
+
+          // CUSTOMIZATION - Safety distance from land
+          // -----------------------------------------
+          // Modify the routing according to a safety
+          // margin defined by the user from the land.
+          // CONFIG: 2 NM as a security distance by default.
+          double distSecure = configuration.SafetyMarginLand;
+          double latBorderUp1, lonBorderUp1, latBorderUp2, lonBorderUp2;
+          double latBorderDown1, lonBorderDown1, latBorderDown2, lonBorderDown2;
+
+          // Test if land is found within a rectangle with
+          // dimensions (dist, distSecure). Tests borders, plus diag,
+          // and middle of each side...
+          //            <- dist ->
+          // |-------------------------------|
+          // |                               |    ^
+          // |                               |    distSafety
+          // |-------------------------------|    ^
+          // |                               |
+          // |                               |
+          // |-------------------------------|
+
+          // Fist, find the (lat,long) of each
+          // points of the rectangle
+          ll_gc_ll(lat, lon, heading_resolve(cog) - 90, distSecure,
+                   &latBorderUp1, &lonBorderUp1);
+          ll_gc_ll(dlat1, dlon1, heading_resolve(cog) - 90, distSecure,
+                   &latBorderUp2, &lonBorderUp2);
+          ll_gc_ll(lat, lon, heading_resolve(cog) + 90, distSecure,
+                   &latBorderDown1, &lonBorderDown1);
+          ll_gc_ll(dlat1, dlon1, heading_resolve(cog) + 90, distSecure,
+                   &latBorderDown2, &lonBorderDown2);
+
+          // Then, test if there is land
+          if (PlugIn_GSHHS_CrossesLand(latBorderUp1, lonBorderUp1, latBorderUp2,
+                                       lonBorderUp2) ||
+              PlugIn_GSHHS_CrossesLand(latBorderDown1, lonBorderDown1,
+                                       latBorderDown2, lonBorderDown2) ||
+              PlugIn_GSHHS_CrossesLand(latBorderUp1, lonBorderUp1,
+                                       latBorderDown2, lonBorderDown2) ||
+              PlugIn_GSHHS_CrossesLand(latBorderDown1, lonBorderDown1,
+                                       latBorderUp2, lonBorderUp2)) {
+            configuration.land_crossing = true;
+            continue;
+          }
+        }
+
+        /* Boundary test */
+        if (configuration.DetectBoundary) {
+          if (EntersBoundary(dlat1, dlon1)) {
+            configuration.boundary_crossing = true;
+            continue;
+          }
+        }
+      }
+      /* crosses cyclone track(s)? */
+      if (configuration.AvoidCycloneTracks &&
+          RouteMap::ClimatologyCycloneTrackCrossings) {
+        int crossings = RouteMap::ClimatologyCycloneTrackCrossings(
+            lat, lon, dlat, dlon, configuration.time,
+            configuration.CycloneMonths * 30 + configuration.CycloneDays);
+        if (crossings > 0) {
+          continue;
+        }
+      }
+
+      rp = new Position(dlat, dlon, this, twa, ctw, newpolar, tacks + tacked,
+                        jibes + jibed, sail_plan_changes + sail_plan_changed,
+                        data_mask, configuration.grib_is_data_deficient);
+    }
+  add_position:
+    if (points) {
+      rp->prev = points->prev;
+      rp->next = points;
+      points->prev->next = rp;
+      points->prev = rp;
+    } else {
+      rp->prev = rp->next = rp;
+      points = rp;
+    }
+    count++;
+  }
+
+  if (count < 3) { /* would get eliminated anyway, but save the extra steps */
+    if (count) DeletePoints(points);
+    propagation_error = PROPAGATION_ANGLE_ERROR;
+    return false;
+  }
+
+  IsoRoute* nr = new IsoRoute(points->BuildSkipList());
+  routelist.push_back(nr);
+  return true;
+}
+
+double Position::Distance(Position* p) {
+  return DistGreatCircle(lat, lon, p->lat, p->lon);
+}
+
+int Position::SailChanges() {
+  if (!parent) return 0;
+
+  return (polar != parent->polar) + parent->SailChanges();
+}
+
+wxString Position::GetErrorText(PropagationError error) {
+  static wxString error_texts[] = {_("No error"),
+                                   _("Already propagated"),
+                                   _("Exceeded maximum swell"),
+                                   _("Exceeded maximum latitude"),
+                                   _("Wind data retrieval failed"),
+                                   _("Exceeded maximum wind speed"),
+                                   _("Exceeded wind vs current threshold"),
+                                   _("Angle outside search limits"),
+                                   _("Polar constraints not met"),
+                                   _("Boat speed computation failed"),
+                                   _("Exceeded maximum apparent wind"),
+                                   _("Land intersection detected"),
+                                   _("Boundary intersection detected"),
+                                   _("Cyclone track crossing detected"),
+                                   _("No valid angles found")};
+
+  if (error >= 0 && error <= PROPAGATION_ANGLE_ERROR)
+    return error_texts[error];
+  else
+    return _("Unknown error");
+}
+
+void Position::ResetErrorTracking() {
+  propagation_error = PROPAGATION_NO_ERROR;
+}
+
+wxString Position::GetErrorInfo() const {
+  if (propagation_error == PROPAGATION_NO_ERROR) return wxEmptyString;
+
+  return wxString::Format("%s", GetErrorText(propagation_error));
+}
+
+wxString Position::GetDetailedErrorInfo() const {
+  wxString info;
+
+  if (propagation_error != PROPAGATION_NO_ERROR) {
+    wxString txt = _("Position propagation failed");
+    info += wxString::Format("%s: %s\n", txt, GetErrorText(propagation_error));
+
+    // Add position coordinates
+    wxString ptxt = _("Position");
+    info += wxString::Format("  %s: %.6f, %.6f\n", ptxt, lat, lon);
+
+    // Add wind and current data if available
+    if (parent) {
+      wxString s1 = _("Heading from parent"), s2 = _("Bearing from parent");
+      info += wxString::Format("  %s: %.1f°\n", s1, parent_heading);
+      info += wxString::Format("  %s: %.1f°\n", s2, parent_bearing);
+    }
+  }
+
+  return info;
+}
+
+SkipPosition::SkipPosition(Position* p, int q) : point(p), quadrant(q) {}
+
+void SkipPosition::Remove() {
+  prev->next = next;
+  next->prev = prev;
+  delete this;
+}
+
+/* copy a skip list along with it's position list to new lists */
+SkipPosition* SkipPosition::Copy() {
+  SkipPosition* s = this;
+  if (!s) return s;
+
+  SkipPosition *fs, *ns = nullptr;
+  Position *fp, *np = nullptr;
+  Position* p = s->point;
+  do {
+    Position* nsp = nullptr;
+    do { /* copy all positions between skip positions */
+      Position* nnp = new Position(p);
+      if (!nsp) nsp = nnp;
+      if (np) {
+        np->next = nnp;
+        nnp->prev = np;
+        np = nnp;
+      } else {
+        fp = np = nnp;
+        np->prev = np->next = np;
+      }
+      p = p->next;
+    } while (p != s->next->point);
+
+    SkipPosition* nns = new SkipPosition(nsp, s->quadrant);
+    if (ns) {
+      ns->next = nns;
+      nns->prev = ns;
+      ns = nns;
+    } else {
+      fs = ns = nns;
+      ns->prev = ns->next = nns;
+    }
+    s = s->next;
+  } while (s != this);
+
+  fs->prev = ns;
+  ns->next = fs;
+
+  fp->prev = np;
+  np->next = fp;
+  return fs;
+}

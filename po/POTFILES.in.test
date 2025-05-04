@@ -11,6 +11,7 @@ src/FilterRoutesDialog.cpp
 src/ConfigurationBatchDialog.cpp
 src/EditPolarDialog.cpp
 src/AboutDialog.cpp
+src/ConstraintChecker.cpp
 src/Polar.cpp
 src/Boat.cpp
 src/RouteMap.cpp
@@ -25,6 +26,10 @@ src/zuFile.cpp
 src/georef.c
 src/GribRecord.cpp
 src/navobj_util.cpp
+src/WeatherDataProvider.cpp
+src/RoutePoint.cpp
+src/Position.cpp
+src/IsoRoute.cpp
 include/weather_routing_pi.h
 include/WeatherRouting.h
 include/SunCalculator.h
@@ -36,6 +41,7 @@ include/StatisticsDialog.h
 include/ReportDialog.h
 include/FilterRoutesDialog.h
 include/ConfigurationBatchDialog.h
+include/ConstraintChecker.h
 include/EditPolarDialog.h
 include/AboutDialog.h
 include/Polar.h
@@ -52,3 +58,7 @@ include/zuFile.h
 include/georef.h
 include/GribRecord.h
 include/navobj_util.h
+include/WeatherDataProvider.h
+include/RoutePoint.h
+include/Position.h
+include/IsoRoute.h
