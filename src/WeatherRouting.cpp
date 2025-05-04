@@ -18,6 +18,7 @@
  ***************************************************************************/
 
 #include <wx/wx.h>
+#include <wx/aui/aui.h>
 #include <wx/imaglist.h>
 #include <wx/progdlg.h>
 #include <wx/dir.h>
@@ -45,16 +46,16 @@
  * @todo Should probably be declared there instead, and probably be a boolean.
  */
 enum NEflag {
-  LAT=1,
-  LON=2,
+  LAT = 1,
+  LON = 2,
 };
 
-/** 
+/**
  * Used for precision argument to toSDMM_Plugin function from ocpn_plugin.h.
  **/
 enum Precision {
-  LO=0,
-  HI=1,
+  LO = 0,
+  HI = 1,
 };
 
 /* XPM */
@@ -86,8 +87,6 @@ static const char* eye[] = {"20 20 7 1",
                             "....................",
                             "....................",
                             "...................."};
-
-
 
 WeatherRoute::WeatherRoute() : routemapoverlay(new RouteMapOverlay) {}
 WeatherRoute::~WeatherRoute() { delete routemapoverlay; }
@@ -170,7 +169,8 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
       m_bShowPlot(false),
       m_bShowFilter(false),
       m_weather_routing_pi(plugin),
-      m_positionOnRoute(nullptr) {
+      m_positionOnRoute(nullptr),
+      m_RoutingTablePanel(nullptr) {
   wxFileConfig* pConf = GetOCPNConfigObject();
   pConf->SetPath(_T( "/Plugins/WeatherRouting" ));
 
@@ -490,6 +490,14 @@ WeatherRouting::~WeatherRouting() {
     delete *it;
   delete m_panel;
   delete m_colpane;
+
+  // Clean up routing table panel if it exists
+  if (m_RoutingTablePanel) {
+    wxAuiManager* pauimgr = ::GetFrameAuiManager();
+    pauimgr->DetachPane(m_RoutingTablePanel);
+    m_RoutingTablePanel->Destroy();
+    m_RoutingTablePanel = nullptr;
+  }
 }
 
 #ifdef __OCPN__ANDROID__
@@ -586,11 +594,11 @@ void WeatherRouting::Render(piDC& dc, PlugIn_ViewPort& vp) {
     // XXX FIXME there's already this name, update m_ConfigurationDialog source
     m_panel->m_lPositions->SetItem(index, POSITION_NAME, name);
     m_panel->m_lPositions->SetColumnWidth(POSITION_NAME, wxLIST_AUTOSIZE);
-    m_panel->m_lPositions->SetItem(index, POSITION_LAT,
-                                   toSDMM_PlugIn(NEflag::LAT, lat, Precision::HI));
+    m_panel->m_lPositions->SetItem(
+        index, POSITION_LAT, toSDMM_PlugIn(NEflag::LAT, lat, Precision::HI));
     m_panel->m_lPositions->SetColumnWidth(POSITION_LAT, wxLIST_AUTOSIZE);
-    m_panel->m_lPositions->SetItem(index, POSITION_LON,
-                                   toSDMM_PlugIn(NEflag::LON, lon, Precision::HI));
+    m_panel->m_lPositions->SetItem(
+        index, POSITION_LON, toSDMM_PlugIn(NEflag::LON, lon, Precision::HI));
     m_panel->m_lPositions->SetColumnWidth(POSITION_LON, wxLIST_AUTOSIZE);
     work = true;
   }
@@ -611,6 +619,11 @@ void WeatherRouting::Render(piDC& dc, PlugIn_ViewPort& vp) {
 
   wxDateTime time = m_ConfigurationDialog.m_GribTimelineTime;
   if (!time.IsValid()) time = wxDateTime::UNow();
+
+  // Update highlighted row in the routing table panel if it exists
+  if (m_RoutingTablePanel) {
+    m_RoutingTablePanel->UpdateTimeHighlight(time);
+  }
 
   for (int i = 0; i < m_panel->m_lWeatherRoutes->GetItemCount(); i++) {
     WeatherRoute* weatherroute = reinterpret_cast<WeatherRoute*>(
@@ -667,11 +680,13 @@ void WeatherRouting::AddPosition(double lat, double lon, wxString name) {
 
         it.lat = lat;
         it.lon = lon;
-        m_panel->m_lPositions->SetItem(index, POSITION_LAT, 
-                                       toSDMM_PlugIn(NEflag::LAT, lat, Precision::HI));
+        m_panel->m_lPositions->SetItem(
+            index, POSITION_LAT,
+            toSDMM_PlugIn(NEflag::LAT, lat, Precision::HI));
         m_panel->m_lPositions->SetColumnWidth(POSITION_LAT, wxLIST_AUTOSIZE);
-        m_panel->m_lPositions->SetItem(index, POSITION_LON, 
-                                       toSDMM_PlugIn(NEflag::LON, lon, Precision::HI));
+        m_panel->m_lPositions->SetItem(
+            index, POSITION_LON,
+            toSDMM_PlugIn(NEflag::LON, lon, Precision::HI));
         m_panel->m_lPositions->SetColumnWidth(POSITION_LON, wxLIST_AUTOSIZE);
         UpdateConfigurations();
       }
@@ -689,11 +704,11 @@ void WeatherRouting::AddPosition(double lat, double lon, wxString name) {
 
   m_panel->m_lPositions->SetItem(index, POSITION_NAME, name);
   m_panel->m_lPositions->SetColumnWidth(POSITION_NAME, wxLIST_AUTOSIZE);
-  m_panel->m_lPositions->SetItem(index, POSITION_LAT,
-                                 toSDMM_PlugIn(NEflag::LAT, lat, Precision::HI));
+  m_panel->m_lPositions->SetItem(
+      index, POSITION_LAT, toSDMM_PlugIn(NEflag::LAT, lat, Precision::HI));
   m_panel->m_lPositions->SetColumnWidth(POSITION_LAT, wxLIST_AUTOSIZE);
-  m_panel->m_lPositions->SetItem(index, POSITION_LON,
-                                 toSDMM_PlugIn(NEflag::LON, lon, Precision::HI));
+  m_panel->m_lPositions->SetItem(
+      index, POSITION_LON, toSDMM_PlugIn(NEflag::LON, lon, Precision::HI));
   m_panel->m_lPositions->SetColumnWidth(POSITION_LON, wxLIST_AUTOSIZE);
 
   m_panel->m_lPositions->SetItemData(index, p.ID);
@@ -719,11 +734,11 @@ void WeatherRouting::AddPosition(double lat, double lon, wxString name,
       it.lon = lon;
       m_panel->m_lPositions->SetItem(index, POSITION_NAME, name);
       m_panel->m_lPositions->SetColumnWidth(POSITION_NAME, wxLIST_AUTOSIZE);
-      m_panel->m_lPositions->SetItem(index, POSITION_LAT,
-                                     toSDMM_PlugIn(NEflag::LAT, lat, Precision::HI));
+      m_panel->m_lPositions->SetItem(
+          index, POSITION_LAT, toSDMM_PlugIn(NEflag::LAT, lat, Precision::HI));
       m_panel->m_lPositions->SetColumnWidth(POSITION_LAT, wxLIST_AUTOSIZE);
-      m_panel->m_lPositions->SetItem(index, POSITION_LON,
-                                     toSDMM_PlugIn(NEflag::LON, lon, Precision::HI));
+      m_panel->m_lPositions->SetItem(
+          index, POSITION_LON, toSDMM_PlugIn(NEflag::LON, lon, Precision::HI));
       m_panel->m_lPositions->SetColumnWidth(POSITION_LON, wxLIST_AUTOSIZE);
       UpdateConfigurations();
       m_tAutoSaveXML.Start(5000, true);  // Schedule auto-save in 5 seconds
@@ -741,11 +756,11 @@ void WeatherRouting::AddPosition(double lat, double lon, wxString name,
   m_panel->m_lPositions->SetItem(index, POSITION_NAME, name);
   m_panel->m_lPositions->SetColumnWidth(POSITION_NAME, wxLIST_AUTOSIZE);
 
-  m_panel->m_lPositions->SetItem(index, POSITION_LAT,
-                                 toSDMM_PlugIn(NEflag::LAT, lat, Precision::HI));
+  m_panel->m_lPositions->SetItem(
+      index, POSITION_LAT, toSDMM_PlugIn(NEflag::LAT, lat, Precision::HI));
   m_panel->m_lPositions->SetColumnWidth(POSITION_LAT, wxLIST_AUTOSIZE);
-  m_panel->m_lPositions->SetItem(index, POSITION_LON,
-                                 toSDMM_PlugIn(NEflag::LON, lon, Precision::HI));
+  m_panel->m_lPositions->SetItem(
+      index, POSITION_LON, toSDMM_PlugIn(NEflag::LON, lon, Precision::HI));
   m_panel->m_lPositions->SetColumnWidth(POSITION_LON, wxLIST_AUTOSIZE);
   m_panel->m_lPositions->SetItemData(index, p.ID);
 
@@ -808,8 +823,7 @@ void WeatherRouting::UpdateColumns() {
 
   std::list<WeatherRoute*>::iterator it = m_WeatherRoutes.begin();
   for (int i = 0; i < m_panel->m_lWeatherRoutes->GetItemCount(); i++, it++) {
-    m_panel->m_lWeatherRoutes->SetItemPtrData(
-        i, (wxUIntPtr)*it);  // somehow this gets lost
+    m_panel->m_lWeatherRoutes->SetItemPtrData(i, (wxUIntPtr)*it);
     (*it)->Update(
         this);  // update utc/local switch to strings of start/end time
     UpdateItem(i);
@@ -873,7 +887,7 @@ void WeatherRouting::UpdateCursorPositionDialog() {
   auto latStr = toSDMM_PlugIn(NEflag::LAT, p->lat, Precision::HI);
   auto lonStr = toSDMM_PlugIn(NEflag::LON, p->lon, Precision::HI);
   dlg.m_stPosition->SetLabel(latStr + " " + lonStr);
-  
+
   if (p->polar == -1)
     dlg.m_stPolar->SetLabel(wxEmptyString);
   else {
@@ -963,12 +977,12 @@ void WeatherRouting::UpdateRoutePositionDialog() {
 
   wxString duration = calculateTimeDelta(startTime, cursorTime);
   dlg.m_stDuration->SetLabel(duration);
-  
+
   // POSITION
   auto latStr = toSDMM_PlugIn(NEflag::LAT, data.lat, Precision::HI);
   auto lonStr = toSDMM_PlugIn(NEflag::LON, data.lon, Precision::HI);
   dlg.m_stPosition->SetLabel(latStr + _T(" ") + lonStr);
-  
+
   // POLAR
   if (data.polar == -1)
     dlg.m_stPolar->SetLabel(wxEmptyString);
@@ -1103,10 +1117,10 @@ void WeatherRouting::OnUpdateBoat(wxCommandEvent& event) {
   for (std::list<RouteMapPosition>::iterator it = RouteMap::Positions.begin();
        it != RouteMap::Positions.end(); it++, index++)
     if ((*it).Name == _("Boat")) {
-      m_panel->m_lPositions->SetItem(index, POSITION_LAT,
-                                     toSDMM_PlugIn(NEflag::LAT, lat, Precision::HI));
-      m_panel->m_lPositions->SetItem(index, POSITION_LON,
-                                     toSDMM_PlugIn(NEflag::LON, lon, Precision::HI));
+      m_panel->m_lPositions->SetItem(
+          index, POSITION_LAT, toSDMM_PlugIn(NEflag::LAT, lat, Precision::HI));
+      m_panel->m_lPositions->SetItem(
+          index, POSITION_LON, toSDMM_PlugIn(NEflag::LON, lon, Precision::HI));
 
       (*it).lat = lat, (*it).lon = lon;
       UpdateConfigurations();
@@ -1338,6 +1352,20 @@ void WeatherRouting::OnWeatherRouteSelected() {
   }
 
   UpdateDialogs();
+
+  // Update the Routing Table panel if it exists and is shown
+  if (m_RoutingTablePanel) {
+    wxAuiManager* pauimgr = ::GetFrameAuiManager();
+    wxAuiPaneInfo& pane = pauimgr->GetPane(m_RoutingTablePanel);
+    if (pane.IsOk() && pane.IsShown()) {
+      if (!currentroutemaps.empty()) {
+        // Update with the first selected route
+        ((RoutingTablePanel*)m_RoutingTablePanel)->m_RouteMap =
+            currentroutemaps.front();
+        ((RoutingTablePanel*)m_RoutingTablePanel)->PopulateTable();
+      }
+    }
+  }
 
   SetEnableConfigurationMenu();
 }
@@ -1647,6 +1675,14 @@ bool WeatherRouting::Show(bool show) {
 
     m_bShowRoutePosition = m_RoutePositionDialog.IsShown();
     m_RoutePositionDialog.Hide();
+
+    // Hide routing table panel if it exists
+    if (m_RoutingTablePanel) {
+      wxAuiManager* pauimgr = ::GetFrameAuiManager();
+      wxAuiPaneInfo& pane = pauimgr->GetPane(m_RoutingTablePanel);
+      if (pane.IsOk() && pane.IsShown()) pane.Hide();
+      pauimgr->Update();
+    }
   }
 
   return WeatherRoutingBase::Show(show);
@@ -1736,6 +1772,61 @@ void WeatherRouting::OnCursorPosition(wxCommandEvent& event) {
 void WeatherRouting::OnRoutePosition(wxCommandEvent& event) {
   m_RoutePositionDialog.Show(!m_RoutePositionDialog.IsShown());
   UpdateRoutePositionDialog();
+}
+
+void WeatherRouting::AddRoutingPanel() {
+  std::list<RouteMapOverlay*> currentroutemaps = CurrentRouteMaps(true);
+  if (currentroutemaps.empty()) return;
+
+  if (!m_RoutingTablePanel) {
+    // Create the panel if it doesn't exist yet
+    wxWindow* parent = m_weather_routing_pi.GetParentWindow();
+
+    // Create the panel directly with the updated RoutingTablePanel
+    m_RoutingTablePanel =
+        new RoutingTablePanel(parent, *this, currentroutemaps.front());
+
+    // Add the panel to the AUI manager
+    wxAuiManager* pauimgr = ::GetFrameAuiManager();
+    wxAuiPaneInfo pane = wxAuiPaneInfo()
+                             .Name(_T("Weather Routing Table"))
+                             .Caption(_T("Weather Routing Table"))
+                             .CaptionVisible(true)
+                             .Float()
+                             .FloatingPosition(100, 100)
+                             .FloatingSize(700, 400)
+                             .Dockable(true)
+                             .Movable(true)
+                             .CloseButton(true);
+
+    pauimgr->AddPane(m_RoutingTablePanel, pane);
+
+#if OCPN_API_VERSION_MAJOR > 1 || \
+    (OCPN_API_VERSION_MAJOR == 1 && OCPN_API_VERSION_MINOR >= 20)
+    // Set color scheme using GetAppColorScheme() from the OpenCPN API
+    PI_ColorScheme cs = GetAppColorScheme();
+    ((RoutingTablePanel*)m_RoutingTablePanel)->SetColorScheme(cs);
+#endif
+
+    pauimgr->Update();
+  } else {
+    // Update data in existing panel
+    ((RoutingTablePanel*)m_RoutingTablePanel)->m_RouteMap =
+        currentroutemaps.front();
+    ((RoutingTablePanel*)m_RoutingTablePanel)->PopulateTable();
+
+    // Show the panel if it's hidden
+    wxAuiManager* pauimgr = ::GetFrameAuiManager();
+    wxAuiPaneInfo& pane = pauimgr->GetPane(m_RoutingTablePanel);
+    if (!pane.IsShown()) {
+      pane.Show(true);
+      pauimgr->Update();
+    }
+  }
+}
+
+void WeatherRouting::OnWeatherTable(wxCommandEvent& event) {
+  AddRoutingPanel();
 }
 
 void WeatherRouting::OnManual(wxCommandEvent& event) {
@@ -1992,7 +2083,8 @@ bool WeatherRouting::OpenXML(wxString filename, bool reportfailure) {
         configuration.MaxApparentWindKnots =
             AttributeDouble(e, "MaxApparentWindKnots", 50);
 
-        configuration.MaxSwellMeters = AttributeDouble(e, "MaxSwellMeters", 20.);
+        configuration.MaxSwellMeters =
+            AttributeDouble(e, "MaxSwellMeters", 20.);
         configuration.MaxLatitude = AttributeDouble(e, "MaxLatitude", 90);
         configuration.TackingTime = AttributeDouble(e, "TackingTime", 0);
         configuration.JibingTime = AttributeDouble(e, "JibingTime", 0);
@@ -2259,10 +2351,11 @@ bool WeatherRouting::AddConfiguration(RouteMapConfiguration& configuration) {
   m_WeatherRoutes.push_back(weatherroute);
 
   wxListItem item;
-  item.SetId(m_panel->m_lWeatherRoutes->GetItemCount());
-  item.SetData(weatherroute);
-  if (m_panel->m_lWeatherRoutes->GetColumnCount())
-    UpdateItem(m_panel->m_lWeatherRoutes->InsertItem(item));
+  long index = m_panel->m_lWeatherRoutes->InsertItem(
+      m_panel->m_lWeatherRoutes->GetItemCount(), item);
+
+  m_panel->m_lWeatherRoutes->SetItemPtrData(index, (wxUIntPtr)weatherroute);
+  UpdateItem(index);
 
   m_mDeleteAll->Enable();
   m_mComputeAll->Enable();

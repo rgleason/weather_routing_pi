@@ -329,6 +329,13 @@ public:
    */
   void RouteAnalysis(PlugIn_Route* proute);
 
+  /**
+   * Calculates the sailing comfort level for a given plot position.
+   * @param plot The plot data to analyze.
+   * @return Comfort level (1-3).
+   */
+  int sailingConditionLevel(const PlotData& plot) const;
+
 private:
   /**
    * Renders an alternate route.
@@ -393,13 +400,6 @@ private:
    */
   void RenderWindBarbsOnRoute(piDC& dc, PlugIn_ViewPort& vp, int lineWidth,
                               bool apparentWind);
-
-  /**
-   * Calculates the sailing comfort level for a given plot position.
-   * @param plot The plot data to analyze.
-   * @return Comfort level (1-3).
-   */
-  int sailingConditionLevel(const PlotData& plot) const;
 
   /**
    * Checks if the route calculation should be aborted.

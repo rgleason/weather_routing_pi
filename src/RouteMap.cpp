@@ -66,6 +66,8 @@
 
 #include <stdlib.h>
 #include <math.h>
+#include <functional>
+#include <list>
 #include <map>
 
 #include "Utilities.h"
@@ -114,51 +116,151 @@ static Json::Value RequestGRIB(const wxDateTime& t, const wxString& what,
   return error;
 }
 
-// Return the swell height at the specified lat/long location.
-// @return the swell height in meters. 0 if no data is available.
-static double Swell(RouteMapConfiguration& configuration, double lat,
-                    double lon) {
+/**
+ * Helper function for retrieving weather data from GRIB file or requesting it
+ * remotely.
+ *
+ * This function handles the common boilerplate code for various weather
+ * parameter retrieval functions (CloudCover, Rainfall, AirTemperature,
+ * SeaTemperature, CAPE, RelativeHumidity, AirPressure).
+ *
+ * @param configuration RouteMapConfiguration containing GRIB data and settings
+ * @param lat Latitude in degrees
+ * @param lon Longitude in degrees
+ * @param requestKey GRIB request key (e.g., "CLOUD", "RAIN", etc.)
+ * @param gribIndex Index in the GRIB record array to access the relevant data
+ * @param returnOnEmpty Value to return if no data is available
+ * @param postProcessFn Optional function to post-process the retrieved value
+ *
+ * @return The requested weather parameter value, or returnOnEmpty if no data is
+ * available
+ */
+static double GetWeatherParameter(
+    RouteMapConfiguration& configuration, double lat, double lon,
+    const wxString& requestKey, int gribIndex, double returnOnEmpty = NAN,
+    std::function<double(double)> postProcessFn = nullptr) {
   WR_GribRecordSet* grib = configuration.grib;
 
+  // Try to get data from remote GRIB if local one is not available
   if (!grib && !configuration.RouteGUID.IsEmpty() && configuration.UseGrib) {
-    Json::Value r = RequestGRIB(configuration.time, "SWELL", lat, lon);
-    if (!r.isMember("SWELL")) return 0;
-    return r["SWELL"].asDouble();
+    Json::Value r = RequestGRIB(configuration.time, requestKey, lat, lon);
+    if (!r.isMember(requestKey)) return returnOnEmpty;
+    double value = r[requestKey].asDouble();
+    return postProcessFn ? postProcessFn(value) : value;
   }
 
-  if (!grib) return 0;
+  // Return early if no GRIB data at all
+  if (!grib) return returnOnEmpty;
 
-  GribRecord* grh = grib->m_GribRecordPtrArray[Idx_HTSIGW];
-  if (!grh) return 0;
+  // Try to retrieve the data from local GRIB
+  GribRecord* grh = grib->m_GribRecordPtrArray[gribIndex];
+  if (!grh) return returnOnEmpty;
 
-  double height = grh->getInterpolatedValue(lon, lat, true);
-  if (height == GRIB_NOTDEF) return 0;
-  // yep swell data can be negative!
-  if (height < 0.) return 0.;
-  return height;
+  double value = grh->getInterpolatedValue(lon, lat, true);
+  if (value == GRIB_NOTDEF) return returnOnEmpty;
+
+  return postProcessFn ? postProcessFn(value) : value;
 }
 
-// Return the wind gust speed for the specified lat/long location, in knots.
+/**
+ * Return the swell height at the specified lat/long location.
+ * @return the swell height in meters. 0 if no data is available.
+ */
+static double Swell(RouteMapConfiguration& configuration, double lat,
+                    double lon) {
+  return GetWeatherParameter(
+      configuration, lat, lon, "SWELL", Idx_HTSIGW, NAN,
+      [](double height) { return height < 0 ? 0 : height; });
+}
+
+/**
+ * Return the wind gust speed for the specified lat/long location, in knots.
+ * @return the wind gust speed in knots. 0 if no data is available.
+ */
 static double Gust(RouteMapConfiguration& configuration, double lat,
                    double lon) {
-  WR_GribRecordSet* grib = configuration.grib;
-  double gust;
+  return GetWeatherParameter(
+      configuration, lat, lon, "GUST", Idx_WIND_GUST, NAN,
+      [](double gust) { return gust * 3.6 / 1.852; });  // Convert to knots
+}
 
-  if (!grib && !configuration.RouteGUID.IsEmpty() && configuration.UseGrib) {
-    Json::Value r = RequestGRIB(configuration.time, "GUST", lat, lon);
-    if (!r.isMember("GUST")) return NAN;
-    gust = r["GUST"].asDouble();
-  } else if (!grib)
-    return NAN;
-  else {
-    GribRecord* grh = grib->m_GribRecordPtrArray[Idx_WIND_GUST];
-    if (!grh) return NAN;
+/**
+ * Return the cloud cover as percentage.
+ */
+static double CloudCover(RouteMapConfiguration& configuration, double lat,
+                         double lon) {
+  return GetWeatherParameter(configuration, lat, lon, "CLOUD", Idx_CLOUD_TOT,
+                             NAN);
+}
 
-    gust = grh->getInterpolatedValue(lon, lat, true);
-  }
-  if (gust == GRIB_NOTDEF) return NAN;
-  gust *= 3.6 / 1.852;  // knots
-  return gust;
+/**
+ * Return the rainfall rate at the specified lat/long location.
+ * @return the rainfall rate in mm/h. 0 if no data is available.
+ */
+static double Rainfall(RouteMapConfiguration& configuration, double lat,
+                       double lon) {
+  return GetWeatherParameter(configuration, lat, lon, "RAIN", Idx_PRECIP_TOT,
+                             NAN);
+}
+
+/**
+ * Return the air temperature at the specified lat/long location.
+ * @return the air temperature in degrees Celsius. 0 if no data is available.
+ */
+static double AirTemperature(RouteMapConfiguration& configuration, double lat,
+                             double lon) {
+  return GetWeatherParameter(configuration, lat, lon, "AIR TEMP", Idx_AIR_TEMP,
+                             NAN);
+}
+
+/**
+ * Return the sea temperature at the specified lat/long location.
+ * @return the sea temperature in degrees Celsius. 0 if no data is available.
+ */
+static double SeaTemperature(RouteMapConfiguration& configuration, double lat,
+                             double lon) {
+  return GetWeatherParameter(configuration, lat, lon, "SEA TEMP", Idx_SEA_TEMP,
+                             NAN);
+}
+
+/**
+ * Return the CAPE (Convective Available Potential Energy) at the specified
+ * lat/long location.
+ * @return the CAPE in J/kg. 0 if no data is available.
+ */
+static double CAPE(RouteMapConfiguration& configuration, double lat,
+                   double lon) {
+  return GetWeatherParameter(configuration, lat, lon, "CAPE", Idx_CAPE, NAN);
+}
+
+/**
+ * Return the relative humidity at the specified lat/long location.
+ * @return the relative humidity in percent. 0 if no data is available.
+ */
+static double RelativeHumidity(RouteMapConfiguration& configuration, double lat,
+                               double lon) {
+  return GetWeatherParameter(configuration, lat, lon, "REL HUM", Idx_HUMID_RE,
+                             NAN);
+}
+
+/**
+ * Return the air surface pressure at the specified lat/long location.
+ * @return the air pressure in hPa. NAN if no data is available.
+ */
+static double AirPressure(RouteMapConfiguration& configuration, double lat,
+                          double lon) {
+  return GetWeatherParameter(configuration, lat, lon, "PRESSURE", Idx_PRESSURE,
+                             NAN);
+}
+
+/**
+ * Return the reflectivity at the specified lat/long location.
+ * @return the reflectivity in dBZ. NAN if no data is available.
+ */
+static double Reflectivity(RouteMapConfiguration& configuration, double lat,
+                           double lon) {
+  return GetWeatherParameter(configuration, lat, lon, "REFLECTIVITY",
+                             Idx_COMP_REFL, NAN);
 }
 
 /**
@@ -675,6 +777,15 @@ bool RoutePoint::GetPlotData(RoutePoint* next, double dt,
   data.WVHT = Swell(configuration, lat, lon);
   data.VW_GUST = Gust(configuration, lat, lon);
   data.delta = dt;
+
+  data.cloud_cover = CloudCover(configuration, lat, lon);
+  data.rain_mm_per_hour = Rainfall(configuration, lat, lon);
+  data.air_temp = AirTemperature(configuration, lat, lon);
+  data.sea_surface_temp = SeaTemperature(configuration, lat, lon);
+  data.cape = CAPE(configuration, lat, lon);
+  data.relative_humidity = RelativeHumidity(configuration, lat, lon);
+  data.reflectivity = Reflectivity(configuration, lat, lon);
+  data.air_pressure = AirPressure(configuration, lat, lon);
 
   climatology_wind_atlas atlas;
   int data_mask = 0;  // not used for plotting yet
@@ -3215,6 +3326,13 @@ double RouteMap::DetermineDeltaTime() {
   double minDistToEnd = INFINITY;
   double maxDistFromStart = -INFINITY;
 
+  const double proximityThreshold = 40.0;  // nautical miles
+  const double minReductionFactor =
+      0.1;  // Minimum reduction factor (10% of normal time step)
+  // Will be adjusted based on distances
+  double startReductionFactor = 1.0;
+  double endReductionFactor = 1.0;
+
   // Reduced time step when leaving source or approaching destination.
   if (!origin.empty()) {
     // Get the last isochron
@@ -3248,24 +3366,32 @@ double RouteMap::DetermineDeltaTime() {
       } while (pos != (*it)->skippoints->point);
     }
 
-    const double proximityThreshold = 40.0;  // nautical miles
+    // Calculate gradual reduction factors
 
-    double startReductionFactor = 1.0;
-    double endReductionFactor = 1.0;
+    // For starting point: gradually increase from minReductionFactor to 1.0
     if (maxDistFromStart < proximityThreshold) {
-      startReductionFactor = 0.1;
+      // As we move away from the start, the time step increases.
+      startReductionFactor =
+          minReductionFactor + (0.9 * maxDistFromStart / proximityThreshold);
     }
+
+    // For destination: gradually decrease from 1.0 to minReductionFactor
     if (minDistToEnd < proximityThreshold) {
-      endReductionFactor = 0.1;
+      // As we get closer to the destination, the time step decreases.
+      endReductionFactor =
+          minReductionFactor + (0.9 * minDistToEnd / proximityThreshold);
     }
+
+    // Apply the minimum of both reduction factors.
+    // This ensures proper handling when we're both near start and destination.
     deltaTime *= std::min(startReductionFactor, endReductionFactor);
   } else {
-    // For the first step, use 1/4 of the deltaTime.
-    deltaTime = m_Configuration.DeltaTime * 0.1;
+    // For the first step, use the minimum reduction factor.
+    deltaTime = m_Configuration.DeltaTime * minReductionFactor;
   }
 
-  // Ensure delta time doesn't go below a reasonable minimum
-  const double minDeltaTime = 60.0;  // 1 minute in seconds
+  // Ensure delta time doesn't go below a reasonable minimum.
+  const double minDeltaTime = 60.0;  // in seconds
   return std::max(deltaTime, minDeltaTime);
 }
 
@@ -3372,6 +3498,14 @@ void RouteMap::SetNewGrib(GribRecordSet* grib) {
       case Idx_WIND_VY:
       case Idx_SEACURRENT_VX:
       case Idx_SEACURRENT_VY:
+      case Idx_AIR_TEMP:
+      case Idx_CAPE:
+      case Idx_CLOUD_TOT:
+      case Idx_HUMID_RE:
+      case Idx_PRECIP_TOT:
+      case Idx_SEA_TEMP:
+      case Idx_PRESSURE:
+      case Idx_COMP_REFL:
         if (grib->m_GribRecordPtrArray[i]) {
           m_NewGrib->SetUnRefGribRecord(
               i, new GribRecord(*grib->m_GribRecordPtrArray[i]));

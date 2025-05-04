@@ -54,6 +54,7 @@ enum {
   Idx_AIR_TEMP300,
   Idx_SEA_TEMP,
   Idx_CAPE,
+  Idx_COMP_REFL,
   Idx_HUMID_RE,
   Idx_HUMID_RE850,
   Idx_HUMID_RE700,

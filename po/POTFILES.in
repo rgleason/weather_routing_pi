@@ -15,6 +15,7 @@ src/Polar.cpp
 src/Boat.cpp
 src/RouteMap.cpp
 src/RouteMapOverlay.cpp
+src/RoutingTablePanel.cpp
 src/Utilities.cpp
 src/LineBufferOverlay.cpp
 src/PolygonRegion.cpp
@@ -41,6 +42,7 @@ include/Polar.h
 include/Boat.h
 include/RouteMap.h
 include/RouteMapOverlay.h
+include/RoutingTablePanel.h
 include/Utilities.h
 include/LineBufferOverlay.h
 include/PolygonRegion.h

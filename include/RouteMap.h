@@ -1,9 +1,4 @@
 /***************************************************************************
- *
- * Project:  OpenCPN Weather Routing plugin
- * Author:   Sean D'Epagnier
- *
- ***************************************************************************
  *   Copyright (C) 2016 by Sean D'Epagnier                                 *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
@@ -20,8 +15,7 @@
  *   along with this program; if not, write to the                         *
  *   Free Software Foundation, Inc.,                                       *
  *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,  USA.         *
- ***************************************************************************
- */
+ ***************************************************************************/
 
 #include "wx/datetime.h"
 #include <wx/object.h>
@@ -116,11 +110,11 @@ public:
   double lon;
   /** The index of the polar to use at this position. */
   int polar;
-  /** The number of tack maneuvers to get to this position. */
+  /** The cumulative number of tack maneuvers to get to this position. */
   int tacks;
-  /** The number of jibe maneuvers to get to this position. */
+  /** The cumulative number of jibe maneuvers to get to this position. */
   int jibes;
-  /** The number of sail plan changes to get to this position. */
+  /** The cumulative number of sail plan changes to get to this position. */
   int sail_plan_changes;
 
   bool grib_is_data_deficient;
@@ -287,7 +281,7 @@ public:
 class PlotData : public RoutePoint {
 public:
   /** The time when the boat reaches this position, based on the route
-   * calculation. */
+   * calculation. TODO: is it UTC? */
   wxDateTime time;
   /** The time in seconds from the previous position to this position. */
   double delta;
@@ -344,10 +338,19 @@ public:
    * significant current is present.
    */
   double twdOverGround;
-  double currentSpeed;  //!< Velocity of current over ground in knots.
+  double currentSpeed;  //!< Speed of sea current over ground in knots.
   double currentDir;    //!< Sea current direction over ground in degrees.
   double WVHT;          //!< Significant swell height in meters.
   double VW_GUST;       //!< Gust wind speed in knots.
+
+  double cloud_cover;        //!< Cloud cover in percent (0-100%).
+  double rain_mm_per_hour;   //!< Rainfall in mm.
+  double air_temp;           //!< Air temperature in degrees Celsius.
+  double sea_surface_temp;   //!< Sea surface temperature in degrees Celsius.
+  double cape;               //!< The CAPE value in J/kg.
+  double relative_humidity;  //!< Relative humidity in percent (0-100%).
+  double air_pressure;       //!< Surface air pressure in hPa.
+  double reflectivity;       //!< Reflectivity in dBZ.
 };
 
 class SkipPosition;

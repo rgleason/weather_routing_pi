@@ -193,6 +193,7 @@ protected:
    * signature)
    */
   virtual void OnRoutePosition(wxCommandEvent& event) { event.Skip(); }
+  virtual void OnWeatherTable(wxCommandEvent& event) { event.Skip(); }
   virtual void OnInformation(wxCommandEvent& event) { event.Skip(); }
   virtual void OnManual(wxCommandEvent& event) { event.Skip(); }
   virtual void OnAbout(wxCommandEvent& event) { event.Skip(); }
@@ -587,6 +588,22 @@ protected:
     JIBES,
     /** Number of sail plan changes in a sailing route. */
     SAIL_PLAN_CHANGES,
+    /** Cloud Cloud cover in percent (0-100%). */
+    CLOUD_COVER,
+    /** Rainfall in mm. */
+    RAINFALL,
+    /** Air temperature in degrees Celsius. */
+    AIR_TEMPERATURE,
+    /** Sea surface temperature in degrees Celsius. */
+    SEA_SURFACE_TEMPERATURE,
+    /** CAPE value */
+    CAPE,
+    /** Relative humidity */
+    RELATIVE_HUMIDITY,
+    /** Surface air pressure */
+    AIR_PRESSURE,
+    /** Reflectivity */
+    REFLECTIVITY,
   };
 
   /**
@@ -632,6 +649,14 @@ protected:
         {TACKS, _("Tacks")},
         {JIBES, _("Jibes")},
         {SAIL_PLAN_CHANGES, _("Sail Plan Changes")},
+        {CLOUD_COVER, _("Cloud Cover")},
+        {RAINFALL, _("Rainfall")},
+        {AIR_TEMPERATURE, _("Air Temperature")},
+        {SEA_SURFACE_TEMPERATURE, _("Sea Surface Temperature")},
+        {CAPE, _("CAPE")},
+        {RELATIVE_HUMIDITY, _("Relative Humidity")},
+        {AIR_PRESSURE, _("Air Pressure")},
+        {REFLECTIVITY, _("Reflectivity")},
     };
 
     static const int variableInfoCount =
@@ -1156,4 +1181,25 @@ public:
                       const wxSize& size = wxSize(-1, -1),
                       long style = wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
   ~EditPolarDialogBase();
+};
+
+/**
+ * UI component to display a weather table for a specific weather routing.
+ */
+class RoutingTablePanelBase : public wxDialog {
+private:
+protected:
+  wxGrid* m_gridWeatherTable;
+  wxButton* m_btnClose;
+
+  // Virtual event handlers, override them in your derived class
+  virtual void OnClose(wxCommandEvent& event) { event.Skip(); }
+
+public:
+  RoutingTablePanelBase(wxWindow* parent, wxWindowID id = wxID_ANY,
+                        const wxString& title = _("Weather Routing Table"),
+                        const wxPoint& pos = wxDefaultPosition,
+                        const wxSize& size = wxSize(-1, -1),
+                        long style = wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
+  ~RoutingTablePanelBase();
 };

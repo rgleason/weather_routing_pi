@@ -19,7 +19,7 @@
 # - xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx,                                       *
 # - xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx                                       *
 # -----------------------------------------------------------------------------
-# Frontend2 Author: Jon Gough Testplugin(TP) v1.0.331.0 06/04/2025 DD/MM/YYYY
+# Frontend2 Author: Jon Gough Testplugin(TP) v1.0.340.0 29/04/2025 DD/MM/YYYY
 # format buildCI:yes useODAPI:no validateJSON:no
 # ---------------------------------------------------------------------------
 ## -- When changing this file do NOT change the order of the sections.    -- ##
@@ -49,6 +49,9 @@ if(COMMAND cmake_policy)
   if (POLICY CMP0077)
     cmake_policy(SET CMP0077 NEW)
   endif (POLICY CMP0077)
+  if (POLICY CMP0079)
+    cmake_policy(SET CMP0079 NEW)
+  endif (POLICY CMP0079)
   if (POLICY CMP0175)
     cmake_policy(SET CMP0175 NEW)
   endif (POLICY CMP0175)
@@ -71,9 +74,9 @@ set(LONG_DESCRIPTION "WR features include: optimal routing subject to various co
 
 set(VERSION_MAJOR "1")
 set(VERSION_MINOR "15")
-set(VERSION_PATCH "21")
-set(VERSION_TWEAK "26")
-set(VERSION_DATE  "17/04/2025")#DD/MM/YYYY format
+set(VERSION_PATCH "23")
+set(VERSION_TWEAK "0")
+set(VERSION_DATE  "24/04/2025")#DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov58")
 
 set(OCPN_API_VERSION_MAJOR "1")
@@ -185,6 +188,7 @@ SET(SRCS
             src/Boat.cpp
             src/RouteMap.cpp
             src/RouteMapOverlay.cpp
+            src/RoutingTablePanel.cpp
             src/Utilities.cpp
             src/LineBufferOverlay.cpp
             src/PolygonRegion.cpp
@@ -214,6 +218,7 @@ SET (HDRS
             include/Boat.h
             include/RouteMap.h
             include/RouteMapOverlay.h
+            include/RoutingTablePanel.h
             include/Utilities.h
             include/LineBufferOverlay.h
             include/PolygonRegion.h
