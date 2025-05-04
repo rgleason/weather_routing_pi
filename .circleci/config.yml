@@ -143,7 +143,7 @@ jobs:
                 git config --global fsck.skipList=/tmp/fsck.skipList.txt
                 git config --global fetch.fsck.skipList=/tmp/fsck.skipList.txt
                 git config --global receive.fsck.skipList=/tmp/fsck.skipList.txt
-                git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
+        - checkout
         - run: chmod a+x ci/*.sh
         - run: bash ci/circleci-build-android-arm64.sh
         - deploy-code:
@@ -163,8 +163,7 @@ jobs:
                 git config --global fsck.skipList=/tmp/fsck.skipList.txt
                 git config --global fetch.fsck.skipList=/tmp/fsck.skipList.txt
                 git config --global receive.fsck.skipList=/tmp/fsck.skipList.txt
-                git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
-
+        - checkout
         - run: chmod a+x ci/*.sh
         - run: bash ci/circleci-build-android-armhf.sh
         - deploy-code:
@@ -237,7 +236,7 @@ jobs:
                 git config --global fsck.skipList=/tmp/fsck.skipList.txt
                 git config --global fetch.fsck.skipList=/tmp/fsck.skipList.txt
                 git config --global receive.fsck.skipList=/tmp/fsck.skipList.txt
-                git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
+        - checkout
 
         - run: chmod a+x ci/*.sh
         - run:
@@ -260,8 +259,7 @@ jobs:
                 git config --global fsck.skipList=/tmp/fsck.skipList.txt
                 git config --global fetch.fsck.skipList=/tmp/fsck.skipList.txt
                 git config --global receive.fsck.skipList=/tmp/fsck.skipList.txt
-                git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
-
+        - checkout
         - run: chmod a+x ci/*.sh
         - run:
             command: bash ci/circleci-build-flatpak.sh
@@ -285,8 +283,7 @@ jobs:
                 git config --global fsck.skipList=/tmp/fsck.skipList.txt
                 git config --global fetch.fsck.skipList=/tmp/fsck.skipList.txt
                 git config --global receive.fsck.skipList=/tmp/fsck.skipList.txt
-                git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
-
+        - checkout
         - run: chmod a+x ci/*.sh
         - run:
             command: bash ci/circleci-build-flatpak.sh
@@ -308,8 +305,7 @@ jobs:
                 git config --global fsck.skipList=/tmp/fsck.skipList.txt
                 git config --global fetch.fsck.skipList=/tmp/fsck.skipList.txt
                 git config --global receive.fsck.skipList=/tmp/fsck.skipList.txt
-                git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
-
+        - checkout
         - run: chmod a+x ci/*.sh
         - run:
             command: bash ci/circleci-build-flatpak.sh
@@ -334,8 +330,7 @@ jobs:
                 git config --global fsck.skipList=/tmp/fsck.skipList.txt
                 git config --global fetch.fsck.skipList=/tmp/fsck.skipList.txt
                 git config --global receive.fsck.skipList=/tmp/fsck.skipList.txt
-                git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
-
+        - checkout
         - run: chmod a+x ./ci/*.sh
         - run:
             command: ci/circleci-build-ubuntu-docker.sh
@@ -360,8 +355,7 @@ jobs:
                 git config --global fsck.skipList=/tmp/fsck.skipList.txt
                 git config --global fetch.fsck.skipList=/tmp/fsck.skipList.txt
                 git config --global receive.fsck.skipList=/tmp/fsck.skipList.txt
-                git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
-
+        - checkout
         - run: chmod a+x ./ci/*.sh
         - run:
             command: ci/circleci-build-ubuntu-docker.sh
@@ -384,8 +378,7 @@ jobs:
                 git config --global fsck.skipList=/tmp/fsck.skipList.txt
                 git config --global fetch.fsck.skipList=/tmp/fsck.skipList.txt
                 git config --global receive.fsck.skipList=/tmp/fsck.skipList.txt
-                git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
-
+        - checkout
         - run: chmod a+x ci/*.sh
         - run:
             command: ci/circleci-build-ubuntu-docker.sh
@@ -409,8 +402,7 @@ jobs:
                 git config --global fsck.skipList=/tmp/fsck.skipList.txt
                 git config --global fetch.fsck.skipList=/tmp/fsck.skipList.txt
                 git config --global receive.fsck.skipList=/tmp/fsck.skipList.txt
-                git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
-
+        - checkout
         - run: chmod a+x ./ci/*.sh
         - run:
             command: ci/circleci-build-ubuntu-docker.sh
@@ -434,8 +426,7 @@ jobs:
                 git config --global fsck.skipList=/tmp/fsck.skipList.txt
                 git config --global fetch.fsck.skipList=/tmp/fsck.skipList.txt
                 git config --global receive.fsck.skipList=/tmp/fsck.skipList.txt
-                git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
-
+        - checkout
         - run: chmod a+x ./ci/*.sh
         - run:
             command: ci/circleci-build-ubuntu-docker.sh
@@ -456,8 +447,7 @@ jobs:
                 git config --global fsck.skipList=/tmp/fsck.skipList.txt
                 git config --global fetch.fsck.skipList=/tmp/fsck.skipList.txt
                 git config --global receive.fsck.skipList=/tmp/fsck.skipList.txt
-                git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
-
+        - checkout
         - run: >
             echo "deb-src http://ftp.us.debian.org/debian bullseye main"
             | sudo tee -a /etc/apt/sources.list
@@ -485,7 +475,7 @@ jobs:
                 git config --global fsck.skipList=/tmp/fsck.skipList.txt
                 git config --global fetch.fsck.skipList=/tmp/fsck.skipList.txt
                 git config --global receive.fsck.skipList=/tmp/fsck.skipList.txt
-                git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL"
+        - checkout
         - run:
             name: "Update apt sources"
             command: |
