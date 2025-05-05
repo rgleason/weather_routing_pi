@@ -208,8 +208,12 @@ bool RoutePoint::ComputeBoatSpeed(
 double RoutePoint::PropagateToPoint(double dlat, double dlon,
                                     RouteMapConfiguration& configuration,
                                     double& heading, int& data_mask, bool end) {
-  double swell = WeatherDataProvider::GetSwell(configuration, lat, lon);
-  if (swell > configuration.MaxSwellMeters) return NAN;
+  PropagationError error_code;
+  double swell;
+  if (!ConstraintChecker::CheckSwellConstraint(configuration, lat, lon, swell,
+                                               error_code)) {
+    return NAN;
+  }
 
   if (fabs(lat) > configuration.MaxLatitude) return NAN;
 
@@ -341,14 +345,10 @@ double RoutePoint::PropagateToPoint(double dlat, double dlon,
   }
 
   /* crosses cyclone track(s)? */
-  if (configuration.AvoidCycloneTracks &&
-      RouteMap::ClimatologyCycloneTrackCrossings) {
-    int crossings = RouteMap::ClimatologyCycloneTrackCrossings(
-        lat, lon, configuration.EndLat, configuration.EndLon,
-        configuration.time,
-        configuration.CycloneMonths * 30 + configuration.CycloneDays);
-
-    if (crossings > 0) return NAN;
+  if (!ConstraintChecker::CheckCycloneTrackConstraint(configuration, lat, lon,
+                                                      configuration.EndLat,
+                                                      configuration.EndLon)) {
+    return NAN;
   }
   polar = newpolar;
 

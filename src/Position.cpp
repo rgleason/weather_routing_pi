@@ -216,14 +216,13 @@ bool Position::Propagate(IsoRouteList& routelist,
   Position* points = nullptr;
   /* through all angles relative to wind */
   int count = 0;
-
-  if (!ConstraintChecker::CheckSwellConstraint(lat, lon, configuration,
+  double swell;
+  if (!ConstraintChecker::CheckSwellConstraint(configuration, lat, lon, swell,
                                                propagation_error)) {
     return false;
   }
-
-  if (fabs(lat) > configuration.MaxLatitude) {
-    propagation_error = PROPAGATION_EXCEEDED_MAX_LATITUDE;
+  if (!ConstraintChecker::CheckMaxLatitudeConstraint(configuration, lat,
+                                                     propagation_error)) {
     return false;
   }
 
@@ -312,7 +311,6 @@ bool Position::Propagate(IsoRouteList& routelist,
     }
 
     {
-      double swell = WeatherDataProvider::GetSwell(configuration, lat, lon);
       PolarSpeedStatus status;
       int newpolar = configuration.boat.FindBestPolarForCondition(
           polar, twsOverWater, twa, swell, configuration.OptimizeTacking,
@@ -374,6 +372,8 @@ bool Position::Propagate(IsoRouteList& routelist,
         continue;
       }
 
+      // {dlat, dlon} represent the destination coordinates for a route point
+      // after propagation.
       double dlat, dlon;
       if (configuration.Integrator == RouteMapConfiguration::RUNGE_KUTTA) {
         double k2_dist, k2_BG, k3_dist, k3_BG, k4_dist, k4_BG;
@@ -411,43 +411,13 @@ bool Position::Propagate(IsoRouteList& routelist,
 #endif
 
       if (configuration.positive_longitudes && dlon < 0) dlon += 360;
-
-      if (configuration.MaxCourseAngle < 180) {
-        double bearing;
-        // this is faster than gc distance, and actually works better in higher
-        // latitudes
-        double d1 = dlat - configuration.StartLat,
-               d2 = dlon - configuration.StartLon;
-        d2 *= cos(deg2rad(dlat)) / 2;  // correct for latitude
-        bearing = rad2deg(atan2(d2, d1));
-
-        if (fabs(heading_resolve(configuration.StartEndBearing - bearing)) >
-            configuration.MaxCourseAngle) {
-          continue;
-        }
+      if (!ConstraintChecker::CheckMaxCourseAngleConstraint(configuration, dlat,
+                                                            dlon)) {
+        continue;
       }
-
-      if (configuration.MaxDivertedCourse < 180) {
-        double bearing, dist;
-        double bearing1, dist1;
-
-        double d1 = dlat - configuration.EndLat,
-               d2 = dlon - configuration.EndLon;
-        d2 *= cos(deg2rad(dlat)) / 2;  // correct for latitude
-        bearing = rad2deg(atan2(d2, d1));
-        dist = sqrt(pow(d1, 2) + pow(d2, 2));
-
-        d1 = configuration.StartLat - dlat, d2 = configuration.StartLon - dlon;
-        bearing1 = rad2deg(atan2(d2, d1));
-        dist1 = sqrt(pow(d1, 2) + pow(d2, 2));
-
-        double term = (dist1 + dist) / dist;
-        term = pow(term / 16, 4) + 1;  // make 1 until the end, then make big
-
-        if (fabs(heading_resolve(bearing1 - bearing)) >
-            configuration.MaxDivertedCourse * term) {
-          continue;
-        }
+      if (!ConstraintChecker::CheckMaxDivertedCourse(configuration, dlat,
+                                                     dlon)) {
+        continue;
       }
 
       /* quick test first to avoid slower calculation */
@@ -475,62 +445,10 @@ bool Position::Propagate(IsoRouteList& routelist,
         }
 
         /* landfall test */
-        if (configuration.DetectLand) {
-          double ndlon1 = dlon1;
-
-          // Check first if crossing land.
-          if (ndlon1 > 360) {
-            ndlon1 -= 360;
-          }
-          if (CrossesLand(dlat1, ndlon1)) {
-            configuration.land_crossing = true;
-            continue;
-          }
-
-          // CUSTOMIZATION - Safety distance from land
-          // -----------------------------------------
-          // Modify the routing according to a safety
-          // margin defined by the user from the land.
-          // CONFIG: 2 NM as a security distance by default.
-          double distSecure = configuration.SafetyMarginLand;
-          double latBorderUp1, lonBorderUp1, latBorderUp2, lonBorderUp2;
-          double latBorderDown1, lonBorderDown1, latBorderDown2, lonBorderDown2;
-
-          // Test if land is found within a rectangle with
-          // dimensions (dist, distSecure). Tests borders, plus diag,
-          // and middle of each side...
-          //            <- dist ->
-          // |-------------------------------|
-          // |                               |    ^
-          // |                               |    distSafety
-          // |-------------------------------|    ^
-          // |                               |
-          // |                               |
-          // |-------------------------------|
-
-          // Fist, find the (lat,long) of each
-          // points of the rectangle
-          ll_gc_ll(lat, lon, heading_resolve(cog) - 90, distSecure,
-                   &latBorderUp1, &lonBorderUp1);
-          ll_gc_ll(dlat1, dlon1, heading_resolve(cog) - 90, distSecure,
-                   &latBorderUp2, &lonBorderUp2);
-          ll_gc_ll(lat, lon, heading_resolve(cog) + 90, distSecure,
-                   &latBorderDown1, &lonBorderDown1);
-          ll_gc_ll(dlat1, dlon1, heading_resolve(cog) + 90, distSecure,
-                   &latBorderDown2, &lonBorderDown2);
-
-          // Then, test if there is land
-          if (PlugIn_GSHHS_CrossesLand(latBorderUp1, lonBorderUp1, latBorderUp2,
-                                       lonBorderUp2) ||
-              PlugIn_GSHHS_CrossesLand(latBorderDown1, lonBorderDown1,
-                                       latBorderDown2, lonBorderDown2) ||
-              PlugIn_GSHHS_CrossesLand(latBorderUp1, lonBorderUp1,
-                                       latBorderDown2, lonBorderDown2) ||
-              PlugIn_GSHHS_CrossesLand(latBorderDown1, lonBorderDown1,
-                                       latBorderUp2, lonBorderUp2)) {
-            configuration.land_crossing = true;
-            continue;
-          }
+        if (!ConstraintChecker::CheckLandConstraint(configuration, lat, lon,
+                                                    dlat1, dlon1, cog)) {
+          configuration.land_crossing = true;
+          continue;
         }
 
         /* Boundary test */
@@ -542,14 +460,9 @@ bool Position::Propagate(IsoRouteList& routelist,
         }
       }
       /* crosses cyclone track(s)? */
-      if (configuration.AvoidCycloneTracks &&
-          RouteMap::ClimatologyCycloneTrackCrossings) {
-        int crossings = RouteMap::ClimatologyCycloneTrackCrossings(
-            lat, lon, dlat, dlon, configuration.time,
-            configuration.CycloneMonths * 30 + configuration.CycloneDays);
-        if (crossings > 0) {
-          continue;
-        }
+      if (!ConstraintChecker::CheckCycloneTrackConstraint(configuration, lat,
+                                                          lon, dlat, dlon)) {
+        continue;
       }
 
       rp = new Position(dlat, dlon, this, twa, ctw, newpolar, tacks + tacked,

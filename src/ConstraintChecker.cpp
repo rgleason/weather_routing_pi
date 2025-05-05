@@ -22,14 +22,149 @@
 #include "ConstraintChecker.h"
 #include "WeatherDataProvider.h"
 #include "RouteMap.h"
+#include "Utilities.h"
+
+#include "georef.h"
+#include "ocpn_plugin.h"
 
 bool ConstraintChecker::CheckSwellConstraint(
-    double lat, double lon, RouteMapConfiguration& configuration,
+    RouteMapConfiguration& configuration, double lat, double lon, double& swell,
     PropagationError& error_code) {
-  double swell = WeatherDataProvider::GetSwell(configuration, lat, lon);
+  swell = WeatherDataProvider::GetSwell(configuration, lat, lon);
   if (swell > configuration.MaxSwellMeters) {
     error_code = PROPAGATION_EXCEEDED_MAX_SWELL;
     return false;
+  }
+  return true;
+}
+
+bool ConstraintChecker::CheckMaxLatitudeConstraint(
+    RouteMapConfiguration& configuration, double lat,
+    PropagationError& error_code) {
+  if (fabs(lat) > configuration.MaxLatitude) {
+    error_code = PROPAGATION_EXCEEDED_MAX_LATITUDE;
+    return false;
+  }
+  return true;
+}
+
+bool ConstraintChecker::CheckCycloneTrackConstraint(
+    RouteMapConfiguration& configuration, double lat, double lon, double dlat,
+    double dlon) {
+  if (configuration.AvoidCycloneTracks &&
+      RouteMap::ClimatologyCycloneTrackCrossings) {
+    int crossings = RouteMap::ClimatologyCycloneTrackCrossings(
+        lat, lon, dlat, dlon, configuration.time,
+        configuration.CycloneMonths * 30 + configuration.CycloneDays);
+    if (crossings > 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ConstraintChecker::CheckMaxCourseAngleConstraint(
+    RouteMapConfiguration& configuration, double dlat, double dlon) {
+  if (configuration.MaxCourseAngle < 180) {
+    double bearing;
+    // this is faster than gc distance, and actually works better in higher
+    // latitudes
+    double d1 = dlat - configuration.StartLat,
+           d2 = dlon - configuration.StartLon;
+    d2 *= cos(deg2rad(dlat)) / 2;  // correct for latitude
+    bearing = rad2deg(atan2(d2, d1));
+
+    if (fabs(heading_resolve(configuration.StartEndBearing - bearing)) >
+        configuration.MaxCourseAngle) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ConstraintChecker::CheckMaxDivertedCourse(
+    RouteMapConfiguration& configuration, double dlat, double dlon) {
+  if (configuration.MaxDivertedCourse < 180) {
+    double bearing, dist;
+    double bearing1, dist1;
+
+    double d1 = dlat - configuration.EndLat, d2 = dlon - configuration.EndLon;
+    d2 *= cos(deg2rad(dlat)) / 2;  // correct for latitude
+    bearing = rad2deg(atan2(d2, d1));
+    dist = sqrt(pow(d1, 2) + pow(d2, 2));
+
+    d1 = configuration.StartLat - dlat, d2 = configuration.StartLon - dlon;
+    bearing1 = rad2deg(atan2(d2, d1));
+    dist1 = sqrt(pow(d1, 2) + pow(d2, 2));
+
+    double term = (dist1 + dist) / dist;
+    term = pow(term / 16, 4) + 1;  // make 1 until the end, then make big
+
+    if (fabs(heading_resolve(bearing1 - bearing)) >
+        configuration.MaxDivertedCourse * term) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ConstraintChecker::CheckLandConstraint(
+    RouteMapConfiguration& configuration, double lat, double lon, double dlat1,
+    double dlon1, double cog) {
+  if (configuration.DetectLand) {
+    double ndlon1 = dlon1;
+
+    // Check first if crossing land.
+    if (ndlon1 > 360) {
+      ndlon1 -= 360;
+    }
+    if (PlugIn_GSHHS_CrossesLand(lat, lon, dlat1, ndlon1)) {
+      return false;
+    }
+
+    // CUSTOMIZATION - Safety distance from land
+    // -----------------------------------------
+    // Modify the routing according to a safety
+    // margin defined by the user from the land.
+    // CONFIG: 2 NM as a security distance by default.
+    double distSecure = configuration.SafetyMarginLand;
+    double latBorderUp1, lonBorderUp1, latBorderUp2, lonBorderUp2;
+    double latBorderDown1, lonBorderDown1, latBorderDown2, lonBorderDown2;
+
+    // Test if land is found within a rectangle with
+    // dimensions (dist, distSecure). Tests borders, plus diag,
+    // and middle of each side...
+    //            <- dist ->
+    // |-------------------------------|
+    // |                               |    ^
+    // |                               |    distSafety
+    // |-------------------------------|    ^
+    // |                               |
+    // |                               |
+    // |-------------------------------|
+
+    // Fist, find the (lat,long) of each
+    // points of the rectangle
+    ll_gc_ll(lat, lon, heading_resolve(cog) - 90, distSecure, &latBorderUp1,
+             &lonBorderUp1);
+    ll_gc_ll(dlat1, dlon1, heading_resolve(cog) - 90, distSecure, &latBorderUp2,
+             &lonBorderUp2);
+    ll_gc_ll(lat, lon, heading_resolve(cog) + 90, distSecure, &latBorderDown1,
+             &lonBorderDown1);
+    ll_gc_ll(dlat1, dlon1, heading_resolve(cog) + 90, distSecure,
+             &latBorderDown2, &lonBorderDown2);
+
+    // Then, test if there is land
+    if (PlugIn_GSHHS_CrossesLand(latBorderUp1, lonBorderUp1, latBorderUp2,
+                                 lonBorderUp2) ||
+        PlugIn_GSHHS_CrossesLand(latBorderDown1, lonBorderDown1, latBorderDown2,
+                                 lonBorderDown2) ||
+        PlugIn_GSHHS_CrossesLand(latBorderUp1, lonBorderUp1, latBorderDown2,
+                                 lonBorderDown2) ||
+        PlugIn_GSHHS_CrossesLand(latBorderDown1, lonBorderDown1, latBorderUp2,
+                                 lonBorderUp2)) {
+      return false;
+    }
   }
   return true;
 }

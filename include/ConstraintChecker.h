@@ -65,9 +65,108 @@ enum PropagationError {
  */
 class ConstraintChecker {
 public:
-  static bool CheckSwellConstraint(double lat, double lon,
-                                   RouteMapConfiguration& configuration,
+  /**
+   * Check if swell constraint is met at the given position.
+   *
+   * Verifies if the swell at the specified position is within the maximum
+   * allowed limits configured in the route map configuration.
+   *
+   * @param configuration The route map configuration containing constraint
+   * parameters
+   * @param lat Latitude of the position to check
+   * @param lon Longitude of the position to check
+   * @param swell [out] The swell value at the position if available
+   * @param error_code [out] Error code set to PROPAGATION_EXCEEDED_MAX_SWELL on
+   * failure
+   * @return true if constraint is met, false otherwise
+   */
+  static bool CheckSwellConstraint(RouteMapConfiguration& configuration,
+                                   double lat, double lon, double& swell,
                                    PropagationError& error_code);
+
+  /**
+   * Check if the position is within the maximum latitude constraint.
+   *
+   * Verifies if the given latitude is within the maximum allowed latitude
+   * defined in the route map configuration.
+   *
+   * @param configuration The route map configuration containing constraint
+   * parameters
+   * @param lat Latitude of the position to check
+   * @param error_code [out] Error code set to PROPAGATION_EXCEEDED_MAX_LATITUDE
+   * on failure
+   * @return true if constraint is met, false otherwise
+   */
+  static bool CheckMaxLatitudeConstraint(RouteMapConfiguration& configuration,
+                                         double lat,
+                                         PropagationError& error_code);
+
+  /**
+   * Check if a route segment crosses any cyclone tracks.
+   *
+   * Verifies if traveling from (lat,lon) to (dlat,dlon) would cross
+   * any cyclone tracks defined in the route map configuration.
+   *
+   * @param configuration The route map configuration containing cyclone track
+   * data
+   * @param lat Starting latitude
+   * @param lon Starting longitude
+   * @param dlat Destination latitude
+   * @param dlon Destination longitude
+   * @return true if the route segment doesn't cross any cyclone tracks, false
+   * otherwise
+   */
+  static bool CheckCycloneTrackConstraint(RouteMapConfiguration& configuration,
+                                          double lat, double lon, double dlat,
+                                          double dlon);
+
+  /**
+   * Check if the maximum course angle constraint is met.
+   *
+   * Verifies if the course to the destination position (dlat,dlon)
+   * doesn't exceed the maximum allowed course angle in the configuration.
+   *
+   * @param configuration The route map configuration containing constraint
+   * parameters
+   * @param dlat Destination latitude
+   * @param dlon Destination longitude
+   * @return true if constraint is met, false otherwise
+   */
+  static bool CheckMaxCourseAngleConstraint(
+      RouteMapConfiguration& configuration, double dlat, double dlon);
+
+  /**
+   * Check if the maximum diverted course constraint is met.
+   *
+   * Verifies if the course to the destination position (dlat,dlon)
+   * doesn't divert too far from the ideal course to the final destination.
+   *
+   * @param configuration The route map configuration containing constraint
+   * parameters
+   * @param dlat Destination latitude
+   * @param dlon Destination longitude
+   * @return true if constraint is met, false otherwise
+   */
+  static bool CheckMaxDivertedCourse(RouteMapConfiguration& configuration,
+                                     double dlat, double dlon);
+
+  /**
+   * Check if a position avoids land areas with appropriate safety margin.
+   *
+   * Verifies if the destination position (dlat,dlon) doesn't intersect land
+   * or violate the configured land safety margin.
+   *
+   * @param configuration The route map configuration containing constraint
+   * parameters
+   * @param lat Starting latitude
+   * @param lon Starting longitude
+   * @param dlat Destination latitude
+   * @param dlon Destination longitude
+   * @return true if constraint is met, false otherwise
+   */
+  static bool CheckLandConstraint(RouteMapConfiguration& configuration,
+                                  double lat, double lon, double dlat,
+                                  double dlon, double cog);
 };
 
 #endif
