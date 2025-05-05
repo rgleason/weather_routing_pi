@@ -167,7 +167,21 @@ public:
   static bool CheckLandConstraint(RouteMapConfiguration& configuration,
                                   double lat, double lon, double dlat,
                                   double dlon, double cog);
-                                  
+
+  static bool CheckMaxTrueWindConstraint(RouteMapConfiguration& configuration,
+                                         double twsOverWater,
+                                         PropagationError& error_code);
+
+  static bool CheckMaxApparentWindConstraint(
+      RouteMapConfiguration& configuration, double stw, double twa,
+      double twsOverWater, PropagationError& error_code);
+
+  static bool CheckWindVsCurrentConstraint(RouteMapConfiguration& configuration,
+                                           double twsOverWater,
+                                           double twdOverWater,
+                                           double currentSpeed,
+                                           double currentDir,
+                                           PropagationError& error_code);
 };
 
 #endif

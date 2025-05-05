@@ -108,12 +108,10 @@ bool RoutePoint::GetCurrentData(RouteMapConfiguration& configuration,
       twsOverWater, currentDir, currentSpeed, atlas, data_mask);
 }
 
-bool RoutePoint::ComputeBoatSpeed(
-    RouteMapConfiguration& configuration, double timeseconds, double twd,
-    double tws, double windDirOverWater, double windSpeedOverWater,
-    double currentDir, double currentSpeed, double twa,
-    climatology_wind_atlas& atlas, double ctw, double& stw, double& cog,
-    double& sog, double& dist, int newpolar, bool bound, const char* caller) {
+bool PositionData::GetBoatSpeedForPolar(RouteMapConfiguration& configuration,
+                                        double timeseconds, int newpolar,
+                                        double twa, double ctw, int& data_mask,
+                                        bool bound, const char* caller) {
   if (newpolar < 0 ||
       newpolar >= static_cast<int>(configuration.boat.Polars.size())) {
     // Sanity check - invalid polar index.
@@ -132,7 +130,7 @@ bool RoutePoint::ComputeBoatSpeed(
     for (int i = 0; i < windatlas_count; i++) {
       // Calculate relative wind angle (difference between heading and wind
       // direction).
-      double dir = twa - windDirOverWater + atlas.W[i];
+      double dir = twa - twdOverWater + atlas.W[i];
       if (dir > 180) dir = 360 - dir;
       double boatSpeed, mind = polar.MinDegreeStep();
       // if tacking
@@ -155,7 +153,7 @@ bool RoutePoint::ComputeBoatSpeed(
     // Direct polar lookup - get boat speed from polar data for current heading
     // and wind speed.
     used_grib = true;
-    stw = polar.Speed(twa, windSpeedOverWater, &polar_status, bound,
+    stw = polar.Speed(twa, twsOverWater, &polar_status, bound,
                       configuration.OptimizeTacking);
   }
 
@@ -168,7 +166,7 @@ bool RoutePoint::ComputeBoatSpeed(
         "[%s] Failed to get polar speed. windDirOverWater=%f "
         "windSpeedOverWater=%f "
         "twa=%f tws=%f ctw=%f stw=%f bound=%d grib=%d",
-        caller, windDirOverWater, windSpeedOverWater, twa, tws, ctw, stw, bound,
+        caller, twdOverWater, twsOverWater, twa, twsOverGround, ctw, stw, bound,
         used_grib);
     configuration.polar_status = polar_status;
     return false;  // ctw = stw = 0;
@@ -205,36 +203,120 @@ bool RoutePoint::ComputeBoatSpeed(
   return true;
 }
 
-double RoutePoint::PropagateToPoint(double dlat, double dlon,
-                                    RouteMapConfiguration& configuration,
-                                    double& heading, int& data_mask, bool end) {
-  PropagationError error_code;
-  double swell;
+bool PositionData::ReadWeatherDataAndCheckConstraints(
+    RouteMapConfiguration& configuration, RoutePoint* position, int& data_mask,
+    PropagationError& error_code, bool end) {
   if (!ConstraintChecker::CheckSwellConstraint(configuration, lat, lon, swell,
                                                error_code)) {
-    return NAN;
+    return false;
   }
   if (!ConstraintChecker::CheckMaxLatitudeConstraint(configuration, lat,
-                                                   error_code)) {
-    return NAN;
+                                                     error_code)) {
+    return false;
   }
 
-  double twdOverGround, twsOverGround, twdOverWater, twsOverWater, currentDir,
-      currentSpeed;
-  climatology_wind_atlas atlas;
+  // Read wind and current data
   if (!WeatherDataProvider::ReadWindAndCurrents(
-          configuration, this, twdOverGround, twsOverGround, twdOverWater,
+          configuration, position, twdOverGround, twsOverGround, twdOverWater,
           twsOverWater, currentDir, currentSpeed, atlas, data_mask)) {
+    error_code = PROPAGATION_WIND_DATA_FAILED;
     if (!end) {
       wxString txt = _("No wind data for this position at that time");
       configuration.wind_data_status =
           wxString::Format("%s (lat=%f,lon=%f) %s", txt, lat, lon,
                            configuration.time.Format("%Y-%m-%d %H:%M:%S"));
     }
-    return NAN;
+    return false;
   }
 
-  if (twsOverWater > configuration.MaxTrueWindKnots) return NAN;
+  // Check if wind exceeds configured maximum limit (safety limit)
+  if (!ConstraintChecker::CheckMaxTrueWindConstraint(
+          configuration, twsOverWater, error_code)) {
+    return false;
+  }
+
+  // If wind exceeds polar data but is within safety limits, we'll continue with
+  // modified wind speed This is handled in the GetBoatSpeedForPolar function by
+  // passing inside_polar_bounds=false
+  if (!ConstraintChecker::CheckWindVsCurrentConstraint(
+          configuration, twsOverWater, twdOverWater, currentSpeed, currentDir,
+          error_code)) {
+    return false;
+  }
+
+  return true;
+}
+
+bool PositionData::GetBestPolarAndBoatSpeed(
+    RouteMapConfiguration& configuration, double twa, double ctw,
+    double parent_heading, int& data_mask, int polar, int& newpolar,
+    double& timeseconds) {
+  PolarSpeedStatus status;
+  newpolar = configuration.boat.FindBestPolarForCondition(
+      polar, twsOverWater, twa, swell, configuration.OptimizeTacking, &status);
+  bool inside_polar_bounds = true;
+  if (newpolar == -1 || status != PolarSpeedStatus::POLAR_SPEED_SUCCESS) {
+    if (newpolar == -1 && polar >= 0) {
+      newpolar = polar;
+    }
+    if (status == PolarSpeedStatus::POLAR_SPEED_WIND_TOO_LIGHT ||
+        status == PolarSpeedStatus::POLAR_SPEED_WIND_TOO_STRONG) {
+      // In light winds, FindBestPolarForCondition() may return a polar
+      // where the heading and wind are not in the sail plan, but this is
+      // the best we can do. This is not an error, the boat will just not
+      // move in this direction, and perhaps the wind will pick up later.
+      // case PolarSpeedStatus::POLAR_SPEED_ANGLE_TOO_LOW:
+      // case PolarSpeedStatus::POLAR_SPEED_ANGLE_TOO_HIGH:
+      // For strong wind, we use the max wind in the polar
+      // If the polar goes to 30 knots and the wind is 31 knots,
+      // we use the boat speed for 30 knots.
+      inside_polar_bounds = false;
+    } else {
+      configuration.polar_status = status;
+      return false;  // failed to switch polar
+    }
+  }
+  if (polar > 0 && newpolar != polar) {
+    // Apply penalty for changing sail plan.
+    timeseconds -= configuration.SailPlanChangeTime;
+    sail_plan_changed = true;
+  }
+  if (parent_heading != NAN) {
+    /* did we tack thru the wind? apply penalty */
+    if (parent_heading * twa < 0 && fabs(parent_heading - twa) < 180) {
+      timeseconds -= configuration.TackingTime;
+      tacked = true;
+    }
+
+    /* did we jibe through the wind? apply penalty */
+    if (parent_heading * twa < 0 && fabs(parent_heading - twa) >= 180) {
+      timeseconds -= configuration.JibingTime;
+      jibed = true;
+    }
+  }
+
+  // In light winds, we don't want to check the polar bounds, because
+  // we already know the wind is too light for the polar.
+
+  if (!GetBoatSpeedForPolar(configuration, timeseconds, newpolar, twa, ctw,
+                            data_mask,
+                            inside_polar_bounds, /* when using out-of-bound sail
+                                                    plan, set bound=false */
+                            "Propagate")) {
+    return false;
+  }
+  return true;
+}
+
+double RoutePoint::PropagateToPoint(double dlat, double dlon,
+                                    RouteMapConfiguration& configuration,
+                                    double& heading, int& data_mask, bool end) {
+  PropagationError error_code;
+  PositionData data;
+  if (!data.ReadWeatherDataAndCheckConstraints(configuration, this, data_mask,
+                                               error_code, end)) {
+    return NAN;
+  }
 
   /* todo: we should make sure we don't tack if we are already at the max tacks,
   possibly perform other tests and/or switch sail polar? */
@@ -248,13 +330,11 @@ double RoutePoint::PropagateToPoint(double dlat, double dlon,
   iteration will ever occur */
   double ctw;  // Course Through Water: Direction the boat is traveling relative
   // to the water.
-  double stw;  // Speed Through Water: Speed of the boat relative to the water
 
   // This is a starting point for the iterative solver. It's using the wind
   // direction as an initial guess for which way the boat might be heading, but
   // this gets refined in the do-while loop.
-  double cog = twdOverWater;
-  double sog;
+  double cog = data.twdOverWater;
   int iters = 0;
   heading = 0;
   int newpolar = polar;
@@ -268,52 +348,14 @@ double RoutePoint::PropagateToPoint(double dlat, double dlon,
     while (cog - bearing > 180) bearing += 360;
 
     heading += bearing - cog;
-    ctw = twdOverWater + heading; /* rotated relative to true wind */
+    ctw = data.twdOverWater + heading; /* rotated relative to true wind */
 
-    double dummy_dist;  // not used
+    double timeseconds;  // not used
 
-    newpolar = configuration.boat.FindBestPolarForCondition(
-        polar, twsOverWater, heading, swell, configuration.OptimizeTacking,
-        &status);
-
-    bool inside_polar_bounds = true;
-    if (newpolar == -1 || status != PolarSpeedStatus::POLAR_SPEED_SUCCESS) {
-      if (newpolar == -1 && polar >= 0) {
-        newpolar = polar;
-      }
-      if (status == PolarSpeedStatus::POLAR_SPEED_WIND_TOO_LIGHT ||
-          status == PolarSpeedStatus::POLAR_SPEED_WIND_TOO_STRONG) {
-        // In light winds, FindBestPolarForCondition() may return a polar
-        // where the heading and wind are not in the sail plan, but this is
-        // the best we can do. This is not an error, the boat will just not
-        // move in this direction, and perhaps the wind will pick up later.
-        // case PolarSpeedStatus::POLAR_SPEED_ANGLE_TOO_LOW:
-        // case PolarSpeedStatus::POLAR_SPEED_ANGLE_TOO_HIGH:
-        // For strong wind, we use the max wind in the polar
-        // If the polar goes to 30 knots and the wind is 31 knots,
-        // we use the boat speed for 30 knots.
-        inside_polar_bounds = false;
-        newpolar = polar;
-        wxLogMessage(
-            "Using out-of-bound sail plan. Status: %s. windSpeedOverWater=%f "
-            "tws=%f",
-            Polar::GetPolarStatusMessage(status), twsOverWater, twsOverGround);
-      } else {
-        configuration.polar_status = status;
-        configuration.OptimizeTacking = old;
-        wxLogMessage(
-            "Failed to switch polar. Status: %s. windSpeedOverWater=%f "
-            "tws=%f",
-            Polar::GetPolarStatusMessage(status), twsOverWater, twsOverGround);
-        return NAN;
-      }
-    }
-
-    if (!ComputeBoatSpeed(configuration, 0, twdOverGround, twsOverGround,
-                          twdOverWater, twsOverWater, currentDir, currentSpeed,
-                          heading, atlas, ctw, stw, cog, sog, dummy_dist,
-                          newpolar, inside_polar_bounds /* bound */,
-                          "PropagateToPoint") ||
+    if (!data.GetBestPolarAndBoatSpeed(configuration, heading, ctw,
+                                       NAN /*parent_heading*/, data_mask,
+                                       this->polar, newpolar,
+                                       timeseconds) ||
         ++iters == 10  // give up
     ) {
       configuration.OptimizeTacking = old;
@@ -326,13 +368,13 @@ double RoutePoint::PropagateToPoint(double dlat, double dlon,
   finding the maximum boat speed once, and using that before computing boat
   speed for this angle, but for now, we don't worry because propagating to
   the end is a small amount of total computation */
-  if (end && dist / sog > configuration.UsedDeltaTime / 3600.0) return NAN;
+  if (end && dist / data.sog > configuration.UsedDeltaTime / 3600.0) return NAN;
 
   /* quick test first to avoid slower calculation */
-  if (stw + twsOverWater > configuration.MaxApparentWindKnots &&
-      Polar::VelocityApparentWind(stw, heading, twsOverWater) >
-          configuration.MaxApparentWindKnots)
+  if (!ConstraintChecker::CheckMaxApparentWindConstraint(
+          configuration, data.stw, heading, data.twsOverWater, error_code)) {
     return NAN;
+  }
 
   /* landfall test if we are within 60 miles (otherwise it's very slow) */
   if (configuration.DetectLand && dist < 60 && CrossesLand(dlat, dlon)) {
@@ -354,7 +396,7 @@ double RoutePoint::PropagateToPoint(double dlat, double dlon,
   }
   polar = newpolar;
 
-  return 3600.0 * dist / sog;
+  return 3600.0 * dist / data.sog;
 }
 
 bool RoutePoint::CrossesLand(double dlat, double dlon) {

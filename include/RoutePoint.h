@@ -20,9 +20,114 @@
 #ifndef _WEATHER_ROUTING_ROUTEPOINT_H_
 #define _WEATHER_ROUTING_ROUTEPOINT_H_
 
+#include "ConstraintChecker.h"
+
 struct RouteMapConfiguration;
 class PlotData;
-struct climatology_wind_atlas;
+
+/**
+ * Represents a wind rose summary of climatological wind data for a location.
+ *
+ * This data structure holds statistical wind data typically derived from
+ * historical weather patterns. The data is organized into 8 directional sectors
+ * (at 45 degree intervals), storing both wind speeds and frequency of
+ * occurrence.
+ */
+struct climatology_wind_atlas {
+  double W[8];  //!< Probability/weight of wind occurring in each direction
+                //!< sector (0-1)
+  double
+      VW[8];  //!< Most common wind speed (in knots) for each direction sector
+  double storm;  //!< Probability of storm conditions (0-1)
+  double calm;   //!< Probability of calm conditions (0-1)
+  /**Central wind direction (in degrees) for each sector:
+   * typically [0, 45, 90, 135, 180, 225, 270, 315]
+   */
+  double directions[8];
+};
+
+class RoutePoint;
+
+class PositionData {
+public:
+  double lat;
+  double lon;
+  double twdOverGround;
+  double twsOverGround;
+  double twdOverWater;
+  double twsOverWater;
+  double currentDir;
+  double currentSpeed;
+  double swell;
+
+  double stw;   // Boat speed through water
+  double cog;   // Boat bearing over ground
+  double sog;   // Boat speed over ground
+  double dist;  // Distance traveled over ground (nm)
+
+  bool tacked;
+  bool jibed;
+  bool sail_plan_changed;
+
+  climatology_wind_atlas atlas;
+
+  bool ReadWeatherDataAndCheckConstraints(RouteMapConfiguration& configuration,
+                                          RoutePoint* position, int& data_mask,
+                                          PropagationError& error_code,
+                                          bool end);
+
+  /**
+   * Calculates boat speed for a given polar and wind conditions.
+   *
+   * Given a specific boat heading relative to wind, this function calculates:
+   * 1. How fast the boat will move through water (speed through water)
+   * 2. The actual direction the boat will travel through water (course through
+   * water)
+   * 3. How fast the boat will move over ground after accounting for currents
+   * (speed over ground)
+   * 4. The actual direction the boat will travel over ground (course over
+   * ground)
+   *
+   * @param configuration Boat and route configuration settings
+   * @param timeseconds Duration in seconds for the calculation
+   * @param newpolar [in] Index of the polar to use from the boat's polar array
+   * @param twa [in] True Wind Angle (TWA) (degrees)
+   * @param ctw [in] Boat's bearing relative to true wind (W+twa)
+   * @param data_mask [in/out] Bit mask indicating data sources (GRIB,
+   * climatology, etc.)
+   * @param bound [in] If true, returns NAN when wind speed is outside the range
+   * defined in the polar data. If false, extrapolates the boat speed when wind
+   * speed is outside the polar data range.
+   * @param caller [in] Name of the calling function (for logging)
+   *
+   * @return true if computation successful, false if NaN values detected
+   */
+  bool GetBoatSpeedForPolar(RouteMapConfiguration& configuration,
+                            double timeseconds, int newpolar, double twa,
+                            double ctw, int& data_mask, bool bound = true,
+                            const char* caller = "unknown");
+
+  /**
+   * Find the best polar and calculate boat speed given wind conditions.
+   *
+   * @param configuration Boat and route configuration settings
+   * @param twa [in] True Wind Angle (TWA) (degrees)
+   * @param ctw [in] Boat's bearing relative to true wind (W+twa)
+   * @param parent_heading [in] Boat's heading from parent position (degrees)
+   * @param data_mask [in/out] Bit mask indicating data sources (GRIB,
+   * climatology, etc.)
+   * @param polar [in] The index to current polar from the parent weather
+   * position.
+   * @param newpolar [out] The best polar for the current weather conditions.
+   * @param timeseconds Duration in seconds for the calculation
+   *
+   * @return true if computation successful, false if NaN values detected
+   */
+  bool GetBestPolarAndBoatSpeed(RouteMapConfiguration& configuration,
+                                double twa, double ctw, double parent_heading,
+                                int& data_mask, int polar, int& newpolar,
+                                double& timeseconds);
+};
 
 /**
  * A base class representing a geographical position that is part of a route.
@@ -109,53 +214,6 @@ public:
    */
   double PropagateToPoint(double dlat, double dlon, RouteMapConfiguration& cf,
                           double& heading, int& data_mask, bool end = true);
-
-  /**
-   * Calculates boat performance based on environmental conditions and desired
-   * heading.
-   *
-   * Given a specific boat heading relative to wind, this function calculates:
-   * 1. How fast the boat will move through water (speed through water)
-   * 2. The actual direction the boat will travel through water (course through
-   * water)
-   * 3. How fast the boat will move over ground after accounting for currents
-   * (speed over ground)
-   * 4. The actual direction the boat will travel over ground (course over
-   * ground)
-   *
-   * @param configuration Boat and route configuration settings
-   * @param timeseconds Duration in seconds for the calculation
-   * @param twd [in] Wind direction over ground (degrees)
-   * @param tws [in] Wind speed over ground (knots)
-   * @param windDirOverWater [in] Wind direction through water (degrees)
-   * @param windSpeedOverWater [in] Wind speed through water (knots)
-   * @param currentDir [in] Current direction (degrees)
-   * @param currentSpeed [in] Current speed (knots)
-   * @param twa [in] True Wind Angle (TWA) (degrees)
-   * @param atlas [in] Wind climatology atlas containing probability
-   * distributions
-   * @param data_mask [in/out] Bit mask indicating data sources (GRIB,
-   * climatology, etc.)
-   * @param ctw [in] Boat's bearing relative to true wind (W+twa), initialized
-   * by caller
-   * @param stw [out] Boat speed through water
-   * @param cog [out] Boat bearing over ground
-   * @param sog [out]Boat speed over ground
-   * @param dist [out] Distance traveled over ground (nm)
-   * @param newpolar [in] Index of the polar to use from the boat's polar array
-   * @param bound [in] If true, returns NAN when wind speed is outside the range
-   * defined in the polar data. If false, extrapolates the boat speed when wind
-   * speed is outside the polar data range.
-   *
-   * @return true if computation successful, false if NaN values detected
-   */
-  bool ComputeBoatSpeed(RouteMapConfiguration& configuration,
-                        double timeseconds, double twd, double tws,
-                        double windDirOverWater, double windSpeedOverWater,
-                        double currentDir, double currentSpeed, double twa,
-                        climatology_wind_atlas& atlas, double ctw, double& stw,
-                        double& cog, double& sog, double& dist, int newpolar,
-                        bool bound = true, const char* caller = "unknown");
 
   /**
    * Bit flags indicating what data sources were used for wind and current

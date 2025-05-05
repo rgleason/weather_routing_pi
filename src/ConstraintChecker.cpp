@@ -168,3 +168,46 @@ bool ConstraintChecker::CheckLandConstraint(
   }
   return true;
 }
+
+bool ConstraintChecker::CheckMaxTrueWindConstraint(
+    RouteMapConfiguration& configuration, double twsOverWater,
+    PropagationError& error_code) {
+  if (twsOverWater > configuration.MaxTrueWindKnots) {
+    error_code = PROPAGATION_EXCEEDED_MAX_WIND;
+    return false;
+  }
+  return true;
+}
+
+bool ConstraintChecker::CheckMaxApparentWindConstraint(
+    RouteMapConfiguration& configuration, double stw, double twa,
+    double twsOverWater, PropagationError& error_code) {
+  if (stw + twsOverWater > configuration.MaxApparentWindKnots &&
+      Polar::VelocityApparentWind(stw, twa, twsOverWater) >
+          configuration.MaxApparentWindKnots) {
+    return false;
+  }
+  return true;
+}
+
+bool ConstraintChecker::CheckWindVsCurrentConstraint(
+    RouteMapConfiguration& configuration, double twsOverWater,
+    double twdOverWater, double currentSpeed, double currentDir,
+    PropagationError& error_code) {
+  if (configuration.WindVSCurrent) {
+    /* Calculate the wind vector (Wx, Wy) and ocean current vector (Cx, Cy). */
+    /* these are already computed in GroundToWaterFrame could optimize by
+     * reusing them
+     */
+    double Wx = twsOverWater * cos(deg2rad(twdOverWater)),
+           Wy = twsOverWater * sin(deg2rad(twdOverWater));
+    double Cx = currentSpeed * cos(deg2rad(currentDir) + M_PI),
+           Cy = currentSpeed * sin(deg2rad(currentDir) + M_PI);
+
+    if (Wx * Cx + Wy * Cy + configuration.WindVSCurrent < 0) {
+      error_code = PROPAGATION_EXCEEDED_WIND_VS_CURRENT;
+      return false;
+    }
+  }
+  return true;
+}

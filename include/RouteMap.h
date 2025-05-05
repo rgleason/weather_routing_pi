@@ -59,27 +59,6 @@ enum WeatherForecastStatus {
   WEATHER_FORECAST_OTHER_ERROR,
 };
 
-/**
- * Represents a wind rose summary of climatological wind data for a location.
- *
- * This data structure holds statistical wind data typically derived from
- * historical weather patterns. The data is organized into 8 directional sectors
- * (at 45 degree intervals), storing both wind speeds and frequency of
- * occurrence.
- */
-struct climatology_wind_atlas {
-  double W[8];  //!< Probability/weight of wind occurring in each direction
-                //!< sector (0-1)
-  double
-      VW[8];  //!< Most common wind speed (in knots) for each direction sector
-  double storm;  //!< Probability of storm conditions (0-1)
-  double calm;   //!< Probability of calm conditions (0-1)
-  /**Central wind direction (in degrees) for each sector:
-   * typically [0, 45, 90, 135, 180, 225, 270, 315]
-   */
-  double directions[8];
-};
-
 class WR_GribRecordSet;
 
 /*
