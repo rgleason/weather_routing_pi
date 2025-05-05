@@ -19,6 +19,8 @@
 
 #include <wx/wx.h>
 
+#include <functional>
+
 #include "json/json.h"
 #include "WeatherDataProvider.h"
 #include "RouteMap.h"
