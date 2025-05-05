@@ -22,6 +22,8 @@
 
 #include <wx/wx.h>
 
+#include <functional>
+
 #include "GribRecord.h"
 #include "GribRecordSet.h"
 #include "Boat.h"
