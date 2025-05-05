@@ -20,11 +20,16 @@
 #ifndef _WEATHER_TABLE_DIALOG_H_
 #define _WEATHER_TABLE_DIALOG_H_
 
-#include "WeatherRoutingUI.h"
 #include <wx/aui/aui.h>
-#include <map>  // Add this include for std::map
+#include <map>
+
+#include "WeatherRoutingUI.h"
+#include "ocpn_plugin.h"
 
 class WeatherRouting;
+class RouteMapOverlay;
+struct RouteMapConfiguration;
+class PlotData;
 
 /**
  * Dialog implementation to display a detailed weather table for a specific
@@ -146,4 +151,4 @@ private:
   DECLARE_EVENT_TABLE()
 };
 
-#endif  // _WEATHER_TABLE_DIALOG_H_
+#endif

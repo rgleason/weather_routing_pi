@@ -20,9 +20,12 @@
 #ifndef _WEATHER_ROUTING_REPORT_DIALOG_H_
 #define _WEATHER_ROUTING_REPORT_DIALOG_H_
 
+#include <list>
+
 #include "WeatherRoutingUI.h"
 
 class RouteMapOverlay;
+class WeatherRouting;
 
 class ReportDialog : public ReportDialogBase {
 public:

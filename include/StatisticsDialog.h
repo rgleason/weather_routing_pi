@@ -20,6 +20,8 @@
 #ifndef _WEATHER_ROUTING_STATISTICS_H_
 #define _WEATHER_ROUTING_STATISTICS_H_
 
+#include <list>
+
 #include "WeatherRoutingUI.h"
 
 class RouteMapOverlay;

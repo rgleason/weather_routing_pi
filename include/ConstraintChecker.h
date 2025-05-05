@@ -167,6 +167,7 @@ public:
   static bool CheckLandConstraint(RouteMapConfiguration& configuration,
                                   double lat, double lon, double dlat,
                                   double dlon, double cog);
+                                  
 };
 
 #endif

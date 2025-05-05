@@ -214,8 +214,10 @@ double RoutePoint::PropagateToPoint(double dlat, double dlon,
                                                error_code)) {
     return NAN;
   }
-
-  if (fabs(lat) > configuration.MaxLatitude) return NAN;
+  if (!ConstraintChecker::CheckMaxLatitudeConstraint(configuration, lat,
+                                                   error_code)) {
+    return NAN;
+  }
 
   double twdOverGround, twsOverGround, twdOverWater, twsOverWater, currentDir,
       currentSpeed;
