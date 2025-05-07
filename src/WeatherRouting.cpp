@@ -560,8 +560,7 @@ void WeatherRouting::Render(piDC& dc, PlugIn_ViewPort& vp) {
 
   if (vp.bValid == false) return;
 
-  wxFileConfig* pConf = GetOCPNConfigObject();
-  pConf->Read(_T("/Settings/SDMMFormat"), &currentLocationFormat, 1);
+  currentLocationFormat = GetLatLonFormat();
   if(currentLocationFormat != prevLocationFormat) {
     prevLocationFormat = currentLocationFormat;
     locationFormatChanged = true;
