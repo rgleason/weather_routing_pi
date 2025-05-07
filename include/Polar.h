@@ -1,9 +1,4 @@
 /***************************************************************************
- *
- * Project:  OpenCPN Weather Routing plugin
- * Author:   Sean D'Epagnier
- *
- ***************************************************************************
  *   Copyright (C) 2016 by Sean D'Epagnier                                 *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
@@ -20,8 +15,10 @@
  *   along with this program; if not, write to the                         *
  *   Free Software Foundation, Inc.,                                       *
  *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,  USA.         *
- ***************************************************************************
- */
+ **************************************************************************/
+
+#ifndef _WEATHER_ROUTING_POLAR_H_
+#define _WEATHER_ROUTING_POLAR_H_
 
 #include <vector>
 #include "PolygonRegion.h"
@@ -534,3 +531,5 @@ private:
   std::vector<double> degree_steps;
   unsigned int degree_step_index[DEGREES];
 };
+
+#endif

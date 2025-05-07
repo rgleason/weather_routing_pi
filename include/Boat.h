@@ -1,9 +1,4 @@
 /***************************************************************************
- *
- * Project:  OpenCPN Weather Routing plugin
- * Author:   Sean D'Epagnier
- *
- ***************************************************************************
  *   Copyright (C) 2015 by Sean D'Epagnier                                 *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
@@ -20,8 +15,10 @@
  *   along with this program; if not, write to the                         *
  *   Free Software Foundation, Inc.,                                       *
  *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,  USA.         *
- ***************************************************************************
- */
+ **************************************************************************/
+
+#ifndef _WEATHER_ROUTING_BOAT_H_
+#define _WEATHER_ROUTING_BOAT_H_
 
 #include "Polar.h"
 
@@ -165,3 +162,5 @@ private:
   wxString m_last_filename;
   wxDateTime m_last_filetime;
 };
+
+#endif

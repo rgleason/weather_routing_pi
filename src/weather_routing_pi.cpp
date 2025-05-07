@@ -30,6 +30,8 @@
 
 #include "Utilities.h"
 #include "Boat.h"
+#include "RoutePoint.h"
+#include "RouteMap.h"
 #include "RouteMapOverlay.h"
 #include "WeatherRouting.h"
 #include "weather_routing_pi.h"
@@ -163,7 +165,7 @@ int weather_routing_pi::Init() {
 
   return (WANTS_OVERLAY_CALLBACK | WANTS_OPENGL_OVERLAY_CALLBACK |
           WANTS_TOOLBAR_CALLBACK | WANTS_CONFIG | WANTS_CURSOR_LATLON |
-          WANTS_NMEA_EVENTS | WANTS_PLUGIN_MESSAGING);
+          WANTS_NMEA_EVENTS | WANTS_PLUGIN_MESSAGING | USES_AUI_MANAGER);
 }
 
 bool weather_routing_pi::DeInit() {
