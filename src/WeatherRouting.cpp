@@ -40,6 +40,7 @@
 #include "AboutDialog.h"
 #include "icons.h"
 #include "navobj_util.h"
+#include "ocpn_plugin.h"
 
 /**
  * Used for NEflag argument to toSDMM_Plugin function from ocpn_plugin.h.
