@@ -19,7 +19,7 @@
 # - xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx,                                       *
 # - xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx                                       *
 # -----------------------------------------------------------------------------
-# Frontend2 Author: Jon Gough Testplugin(TP) v1.0.331.0 06/04/2025 DD/MM/YYYY
+# Frontend2 Author: Jon Gough Testplugin(TP) v1.0.341.0 30/04/2025 DD/MM/YYYY
 # format buildCI:yes useODAPI:no validateJSON:no
 # ---------------------------------------------------------------------------
 ## -- When changing this file do NOT change the order of the sections.    -- ##
@@ -49,6 +49,9 @@ if(COMMAND cmake_policy)
   if (POLICY CMP0077)
     cmake_policy(SET CMP0077 NEW)
   endif (POLICY CMP0077)
+  if (POLICY CMP0079)
+    cmake_policy(SET CMP0079 NEW)
+  endif (POLICY CMP0079)
   if (POLICY CMP0175)
     cmake_policy(SET CMP0175 NEW)
   endif (POLICY CMP0175)
@@ -71,9 +74,9 @@ set(LONG_DESCRIPTION "WR features include: optimal routing subject to various co
 
 set(VERSION_MAJOR "1")
 set(VERSION_MINOR "15")
-set(VERSION_PATCH "21")
-set(VERSION_TWEAK "26")
-set(VERSION_DATE  "17/04/2025")#DD/MM/YYYY format
+set(VERSION_PATCH "24")
+set(VERSION_TWEAK "0")
+set(VERSION_DATE  "05/05/2025") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov58")
 
 set(OCPN_API_VERSION_MAJOR "1")
@@ -181,19 +184,26 @@ SET(SRCS
             src/ConfigurationBatchDialog.cpp
             src/EditPolarDialog.cpp
             src/AboutDialog.cpp
+            src/ConstraintChecker.cpp
             src/Polar.cpp
             src/Boat.cpp
             src/RouteMap.cpp
             src/RouteMapOverlay.cpp
+            src/RoutingTablePanel.cpp
             src/Utilities.cpp
             src/LineBufferOverlay.cpp
             src/PolygonRegion.cpp
             src/WeatherRoutingUI.cpp
             src/icons.cpp
             src/zuFile.cpp
-            src/georef.c
+            src/georef.cpp
+            src/cutil.cpp
             src/GribRecord.cpp
             src/navobj_util.cpp
+            src/WeatherDataProvider.cpp
+            src/RoutePoint.cpp
+            src/Position.cpp
+            src/IsoRoute.cpp
 )
 
 SET (HDRS
@@ -208,12 +218,14 @@ SET (HDRS
             include/ReportDialog.h
             include/FilterRoutesDialog.h
             include/ConfigurationBatchDialog.h
+            include/ConstraintChecker.h
             include/EditPolarDialog.h
             include/AboutDialog.h
             include/Polar.h
             include/Boat.h
             include/RouteMap.h
             include/RouteMapOverlay.h
+            include/RoutingTablePanel.h
             include/Utilities.h
             include/LineBufferOverlay.h
             include/PolygonRegion.h
@@ -221,8 +233,13 @@ SET (HDRS
             include/icons.h
             include/zuFile.h
             include/georef.h
+            include/cutil.h
             include/GribRecord.h
             include/navobj_util.h
+            include/WeatherDataProvider.h
+            include/RoutePoint.h
+            include/Position.h
+            include/IsoRoute.h
 )
 
 add_definitions(-DPLUGIN_USE_SVG)

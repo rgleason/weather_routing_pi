@@ -1,4 +1,4 @@
-/**************************************************************************
+/***************************************************************************
  *   Copyright (C) 2016 by Sean D'Epagnier                                 *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
@@ -38,6 +38,7 @@
 #include "ReportDialog.h"
 #include "PlotDialog.h"
 #include "FilterRoutesDialog.h"
+#include "RoutingTablePanel.h"
 
 class weather_routing_pi;
 class WeatherRouting;
@@ -490,6 +491,7 @@ private:
   void OnCursorPosition(wxCommandEvent& event);
   // CUSTOMIZATION
   void OnRoutePosition(wxCommandEvent& event);
+  void OnWeatherTable(wxCommandEvent& event);
   void OnManual(wxCommandEvent& event);
   void OnInformation(wxCommandEvent& event);
   void OnAbout(wxCommandEvent& event);
@@ -574,6 +576,8 @@ private:
   void DeleteRouteMaps(std::list<RouteMapOverlay*> routemapoverlays);
   RouteMapConfiguration DefaultConfiguration();
 
+  void AddRoutingPanel();
+
   /** The dialog to display routing statistics. */
   StatisticsDialog m_StatisticsDialog;
   /** The dialog to display a routing report. */
@@ -655,6 +659,8 @@ private:
    * for
    */
   RoutePoint m_savedPosition;
+
+  RoutingTablePanel* m_RoutingTablePanel;
 };
 
 #endif

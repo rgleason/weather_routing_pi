@@ -1,3 +1,6 @@
+#ifndef _WEATHER_ROUTING_CHARGESOURCE_H_
+#define _WEATHER_ROUTING_CHARGESOURCE_H_
+
 class ChargeSource {
   double
 };
@@ -21,3 +24,5 @@ class HydroGeneratorSource : public ChargeSource {
   class Generator : public ChargeSource {
     double kwh;
   };
+
+#endif

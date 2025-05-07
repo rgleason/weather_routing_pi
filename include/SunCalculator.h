@@ -17,6 +17,9 @@
  *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,  USA.         *
  ***************************************************************************/
 
+#ifndef _WEATHER_ROUTING_SUN_CALCULATOR_H_
+#define _WEATHER_ROUTING_SUN_CALCULATOR_H_
+
 #include <wx/wx.h>
 
 #include <vector>
@@ -97,3 +100,5 @@ private:
   std::vector<SunTimeCache> m_cache;
   wxCriticalSection m_cacheLock;
 };
+
+#endif
