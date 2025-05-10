@@ -521,7 +521,7 @@ void RouteMapOverlay::Render(wxDateTime time, SettingsDialog& settingsdialog,
       if (IsoChronThickness) {
         Lock();
         int c = 0;
-        // Find the isochron closest to the GRIB time
+        // Find the isochrone closest to the GRIB time
         IsoChron* closestIsochron = nullptr;
         wxTimeSpan closestDiff =
             wxTimeSpan::Days(999);  // A large initial value
@@ -545,7 +545,7 @@ void RouteMapOverlay::Render(wxDateTime time, SettingsDialog& settingsdialog,
                              routecolors[c][2], 224);
           wxColor climatology_color(255 - routecolors[c][0], routecolors[c][2],
                                     routecolors[c][1], 224);
-          // If this is the closest isochron to the selected GRIB time, use a
+          // If this is the closest isochrone to the selected GRIB time, use a
           // thicker line
           if (time.IsValid() && *i == closestIsochron) {
             SetWidth(dc, IsoChronThickness * 3);
@@ -1051,7 +1051,7 @@ void RouteMapOverlay::RenderWindBarbs(piDC& dc, PlugIn_ViewPort& vp) {
                             ? positive_degrees(lon)
                             : lon);
 
-        // find the first isochron we are outside of using the isochron from
+        // find the first isochrone we are outside of using the isochrone from
         // the last point as an initial guess to reduce the amount of expensive
         // Contains calls
         if (!(*it)->Contains(p)) {
@@ -1071,7 +1071,7 @@ void RouteMapOverlay::RenderWindBarbs(piDC& dc, PlugIn_ViewPort& vp) {
           int data_mask1,
               data_mask2;  // can be used to colorize barbs based on data type
           bool v1, v2;
-          // now it is the isochron before p, so we find the two closest
+          // now it is the isochrone before p, so we find the two closest
           // postions
           Position* p1 = (*it)->ClosestPosition(lat, lon);
           configuration.grib = (*it)->m_Grib;
@@ -1243,7 +1243,7 @@ void RouteMapOverlay::RenderCurrent(piDC& dc, PlugIn_ViewPort& vp) {
                             ? positive_degrees(lon)
                             : lon);
 
-        // find the first isochron we are outside of using the isochron from
+        // find the first isochrone we are outside of using the isochrone from
         // the last point as an initial guess to reduce the amount of expensive
         // Contains calls
         if (!(*it)->Contains(p)) {
@@ -1263,7 +1263,7 @@ void RouteMapOverlay::RenderCurrent(piDC& dc, PlugIn_ViewPort& vp) {
           int data_mask1,
               data_mask2;  // can be used to colorize barbs based on data type
 
-          // now it is the isochron before p, so we find the two closest
+          // now it is the isochrone before p, so we find the two closest
           // postions
           Position* p1 = (*it)->ClosestPosition(lat, lon);
           configuration.grib = (*it)->m_Grib;
@@ -1636,11 +1636,11 @@ void RouteMapOverlay::UpdateDestination() {
     delete destination_position;
     destination_position = 0;
     /* this doesn't happen often, so can be slow.. for each position in the last
-       isochron, we try to propagate to the destination */
+       isochrone, we try to propagate to the destination */
     IsoChronList::iterator iit = origin.end();
     iit--;
-    iit--; /* second from last isochron */
-    IsoChron* isochron = *iit;
+    iit--; /* second from last isochrone */
+    IsoChron* isochrone = *iit;
     double mindt = INFINITY;
     Position* endp;
     double minH;
@@ -1649,24 +1649,25 @@ void RouteMapOverlay::UpdateDestination() {
     bool minsail_plan_changed;
     int mindata_mask;
 
-    for (IsoRouteList::iterator it = isochron->routes.begin();
-         it != isochron->routes.end(); ++it) {
-      configuration.grib = isochron->m_Grib;
-      configuration.grib_is_data_deficient = isochron->m_Grib_is_data_deficient;
+    for (IsoRouteList::iterator it = isochrone->routes.begin();
+         it != isochrone->routes.end(); ++it) {
+      configuration.grib = isochrone->m_Grib;
+      configuration.grib_is_data_deficient =
+          isochrone->m_Grib_is_data_deficient;
 
-      configuration.time = isochron->time;
-      configuration.UsedDeltaTime = isochron->delta;
+      configuration.time = isochrone->time;
+      configuration.UsedDeltaTime = isochrone->delta;
       (*it)->PropagateToEnd(configuration, mindt, endp, minH, mintacked,
                             minjibes, minsail_plan_changed, mindata_mask);
     }
     Unlock();
 
     if (std::isinf(mindt)) {
-      // destination is between two isochrons
+      // destination is between two isochrones
       // but propagate can't reach it (land or boundaries in the way).
       // Use an upper bound time for EndTime, not defined times are too much
       // trouble later.
-      m_EndTime = isochron->time + wxTimeSpan(0, 0, isochron->delta);
+      m_EndTime = isochrone->time + wxTimeSpan(0, 0, isochrone->delta);
       last_destination_position =
           ClosestPosition(configuration.EndLat, configuration.EndLon);
     } else {
@@ -1675,8 +1676,8 @@ void RouteMapOverlay::UpdateDestination() {
           endp->polar, endp->tacks + mintacked, endp->jibes + minjibes,
           endp->sail_plan_changes + minsail_plan_changed, mindata_mask);
 
-      m_EndTime = isochron->time + wxTimeSpan::Milliseconds(1000 * mindt);
-      isochron->delta = mindt;
+      m_EndTime = isochrone->time + wxTimeSpan::Milliseconds(1000 * mindt);
+      isochrone->delta = mindt;
       last_destination_position = destination_position;
     }
   } else {

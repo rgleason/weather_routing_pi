@@ -268,7 +268,7 @@ void IsoChron::PropagateIntoList(IsoRouteList& routelist,
         delete y;
     }
 
-    /* if any propagation occured even for children, then we clone this route
+    /* if any propagation occurred even for children, then we clone this route
        this prevents backtracking, otherwise, we don't need this route
        (it's a dead end) */
     if (propagated)

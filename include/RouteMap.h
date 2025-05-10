@@ -84,8 +84,8 @@ class WR_GribRecordSet;
  */
 class PlotData : public RoutePoint {
 public:
-  /** The time when the boat reaches this position, based on the route
-   * calculation. TODO: is it UTC? */
+  /** The time in UTC when the boat reaches this position, based on the route
+   * calculation. */
   wxDateTime time;
   /** The time in seconds from the previous position to this position. */
   double delta;
@@ -823,7 +823,7 @@ public:
     return o;
   }
 
-  void GetStatistics(int& isochrons, int& routes, int& invroutes,
+  void GetStatistics(int& isochrones, int& routes, int& invroutes,
                      int& skippositions, int& positions);
   /**
    * Performs one step of the routing propagation algorithm.
@@ -926,7 +926,7 @@ public:
     Unlock();
   }
 
-  /** Collect error information from all positions in the most recent isochron.
+  /** Collect error information from all positions in the most recent isochrone.
    */
   wxString GetRoutingErrorInfo();
 

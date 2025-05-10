@@ -526,7 +526,7 @@ double RoutePoint::PropagateToPoint(double dlat, double dlon,
   } while ((bearing - cog) > 1e-3);
   configuration.OptimizeTacking = old;
 
-  /* only allow if we fit in the isochron time.  We could optimize this by
+  /* only allow if we fit in the isochrone time.  We could optimize this by
   finding the maximum boat speed once, and using that before computing boat
   speed for this angle, but for now, we don't worry because propagating to
   the end is a small amount of total computation */

@@ -37,6 +37,7 @@
 #include "RouteMapOverlay.h"
 #include "weather_routing_pi.h"
 #include "WeatherRouting.h"
+#include "RouteSimplifier.h"
 #include "AboutDialog.h"
 #include "icons.h"
 #include "navobj_util.h"
@@ -1706,11 +1707,136 @@ void WeatherRouting::OnSaveAsTrack(wxCommandEvent& event) {
     SaveAsTrack(**it);
 }
 
+/**
+ * Shows a dialog to get route saving options from the user.
+ *
+ * @return SaveRouteOptions structure with user's selections
+ */
+WeatherRouting::SaveRouteOptions WeatherRouting::ShowRouteSaveOptionsDialog() {
+  SaveRouteOptions options;
+  options.dialogAccepted = false;
+
+  // Create a dialog with save options.
+  wxDialog dlg(this, wxID_ANY, _("Save Route Options"), wxDefaultPosition,
+               wxDefaultSize);
+  wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
+
+  // Add simplify route option.
+  wxCheckBox* cbSimplifyRoute =
+      new wxCheckBox(&dlg, wxID_ANY, _("Simplify Route"));
+  cbSimplifyRoute->SetValue(true);
+  mainSizer->Add(cbSimplifyRoute, 0, wxALL | wxEXPAND, 5);
+
+  // Create a panel for simplification options that will be shown/hidden.
+  wxPanel* simplifyPanel = new wxPanel(&dlg, wxID_ANY);
+  wxBoxSizer* simplifyPanelSizer = new wxBoxSizer(wxVERTICAL);
+
+  // Add duration penalty control.
+  wxStaticText* durationPenaltyLabel =
+      new wxStaticText(simplifyPanel, wxID_ANY, _("Maximum Duration Loss (%)"));
+  simplifyPanelSizer->Add(durationPenaltyLabel, 0, wxALL | wxEXPAND, 5);
+
+  // Create a horizontal sizer for the spinner and text display
+  wxBoxSizer* penaltySizer = new wxBoxSizer(wxHORIZONTAL);
+
+  // Add a spinner control for precise 0.1% increments
+  wxSpinCtrlDouble* spinnerDurationPenalty = new wxSpinCtrlDouble(
+      simplifyPanel, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize,
+      wxSP_ARROW_KEYS, 0.0, 20.0, 5.0, 0.1);
+  spinnerDurationPenalty->SetDigits(1);  // Show one decimal place
+
+  penaltySizer->Add(spinnerDurationPenalty, 1, wxALL | wxEXPAND, 5);
+
+  // Add percentage text
+  wxStaticText* percentLabel =
+      new wxStaticText(simplifyPanel, wxID_ANY, _("%"));
+  penaltySizer->Add(percentLabel, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
+
+  simplifyPanelSizer->Add(penaltySizer, 0, wxALL | wxEXPAND, 5);
+
+  simplifyPanel->SetSizer(simplifyPanelSizer);
+  mainSizer->Add(simplifyPanel, 0, wxALL | wxEXPAND, 5);
+
+  wxStdDialogButtonSizer* buttonSizer = new wxStdDialogButtonSizer();
+  buttonSizer->AddButton(new wxButton(&dlg, wxID_OK, _("Save")));
+  buttonSizer->AddButton(new wxButton(&dlg, wxID_CANCEL));
+  buttonSizer->Realize();
+
+  mainSizer->Add(buttonSizer, 0, wxALL | wxEXPAND, 10);
+
+  dlg.SetSizer(mainSizer);
+  mainSizer->Fit(&dlg);
+  dlg.Centre();
+
+  // Setup checkbox event to show/hide simplification panel.
+  cbSimplifyRoute->Bind(
+      wxEVT_CHECKBOX, [simplifyPanel, &dlg, mainSizer](wxCommandEvent&) {
+        simplifyPanel->Show(simplifyPanel->IsShown() ? false : true);
+        mainSizer->Fit(&dlg);
+      });
+
+  if (dlg.ShowModal() == wxID_OK) {
+    options.dialogAccepted = true;
+    options.simplifyRoute = cbSimplifyRoute->GetValue();
+    options.maxDurationPenalty = spinnerDurationPenalty->GetValue() / 100.0;
+  }
+  return options;
+}
+
 void WeatherRouting::OnSaveAsRoute(wxCommandEvent& event) {
   std::list<RouteMapOverlay*> routemapoverlays = CurrentRouteMaps(true);
+  if (routemapoverlays.empty()) {
+    wxMessageDialog mdlg(this, _("No weather route selected"),
+                         _("Weather Routing"), wxOK | wxICON_WARNING);
+    mdlg.ShowModal();
+    return;
+  }
+
+  // Get route saving options from user
+  SaveRouteOptions options = ShowRouteSaveOptionsDialog();
+  if (!options.dialogAccepted) {
+    return;  // User canceled
+  }
+
+  // Process each selected route
   for (std::list<RouteMapOverlay*>::iterator it = routemapoverlays.begin();
-       it != routemapoverlays.end(); it++)
-    SaveAsRoute(**it);
+       it != routemapoverlays.end(); it++) {
+    RouteMapOverlay* routemap = *it;
+
+    if (options.simplifyRoute) {
+      // Create and run simplifier.
+      RouteSimplifier simplifier(routemap);
+
+      // Configure simplification parameters.
+      SimplificationParams params;
+      params.maxDurationPenaltyPercent = options.maxDurationPenalty;
+
+      // Perform simplification.
+      SimplificationResult result = simplifier.Simplify(params);
+
+      if (!result.success) {
+        wxMessageDialog errorDlg(
+            this, _("Failed to simplify route: ") + result.message,
+            _("Weather Routing"), wxOK | wxICON_ERROR);
+        errorDlg.ShowModal();
+
+        // Still save the original route if simplification failed.
+        SaveAsRoute(*routemap);
+      } else {
+        // Get the results.
+        std::list<Position*> simplifiedRoute = result.simplifiedRoute;
+        // Save the simplified route.
+        SaveSimplifiedRoute(*routemap, simplifiedRoute);
+        wxMessageDialog resultDlg(this, result.message,
+                                  _("Route Simplification"),
+                                  wxOK | wxICON_INFORMATION);
+        resultDlg.ShowModal();
+      }
+    } else {
+      // Save the original route without simplification.
+      SaveAsRoute(*routemap);
+    }
+  }
 }
 
 void WeatherRouting::OnExportRouteAsGPX(wxCommandEvent& event) {
@@ -3363,4 +3489,75 @@ RouteMapConfiguration WeatherRouting::DefaultConfiguration() {
   configuration.ByDegrees = 5;
 
   return configuration;
+}
+
+void WeatherRouting::SaveSimplifiedRoute(
+    RouteMapOverlay& routemapoverlay,
+    const std::list<Position*>& simplifiedRoute) {
+  if (simplifiedRoute.empty()) return;
+
+  // Create a new OpenCPN route
+  PlugIn_Route* newRoute = new PlugIn_Route();
+
+  // Set route name
+  RouteMapConfiguration config = routemapoverlay.GetConfiguration();
+  wxString name = wxString::Format(_T("Simplified %s to %s"),
+                                   config.Start.c_str(), config.End.c_str());
+  newRoute->m_NameString = name;
+  newRoute->m_GUID =
+      wxString::Format(_T("%i"), (int)GetRandomNumber(1, 4000000));
+
+  // Add waypoints
+  for (Position* pos : simplifiedRoute) {
+    PlugIn_Waypoint* waypoint = new PlugIn_Waypoint();
+    waypoint->m_lat = pos->lat;
+    waypoint->m_lon = pos->lon;
+    waypoint->m_GUID =
+        wxString::Format(_T("%i"), (int)GetRandomNumber(1, 4000000));
+    waypoint->m_IconName = _T("circle");
+    waypoint->m_MarkName =
+        wxString::Format(_T("WP%03d"), newRoute->pWaypointList->GetCount() + 1);
+
+    // Try to add time information if available
+    std::list<PlotData> plotData = routemapoverlay.GetPlotData(false);
+    if (!plotData.empty()) {
+      // Find the closest plot data point to this position
+      PlotData* closestData = nullptr;
+      double minDistance = INFINITY;
+
+      for (auto& data : plotData) {
+        double dist =
+            DistGreatCircle_Plugin(pos->lat, pos->lon, data.lat, data.lon);
+        if (dist < minDistance) {
+          minDistance = dist;
+          closestData = &data;
+        }
+      }
+
+      if (closestData && minDistance < 0.1) {  // Within 0.1 nm
+        // Add time information to waypoint description
+        wxDateTime time = closestData->time;
+        if (m_SettingsDialog.m_cbUseLocalTime->GetValue())
+          time = time.FromUTC();
+
+        waypoint->m_MarkDescription = time.Format(_T("%x %H:%M"));
+
+        // Optionally add other information (wind, etc.)
+        waypoint->m_MarkDescription += wxString::Format(
+            _T("\nWind: %.1f kts at %.0f°"), closestData->twsOverWater,
+            closestData->twdOverWater);
+
+        waypoint->m_MarkDescription +=
+            wxString::Format(_T("\nBoat: %.1f kts at %.0f°"), closestData->stw,
+                             closestData->ctw);
+      }
+    }
+
+    // Add to route
+    newRoute->pWaypointList->Append(waypoint);
+  }
+
+  // Add route to OpenCPN
+  AddPlugInRoute(newRoute);
+  RequestRefresh(GetParent());
 }

@@ -323,7 +323,7 @@ public:
   ~IsoChron();
 
   /**
-   * Propagates all routes in this isochron to create the next isochrone.
+   * Propagates all routes in this isochrone to create the next isochrone.
    *
    * From each position on each route in the current isochrone, calculates all
    * possible new positions the vessel could reach in the next time increment,

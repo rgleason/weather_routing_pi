@@ -233,10 +233,21 @@ public:
   int Cyclones(int* months);
 
   /**
-   * Gets the destination position.
+   * Gets the destination position, or null if the route could not be completed
+   * successfully.
    * @return Pointer to the destination position.
    */
   Position* GetDestination() { return destination_position; }
+  /**
+   * Gets the best achievable position.
+   *
+   * This is either:
+   * 1. The exact destination position (destination_position) if reached
+   * successfully.
+   * 2. The closest calculated position to the destination if exact arrival
+   * isn't possible.
+   */
+  Position* GetLastDestination() { return last_destination_position; }
 
   /**
    * Checks if the route has been updated.
@@ -339,6 +350,12 @@ public:
    */
   int sailingConditionLevel(const PlotData& plot) const;
 
+  /**
+   * Gets the list of isochrones used for route calculation.
+   * @return Reference to the list of isochrones.
+   */
+  const IsoChronList& GetIsoChronList() const { return origin; }
+
 private:
   /**
    * Renders an alternate route.
@@ -351,7 +368,7 @@ private:
                             PlugIn_ViewPort& vp);
 
   /**
-   * Renders a single isochron route.
+   * Renders a single isochrone route.
    * @param r Pointer to the route to render.
    * @param time The currently selected time in the GRIB timeline.
    * @param grib_color Color for grib-based segments.
@@ -478,7 +495,8 @@ private:
   Position* destination_position;
 
   /**
-   * Best position reached toward the destination during route calculation.
+   * Best achievable position reached toward the destination during route
+   * calculation.
    *
    * This stores either:
    * 1. The exact destination position (destination_position) if reached

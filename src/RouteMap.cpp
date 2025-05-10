@@ -18,7 +18,7 @@
  ***************************************************************************/
 
 /* generate a datastructure which contains positions for
-   isochron line segments which describe the position of the boat at a given
+   isochrone line segments which describe the position of the boat at a given
    time..
 
    Starting at a given location, propagate outwards in all directions.
@@ -378,10 +378,13 @@ bool RouteMap::Propagate() {
   if (update) {
     origin.push_back(update);
     if (update->Contains(m_Configuration.EndLat, m_Configuration.EndLon)) {
-      SetFinished(true);
+      SetFinished(true);  // Route reached the destination
     }
-  } else
-    m_bFinished = true;
+  } else {
+    // No further propagation possible, but we may still have a useful partial
+    // route Mark as finished but indicate destination wasn't reached
+    SetFinished(false);
+  }
 
   // take note of possible failure reasons
   UpdateStatus(configuration);
@@ -394,7 +397,7 @@ bool RouteMap::Propagate() {
 double RouteMap::DetermineDeltaTime() {
   double deltaTime = m_Configuration.DeltaTime;
 
-  // Find the closest position to source and destination in the last isochron.
+  // Find the closest position to source and destination in the last isochrone.
   double minDistToEnd = INFINITY;
   double maxDistFromStart = -INFINITY;
 
@@ -407,7 +410,7 @@ double RouteMap::DetermineDeltaTime() {
 
   // Reduced time step when leaving source or approaching destination.
   if (!origin.empty()) {
-    // Get the last isochron
+    // Get the last isochrone
     IsoChron* lastIsochron = origin.back();
 
     // Count positions and failed propagations for adaptive time step.
@@ -421,7 +424,7 @@ double RouteMap::DetermineDeltaTime() {
         totalPositions++;
 
         // If this position failed to propagate (has no child positions in the
-        // next isochron) We'd need a way to track this information
+        // next isochrone) We'd need a way to track this information
         if (pos->propagation_error != PROPAGATION_NO_ERROR &&
             pos->propagation_error != PROPAGATION_ALREADY_PROPAGATED) {
           failedPropagations++;
@@ -634,10 +637,10 @@ void RouteMap::SetNewGrib(WR_GribRecordSet* grib) {
   m_SharedNewGrib.SetGribRecordSet(m_NewGrib);
 }
 
-void RouteMap::GetStatistics(int& isochrons, int& routes, int& invroutes,
+void RouteMap::GetStatistics(int& isochrones, int& routes, int& invroutes,
                              int& skippositions, int& positions) {
   Lock();
-  isochrons = origin.size();
+  isochrones = origin.size();
   routes = invroutes = skippositions = positions = 0;
   for (IsoChronList::iterator it = origin.begin(); it != origin.end(); ++it)
     for (IsoRouteList::iterator rit = (*it)->routes.begin();
@@ -709,14 +712,14 @@ wxString RouteMap::GetRoutingErrorInfo() {
     return info;
   }
 
-  // Get the most recent isochron
+  // Get the most recent isochrone
   IsoChron* latest = origin.back();
   std::vector<Position*> failed_positions;
 
   // Track error counts to find most common issues
   std::map<PropagationError, int> error_counts;
 
-  // Look at all positions in the latest isochron
+  // Look at all positions in the latest isochrone
   for (IsoRouteList::iterator it = latest->routes.begin();
        it != latest->routes.end(); ++it) {
     Position* p = (*it)->skippoints->point;

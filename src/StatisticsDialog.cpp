@@ -63,10 +63,10 @@ void StatisticsDialog::SetRouteMapOverlays(
        it != routemapoverlays.end(); it++) {
     if ((*it)->Running()) running = true;
 
-    int isochrons, routes, invroutes, skippositions, positions;
-    (*it)->GetStatistics(isochrons, routes, invroutes, skippositions,
+    int isochrones, routes, invroutes, skippositions, positions;
+    (*it)->GetStatistics(isochrones, routes, invroutes, skippositions,
                          positions);
-    tisochrons += isochrons, troutes += routes, tinvroutes += invroutes;
+    tisochrons += isochrones, troutes += routes, tinvroutes += invroutes;
     tskippositions += skippositions, tpositions += positions;
   }
 

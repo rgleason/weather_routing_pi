@@ -39,7 +39,7 @@ double round_msvc(double x) { return (floor(x + 0.5)); }
 #include <float.h>  // for _clear87()
 
 long __stdcall MyUnhandledExceptionFilter(
-    struct _EXCEPTION_POINTERS *ExceptionInfo) {
+    struct _EXCEPTION_POINTERS* ExceptionInfo) {
   //    return EXCEPTION_EXECUTE_HANDLER ;        // terminates the app
 
   switch (ExceptionInfo->ExceptionRecord->ExceptionCode) {
@@ -61,7 +61,7 @@ long __stdcall MyUnhandledExceptionFilter(
 
 /*          Replacement for __MSVC__ in absence of snprintf or _snprintf  */
 #ifdef __MSVC__
-int mysnprintf(char *buffer, int count, const char *format, ...) {
+int mysnprintf(char* buffer, int count, const char* format, ...) {
   int ret;
 
   va_list arg;
@@ -84,7 +84,7 @@ int NextPow2(int size) {
   return n + 1;
 }
 #ifdef __WXMSW__
-extern "C" int clock_gettime_monotonic(struct timespec *tv) {
+extern "C" int clock_gettime_monotonic(struct timespec* tv) {
   static LARGE_INTEGER ticksPerSec;
   LARGE_INTEGER ticks;
 

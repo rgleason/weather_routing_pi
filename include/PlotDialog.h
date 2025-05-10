@@ -17,8 +17,8 @@
  *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,  USA.         *
  **************************************************************************/
 
-#ifndef _PLOT_DIALOG_H_
-#define _PLOT_DIALOG_H_
+#ifndef _WEATHER_ROUTING_PLOT_DIALOG_H_
+#define _WEATHER_ROUTING_PLOT_DIALOG_H_
 
 #include <list>
 

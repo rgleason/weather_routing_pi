@@ -232,13 +232,13 @@ void SettingsDialog::OnHelp(wxCommandEvent& event) {
 Cursor Route -- optimal route closest to the cursor\n\
 Destination Route -- optimal route to the desired destination\n\
 Route Thickness -- thickness to draw Cursor and Destination Routes\n\
-Iso Chron Thickness -- thickness for isochrons on map\n\
+Iso Chron Thickness -- thickness for isochrones on map\n\
 Alternate Routes Thickness -- thickness for alternate routes\n");
 
   mes +=
       _("Note: All thicknesses can be set to 0 to disable their display\n\
-Alternates for all Isochrons -- display all alternate routes not only \
-the ones which reach the last isochron\n\
+Alternates for all Isochrones -- display all alternate routes not only \
+the ones which reach the last isochrone\n\
 Squares At Sail Changes -- render squares along Routes whenever \
 a sail change is made\n");
 

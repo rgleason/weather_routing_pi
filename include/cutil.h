@@ -39,27 +39,27 @@
 
 #ifdef __cplusplus
 
-extern "C" int mysnprintf(char *buffer, int count, const char *format, ...);
+extern "C" int mysnprintf(char* buffer, int count, const char* format, ...);
 extern "C" int NextPow2(int size);
 
 #else /* __cplusplus */
-extern int mysnprintf(char *buffer, int count, const char *format, ...);
+extern int mysnprintf(char* buffer, int count, const char* format, ...);
 #endif
 
 #ifdef __MSVC__
 #ifdef __cplusplus
 extern "C" long __stdcall MyUnhandledExceptionFilter(
-    struct _EXCEPTION_POINTERS *ExceptionInfo);
+    struct _EXCEPTION_POINTERS* ExceptionInfo);
 #else
 extern long __stdcall MyUnhandledExceptionFilter(
-    struct _EXCEPTION_POINTERS *ExceptionInfo);
+    struct _EXCEPTION_POINTERS* ExceptionInfo);
 #endif
 #endif
 
 #ifdef __WXMSW__
 #define clock_gettime(id, tv) clock_gettime_monotonic(tv)
 #define CLOCK_MONOTONIC 1
-extern "C" int clock_gettime_monotonic(struct timespec *tv);
+extern "C" int clock_gettime_monotonic(struct timespec* tv);
 #endif
 
 #endif
