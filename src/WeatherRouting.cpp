@@ -2901,8 +2901,13 @@ void WeatherRouting::SaveAsRoute(RouteMapOverlay& routemapoverlay) {
     mdlg.ShowModal();
     return;
   }
-
+#if OCPN_API_VERSION_MAJOR > 1 || \
+    (OCPN_API_VERSION_MAJOR == 1 && OCPN_API_VERSION_MINOR >= 20)
+  PlugIn_Route_ExV2* newRoute = new PlugIn_Route_ExV2();
+#else
   PlugIn_Route_Ex* newRoute = new PlugIn_Route_Ex();
+#endif
+
   wxDateTime display_time = routemapoverlay.StartTime();
   if (m_SettingsDialog.m_cbUseLocalTime->GetValue())
     display_time = display_time.FromUTC();
@@ -2916,10 +2921,17 @@ void WeatherRouting::SaveAsRoute(RouteMapOverlay& routemapoverlay) {
   newRoute->m_isVisible = true;
 
   for (auto const& it : plotdata) {
+#if OCPN_API_VERSION_MAJOR > 1 || \
+    (OCPN_API_VERSION_MAJOR == 1 && OCPN_API_VERSION_MINOR >= 20)
+    PlugIn_Waypoint_ExV2* newPoint =
+        new PlugIn_Waypoint_ExV2(it.lat, heading_resolve(it.lon), _T("circle"),
+                                 _("Weather Route Point"));
+    newPoint->m_PlannedSpeed = it.sog;
+#else
     PlugIn_Waypoint_Ex* newPoint =
         new PlugIn_Waypoint_Ex(it.lat, heading_resolve(it.lon), _T("circle"),
                                _("Weather Route Point"));
-    // newPoint->m_PlannedSpeed = it.sog;
+#endif
     newPoint->m_CreateTime = it.time;
     newRoute->pWaypointList->Append(newPoint);
   }
@@ -2927,13 +2939,23 @@ void WeatherRouting::SaveAsRoute(RouteMapOverlay& routemapoverlay) {
   // last point, missing if config didn't succeed
   Position* p = routemapoverlay.GetDestination();
   if (p) {
+#if OCPN_API_VERSION_MAJOR > 1 || \
+    (OCPN_API_VERSION_MAJOR == 1 && OCPN_API_VERSION_MINOR >= 20)
+    PlugIn_Waypoint_ExV2* newPoint = new PlugIn_Waypoint_ExV2(
+        p->lat, p->lon, _T("circle"), _("Weather Route Destination"));
+#else
     PlugIn_Waypoint_Ex* newPoint = new PlugIn_Waypoint_Ex(
         p->lat, p->lon, _T("circle"), _("Weather Route Destination"));
+#endif
     newPoint->m_CreateTime = routemapoverlay.EndTime();
     newRoute->pWaypointList->Append(newPoint);
   }
-
+#if OCPN_API_VERSION_MAJOR > 1 || \
+    (OCPN_API_VERSION_MAJOR == 1 && OCPN_API_VERSION_MINOR >= 20)
+  AddPlugInRouteExV2(newRoute);
+#else
   AddPlugInRouteEx(newRoute);
+#endif
   // Clean up waypoint list (ownership transferred to OpenCPN)
   newRoute->pWaypointList->DeleteContents(true);
   newRoute->pWaypointList->Clear();
