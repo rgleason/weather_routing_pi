@@ -75,8 +75,8 @@ Position::Position(double latitude, double longitude, Position* p,
       propagated(false),
       copied(false),
       propagation_error(PROPAGATION_NO_ERROR) {
-  lat -= fmod(lat, EPSILON);
-  lon -= fmod(lon, EPSILON);
+  lat = EPSILON * std::round(lat / EPSILON);
+  lon = EPSILON * std::round(lon / EPSILON);
 }
 
 Position::Position(const Position* p)

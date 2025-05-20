@@ -179,7 +179,7 @@ bool BoatData::GetBoatSpeedForPolar(RouteMapConfiguration& configuration,
     // This can happen if the wind speed is outside the range of the polar data.
     // For example, if the wind speed is too high or too low, or if the wind
     // angle is too close to the polar's minimum angle.
-    wxLogMessage(
+    wxLogDebug(
         "[%s] Failed to get polar speed. windDirOverWater=%f "
         "windSpeedOverWater=%f "
         "twa=%f tws=%f ctw=%f stw=%f bound=%d grib=%d",
@@ -199,16 +199,18 @@ bool BoatData::GetBoatSpeedForPolar(RouteMapConfiguration& configuration,
     stw *= configuration.DownwindEfficiency;
   }
 
-  // Determine if it's day or night at the current position and time
-  DayLightStatus dayLightStatus =
-      SunCalculator::GetInstance().GetDayLightStatus(
-          weather_data.lat, weather_data.lon, configuration.time);
+  if (configuration.NightCumulativeEfficiency != 1.0) {
+    // Determine if it's day or night at the current position and time
+    DayLightStatus dayLightStatus =
+        SunCalculator::GetInstance().GetDayLightStatus(
+            weather_data.lat, weather_data.lon, configuration.time);
 
-  if (dayLightStatus == DayLightStatus::Night) {
-    // Apply day/night efficiency factor
-    stw *= configuration.NightCumulativeEfficiency;
-    // Set the NIGHT_TIME flag in data_mask for visual differentiation
-    data_mask |= DataMask::NIGHT_TIME;
+    if (dayLightStatus == DayLightStatus::Night) {
+      // Apply day/night efficiency factor
+      stw *= configuration.NightCumulativeEfficiency;
+      // Set the NIGHT_TIME flag in data_mask for visual differentiation
+      data_mask |= DataMask::NIGHT_TIME;
+    }
   }
 
   // Calculate boat movement over ground by combining boat speed with current.

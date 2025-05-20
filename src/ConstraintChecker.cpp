@@ -48,14 +48,13 @@ struct SegmentKey {
       std::swap(lo1, lo2);
     }
     // Pack four 16-bit signed ints into a 64-bit value
-    packed = (static_cast<uint64_t>(static_cast<uint32_t>(la1) & 0xFFFF) << 48) |
-             (static_cast<uint64_t>(static_cast<uint32_t>(lo1) & 0xFFFF) << 32) |
-             (static_cast<uint64_t>(static_cast<uint32_t>(la2) & 0xFFFF) << 16) |
-             (static_cast<uint64_t>(static_cast<uint32_t>(lo2) & 0xFFFF));
+    packed =
+        (static_cast<uint64_t>(static_cast<uint32_t>(la1) & 0xFFFF) << 48) |
+        (static_cast<uint64_t>(static_cast<uint32_t>(lo1) & 0xFFFF) << 32) |
+        (static_cast<uint64_t>(static_cast<uint32_t>(la2) & 0xFFFF) << 16) |
+        (static_cast<uint64_t>(static_cast<uint32_t>(lo2) & 0xFFFF));
   }
-  bool operator==(const SegmentKey& o) const {
-    return packed == o.packed;
-  }
+  bool operator==(const SegmentKey& o) const { return packed == o.packed; }
 };
 
 template <>

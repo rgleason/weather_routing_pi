@@ -22,7 +22,6 @@
 #include <math.h>
 #include <time.h>
 #include <unordered_map>
-#include <tuple>
 
 #include "SunCalculator.h"
 
@@ -258,7 +257,7 @@ DayLightStatus SunCalculator::GetDayLightStatus(double lat, double lon,
   m_accessCounter++;
 
   // Create a cache key for O(1) lookup
-  CacheKey key = std::make_tuple(day_of_year, lat_index, lon_index);
+  CacheKey key = CacheKey::Pack(day_of_year, lat_index, lon_index);
 
   // Check if key exists in the map (O(1) lookup instead of linear search)
   auto mapIt = m_cacheMap.find(key);
@@ -274,22 +273,22 @@ DayLightStatus SunCalculator::GetDayLightStatus(double lat, double lon,
         entry.access_counter = m_accessCounter;
       }
 
-      // Determine if it's day or night
-      wxDateTime sunrise = entry.sunrise;
-      wxDateTime sunset = entry.sunset;
+      // Use cached year and hour values
+      int sunriseYear = entry.sunriseYear;
+      int sunsetYear = entry.sunsetYear;
+      int sunriseHour = entry.sunriseHour;
+      int sunsetHour = entry.sunsetHour;
 
       // Handle edge cases
-      if (sunrise.GetYear() == 999) {
+      if (sunriseYear == 999) {
         // Sun never rises (polar night)
         return DayLightStatus::Night;
-      } else if (sunset.GetYear() == 999) {
+      } else if (sunsetYear == 999) {
         // Sun never sets (midnight sun)
         return DayLightStatus::Day;
       }
 
       // Normal case: compare current time to sunrise/sunset
-      int sunriseHour = sunrise.GetHour(wxDateTime::UTC);
-      int sunsetHour = sunset.GetHour(wxDateTime::UTC);
       if (sunsetHour < sunriseHour) {
         // Sun sets after midnight
         return (hourOfDay >= sunriseHour || hourOfDay < sunsetHour)
@@ -308,6 +307,11 @@ DayLightStatus SunCalculator::GetDayLightStatus(double lat, double lon,
   wxDateTime sunrise, sunset;
   CalculateSun(lat, lon, day_of_year, sunrise, sunset);
 
+  int sunriseYear = sunrise.GetYear();
+  int sunsetYear = sunset.GetYear();
+  int sunriseHour = sunrise.GetHour(wxDateTime::UTC);
+  int sunsetHour = sunset.GetHour(wxDateTime::UTC);
+
   // Add to cache using LRU replacement policy if needed
   if (m_cache.size() >= MAX_SUN_CACHE_SIZE) {
     // Find least recently accessed entry
@@ -324,29 +328,29 @@ DayLightStatus SunCalculator::GetDayLightStatus(double lat, double lon,
     oldest->day_of_year = day_of_year;
     oldest->lat_index = lat_index;
     oldest->lon_index = lon_index;
-    oldest->sunrise = sunrise;
-    oldest->sunset = sunset;
+    oldest->sunriseYear = sunriseYear;
+    oldest->sunsetYear = sunsetYear;
+    oldest->sunriseHour = sunriseHour;
+    oldest->sunsetHour = sunsetHour;
     oldest->access_counter = m_accessCounter;
 
     // Update the map with the new key -> same index
     m_cacheMap[key] = oldestIndex;
   } else {
     // Add new entry to the end of the vector
-    m_cache.push_back(
-        {day_of_year, lat_index, lon_index, sunrise, sunset, m_accessCounter});
+    m_cache.push_back({day_of_year, lat_index, lon_index, sunriseYear,
+                       sunsetYear, sunriseHour, sunsetHour, m_accessCounter});
 
     // Add to the map with the index of the newly added entry
     m_cacheMap[key] = m_cache.size() - 1;
   }
 
   // Determine day/night status with new calculation
-  if (sunrise.GetYear() == 999) {
+  if (sunriseYear == 999) {
     return DayLightStatus::Night;  // Polar night
-  } else if (sunset.GetYear() == 999) {
+  } else if (sunsetYear == 999) {
     return DayLightStatus::Day;  // Midnight sun
   }
-  int sunriseHour = sunrise.GetHour(wxDateTime::UTC);
-  int sunsetHour = sunset.GetHour(wxDateTime::UTC);
   if (sunsetHour < sunriseHour) {
     // Sun sets after midnight
     return (hourOfDay >= sunriseHour || hourOfDay < sunsetHour)
