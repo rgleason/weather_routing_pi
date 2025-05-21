@@ -30,6 +30,8 @@
 
 #include "Utilities.h"
 #include "Boat.h"
+#include "RoutePoint.h"
+#include "RouteMap.h"
 #include "RouteMapOverlay.h"
 #include "WeatherRouting.h"
 #include "weather_routing_pi.h"
@@ -118,7 +120,7 @@ weather_routing_pi::weather_routing_pi(void* ppimgr)
 weather_routing_pi::~weather_routing_pi() { delete _img_WeatherRouting; }
 
 int weather_routing_pi::Init() {
-  AddLocaleCatalog(_T("opencpn-weather_routing_pi"));
+  AddLocaleCatalog("opencpn-weather_routing_pi");
 
   //    Get a pointer to the opencpn configuration object
   m_pconfig = GetOCPNConfigObject();
@@ -133,14 +135,13 @@ int weather_routing_pi::Init() {
 
 #ifdef PLUGIN_USE_SVG
   m_leftclick_tool_id = InsertPlugInToolSVG(
-      _T( "WeatherRouting" ), _svg_weather_routing,
-      _svg_weather_routing_rollover, _svg_weather_routing_toggled, wxITEM_CHECK,
-      _("Weather Routing"), _T( "" ), NULL, WEATHER_ROUTING_TOOL_POSITION, 0,
-      this);
+      "WeatherRouting", _svg_weather_routing, _svg_weather_routing_rollover,
+      _svg_weather_routing_toggled, wxITEM_CHECK, _("Weather Routing"),
+      wxEmptyString, NULL, WEATHER_ROUTING_TOOL_POSITION, 0, this);
 #else
   m_leftclick_tool_id =
-      InsertPlugInTool(_T(""), _img_WeatherRouting, _img_WeatherRouting,
-                       wxITEM_CHECK, _("Weather Routing"), _T(""), NULL,
+      InsertPlugInTool(wxEmptyString, _img_WeatherRouting, _img_WeatherRouting,
+                       wxITEM_CHECK, _("Weather Routing"), wxEmptyString, NULL,
                        WEATHER_ROUTING_TOOL_POSITION, 0, this);
 #endif
   wxMenu dummy_menu;
@@ -198,7 +199,7 @@ int weather_routing_pi::GetPlugInVersionPost() { return PLUGIN_VERSION_TWEAK; }
 wxBitmap* weather_routing_pi::GetPlugInBitmap() { return &m_panelBitmap; }
 // End of shipdriver process
 
-wxString weather_routing_pi::GetCommonName() { return _T(PLUGIN_COMMON_NAME); }
+wxString weather_routing_pi::GetCommonName() { return PLUGIN_COMMON_NAME; }
 
 wxString weather_routing_pi::GetShortDescription() {
   return _(PLUGIN_SHORT_DESCRIPTION);
@@ -223,7 +224,7 @@ void weather_routing_pi::SetCursorLatLon(double lat, double lon) {
 
 void weather_routing_pi::SetPluginMessage(wxString& message_id,
                                           wxString& message_body) {
-  if (message_id == _T("GRIB_VALUES")) {
+  if (message_id == "GRIB_VALUES") {
     Json::Value root;
     Json::Reader reader;
     // wxString    sLogMessage;
@@ -231,7 +232,7 @@ void weather_routing_pi::SetPluginMessage(wxString& message_id,
       g_ReceivedJSONMsg = root;
       g_ReceivedMessage = message_body;
     }
-  } else if (message_id == _T("GRIB_TIMELINE")) {
+  } else if (message_id == "GRIB_TIMELINE") {
     Json::Reader r;
     Json::Value v;
     r.parse(static_cast<std::string>(message_body), v);
@@ -250,7 +251,7 @@ void weather_routing_pi::SetPluginMessage(wxString& message_id,
         RequestRefresh(m_parent_window);
       }
     }
-  } else if (message_id == _T("GRIB_TIMELINE_RECORD")) {
+  } else if (message_id == "GRIB_TIMELINE_RECORD") {
     Json::Reader r;
     Json::Value v;
     r.parse(static_cast<std::string>(message_body), v);
@@ -270,7 +271,7 @@ void weather_routing_pi::SetPluginMessage(wxString& message_id,
         wxString ver = _("Use versions");
         wxMessageDialog mdlg(
             m_parent_window,
-            _("Grib plugin version not supported.") + _T("\n\n") +
+            _("Grib plugin version not supported.") + "\n\n" +
                 wxString::Format("%s %d.%d to %d.%d", ver, GRIB_MIN_MAJOR,
                                  GRIB_MIN_MINOR, GRIB_MAX_MAJOR,
                                  GRIB_MAX_MINOR),
@@ -295,7 +296,7 @@ void weather_routing_pi::SetPluginMessage(wxString& message_id,
         routemapoverlay->Unlock();
       }
     }
-  } else if (message_id == _T("CLIMATOLOGY")) {
+  } else if (message_id == "CLIMATOLOGY") {
     if (!m_pWeather_Routing) return; /* not ready */
 
     Json::Reader r;
@@ -323,7 +324,7 @@ void weather_routing_pi::SetPluginMessage(wxString& message_id,
             m_parent_window,
             _("Climatology plugin version not supported, no climatology "
               "data.") +
-                _T("\n\n") +
+                "\n\n" +
                 wxString::Format("%s %d.%d to %d.%d", ver,
                                  CLIMATOLOGY_MIN_MAJOR, CLIMATOLOGY_MIN_MINOR,
                                  CLIMATOLOGY_MAX_MAJOR, CLIMATOLOGY_MAX_MINOR),
@@ -366,7 +367,7 @@ void weather_routing_pi::SetPluginMessage(wxString& message_id,
     Json::Reader reader;
     // check for errors before retreiving values...
     if (!reader.parse(static_cast<std::string>(message_body), root)) {
-      wxLogMessage(_T("weather_routing_pi: Error parsing JSON message - ") +
+      wxLogMessage("weather_routing_pi: Error parsing JSON message - " +
                    reader.getFormattedErrorMessages() + " : " + message_body);
     }
 
@@ -520,7 +521,7 @@ bool weather_routing_pi::LoadConfig() {
 
   if (!pConf) return false;
 
-  pConf->SetPath(_T( "/PlugIns/WeatherRouting" ));
+  pConf->SetPath("/PlugIns/WeatherRouting");
   return true;
 }
 
@@ -541,10 +542,10 @@ wxString weather_routing_pi::StandardPath() {
   wxString s = wxFileName::GetPathSeparator();
   wxString stdPath = *GetpPrivateApplicationDataLocation();
 
-  stdPath += s + _T("plugins");
+  stdPath += s + "plugins";
   if (!wxDirExists(stdPath)) wxMkdir(stdPath);
 
-  stdPath += s + _T("weather_routing");
+  stdPath += s + "weather_routing";
 
 #ifdef __WXOSX__
   // Compatibility with pre-OCPN-4.2; move config dir to
@@ -553,8 +554,8 @@ wxString weather_routing_pi::StandardPath() {
     wxStandardPathsBase& std_path = wxStandardPathsBase::Get();
     wxString s = wxFileName::GetPathSeparator();
     // should be ~/Library/Preferences/opencpn
-    wxString oldPath = (std_path.GetUserConfigDir() + s + _T("plugins") + s +
-                        _T("weather_routing"));
+    wxString oldPath =
+        (std_path.GetUserConfigDir() + s + "plugins" + s + "weather_routing");
     if (wxDirExists(oldPath) && !wxDirExists(stdPath)) {
       wxLogMessage("weather_routing_pi: moving config dir %s to %s", oldPath,
                    stdPath);

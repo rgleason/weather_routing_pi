@@ -17,6 +17,9 @@
  *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,  USA.         *
  ***************************************************************************/
 
+#ifndef _WEATHER_ROUTING_ROUTE_MAP_OVERLAY_H_
+#define _WEATHER_ROUTING_ROUTE_MAP_OVERLAY_H_
+
 #include "RouteMap.h"
 #include "LineBufferOverlay.h"
 
@@ -159,7 +162,7 @@ public:
    */
   void Render(wxDateTime time, SettingsDialog& settingsdialog, piDC& dc,
               PlugIn_ViewPort& vp, bool justendroute,
-              RoutePoint* positionOnRoute = nullptr);
+              const RoutePoint* positionOnRoute = nullptr);
 
   /**
    * Gets a color representing a sailing comfort level.
@@ -230,10 +233,21 @@ public:
   int Cyclones(int* months);
 
   /**
-   * Gets the destination position.
+   * Gets the destination position, or null if the route could not be completed
+   * successfully.
    * @return Pointer to the destination position.
    */
   Position* GetDestination() { return destination_position; }
+  /**
+   * Gets the best achievable position.
+   *
+   * This is either:
+   * 1. The exact destination position (destination_position) if reached
+   * successfully.
+   * 2. The closest calculated position to the destination if exact arrival
+   * isn't possible.
+   */
+  Position* GetLastDestination() { return last_destination_position; }
 
   /**
    * Checks if the route has been updated.
@@ -298,7 +312,7 @@ public:
    * Gets the last cursor position.
    * @return Pointer to the last cursor position.
    */
-  Position* GetLastCursorPosition() { return last_cursor_position; }
+  const Position* GetLastCursorPosition() const { return last_cursor_position; }
 
   /**
    * Gets the time at the last cursor position.
@@ -336,6 +350,12 @@ public:
    */
   int sailingConditionLevel(const PlotData& plot) const;
 
+  /**
+   * Gets the list of isochrones used for route calculation.
+   * @return Reference to the list of isochrones.
+   */
+  const IsoChronList& GetIsoChronList() const { return origin; }
+
 private:
   /**
    * Renders an alternate route.
@@ -348,7 +368,7 @@ private:
                             PlugIn_ViewPort& vp);
 
   /**
-   * Renders a single isochron route.
+   * Renders a single isochrone route.
    * @param r Pointer to the route to render.
    * @param time The currently selected time in the GRIB timeline.
    * @param grib_color Color for grib-based segments.
@@ -427,7 +447,8 @@ private:
    * @param dc Device context for drawing.
    * @param vp ViewPort for coordinate transformations.
    */
-  void DrawLine(RoutePoint* p1, RoutePoint* p2, piDC& dc, PlugIn_ViewPort& vp);
+  void DrawLine(const RoutePoint* p1, const RoutePoint* p2, piDC& dc,
+                PlugIn_ViewPort& vp);
 
   /**
    * Draws a line between two route points with color gradation.
@@ -438,7 +459,7 @@ private:
    * @param dc Device context for drawing.
    * @param vp ViewPort for coordinate transformations.
    */
-  void DrawLine(RoutePoint* p1, wxColour& color1, RoutePoint* p2,
+  void DrawLine(const RoutePoint* p1, wxColour& color1, const RoutePoint* p2,
                 wxColour& color2, piDC& dc, PlugIn_ViewPort& vp);
 
   /** Last cursor latitude. */
@@ -475,7 +496,8 @@ private:
   Position* destination_position;
 
   /**
-   * Best position reached toward the destination during route calculation.
+   * Best achievable position reached toward the destination during route
+   * calculation.
    *
    * This stores either:
    * 1. The exact destination position (destination_position) if reached
@@ -561,3 +583,5 @@ private:
   /** Projection type for the current cache. */
   int current_cache_projection;
 };
+
+#endif

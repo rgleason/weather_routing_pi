@@ -1,9 +1,4 @@
 /***************************************************************************
- *
- * Project:  OpenCPN Weather Routing plugin
- * Author:   Sean D'Epagnier
- *
- ***************************************************************************
  *   Copyright (C) 2015 by Sean D'Epagnier                                 *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
@@ -20,8 +15,10 @@
  *   along with this program; if not, write to the                         *
  *   Free Software Foundation, Inc.,                                       *
  *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,  USA.         *
- ***************************************************************************
- */
+ **************************************************************************/
+
+#ifndef _WEATHER_ROUTING_UTILITIES_H_
+#define _WEATHER_ROUTING_UTILITIES_H_
 
 #ifdef __MSVC__
 #include <float.h>
@@ -72,10 +69,39 @@ char* strtok_r(char* str, const char* delim, char** save);
 #endif
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
+/**
+ * Convert degrees to radians
+ * @param degrees Angle in degrees
+ * @return Equivalent angle in radians
+ */
 double deg2rad(double degrees);
+
+/**
+ * Convert radians to degrees
+ * @param radians Angle in radians
+ * @return Equivalent angle in degrees
+ */
 double rad2deg(double radians);
+
+/**
+ * Normalize heading angle to range [-180, 180]
+ * @param degrees Angle in degrees (any range)
+ * @return Normalized angle in range [-180, 180]
+ */
 double heading_resolve(double degrees);
+
+/**
+ * Convert angle to positive degrees in range [0, 360)
+ * @param degrees Angle in degrees (any range)
+ * @return Positive angle in range [0, 360)
+ */
 double positive_degrees(double degrees);
+
+/**
+ * Convert radians to positive degrees in range [0, 360)
+ * @param radians Angle in radians
+ * @return Positive angle in degrees in range [0, 360)
+ */
 double rad2posdeg(double radians);
 
 #define ft2m(X) (X * .3048)
@@ -97,3 +123,5 @@ bool AttributeBool(TiXmlElement* e, const char* name, bool def);
 #include <wx/string.h>
 // CUSTOMIZATION
 wxString calculateTimeDelta(wxDateTime startTime, wxDateTime endTime);
+
+#endif

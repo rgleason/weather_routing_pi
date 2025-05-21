@@ -17,10 +17,16 @@
  *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,  USA.         *
  ***************************************************************************/
 
+#ifndef _WEATHER_ROUTING_SUN_CALCULATOR_H_
+#define _WEATHER_ROUTING_SUN_CALCULATOR_H_
+
 #include <wx/wx.h>
 
 #include <vector>
 #include <algorithm>
+#include <unordered_map>
+#include <tuple>
+#include <cstdint>
 
 enum class DayLightStatus { Day, Night };
 
@@ -78,7 +84,12 @@ public:
                                    const wxDateTime& time);
 
 private:
-  SunCalculator() = default;
+  SunCalculator() {
+    // Make sure the cache is empty initially
+    m_cache.clear();
+    m_cacheMap.clear();
+    m_accessCounter = 0;
+  }
 
   struct SunTimeCache {
     int day_of_year;
@@ -86,14 +97,56 @@ private:
     int lat_index;
     /** The longitude with 1-degree precision. */
     int lon_index;
-    /** Sunrise time in UTC. */
-    wxDateTime sunrise;
-    /** Sunset time in UTC. */
-    wxDateTime sunset;
-    wxDateTime last_accessed;
+    /** Cached sunrise year (UTC). */
+    int sunriseYear;
+    /** Cached sunset year (UTC). */
+    int sunsetYear;
+    /** Cached sunrise hour (UTC). */
+    int sunriseHour;
+    /** Cached sunset hour (UTC). */
+    int sunsetHour;
+    uint64_t access_counter;
   };
 
   static const int MAX_SUN_CACHE_SIZE = 100;
   std::vector<SunTimeCache> m_cache;
   wxCriticalSection m_cacheLock;
+  uint64_t m_accessCounter = 0;  // Counter for LRU cache access tracking
+
+  // Define a struct for the cache key, packed into a single uint64_t
+  struct CacheKey {
+    uint64_t packed;
+
+    // Packing: 17 bits for day (0-366), 23 bits for lat, 24 bits for lon (all
+    // signed, centered at 0) Range: day_of_year [0, 366], lat_index [-90, 90],
+    // lon_index [-180, 180]
+    static uint64_t Pack(int day_of_year, int lat_index, int lon_index) {
+      // Offset lat/lon to unsigned
+      uint64_t day = static_cast<uint64_t>(day_of_year) & 0x1FF;      // 9 bits
+      uint64_t lat = static_cast<uint64_t>(lat_index + 90) & 0xFF;    // 8 bits
+      uint64_t lon = static_cast<uint64_t>(lon_index + 180) & 0x1FF;  // 9 bits
+      return (day << 16) | (lat << 8) | lon;
+    }
+
+    CacheKey(int day_of_year, int lat_index, int lon_index)
+        : packed(Pack(day_of_year, lat_index, lon_index)) {}
+    CacheKey(uint64_t packed_) : packed(packed_) {}
+
+    bool operator==(const CacheKey& other) const {
+      return packed == other.packed;
+    }
+  };
+
+  struct CacheKeyHash {
+    std::size_t operator()(const CacheKey& k) const {
+      // Use packed value directly as hash
+      return std::hash<uint64_t>()(k.packed);
+    }
+  };
+
+  // Map for O(1) lookups
+  std::unordered_map<CacheKey, size_t, CacheKeyHash>
+      m_cacheMap;  // Maps key to index in m_cache
 };
+
+#endif

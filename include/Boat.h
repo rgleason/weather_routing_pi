@@ -15,7 +15,10 @@
  *   along with this program; if not, write to the                         *
  *   Free Software Foundation, Inc.,                                       *
  *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,  USA.         *
- ***************************************************************************/
+ **************************************************************************/
+
+#ifndef _WEATHER_ROUTING_BOAT_H_
+#define _WEATHER_ROUTING_BOAT_H_
 
 #include "Polar.h"
 
@@ -159,3 +162,5 @@ private:
   wxString m_last_filename;
   wxDateTime m_last_filetime;
 };
+
+#endif

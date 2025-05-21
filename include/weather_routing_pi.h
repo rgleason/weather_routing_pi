@@ -1,9 +1,4 @@
-/******************************************************************************
- *
- * Project:  OpenCPN Weather Routing plugin
- * Author:   Sean D'Epagnier
- *
- ***************************************************************************
+/***************************************************************************
  *   Copyright (C) 2015 by Sean D'Epagnier                                 *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
@@ -20,8 +15,11 @@
  *   along with this program; if not, write to the                         *
  *   Free Software Foundation, Inc.,                                       *
  *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,  USA.         *
- ***************************************************************************
- */
+ **************************************************************************/
+
+#ifndef _WEATHER_ROUTING_PI_H_
+#define _WEATHER_ROUTING_PI_H_
+
 #ifdef DEBUG_BUILD
 #define DEBUGSL(x)                                 \
   do {                                             \
@@ -160,6 +158,21 @@ public:
   void OnContextMenuItemCallback(int id);
 
   void SetColorScheme(PI_ColorScheme cs);
+  /**
+   * Gets the plugin's private data directory path.
+   *
+   * Creates and returns the path where the Weather Routing plugin should store
+   * its private configuration and data files. The path is constructed as:
+   * [OpenCPN private data location]/plugins/weather_routing/
+   *
+   * Key behaviors:
+   * - Creates the directory structure if it doesn't exist
+   * - Always returns a path ending with a path separator
+   * - Ensures the returned path is user-writable
+   *
+   * @return A wxString containing the absolute path to the plugin's data
+   * directory, always ending with a path separator
+   */
   static wxString StandardPath();
   void ShowMenuItems(bool show);
 
@@ -194,5 +207,7 @@ private:
 
   wxTimer m_tCursorLatLon;
 };
+
+#endif
 
 #endif

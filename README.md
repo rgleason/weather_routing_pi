@@ -6,7 +6,7 @@ Perform weather routing, see "data/WeatherRoutingInformation.html"
 Compiling
 =========
 
-* git clone git://github.com/seandepagnier/weather_routing_pi.git
+* git clone git://github.com/rgleason/weather_routing_pi.git
 
 Under windows, you must find the file "opencpn.lib" (Visual Studio) or "libopencpn.dll.a" (mingw) which is built in the build directory after compiling opencpn.  This file must be copied to the plugin directory.
 

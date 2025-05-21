@@ -205,6 +205,15 @@ private:
   wxTimer m_tAutoSaveXML;
 
 public:
+  /**
+   * Structure to store route saving options selected by the user
+   */
+  struct SaveRouteOptions {
+    bool dialogAccepted;        //!< Whether the user confirmed the dialog
+    bool simplifyRoute;         //!< Whether to simplify the route
+    double maxDurationPenalty;  //!< Maximum permitted ETA loss (percent)
+  };
+
   enum {
     POSITION_NAME = 0,  //!< Position identifier/name
     POSITION_LAT,       //!< Latitude coordinate
@@ -269,6 +278,8 @@ public:
 
   void UpdateCurrentConfigurations();
   void UpdateStates();
+  SaveRouteOptions ShowRouteSaveOptionsDialog();
+
   /**
    * Get list of currently selected route maps in the weather routes list
    *
@@ -417,6 +428,10 @@ private:
   void OnClose(wxCloseEvent& event) { Hide(); }
   void OnPositionKeyDown(wxListEvent& event);
   void OnEditConfiguration();
+
+  void SaveSimplifiedRoute(RouteMapOverlay& routemapoverlay,
+                           const std::list<Position*>& simplifiedRoute);
+
   /**
    * Loads a weather routing configuration from an XML file.
    *

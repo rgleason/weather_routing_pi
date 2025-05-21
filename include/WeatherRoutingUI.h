@@ -1017,6 +1017,7 @@ protected:
   wxStaticText* m_staticText124;
   wxStaticText* m_staticText130;
   wxStaticText* m_staticText126;
+  wxStaticText* m_staticText129;
   wxStaticText* m_staticText127;
   wxStaticText* m_staticText122;
   wxStdDialogButtonSizer* m_sdbSizer5;

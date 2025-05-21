@@ -17,14 +17,19 @@
  *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,  USA.         *
  ***************************************************************************/
 
-#ifndef _WEATHER_TABLE_DIALOG_H_
-#define _WEATHER_TABLE_DIALOG_H_
+#ifndef _WEATHER_ROUTING_TABLE_DIALOG_H_
+#define _WEATHER_ROUTING_TABLE_DIALOG_H_
+
+#include <wx/aui/aui.h>
+#include <map>
 
 #include "WeatherRoutingUI.h"
-#include <wx/aui/aui.h>
-#include <map>  // Add this include for std::map
+#include "ocpn_plugin.h"
 
 class WeatherRouting;
+class RouteMapOverlay;
+struct RouteMapConfiguration;
+class PlotData;
 
 /**
  * Dialog implementation to display a detailed weather table for a specific
@@ -92,31 +97,33 @@ private:
   enum WeatherDataColumn {
     COL_LEG_NUMBER,  //!< Leg number
     COL_ETA,  //!< Estimated Time of Arrival - actual date/time of this point
-    COL_ENROUTE,        //!< Duration from start (cumulative time)
-    COL_LEG_DISTANCE,   //!< Distance from start (cumulative distance)
-    COL_SOG,            //!< Speed Over Ground
-    COL_COG,            //!< Course Over Ground
-    COL_STW,            //!< Speed Through Water
-    COL_CTW,            //!< Course Through Water
-    COL_AWS,            //!< Apparent Wind Speed
-    COL_TWS,            //!< True Wind Speed
-    COL_WIND_GUST,      //!< Wind Gust
-    COL_TWD,            //!< True Wind Direction
-    COL_TWA,            //!< True Wind Angle
-    COL_AWA,            //!< Apparent Wind Angle
-    COL_SAIL_PLAN,      //!< Sail Plan
-    COL_COMFORT,        //!< Sailing Comfort Level
-    COL_WAVE_HEIGHT,    //!< Wave Height
-    COL_RAIN,           //!< Rain
-    COL_CLOUD,          //!< Cloud Cover
-    COL_AIR_TEMP,       //!< Air Temperature
-    COL_SEA_TEMP,       //!< Sea Temperature
-    COL_REL_HUMIDITY,   //!< Relative Humidity
-    COL_AIR_PRESSURE,   //!< Air Pressure
-    COL_CAPE,           //!< CAPE
-    COL_REFLECTIVITY,   //!< Reflectivity
-    COL_CURRENT_SPEED,  //!< Sea Current Speed
-    COL_CURRENT_DIR,    //!< Sea Current Direction
+    COL_ENROUTE,         //!< Duration from start (cumulative time)
+    COL_LEG_DISTANCE,    //!< Distance from start (cumulative distance)
+    COL_SOG,             //!< Speed Over Ground
+    COL_COG,             //!< Course Over Ground
+    COL_STW,             //!< Speed Through Water
+    COL_CTW,             //!< Course Through Water
+    COL_WIND_SOURCE,     //!< Wind data source (GRIB, climatology, deficient)
+    COL_AWS,             //!< Apparent Wind Speed
+    COL_TWS,             //!< True Wind Speed
+    COL_WIND_GUST,       //!< Wind Gust
+    COL_TWD,             //!< True Wind Direction
+    COL_TWA,             //!< True Wind Angle
+    COL_AWA,             //!< Apparent Wind Angle
+    COL_SAIL_PLAN,       //!< Sail Plan
+    COL_COMFORT,         //!< Sailing Comfort Level
+    COL_WAVE_HEIGHT,     //!< Wave Height
+    COL_RAIN,            //!< Rain
+    COL_CLOUD,           //!< Cloud Cover
+    COL_AIR_TEMP,        //!< Air Temperature
+    COL_SEA_TEMP,        //!< Sea Temperature
+    COL_REL_HUMIDITY,    //!< Relative Humidity
+    COL_AIR_PRESSURE,    //!< Air Pressure
+    COL_CAPE,            //!< CAPE
+    COL_REFLECTIVITY,    //!< Reflectivity
+    COL_CURRENT_SOURCE,  //!< Current data source (GRIB, climatology, deficient)
+    COL_CURRENT_SPEED,   //!< Sea Current Speed
+    COL_CURRENT_DIR,     //!< Sea Current Direction
     /**
      * True Current Angle relative to COG.
      *   - 0 degrees: Current flowing in exactly the same direction as the
@@ -146,4 +153,4 @@ private:
   DECLARE_EVENT_TABLE()
 };
 
-#endif  // _WEATHER_TABLE_DIALOG_H_
+#endif

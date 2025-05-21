@@ -5390,6 +5390,18 @@ RoutePositionDialog::RoutePositionDialog(wxWindow* parent, wxWindowID id,
   m_stJibes->Wrap(-1);
   fgSizer91->Add(m_stJibes, 0, wxALL | wxEXPAND, 5);
 
+  // Sail Plan Changes
+  m_staticText129 = new wxStaticText(this, wxID_ANY, _("Sail Plan Changes"),
+                                     wxDefaultPosition, wxDefaultSize, 0);
+  m_staticText129->Wrap(-1);
+  fgSizer91->Add(m_staticText129, 0, wxALL, 5);
+
+  m_stSailPlanChanges = new wxStaticText(this, wxID_ANY, wxEmptyString,
+                                         wxDefaultPosition, wxDefaultSize, 0);
+  m_stSailPlanChanges->Wrap(-1);
+  fgSizer91->Add(m_stSailPlanChanges, 0, wxALL | wxEXPAND, 5);
+
+  // Weather Data
   m_staticText122 = new wxStaticText(this, wxID_ANY, _("Weather Data"),
                                      wxDefaultPosition, wxDefaultSize, 0);
   m_staticText122->Wrap(-1);

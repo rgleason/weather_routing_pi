@@ -199,7 +199,7 @@ bool RouteMap::Propagate() {
     // Create new list for this propagation step
     IsoRouteList routelist;
     
-    // Get latest isochron and propagate each position
+    // Get latest isochrone and propagate each position
     IsoChron *last = origin.back();
     last->PropagateIntoList(routelist, m_Configuration);
     
@@ -209,9 +209,9 @@ bool RouteMap::Propagate() {
         return false;
     
     // Test if destination reached
-    // Create new isochron and add to list
-    IsoChron *isochron = new IsoChron(reduced, time, dt, m_SharedNewGrib, m_Configuration.grib_is_data_deficient);
-    origin.push_back(isochron);
+    // Create new isochrone and add to list
+    IsoChron *isochrone = new IsoChron(reduced, time, dt, m_SharedNewGrib, m_Configuration.grib_is_data_deficient);
+    origin.push_back(isochrone);
     
     return true;
 }

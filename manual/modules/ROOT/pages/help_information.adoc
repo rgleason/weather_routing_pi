@@ -63,7 +63,7 @@ are assumed to be zero.
 ==== Time Step
 
 * Time to sail before considering a course or sail change. 
-* This is the difference in time between the isochrons on the map. 
+* This is the difference in time between the isochrones on the map. 
 * Small time-steps are needed to navigate through narrow channels and give a more accurate result. 
 * Generally the route's finish becomes earlier with smaller time steps because a more optimal route is found,
 however calculation will take longer (generally four times longer for half the time step).

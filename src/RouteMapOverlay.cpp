@@ -165,7 +165,7 @@ void RouteMapOverlay::RouteAnalysis(PlugIn_Route* proute) {
     pwpnode = pwpnode->GetNext();  // PlugInWaypoint
     if (pwpnode == nullptr) break;
 
-    int data_mask = 0;
+    DataMask data_mask = DataMask::NONE;
     double H;
     pwp = pwpnode->GetData();
     rte.lat = pwp->m_lat, rte.lon = pwp->m_lon;
@@ -189,10 +189,11 @@ void RouteMapOverlay::RouteAnalysis(PlugIn_Route* proute) {
   Lock();
   m_bUpdated = true;
   m_UpdateOverlay = true;
-  last_destination_position = new Position(
-      data.lat, data.lon, nullptr /* position */, NAN /* heading */,
-      NAN /* bearing*/, data.polar, 0 /* tacks */, 0 /* jibes */,
-      0 /* sailplan changes */, 0 /* data_mask */, true /* data_deficient */);
+  last_destination_position =
+      new Position(data.lat, data.lon, nullptr /* position */,
+                   NAN /* heading */, NAN /* bearing*/, data.polar,
+                   0 /* tacks */, 0 /* jibes */, 0 /* sailplan changes */,
+                   DataMask::NONE /* data_mask */, true /* data_deficient */);
 
   last_cursor_plotdata = last_destination_plotdata;
   if (ok) {
@@ -233,8 +234,8 @@ static void SetWidth(piDC& dc, int w, bool penifgl = false) {
   dc.SetPen(pen);
 }
 
-void RouteMapOverlay::DrawLine(RoutePoint* p1, RoutePoint* p2, piDC& dc,
-                               PlugIn_ViewPort& vp) {
+void RouteMapOverlay::DrawLine(const RoutePoint* p1, const RoutePoint* p2,
+                               piDC& dc, PlugIn_ViewPort& vp) {
   wxPoint p1p, p2p;
   WR_GetCanvasPixLL(&vp, &p1p, p1->lat, p1->lon);
   WR_GetCanvasPixLL(&vp, &p2p, p2->lat, p2->lon);
@@ -250,8 +251,8 @@ void RouteMapOverlay::DrawLine(RoutePoint* p1, RoutePoint* p2, piDC& dc,
   }
 }
 
-void RouteMapOverlay::DrawLine(RoutePoint* p1, wxColour& color1, RoutePoint* p2,
-                               wxColour& color2, piDC& dc,
+void RouteMapOverlay::DrawLine(const RoutePoint* p1, wxColour& color1,
+                               const RoutePoint* p2, wxColour& color2, piDC& dc,
                                PlugIn_ViewPort& vp) {
 #if 0
     double p1plon, p2plon;
@@ -288,15 +289,15 @@ static inline wxColour& PositionColor(Position* p, wxColour& grib_color,
                                       wxColour& climatology_color,
                                       wxColour& grib_deficient_color,
                                       wxColour& climatology_deficient_color) {
-  if (p->data_mask & Position::GRIB_WIND) {
-    if (p->data_mask & Position::DATA_DEFICIENT_WIND)
+  if (p->data_mask & DataMask::GRIB_WIND) {
+    if (p->data_mask & DataMask::DATA_DEFICIENT_WIND)
       return grib_deficient_color;
     else
       return grib_color;
   }
 
-  if (p->data_mask & Position::CLIMATOLOGY_WIND) {
-    if (p->data_mask & Position::DATA_DEFICIENT_WIND)
+  if (p->data_mask & DataMask::CLIMATOLOGY_WIND) {
+    if (p->data_mask & DataMask::DATA_DEFICIENT_WIND)
       return climatology_deficient_color;
     else
       return climatology_color;
@@ -353,12 +354,12 @@ void RouteMapOverlay::RenderAlternateRoute(IsoRoute* r, bool each_parent,
   wxColor black = wxColour(0, 0, 0, 192), tblack = TransparentColor(black);
   do {
     wxColour* color =
-        pos->data_mask & Position::DATA_DEFICIENT_WIND ? &tblack : &black;
+        pos->data_mask & DataMask::DATA_DEFICIENT_WIND ? &tblack : &black;
     for (Position* p = pos; p && !p->drawn && p->parent; p = p->parent) {
       //            wxColour &color = p->data_mask &
-      //            Position::DATA_DEFICIENT_WIND ? tblack : black;
+      //            DataMask::DATA_DEFICIENT_WIND ? tblack : black;
       wxColour& pcolor =
-          p->parent->data_mask & Position::DATA_DEFICIENT_WIND ? tblack : black;
+          p->parent->data_mask & DataMask::DATA_DEFICIENT_WIND ? tblack : black;
       if (!p->copied || each_parent)
         DrawLine(p, *color, p->parent, pcolor, dc, vp);
       p->drawn = true;
@@ -391,7 +392,7 @@ static double GetPlatformScaleFactor() {
 
 void RouteMapOverlay::Render(wxDateTime time, SettingsDialog& settingsdialog,
                              piDC& dc, PlugIn_ViewPort& vp, bool justendroute,
-                             RoutePoint* positionOnRoute) {
+                             const RoutePoint* positionOnRoute) {
   dc.SetPen(*wxBLACK);                // reset pen
   dc.SetBrush(*wxTRANSPARENT_BRUSH);  // reset brush
   if (!justendroute) {
@@ -521,7 +522,7 @@ void RouteMapOverlay::Render(wxDateTime time, SettingsDialog& settingsdialog,
       if (IsoChronThickness) {
         Lock();
         int c = 0;
-        // Find the isochron closest to the GRIB time
+        // Find the isochrone closest to the GRIB time
         IsoChron* closestIsochron = nullptr;
         wxTimeSpan closestDiff =
             wxTimeSpan::Days(999);  // A large initial value
@@ -545,7 +546,7 @@ void RouteMapOverlay::Render(wxDateTime time, SettingsDialog& settingsdialog,
                              routecolors[c][2], 224);
           wxColor climatology_color(255 - routecolors[c][0], routecolors[c][2],
                                     routecolors[c][1], 224);
-          // If this is the closest isochron to the selected GRIB time, use a
+          // If this is the closest isochrone to the selected GRIB time, use a
           // thicker line
           if (time.IsValid() && *i == closestIsochron) {
             SetWidth(dc, IsoChronThickness * 3);
@@ -1051,7 +1052,7 @@ void RouteMapOverlay::RenderWindBarbs(piDC& dc, PlugIn_ViewPort& vp) {
                             ? positive_degrees(lon)
                             : lon);
 
-        // find the first isochron we are outside of using the isochron from
+        // find the first isochrone we are outside of using the isochrone from
         // the last point as an initial guess to reduce the amount of expensive
         // Contains calls
         if (!(*it)->Contains(p)) {
@@ -1068,10 +1069,10 @@ void RouteMapOverlay::RenderWindBarbs(piDC& dc, PlugIn_ViewPort& vp) {
 
         {
           double W1, VW1, W2, VW2;
-          int data_mask1,
+          DataMask data_mask1,
               data_mask2;  // can be used to colorize barbs based on data type
           bool v1, v2;
-          // now it is the isochron before p, so we find the two closest
+          // now it is the isochrone before p, so we find the two closest
           // postions
           Position* p1 = (*it)->ClosestPosition(lat, lon);
           configuration.grib = (*it)->m_Grib;
@@ -1243,7 +1244,7 @@ void RouteMapOverlay::RenderCurrent(piDC& dc, PlugIn_ViewPort& vp) {
                             ? positive_degrees(lon)
                             : lon);
 
-        // find the first isochron we are outside of using the isochron from
+        // find the first isochrone we are outside of using the isochrone from
         // the last point as an initial guess to reduce the amount of expensive
         // Contains calls
         if (!(*it)->Contains(p)) {
@@ -1260,10 +1261,10 @@ void RouteMapOverlay::RenderCurrent(piDC& dc, PlugIn_ViewPort& vp) {
 
         {
           double W1, VW1, W2, VW2;
-          int data_mask1,
+          DataMask data_mask1,
               data_mask2;  // can be used to colorize barbs based on data type
 
-          // now it is the isochron before p, so we find the two closest
+          // now it is the isochrone before p, so we find the two closest
           // postions
           Position* p1 = (*it)->ClosestPosition(lat, lon);
           configuration.grib = (*it)->m_Grib;
@@ -1636,37 +1637,38 @@ void RouteMapOverlay::UpdateDestination() {
     delete destination_position;
     destination_position = 0;
     /* this doesn't happen often, so can be slow.. for each position in the last
-       isochron, we try to propagate to the destination */
+       isochrone, we try to propagate to the destination */
     IsoChronList::iterator iit = origin.end();
     iit--;
-    iit--; /* second from last isochron */
-    IsoChron* isochron = *iit;
+    iit--; /* second from last isochrone */
+    IsoChron* isochrone = *iit;
     double mindt = INFINITY;
     Position* endp;
     double minH;
     bool mintacked;
     bool minjibes;
     bool minsail_plan_changed;
-    int mindata_mask;
+    DataMask mindata_mask;
 
-    for (IsoRouteList::iterator it = isochron->routes.begin();
-         it != isochron->routes.end(); ++it) {
-      configuration.grib = isochron->m_Grib;
-      configuration.grib_is_data_deficient = isochron->m_Grib_is_data_deficient;
+    for (IsoRouteList::iterator it = isochrone->routes.begin();
+         it != isochrone->routes.end(); ++it) {
+      configuration.grib = isochrone->m_Grib;
+      configuration.grib_is_data_deficient =
+          isochrone->m_Grib_is_data_deficient;
 
-      configuration.time = isochron->time;
-      configuration.UsedDeltaTime = isochron->delta;
+      configuration.time = isochrone->time;
+      configuration.UsedDeltaTime = isochrone->delta;
       (*it)->PropagateToEnd(configuration, mindt, endp, minH, mintacked,
                             minjibes, minsail_plan_changed, mindata_mask);
     }
     Unlock();
 
     if (std::isinf(mindt)) {
-      // destination is between two isochrons
+      // destination is between two isochrones
       // but propagate can't reach it (land or boundaries in the way).
       // Use an upper bound time for EndTime, not defined times are too much
       // trouble later.
-      m_EndTime = isochron->time + wxTimeSpan(0, 0, isochron->delta);
+      m_EndTime = isochrone->time + wxTimeSpan(0, 0, isochrone->delta);
       last_destination_position =
           ClosestPosition(configuration.EndLat, configuration.EndLon);
     } else {
@@ -1675,8 +1677,8 @@ void RouteMapOverlay::UpdateDestination() {
           endp->polar, endp->tacks + mintacked, endp->jibes + minjibes,
           endp->sail_plan_changes + minsail_plan_changed, mindata_mask);
 
-      m_EndTime = isochron->time + wxTimeSpan::Milliseconds(1000 * mindt);
-      isochron->delta = mindt;
+      m_EndTime = isochrone->time + wxTimeSpan::Milliseconds(1000 * mindt);
+      isochrone->delta = mindt;
       last_destination_position = destination_position;
     }
   } else {
