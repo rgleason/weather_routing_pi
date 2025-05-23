@@ -69,6 +69,7 @@
 #include <functional>
 #include <list>
 #include <map>
+#include <vector>
 
 #include "Utilities.h"
 #include "Boat.h"
@@ -98,6 +99,7 @@ RouteMapConfiguration::RouteMapConfiguration()
       StartLon(0),
       EndLon(0),
       grib(nullptr),
+      overshoot_phase(false),
       grib_is_data_deficient(false) {}
 
 double RouteMapConfiguration::GetBoatLat() {
@@ -310,6 +312,7 @@ bool RouteMap::Propagate() {
     np->prev = np->next = np;
     routelist.push_back(new IsoRoute(np->BuildSkipList()));
     configuration.grib = nullptr;
+    configuration.overshoot_phase = false;  // Always false at start
   } else {
     // At least one isochrone has been calculated.
     configuration.grib = origin.back()->m_Grib;
@@ -317,6 +320,9 @@ bool RouteMap::Propagate() {
     configuration.UsedDeltaTime = origin.back()->delta;
     configuration.grib_is_data_deficient =
         origin.back()->m_Grib_is_data_deficient;
+
+    // Set overshoot phase flag for Position propagation
+    configuration.overshoot_phase = m_inOvershootPhase;
     // will the grib data work for us?
     if (m_Configuration.UseGrib &&
         (!configuration.grib ||
@@ -377,8 +383,59 @@ bool RouteMap::Propagate() {
   Lock();
   if (update) {
     origin.push_back(update);
-    if (update->Contains(m_Configuration.EndLat, m_Configuration.EndLon)) {
-      SetFinished(true);  // Route reached the destination
+    bool containsDestination =
+        update->Contains(m_Configuration.EndLat, m_Configuration.EndLon);
+    wxLogMessage(
+        "Weather Routing DEBUG: Isochrone at %s contains destination: %s (End: "
+        "%.6f, %.6f)",
+        update->time.Format().c_str(), containsDestination ? "YES" : "NO",
+        m_Configuration.EndLat, m_Configuration.EndLon);
+
+    if (containsDestination) {
+      wxLogMessage(
+          "Weather Routing DEBUG: DESTINATION REACHED! Overshoot phase: %s, "
+          "Factor: %.2f",
+          m_inOvershootPhase ? "YES" : "NO", m_Configuration.OvershootFactor);
+      if (!m_inOvershootPhase) {
+        // First time reaching destination - record optimal ETA
+        m_optimalETA = update->time;
+        m_inOvershootPhase = true;
+
+        // Optional debug output
+        // wxLogMessage("Weather Routing: Destination reached at %s (optimal
+        // ETA)",
+        //              update->time.Format().c_str());
+
+        // If no overshoot requested, finish immediately (preserve existing
+        // behavior)
+        if (m_Configuration.OvershootFactor <= 1.0) {
+          SetFinished(true);
+          return true;
+        }
+
+        // Store this as the first (optimal) destination arrival
+        StoreDestinationArrivals(update);
+      } else {
+        // We're in overshoot phase - check if we should continue
+        wxTimeSpan overshootDuration = wxTimeSpan::Milliseconds(
+            (long)((m_optimalETA.GetTicks() *
+                    (m_Configuration.OvershootFactor - 1.0)) *
+                   1000.0));
+
+        // Optional debug output
+        // wxLogMessage("Weather Routing: Overshoot phase, current time: %s,
+        // limit: %s",
+        //              update->time.Format().c_str(),
+        //              (m_optimalETA + overshootDuration).Format().c_str());
+
+        if (update->time >= m_optimalETA + overshootDuration) {
+          SetFinished(true);
+          return true;
+        }
+
+        // Store additional destination arrivals found during overshoot
+        StoreDestinationArrivals(update);
+      }
     }
   } else {
     // No further propagation possible, but we may still have a useful partial
@@ -534,6 +591,11 @@ void RouteMap::Reset() {
   m_bLandCrossing = false;
   m_bBoundaryCrossing = false;
 
+  // Initialize overshoot state
+  m_optimalETA = wxDateTime();  // Invalid datetime
+  m_inOvershootPhase = false;
+  m_alternateDestinations.clear();
+
   Unlock();
 }
 
@@ -656,6 +718,27 @@ void RouteMap::Clear() {
     delete *it;
 
   origin.clear();
+}
+
+void RouteMap::StoreDestinationArrivals(IsoChron* isochron) {
+  // Find all positions in this isochron that have reached the destination
+  for (IsoRouteList::iterator it = isochron->routes.begin();
+       it != isochron->routes.end(); ++it) {
+    IsoRoute* route = *it;
+
+    // Check each position in the route
+    SkipPosition* s = route->skippoints;
+    if (!s) continue;
+
+    Position* pos = s->point;
+    do {
+      // Check if this position is at/near the destination
+      if (pos->IsAtDestination(this->m_Configuration)) {
+        m_alternateDestinations.push_back(pos);
+      }
+      pos = pos->next;
+    } while (pos != s->point);
+  }
 }
 
 /**

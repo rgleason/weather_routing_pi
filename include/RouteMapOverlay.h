@@ -357,6 +357,10 @@ public:
   const IsoChronList& GetIsoChronList() const { return origin; }
 
 private:
+  // Helper methods for overshoot rendering
+  bool IsOvershootIsochrone(IsoChron* isochron) const;
+  wxColour GetOvershootColor(const wxColour& originalColor) const;
+  wxColour GetOptimalColor(const wxColour& originalColor) const;
   /**
    * Renders an alternate route.
    * @param r Pointer to the route to render.

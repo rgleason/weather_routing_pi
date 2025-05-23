@@ -74,6 +74,7 @@ Position::Position(double latitude, double longitude, Position* p,
       parent(p),
       propagated(false),
       copied(false),
+      destination_hold(false),
       propagation_error(PROPAGATION_NO_ERROR) {
   lat = EPSILON * std::round(lat / EPSILON);
   lon = EPSILON * std::round(lon / EPSILON);
@@ -87,6 +88,7 @@ Position::Position(const Position* p)
       parent(p->parent),
       propagated(p->propagated),
       copied(true),
+      destination_hold(p->destination_hold),
       propagation_error(p->propagation_error) {}
 
 SkipPosition* Position::BuildSkipList() {
@@ -194,6 +196,13 @@ bool Position::rk_step(double timeseconds, double cog, double dist, double twa,
   return true;
 }
 
+bool Position::IsAtDestination(const RouteMapConfiguration& config) const {
+  // Use small tolerance to account for floating point precision
+  const double DESTINATION_TOLERANCE_NM = 0.1;
+  double distance = DistGreatCircle(lat, lon, config.EndLat, config.EndLon);
+  return distance <= DESTINATION_TOLERANCE_NM;
+}
+
 /* propagate to the end position in the configuration, and return the number of
  * seconds it takes */
 double Position::PropagateToEnd(RouteMapConfiguration& cf, double& H,
@@ -207,6 +216,30 @@ bool Position::Propagate(IsoRouteList& routelist,
   if (propagated) {
     propagation_error = PROPAGATION_ALREADY_PROPAGATED;
     return false;
+  }
+
+  /* Check if we're in overshoot phase and at destination */
+  if (configuration.overshoot_phase && IsAtDestination(configuration)) {
+    wxLogMessage(
+        "Weather Routing DEBUG: Position (%.6f, %.6f) in overshoot phase, "
+        "creating destination hold",
+        lat, lon);
+    // Create a position that stays at destination
+    Position* destPos = new Position(
+        configuration.EndLat, configuration.EndLon, this, /* parent */
+        NAN,                                              /* heading */
+        NAN,                                              /* bearing */
+        this->polar, this->tacks, this->jibes, this->sail_plan_changes,
+        this->data_mask, this->grib_is_data_deficient);
+    destPos->SetDestinationHold(true);
+
+    // Add to route list as a single-position route
+    destPos->prev = destPos->next = destPos;
+    IsoRoute* nr = new IsoRoute(destPos->BuildSkipList());
+    routelist.push_back(nr);
+
+    propagated = true;
+    return true;  // Successfully "propagated" by staying at destination
   }
 
   propagated = true;

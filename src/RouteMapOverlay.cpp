@@ -93,6 +93,23 @@ RouteMapOverlay::~RouteMapOverlay() {
   if (m_Thread) Stop();
 }
 
+bool RouteMapOverlay::IsOvershootIsochrone(IsoChron* isochrone) const {
+  wxDateTime optimalETA = GetOptimalETA();
+  return optimalETA.IsValid() && isochrone->time > optimalETA;
+}
+
+wxColour RouteMapOverlay::GetOvershootColor(
+    const wxColour& originalColor) const {
+  // Make overshoot isochrones more transparent (50% opacity)
+  return wxColour(originalColor.Red(), originalColor.Green(),
+                  originalColor.Blue(), originalColor.Alpha() / 2);
+}
+
+wxColour RouteMapOverlay::GetOptimalColor(const wxColour& originalColor) const {
+  // Keep original colors for optimal route
+  return originalColor;
+}
+
 bool RouteMapOverlay::Start(wxString& error) {
   if (m_Thread) {
     error = _("error, thread already created\n");
@@ -542,10 +559,25 @@ void RouteMapOverlay::Render(wxDateTime time, SettingsDialog& settingsdialog,
         for (IsoChronList::iterator i = origin.begin(); i != origin.end();
              ++i) {
           Unlock();
-          wxColor grib_color(routecolors[c][0], routecolors[c][1],
-                             routecolors[c][2], 224);
-          wxColor climatology_color(255 - routecolors[c][0], routecolors[c][2],
-                                    routecolors[c][1], 224);
+          wxColor base_grib_color(routecolors[c][0], routecolors[c][1],
+                                  routecolors[c][2], 224);
+          wxColor base_climatology_color(255 - routecolors[c][0],
+                                         routecolors[c][2], routecolors[c][1],
+                                         224);
+
+          // Apply overshoot coloring if needed
+          wxColor grib_color, climatology_color;
+          if (IsOvershootIsochrone(*i)) {
+            grib_color = GetOvershootColor(base_grib_color);
+            climatology_color = GetOvershootColor(base_climatology_color);
+            // Optional debug output
+            // wxLogMessage("Weather Routing: Rendering overshoot isochrone at
+            // %s",
+            //              (*i)->time.Format().c_str());
+          } else {
+            grib_color = GetOptimalColor(base_grib_color);
+            climatology_color = GetOptimalColor(base_climatology_color);
+          }
           // If this is the closest isochrone to the selected GRIB time, use a
           // thicker line
           if (time.IsValid() && *i == closestIsochron) {

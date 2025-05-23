@@ -25,6 +25,7 @@
 #include <wx/weakref.h>
 
 #include <list>
+#include <vector>
 
 #include "ODAPI.h"
 #include "GribRecordSet.h"
@@ -533,6 +534,16 @@ struct RouteMapConfiguration {
    */
   double ByDegrees;
 
+  /**
+   * Overshoot factor for propagation beyond the optimal ETA.
+   *
+   * 1.0 means stop at the first route to reach the destination (no overshoot).
+   * >1.0 means continue propagation until a route reaches the destination with
+   * ETA >= optimal_eta * OvershootFactor. This allows finding alternate routes
+   * with fewer maneuvers at the cost of a slightly higher ETA.
+   */
+  double OvershootFactor = 1.2;
+
   /* computed values */
   /**
    * Collection of angular steps used for vessel propagation calculations.
@@ -595,6 +606,13 @@ struct RouteMapConfiguration {
    * other components may require conversion to local time.
    */
   wxDateTime time;
+
+  /**
+   * Flag indicating if we're in the overshoot phase (past optimal ETA).
+   * This is set by RouteMap during propagation to inform Position objects
+   * about overshoot state for destination handling.
+   */
+  bool overshoot_phase;
 
   /**
    * Indicates if the current GRIB data is being used outside its valid time
@@ -931,6 +949,23 @@ public:
    */
   wxString GetRoutingErrorInfo();
 
+  // Overshoot phase queries
+  bool IsInOvershootPhase() {
+    Lock();
+    bool inOvershoot = m_inOvershootPhase;
+    Unlock();
+    return inOvershoot;
+  }
+
+  wxDateTime GetOptimalETA() const { return m_optimalETA; }
+
+  int GetAlternateDestinationCount() {
+    Lock();
+    int count = m_alternateDestinations.size();
+    Unlock();
+    return count;
+  }
+
 protected:
   void SetFinished(bool destination) {
     m_bReachedDestination = destination;
@@ -1010,9 +1045,20 @@ protected:
   WR_GribRecordSet* m_NewGrib;
 
 private:
+  /** Track the optimal ETA for overshoot logic. */
+  wxDateTime m_optimalETA;
+
+  /** Flag indicating if we're in the overshoot phase (past optimal ETA). */
+  bool m_inOvershootPhase;
+
+  /** Store positions that have reached the destination during overshoot. */
+  std::vector<Position*> m_alternateDestinations;
+
   /** Helper method to collect errors from a position and its parents. */
   void CollectPositionErrors(Position* position,
                              std::vector<Position*>& failed_positions);
+
+  void StoreDestinationArrivals(IsoChron* isochron);
 
   RouteMapConfiguration m_Configuration;
   bool m_bFinished, m_bValid;

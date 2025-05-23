@@ -87,6 +87,15 @@ public:
     return route;
   }
 
+  /** Check if this position is holding at destination during overshoot. */
+  bool IsDestinationHold() const { return destination_hold; }
+
+  /** Set whether this position is holding at destination during overshoot. */
+  void SetDestinationHold(bool hold) { destination_hold = hold; }
+
+  /** Check if this position is at the destination (within tolerance). */
+  bool IsAtDestination(const RouteMapConfiguration& config) const;
+
   /** Helper method to get error as string. */
   static wxString GetErrorText(PropagationError error);
 
@@ -133,6 +142,9 @@ public:
 
   bool propagated;
   bool drawn, copied;
+
+  /** True if this position is holding at destination during overshoot phase. */
+  bool destination_hold;
 
   /** Indicates why propagation failed. */
   PropagationError propagation_error;
