@@ -32,6 +32,40 @@
 #include "SettingsDialog.h"
 #include "georef.h"
 
+#if defined(__linux__) || defined(__APPLE__)
+#include <execinfo.h>
+#include <unistd.h>
+#endif
+#if defined(_WIN32)
+#include <windows.h>
+#include <dbghelp.h>
+#pragma comment(lib, "dbghelp.lib")
+#endif
+
+static void LogStackTrace() {
+#if defined(__linux__) || defined(__APPLE__)
+  void* array[32];
+  size_t size = backtrace(array, 32);
+  char** symbols = backtrace_symbols(array, size);
+  wxLogError("Stack trace:");
+  for (size_t i = 0; i < size; i++) {
+    wxLogError(wxString(symbols[i]));
+  }
+  free(symbols);
+#elif defined(_WIN32)
+  void* stack[32];
+  USHORT frames = CaptureStackBackTrace(0, 32, stack, NULL);
+  wxLogError("Stack trace:");
+  for (USHORT i = 0; i < frames; ++i) {
+    wxLogError(wxT("  frame %d: %p"), i, stack[i]);
+  }
+#elif defined(__OCPN__ANDROID__)
+  wxLogError("Stack trace not supported on Android.");
+#else
+  wxLogError("Stack trace not supported on this platform.");
+#endif
+}
+
 void WR_GetCanvasPixLL(PlugIn_ViewPort* vp, wxPoint* pp, double lat,
                        double lon) {
   wxPoint2DDouble pix_double;
@@ -46,28 +80,38 @@ RouteMapOverlayThread::RouteMapOverlayThread(RouteMapOverlay& routemapoverlay)
 }
 
 void* RouteMapOverlayThread::Entry() {
-  RouteMapConfiguration cf = m_RouteMapOverlay.GetConfiguration();
+  try {
+    RouteMapConfiguration cf = m_RouteMapOverlay.GetConfiguration();
 
-  if (!cf.RouteGUID.IsEmpty()) {
-    std::unique_ptr<PlugIn_Route> rte = GetRoute_Plugin(cf.RouteGUID);
-    PlugIn_Route* proute = rte.get();
-    if (proute == nullptr) return 0;
+    if (!cf.RouteGUID.IsEmpty()) {
+      std::unique_ptr<PlugIn_Route> rte = GetRoute_Plugin(cf.RouteGUID);
+      PlugIn_Route* proute = rte.get();
+      if (proute == nullptr) return 0;
 
-    m_RouteMapOverlay.RouteAnalysis(proute);
-  } else {
-    while (!TestDestroy() && !m_RouteMapOverlay.Finished()) {
-      if (!m_RouteMapOverlay.Propagate())
-        wxThread::Sleep(50);
-      else {
-        // don't do it inside worker thread, race
-        // m_RouteMapOverlay.UpdateCursorPosition();
-        m_RouteMapOverlay.UpdateDestination();
-        wxThread::Sleep(5);
+      m_RouteMapOverlay.RouteAnalysis(proute);
+    } else {
+      while (!TestDestroy() && !m_RouteMapOverlay.Finished()) {
+        if (!m_RouteMapOverlay.Propagate())
+          wxThread::Sleep(50);
+        else {
+          // don't do it inside worker thread, race
+          // m_RouteMapOverlay.UpdateCursorPosition();
+          m_RouteMapOverlay.UpdateDestination();
+          wxThread::Sleep(5);
+        }
       }
     }
+    return 0;
+  } catch (const std::exception& e) {
+    wxLogError(wxT("Exception in RouteMapOverlayThread: %s"),
+               wxString(e.what()));
+    LogStackTrace();
+    throw;
+  } catch (...) {
+    wxLogError(wxT("Unknown exception in RouteMapOverlayThread"));
+    LogStackTrace();
+    throw;
   }
-  //    m_RouteMapOverlay.m_Thread = nullptr;
-  return 0;
 }
 
 RouteMapOverlay::RouteMapOverlay()
