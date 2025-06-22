@@ -2284,6 +2284,12 @@ bool WeatherRouting::OpenXML(wxString filename, bool reportfailure) {
         configuration.ToDegree = AttributeDouble(e, "ToDegree", 180);
         configuration.ByDegrees = AttributeDouble(e, "ByDegrees", 5.);
 
+        // Motor configuration loading
+        configuration.UseMotor = AttributeBool(e, "UseMotor", false);
+        configuration.MotorSpeedThreshold =
+            AttributeDouble(e, "MotorSpeedThreshold", 2.0);
+        configuration.MotorSpeed = AttributeDouble(e, "MotorSpeed", 5.0);
+
         if (configuration.boatFileName == lastboatFileName)
           configuration.boat = lastboat;
 
@@ -2407,6 +2413,12 @@ void WeatherRouting::SaveXML(wxString filename) {
     c->SetDoubleAttribute("FromDegree", configuration.FromDegree);
     c->SetDoubleAttribute("ToDegree", configuration.ToDegree);
     c->SetDoubleAttribute("ByDegrees", configuration.ByDegrees);
+
+    // Motor configuration saving
+    c->SetAttribute("UseMotor", configuration.UseMotor);
+    c->SetDoubleAttribute("MotorSpeedThreshold",
+                          configuration.MotorSpeedThreshold);
+    c->SetDoubleAttribute("MotorSpeed", configuration.MotorSpeed);
 
     root->LinkEndChild(c);
   }

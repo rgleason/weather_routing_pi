@@ -87,7 +87,9 @@ bool RoutePoint::GetPlotData(RoutePoint* next, double dt,
     return false;
   }
 
-  data.data_mask = data_mask;
+  // Combine the current RoutePoint's data_mask (which includes MOTOR_USED)
+  // with the local data_mask (which includes wind/current sources)
+  data.data_mask = this->data_mask | data_mask;
 
   // Calculate the great circle distance and initial bearing between this route
   // point and the next one.
@@ -151,6 +153,7 @@ bool BoatData::GetBoatSpeedForPolar(RouteMapConfiguration& configuration,
   Polar& polar = configuration.boat.Polars[newpolar];
   PolarSpeedStatus polar_status;
   bool used_grib = false;  // true if grib data was used, false if climatology.
+  bool using_motor = false;  // true if motor is being used instead of sailing
   if ((data_mask & DataMask::CLIMATOLOGY_WIND) &&
       (configuration.ClimatologyType == RouteMapConfiguration::CUMULATIVE_MAP ||
        configuration.ClimatologyType ==
@@ -203,25 +206,41 @@ bool BoatData::GetBoatSpeedForPolar(RouteMapConfiguration& configuration,
     return false;  // ctw = stw = 0;
   }
 
+  // Check if motor should be used for low sailing speeds
+  if (configuration.UseMotor && stw < configuration.MotorSpeedThreshold) {
+    stw = configuration.MotorSpeed;
+    using_motor = true;
+    data_mask |= DataMask::MOTOR_USED;
+    // When motoring, the boat can go in any direction regardless of wind
+    // The course through water (ctw) remains as requested
+    // Note: All other constraints (land, boundaries, weather) still apply
+  }
+
   // Apply upwind/downwind efficiency factors based on wind angle.
-  double abs_twa = fabs(twa);
-  if (abs_twa <= 90.0) {
-    // Upwind sailing (0-90 degrees relative to wind)
-    stw *= configuration.UpwindEfficiency;
-  } else {
-    // Downwind sailing (90-180 degrees relative to wind)
-    stw *= configuration.DownwindEfficiency;
+  // Skip efficiency factors when motoring as they don't apply to engine power
+  if (!using_motor) {
+    double abs_twa = fabs(twa);
+    if (abs_twa <= 90.0) {
+      // Upwind sailing (0-90 degrees relative to wind)
+      stw *= configuration.UpwindEfficiency;
+    } else {
+      // Downwind sailing (90-180 degrees relative to wind)
+      stw *= configuration.DownwindEfficiency;
+    }
   }
 
   if (configuration.NightCumulativeEfficiency != 1.0) {
-    // Determine if it's day or night at the current position and time
+    // Determine if it's day or night at the current position and time.
     DayLightStatus dayLightStatus =
         SunCalculator::GetInstance().GetDayLightStatus(
             weather_data.lat, weather_data.lon, configuration.time);
 
     if (dayLightStatus == DayLightStatus::Night) {
-      // Apply day/night efficiency factor
-      stw *= configuration.NightCumulativeEfficiency;
+      if (!using_motor) {
+        // Apply day/night efficiency factor only if not motoring.
+        // Skip night efficiency when motoring as engine power is consistent.
+        stw *= configuration.NightCumulativeEfficiency;
+      }
       // Set the NIGHT_TIME flag in data_mask for visual differentiation
       data_mask |= DataMask::NIGHT_TIME;
     }

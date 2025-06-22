@@ -1104,6 +1104,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   fgSizer106->SetFlexibleDirection(wxBOTH);
   fgSizer106->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
 
+  // Grid container for "Start", "Boat" and "Constraints" sections
   wxFlexGridSizer* fgSizer83;
   fgSizer83 = new wxFlexGridSizer(0, 1, 0, 0);
   fgSizer83->AddGrowableCol(0);
@@ -1346,6 +1347,8 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
 
   fgSizer106->Add(fgSizer83, 1, wxEXPAND, 5);
 
+  // Grid container for "End", "Time Step", "Options" and "Data Source" sections
+  // and "OK" button.
   wxFlexGridSizer* fgSizer112;
   fgSizer112 = new wxFlexGridSizer(0, 1, 0, 0);
   fgSizer112->AddGrowableCol(0);
@@ -1523,13 +1526,23 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   wxBoxSizer* bSizer8;
   bSizer8 = new wxBoxSizer(wxVERTICAL);
 
+  // Grid container for left column (Constraints, Cyclones, Motoring) and right
+  // column (Options, Polar, Courses)
   wxFlexGridSizer* fgSizer1072;
-  fgSizer1072 = new wxFlexGridSizer(0, 2, 0, 0);
-  fgSizer1072->AddGrowableCol(0);
-  fgSizer1072->AddGrowableCol(1);
-  fgSizer1072->AddGrowableRow(0);
+  fgSizer1072 = new wxFlexGridSizer(1, 2, 0, 0);
+  fgSizer1072->AddGrowableCol(0);  // Left column growable
+  fgSizer1072->AddGrowableCol(1);  // Right column growable
+  fgSizer1072->AddGrowableRow(0);  // Single row growable
   fgSizer1072->SetFlexibleDirection(wxBOTH);
   fgSizer1072->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
+
+  // Create left column container for Constraints, Cyclones, Motoring
+  wxFlexGridSizer* fgSizerLeftColumn;
+  fgSizerLeftColumn =
+      new wxFlexGridSizer(0, 1, 0, 0);  // Unlimited rows, 1 column
+  fgSizerLeftColumn->AddGrowableCol(0);
+  fgSizerLeftColumn->SetFlexibleDirection(wxBOTH);
+  fgSizerLeftColumn->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
 
   wxStaticBoxSizer* sbConstraints1;
   sbConstraints1 = new wxStaticBoxSizer(
@@ -1623,8 +1636,15 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   fgSizer941->SetFlexibleDirection(wxBOTH);
   fgSizer941->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
 
+  fgSizerLeftColumn->Add(sbConstraints1, 0, wxALL | wxEXPAND, 5);
+
+  // Cyclone tracks
+  wxStaticBoxSizer* sbConstraintsCyclones;
+  sbConstraintsCyclones = new wxStaticBoxSizer(
+      new wxStaticBox(m_pAdvanced, wxID_ANY, _("Cyclones")), wxVERTICAL);
+
   m_cbAvoidCycloneTracks =
-      new wxCheckBox(sbConstraints1->GetStaticBox(), wxID_ANY,
+      new wxCheckBox(sbConstraintsCyclones->GetStaticBox(), wxID_ANY,
                      _("Avoid cyclone tracks (climatology)"), wxDefaultPosition,
                      wxDefaultSize, wxCHK_3STATE);
   m_cbAvoidCycloneTracks->SetValue(true);
@@ -1636,39 +1656,111 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   fgSizer952->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
 
   m_staticText1281 =
-      new wxStaticText(sbConstraints1->GetStaticBox(), wxID_ANY, _("within"),
-                       wxDefaultPosition, wxDefaultSize, 0);
+      new wxStaticText(sbConstraintsCyclones->GetStaticBox(), wxID_ANY,
+                       _("within"), wxDefaultPosition, wxDefaultSize, 0);
   m_staticText1281->Wrap(-1);
   fgSizer952->Add(m_staticText1281, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
 
-  m_sCycloneMonths = new wxSpinCtrl(sbConstraints1->GetStaticBox(), wxID_ANY,
-                                    wxEmptyString, wxDefaultPosition,
+  m_sCycloneMonths = new wxSpinCtrl(sbConstraintsCyclones->GetStaticBox(),
+                                    wxID_ANY, wxEmptyString, wxDefaultPosition,
                                     wxSize(140, -1), wxSP_ARROW_KEYS, 0, 6, 3);
   fgSizer952->Add(m_sCycloneMonths, 0, wxALL, 5);
 
   m_staticText1291 =
-      new wxStaticText(sbConstraints1->GetStaticBox(), wxID_ANY, _("Months"),
-                       wxDefaultPosition, wxDefaultSize, 0);
+      new wxStaticText(sbConstraintsCyclones->GetStaticBox(), wxID_ANY,
+                       _("Months"), wxDefaultPosition, wxDefaultSize, 0);
   m_staticText1291->Wrap(-1);
   fgSizer952->Add(m_staticText1291, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
-  m_sCycloneDays = new wxSpinCtrl(sbConstraints1->GetStaticBox(), wxID_ANY,
-                                  wxEmptyString, wxDefaultPosition,
+  m_sCycloneDays = new wxSpinCtrl(sbConstraintsCyclones->GetStaticBox(),
+                                  wxID_ANY, wxEmptyString, wxDefaultPosition,
                                   wxSize(140, -1), wxSP_ARROW_KEYS, 0, 183, 0);
   fgSizer952->Add(m_sCycloneDays, 0, wxALL, 5);
 
   m_staticText130 =
-      new wxStaticText(sbConstraints1->GetStaticBox(), wxID_ANY, _("Days"),
-                       wxDefaultPosition, wxDefaultSize, 0);
+      new wxStaticText(sbConstraintsCyclones->GetStaticBox(), wxID_ANY,
+                       _("Days"), wxDefaultPosition, wxDefaultSize, 0);
   m_staticText130->Wrap(-1);
   fgSizer952->Add(m_staticText130, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
   fgSizer941->Add(fgSizer952, 1, wxEXPAND, 5);
 
-  sbConstraints1->Add(fgSizer941, 1, wxEXPAND, 5);
+  sbConstraintsCyclones->Add(fgSizer941, 1, wxEXPAND, 5);
 
-  fgSizer1072->Add(sbConstraints1, 1, wxALL | wxEXPAND, 5);
+  fgSizerLeftColumn->Add(sbConstraintsCyclones, 0, wxALL | wxEXPAND, 5);
 
+  // Motoring section
+  wxStaticBoxSizer* sbMotor;
+  sbMotor = new wxStaticBoxSizer(
+      new wxStaticBox(m_pAdvanced, wxID_ANY, _("Motoring")), wxVERTICAL);
+
+  wxFlexGridSizer* fgSizerMotor;
+  fgSizerMotor = new wxFlexGridSizer(0, 1, 0, 0);
+  fgSizerMotor->SetFlexibleDirection(wxBOTH);
+  fgSizerMotor->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
+
+  m_cbUseMotor = new wxCheckBox(sbMotor->GetStaticBox(), wxID_ANY,
+                                _("Motor if boat speed is below"),
+                                wxDefaultPosition, wxDefaultSize, 0);
+  m_cbUseMotor->SetToolTip(
+      _("Enable motor when Speed Through Water (STW) falls below the specified "
+        "threshold. The vessel will motor at the configured speed instead of "
+        "sailing."));
+  fgSizerMotor->Add(m_cbUseMotor, 0, wxALL, 5);
+
+  wxFlexGridSizer* fgSizerMotorControls;
+  fgSizerMotorControls = new wxFlexGridSizer(0, 6, 0, 0);
+  fgSizerMotorControls->SetFlexibleDirection(wxBOTH);
+  fgSizerMotorControls->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
+
+  wxStaticText* m_staticTextMotorThreshold =
+      new wxStaticText(sbMotor->GetStaticBox(), wxID_ANY, _("Threshold:"),
+                       wxDefaultPosition, wxDefaultSize, 0);
+  m_staticTextMotorThreshold->Wrap(-1);
+  fgSizerMotorControls->Add(m_staticTextMotorThreshold, 0,
+                            wxALIGN_CENTER_VERTICAL | wxALL, 5);
+
+  m_sMotorSpeedThreshold = new wxSpinCtrlDouble(
+      sbMotor->GetStaticBox(), wxID_ANY, wxEmptyString, wxDefaultPosition,
+      wxSize(80, -1), wxSP_ARROW_KEYS, 0.0, 20.0, 2.0, 0.1);
+  m_sMotorSpeedThreshold->SetToolTip(
+      _("STW threshold in knots below which motor will be used"));
+  fgSizerMotorControls->Add(m_sMotorSpeedThreshold, 0,
+                            wxALL | wxALIGN_CENTER_VERTICAL, 5);
+
+  wxStaticText* m_staticTextMotorThresholdKnots =
+      new wxStaticText(sbMotor->GetStaticBox(), wxID_ANY, _("knots"),
+                       wxDefaultPosition, wxDefaultSize, 0);
+  m_staticTextMotorThresholdKnots->Wrap(-1);
+  fgSizerMotorControls->Add(m_staticTextMotorThresholdKnots, 0,
+                            wxALIGN_CENTER_VERTICAL | wxALL, 5);
+
+  wxStaticText* m_staticTextMotorSpeed =
+      new wxStaticText(sbMotor->GetStaticBox(), wxID_ANY, _("Motor speed:"),
+                       wxDefaultPosition, wxDefaultSize, 0);
+  m_staticTextMotorSpeed->Wrap(-1);
+  fgSizerMotorControls->Add(m_staticTextMotorSpeed, 0,
+                            wxALIGN_CENTER_VERTICAL | wxALL, 5);
+
+  m_sMotorSpeed = new wxSpinCtrlDouble(
+      sbMotor->GetStaticBox(), wxID_ANY, wxEmptyString, wxDefaultPosition,
+      wxSize(80, -1), wxSP_ARROW_KEYS, 0.5, 20.0, 5.0, 0.1);
+  m_sMotorSpeed->SetToolTip(_("Speed in knots when motoring"));
+  fgSizerMotorControls->Add(m_sMotorSpeed, 0, wxALL | wxALIGN_CENTER_VERTICAL,
+                            5);
+
+  wxStaticText* m_staticTextMotorSpeedKnots =
+      new wxStaticText(sbMotor->GetStaticBox(), wxID_ANY, _("knots"),
+                       wxDefaultPosition, wxDefaultSize, 0);
+  m_staticTextMotorSpeedKnots->Wrap(-1);
+  fgSizerMotorControls->Add(m_staticTextMotorSpeedKnots, 0,
+                            wxALIGN_CENTER_VERTICAL | wxALL, 5);
+
+  fgSizerMotor->Add(fgSizerMotorControls, 1, wxEXPAND, 5);
+  sbMotor->Add(fgSizerMotor, 1, wxEXPAND, 5);
+  fgSizerLeftColumn->Add(sbMotor, 0, wxEXPAND | wxALL, 5);
+
+  // Grid container for "Options", "Courses", "Polar Efficiency" sections
   wxFlexGridSizer* fgSizer109;
   fgSizer109 = new wxFlexGridSizer(3, 0, 0, 0);
   fgSizer109->AddGrowableCol(0);
@@ -1678,6 +1770,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   fgSizer109->SetFlexibleDirection(wxBOTH);
   fgSizer109->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
 
+  // "Options" section
   wxStaticBoxSizer* sbOptions1;
   sbOptions1 = new wxStaticBoxSizer(
       new wxStaticBox(m_pAdvanced, wxID_ANY, _("Options")), wxVERTICAL);
@@ -1900,7 +1993,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
 
   fgSizer109->Add(sbOptions1, 1, wxEXPAND | wxALL, 5);
 
-  // Efficiency section
+  // Polar Efficiency section
   wxStaticBoxSizer* sbEfficiency;
   sbEfficiency = new wxStaticBoxSizer(
       new wxStaticBox(m_pAdvanced, wxID_ANY, _("Polar Efficiency")),
@@ -1979,6 +2072,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   sbEfficiency->Add(fgSizerEfficiency, 1, wxEXPAND, 5);
   fgSizer109->Add(sbEfficiency, 1, wxEXPAND | wxALL, 5);
 
+  // Courses section
   wxStaticBoxSizer* sbCourses;
   sbCourses = new wxStaticBoxSizer(
       new wxStaticBox(m_pAdvanced, wxID_ANY,
@@ -2036,7 +2130,9 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
 
   fgSizer109->Add(sbCourses, 1, wxEXPAND | wxALL, 5);
 
-  fgSizer1072->Add(fgSizer109, 1, wxEXPAND | wxALL, 5);
+  // Add both columns to the main 2-column grid
+  fgSizer1072->Add(fgSizerLeftColumn, 1, wxEXPAND | wxALL, 5);  // Left column
+  fgSizer1072->Add(fgSizer109, 1, wxEXPAND | wxALL, 5);         // Right column
 
   bSizer8->Add(fgSizer1072, 1, wxEXPAND, 5);
 
@@ -2655,6 +2751,16 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   m_sByDegrees->Connect(
       wxEVT_COMMAND_SPINCTRLDOUBLE_UPDATED,
       wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
+  // Motor event connections
+  m_cbUseMotor->Connect(
+      wxEVT_COMMAND_CHECKBOX_CLICKED,
+      wxCommandEventHandler(ConfigurationDialogBase::OnUseMotor), NULL, this);
+  m_sMotorSpeedThreshold->Connect(
+      wxEVT_COMMAND_SPINCTRLDOUBLE_UPDATED,
+      wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
+  m_sMotorSpeed->Connect(
+      wxEVT_COMMAND_SPINCTRLDOUBLE_UPDATED,
+      wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
   m_bResetAdvanced->Connect(
       wxEVT_COMMAND_BUTTON_CLICKED,
       wxCommandEventHandler(ConfigurationDialogBase::OnResetAdvanced), NULL,
@@ -3265,6 +3371,16 @@ ConfigurationDialogBase::~ConfigurationDialogBase() {
   m_sByDegrees->Disconnect(
       wxEVT_COMMAND_SPINCTRLDOUBLE_UPDATED,
       wxCommandEventHandler(ConfigurationDialogBase::OnUpdate), NULL, this);
+  // Motor event disconnections
+  m_cbUseMotor->Disconnect(
+      wxEVT_COMMAND_CHECKBOX_CLICKED,
+      wxCommandEventHandler(ConfigurationDialogBase::OnUseMotor), NULL, this);
+  m_sMotorSpeedThreshold->Disconnect(
+      wxEVT_COMMAND_SPINCTRLDOUBLE_UPDATED,
+      wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
+  m_sMotorSpeed->Disconnect(
+      wxEVT_COMMAND_SPINCTRLDOUBLE_UPDATED,
+      wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
   m_bResetAdvanced->Disconnect(
       wxEVT_COMMAND_BUTTON_CLICKED,
       wxCommandEventHandler(ConfigurationDialogBase::OnResetAdvanced), NULL,
@@ -4079,6 +4195,9 @@ BoatDialogBase::BoatDialogBase(wxWindow* parent, wxWindowID id,
 
   sbSizer31->Add(fgSizer92, 1, wxEXPAND, 5);
 
+  // Add cursor information panel using helper function
+  CreateCursorInfoPanel(m_panel21, sbSizer31);
+
   m_panel21->SetSizer(sbSizer31);
   m_panel21->Layout();
   sbSizer31->Fit(m_panel21);
@@ -4315,6 +4434,141 @@ BoatDialogBase::~BoatDialogBase() {
   m_bSaveAsBoat->Disconnect(wxEVT_COMMAND_BUTTON_CLICKED,
                             wxCommandEventHandler(BoatDialogBase::OnSaveAsBoat),
                             NULL, this);
+}
+
+void BoatDialogBase::CreateCursorInfoPanel(wxWindow* parent,
+                                           wxSizer* parentSizer) {
+  // Create main vertical sizer for both sections
+  wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
+
+  // ========== CURSOR DATA SECTION ==========
+  wxStaticBoxSizer* cursorSizer =
+      new wxStaticBoxSizer(wxVERTICAL, parent, _("Data at Cursor"));
+
+  // Create a grid sizer for the cursor labels and values
+  wxFlexGridSizer* cursorGridSizer = new wxFlexGridSizer(5, 2, 5, 10);
+  cursorGridSizer->AddGrowableCol(1);
+
+  // Wind Angle
+  cursorGridSizer->Add(new wxStaticText(parent, wxID_ANY, _("Wind Angle:")), 0,
+                       wxALIGN_CENTER_VERTICAL);
+  m_stCursorWindAngle = new wxStaticText(parent, wxID_ANY, _("N/A"));
+  cursorGridSizer->Add(m_stCursorWindAngle, 1,
+                       wxALIGN_CENTER_VERTICAL | wxEXPAND);
+
+  // Wind Speed
+  cursorGridSizer->Add(new wxStaticText(parent, wxID_ANY, _("Wind Speed:")), 0,
+                       wxALIGN_CENTER_VERTICAL);
+  m_stCursorWindSpeed = new wxStaticText(parent, wxID_ANY, _("N/A"));
+  cursorGridSizer->Add(m_stCursorWindSpeed, 1,
+                       wxALIGN_CENTER_VERTICAL | wxEXPAND);
+
+  // Boat Speed
+  cursorGridSizer->Add(new wxStaticText(parent, wxID_ANY, _("Boat Speed:")), 0,
+                       wxALIGN_CENTER_VERTICAL);
+  m_stCursorBoatSpeed = new wxStaticText(parent, wxID_ANY, _("N/A"));
+  cursorGridSizer->Add(m_stCursorBoatSpeed, 1,
+                       wxALIGN_CENTER_VERTICAL | wxEXPAND);
+
+  // VMG at cursor
+  cursorGridSizer->Add(new wxStaticText(parent, wxID_ANY, _("VMG:")), 0,
+                       wxALIGN_CENTER_VERTICAL);
+  m_stCursorVMG = new wxStaticText(parent, wxID_ANY, _("N/A"));
+  cursorGridSizer->Add(m_stCursorVMG, 1, wxALIGN_CENTER_VERTICAL | wxEXPAND);
+
+  // VMG Angle (not used in cursor section, keeping for compatibility)
+  cursorGridSizer->Add(new wxStaticText(parent, wxID_ANY, _("Course Angle:")),
+                       0, wxALIGN_CENTER_VERTICAL);
+  m_stCursorVMGAngle = new wxStaticText(parent, wxID_ANY, _("N/A"));
+  cursorGridSizer->Add(m_stCursorVMGAngle, 1,
+                       wxALIGN_CENTER_VERTICAL | wxEXPAND);
+
+  cursorSizer->Add(cursorGridSizer, 1, wxEXPAND | wxALL, 5);
+  mainSizer->Add(cursorSizer, 0, wxEXPAND | wxALL, 5);
+
+  // ========== BEST VMG SECTION ==========
+  wxStaticBoxSizer* bestVMGSizer =
+      new wxStaticBoxSizer(wxVERTICAL, parent, _("Optimal VMG Performance"));
+
+  // Wind speed reference
+  wxBoxSizer* windSpeedSizer = new wxBoxSizer(wxHORIZONTAL);
+  windSpeedSizer->Add(
+      new wxStaticText(parent, wxID_ANY, _("Reference Wind Speed:")), 0,
+      wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+  m_stBestVMGWindSpeed = new wxStaticText(parent, wxID_ANY, _("N/A"));
+  m_stBestVMGWindSpeed->SetFont(m_stBestVMGWindSpeed->GetFont().Bold());
+  windSpeedSizer->Add(m_stBestVMGWindSpeed, 1, wxALIGN_CENTER_VERTICAL);
+  bestVMGSizer->Add(windSpeedSizer, 0, wxEXPAND | wxALL, 3);
+
+  // Create a grid for upwind and downwind VMG data
+  wxFlexGridSizer* vmgGridSizer = new wxFlexGridSizer(7, 2, 3, 10);
+  vmgGridSizer->AddGrowableCol(1);
+
+  // Upwind section header
+  wxStaticText* upwindLabel =
+      new wxStaticText(parent, wxID_ANY, _("UPWIND OPTIMAL:"));
+  upwindLabel->SetFont(upwindLabel->GetFont().Bold());
+  vmgGridSizer->Add(upwindLabel, 0, wxALIGN_CENTER_VERTICAL);
+  vmgGridSizer->Add(new wxStaticText(parent, wxID_ANY, _("")),
+                    0);  // Empty cell
+
+  // Best upwind angle
+  vmgGridSizer->Add(new wxStaticText(parent, wxID_ANY, _("  Angle:")), 0,
+                    wxALIGN_CENTER_VERTICAL);
+  m_stBestVMGUpwindAngle = new wxStaticText(parent, wxID_ANY, _("N/A"));
+  vmgGridSizer->Add(m_stBestVMGUpwindAngle, 1,
+                    wxALIGN_CENTER_VERTICAL | wxEXPAND);
+
+  // Best upwind speed
+  vmgGridSizer->Add(new wxStaticText(parent, wxID_ANY, _("  Speed:")), 0,
+                    wxALIGN_CENTER_VERTICAL);
+  m_stBestVMGUpwindSpeed = new wxStaticText(parent, wxID_ANY, _("N/A"));
+  vmgGridSizer->Add(m_stBestVMGUpwindSpeed, 1,
+                    wxALIGN_CENTER_VERTICAL | wxEXPAND);
+
+  // Best upwind VMG
+  vmgGridSizer->Add(new wxStaticText(parent, wxID_ANY, _("  VMG:")), 0,
+                    wxALIGN_CENTER_VERTICAL);
+  m_stBestVMGUpwindVMG = new wxStaticText(parent, wxID_ANY, _("N/A"));
+  m_stBestVMGUpwindVMG->SetFont(m_stBestVMGUpwindVMG->GetFont().Bold());
+  vmgGridSizer->Add(m_stBestVMGUpwindVMG, 1,
+                    wxALIGN_CENTER_VERTICAL | wxEXPAND);
+
+  // Downwind section header
+  wxStaticText* downwindLabel =
+      new wxStaticText(parent, wxID_ANY, _("DOWNWIND OPTIMAL:"));
+  downwindLabel->SetFont(downwindLabel->GetFont().Bold());
+  vmgGridSizer->Add(downwindLabel, 0, wxALIGN_CENTER_VERTICAL);
+  vmgGridSizer->Add(new wxStaticText(parent, wxID_ANY, _("")),
+                    0);  // Empty cell
+
+  // Best downwind angle
+  vmgGridSizer->Add(new wxStaticText(parent, wxID_ANY, _("  Angle:")), 0,
+                    wxALIGN_CENTER_VERTICAL);
+  m_stBestVMGDownwindAngle = new wxStaticText(parent, wxID_ANY, _("N/A"));
+  vmgGridSizer->Add(m_stBestVMGDownwindAngle, 1,
+                    wxALIGN_CENTER_VERTICAL | wxEXPAND);
+
+  // Best downwind speed
+  vmgGridSizer->Add(new wxStaticText(parent, wxID_ANY, _("  Speed:")), 0,
+                    wxALIGN_CENTER_VERTICAL);
+  m_stBestVMGDownwindSpeed = new wxStaticText(parent, wxID_ANY, _("N/A"));
+  vmgGridSizer->Add(m_stBestVMGDownwindSpeed, 1,
+                    wxALIGN_CENTER_VERTICAL | wxEXPAND);
+
+  // Best downwind VMG
+  vmgGridSizer->Add(new wxStaticText(parent, wxID_ANY, _("  VMG:")), 0,
+                    wxALIGN_CENTER_VERTICAL);
+  m_stBestVMGDownwindVMG = new wxStaticText(parent, wxID_ANY, _("N/A"));
+  m_stBestVMGDownwindVMG->SetFont(m_stBestVMGDownwindVMG->GetFont().Bold());
+  vmgGridSizer->Add(m_stBestVMGDownwindVMG, 1,
+                    wxALIGN_CENTER_VERTICAL | wxEXPAND);
+
+  bestVMGSizer->Add(vmgGridSizer, 1, wxEXPAND | wxALL, 5);
+  mainSizer->Add(bestVMGSizer, 0, wxEXPAND | wxALL, 5);
+
+  // Add the complete panel to the parent sizer
+  parentSizer->Add(mainSizer, 0, wxEXPAND | wxALL, 0);
 }
 
 StatisticsDialogBase::StatisticsDialogBase(wxWindow* parent, wxWindowID id,

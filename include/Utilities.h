@@ -84,9 +84,9 @@ double deg2rad(double degrees);
 double rad2deg(double radians);
 
 /**
- * Normalize heading angle to range [-180, 180]
+ * Normalize heading angle to range [-180, 180)
  * @param degrees Angle in degrees (any range)
- * @return Normalized angle in range [-180, 180]
+ * @return Normalized angle in range [-180, 180
  */
 double heading_resolve(double degrees);
 

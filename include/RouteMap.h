@@ -537,6 +537,27 @@ struct RouteMapConfiguration {
    */
   double ByDegrees;
 
+  /**
+   * If true, use motor when Speed Through Water is below the threshold.
+   * When enabled, the vessel will motor at a constant speed whenever the
+   * calculated speed through water (STW) falls below MotorSpeedThreshold.
+   */
+  bool UseMotor;
+
+  /**
+   * The threshold speed in knots below which the motor will be used.
+   * When the calculated STW is below this value and UseMotor is true,
+   * the vessel will motor at MotorSpeed instead of sailing.
+   */
+  double MotorSpeedThreshold;
+
+  /**
+   * The speed in knots when motoring.
+   * This is the constant speed the vessel will maintain when motoring
+   * is engaged due to low sailing speed.
+   */
+  double MotorSpeed;
+
   /* computed values */
   /**
    * Collection of angular steps used for vessel propagation calculations.

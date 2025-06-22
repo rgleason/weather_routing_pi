@@ -84,7 +84,13 @@ enum class DataMask : uint32_t {
    * Indicates that this position occurs during nighttime.
    * Used to apply nighttime efficiency factor and darker display colors.
    */
-  NIGHT_TIME = 64
+  NIGHT_TIME = 64,
+
+  /**
+   * Indicates that this segment was traveled using motor instead of sailing.
+   * Used for visual differentiation and tracking motor usage in routes.
+   */
+  MOTOR_USED = 128
 };
 
 inline DataMask operator|(DataMask a, DataMask b) {

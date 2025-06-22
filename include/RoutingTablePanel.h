@@ -72,12 +72,23 @@ public:
    */
   void UpdateTimeHighlight(wxDateTime timelineTime);
 
+  /**
+   * Export the table data to Excel XML format with formatting preserved
+   */
+  void ExportToExcel();
+
+  /**
+   * Update the summary information displayed above the table
+   */
+  void UpdateSummary();
+
 protected:
   RouteMapOverlay* m_RouteMap;
 
 private:
   void OnClose(wxCommandEvent& event);
   void OnSize(wxSizeEvent& event);
+  void OnExportButton(wxCommandEvent& event);
 
   /**
    * Helper function to format and display sail plan information
@@ -109,6 +120,66 @@ private:
   void setCellWithTimeOfDayColor(int row, int col, const wxString& value,
                                  const wxDateTime& dateTime, double lat,
                                  double lon);
+
+  /** Helper functions for Excel export */
+  wxString ConvertColorToHex(const wxColour& color);
+  wxString ConvertColorToARGB(const wxColour& color);
+  wxString EscapeXML(const wxString& text);
+  bool WriteExcelXML(const wxString& filename);
+  bool WriteXLSX(const wxString& filename);
+  bool WriteSimpleXML(const wxString& filename);
+  wxString CreateStylesXML();
+  wxString CreateWorksheetXML();
+  wxString GetCellReference(int row, int col);
+
+  /** Helper functions for cell styling in Excel export */
+  struct CellStyle {
+    wxColour bgColor;
+    wxColour textColor;
+    bool isBold;
+
+    CellStyle() : bgColor(*wxWHITE), textColor(*wxBLACK), isBold(false) {}
+    CellStyle(const wxColour& bg, const wxColour& text, bool bold = false)
+        : bgColor(bg), textColor(text), isBold(bold) {}
+
+    bool operator<(const CellStyle& other) const {
+      if (bgColor.GetRGB() != other.bgColor.GetRGB()) {
+        return bgColor.GetRGB() < other.bgColor.GetRGB();
+      }
+      if (textColor.GetRGB() != other.textColor.GetRGB()) {
+        return textColor.GetRGB() < other.textColor.GetRGB();
+      }
+      return isBold < other.isBold;
+    }
+  };
+
+  CellStyle GetCellStyle(int row, int col);
+  int GetOrCreateStyleId(const CellStyle& style);
+  wxString CreateStylesXMLWithColors();
+  wxString CreateWorksheetXMLWithColors();
+
+  /** Helper function to create summary tab */
+  void CreateSummaryTab();
+
+  /** Helper function to calculate summary statistics */
+  struct SummaryData {
+    wxDateTime startTime, endTime;
+    double totalDistance;
+    double minWindSpeed, maxWindSpeed;
+    double minWindGust, maxWindGust;
+    double minAWS, maxAWS;
+    double minAWA, maxAWA;
+    double minWaveHeight, maxWaveHeight;
+    double minTemp, maxTemp;
+    int sailChanges;
+    int tackChanges;
+    int jibeChanges;
+    double motorDurationPercentage;  // Percentage of time under motor
+    double motorDistancePercentage;  // Percentage of distance under motor
+    double motorDistance;            // Total distance under motor
+    wxTimeSpan motorDuration;        // Total time under motor
+  };
+  SummaryData CalculateSummaryData();
 
   enum WeatherDataColumn {
     COL_LEG_NUMBER,  //!< Leg number
@@ -160,6 +231,28 @@ private:
   WeatherRouting& m_WeatherRouting;
   PI_ColorScheme m_colorscheme;
 
+  wxNotebook* m_notebook;
+  wxPanel* m_summaryTab;
+  wxPanel* m_tableTab;
+
+  // Summary controls
+  wxStaticText* m_departureText;
+  wxStaticText* m_arrivalText;
+  wxStaticText* m_distanceText;
+  wxStaticText* m_durationText;
+  wxStaticText* m_windRangeText;
+  wxStaticText* m_windGustRangeText;
+  wxStaticText* m_awsRangeText;
+  wxStaticText* m_awaRangeText;
+  wxStaticText* m_waveRangeText;
+  wxStaticText* m_tempRangeText;
+  wxStaticText* m_sailChangesText;
+  wxStaticText* m_motorDurationText;
+  wxStaticText* m_motorDistanceText;
+  wxStaticText* m_tackChangesText;
+  wxStaticText* m_jibeChangesText;
+  wxButton* m_exportButton;
+
   wxGrid* m_gridWeatherTable;
   wxSizer* m_mainSizer;
 
@@ -169,6 +262,10 @@ private:
 
   // Store original cell colors before highlighting
   std::map<int, std::vector<wxColour>> m_originalCellColors;
+
+  // Style mapping for Excel export
+  std::map<CellStyle, int> m_styleMap;
+  std::vector<CellStyle> m_styles;
 
   DECLARE_EVENT_TABLE()
 };

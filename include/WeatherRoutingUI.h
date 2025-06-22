@@ -472,6 +472,7 @@ protected:
   virtual void OnUpdateSpin(wxSpinEvent& event) { event.Skip(); }
   virtual void OnClose(wxCommandEvent& event) { event.Skip(); }
   virtual void OnAvoidCyclones(wxCommandEvent& event) { event.Skip(); }
+  virtual void OnUseMotor(wxCommandEvent& event) { event.Skip(); }
   virtual void OnResetAdvanced(wxCommandEvent& event) { event.Skip(); }
 
 public:
@@ -490,6 +491,11 @@ public:
   wxSpinCtrl* m_sToDegree;    //!< Maximum course relative to true wind.
   /** The increment course angle when calculating a isochrone route. */
   wxSpinCtrlDouble* m_sByDegrees;
+
+  // Motor controls
+  wxCheckBox* m_cbUseMotor;  //!< Enable motor when STW is below threshold
+  wxSpinCtrlDouble* m_sMotorSpeedThreshold;  //!< STW threshold for motor use
+  wxSpinCtrlDouble* m_sMotorSpeed;           //!< Motor speed in knots
 
   ConfigurationDialogBase(
       wxWindow* parent, wxWindowID id = wxID_ANY,
@@ -720,6 +726,8 @@ public:
 ///////////////////////////////////////////////////////////////////////////////
 class BoatDialogBase : public wxDialog {
 private:
+  void CreateCursorInfoPanel(wxWindow* parent, wxSizer* parentSizer);
+
 protected:
   wxFlexGridSizer* m_fgSizer;
   wxSplitterWindow* m_splitter2;
@@ -757,6 +765,22 @@ protected:
   wxButton* m_bOpenBoat;
   wxButton* m_bSaveBoat;
   wxButton* m_bSaveAsBoat;
+
+  // Cursor information display
+  wxStaticText* m_stCursorWindAngle;
+  wxStaticText* m_stCursorWindSpeed;
+  wxStaticText* m_stCursorBoatSpeed;
+  wxStaticText* m_stCursorVMG;
+  wxStaticText* m_stCursorVMGAngle;
+
+  // Best VMG information display
+  wxStaticText* m_stBestVMGWindSpeed;
+  wxStaticText* m_stBestVMGUpwindAngle;
+  wxStaticText* m_stBestVMGUpwindSpeed;
+  wxStaticText* m_stBestVMGUpwindVMG;
+  wxStaticText* m_stBestVMGDownwindAngle;
+  wxStaticText* m_stBestVMGDownwindSpeed;
+  wxStaticText* m_stBestVMGDownwindVMG;
 
   // Virtual event handlers, overide them in your derived class
   virtual void OnMouseEventsPolarPlot(wxMouseEvent& event) { event.Skip(); }

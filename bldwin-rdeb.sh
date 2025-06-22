@@ -58,3 +58,22 @@ bash ./cloudsmith-upload.sh
 
 # Find ${bold}"build/output.txt"${normal} file if the build is not successful.
 # Other examples below.
+
+# Copy .dll and .pdb files for debugging into MSVisualStudio Development Setup
+# Copy from 
+# C:\Users\fcgle\source\weather_routing_pi\build\relwithdebinfo   weather_routing_pi.dll and weather_routing_pi.pdb
+# into
+# C:\Users\fcgle\source\opencpn\build\RelWithDebInfo\plugins
+
+
+# cp -rv ./SourceFolder ./DestFolder
+# cp -r ./dist/* ./out
+#    -r - Copy all files and folders inside a directory
+#    -i - Ask before replacing files
+#    -u - Copy only if the source is newer
+#    -v - Verbose mode, show files being copied
+# copy ..\build\relwithdebinfo\weather_routing_pi.dll to  C:\Users\fcgle\source\opencpn\build\RelWithDebInfo\plugins
+# copy ..\build\relwithdebinfo\weather_routing_pi.pdb to  C:\Users\fcgle\source\opencpn\build\RelWithDebInfo\plugins
+
+cp -uv ./relwithdebinfo/weather_routing_pi.dll C:/Users/fcgle/source/opencpn/build/RelWithDebInfo/plugins
+cp -uv ./relwithdebinfo/weather_routing_pi.pdb C:/Users/fcgle/source/opencpn/build/RelWithDebInfo/plugins

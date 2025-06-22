@@ -111,6 +111,14 @@ void ConfigurationDialog::OnStartFromPosition(wxCommandEvent& event) {
 
 void ConfigurationDialog::OnAvoidCyclones(wxCommandEvent& event) { Update(); }
 
+void ConfigurationDialog::OnUseMotor(wxCommandEvent& event) {
+  // Enable/disable motor controls based on checkbox state
+  bool useMotor = m_cbUseMotor->IsChecked();
+  m_sMotorSpeedThreshold->Enable(useMotor);
+  m_sMotorSpeed->Enable(useMotor);
+  Update();
+}
+
 void ConfigurationDialog::OnBoatFilename(wxCommandEvent& event) {
   wxFileDialog openDialog(
       this, _("Select Boat File"), wxFileName(m_tBoat->GetValue()).GetPath(),
@@ -263,6 +271,16 @@ void ConfigurationDialog::SetConfigurations(
   SET_SPIN(ToDegree);
   SET_SPIN_DOUBLE(ByDegrees);
 
+  // Motor settings
+  SET_CHECKBOX(UseMotor);
+  SET_SPIN_DOUBLE_VALUE(MotorSpeedThreshold, (*it).MotorSpeedThreshold);
+  SET_SPIN_DOUBLE_VALUE(MotorSpeed, (*it).MotorSpeed);
+
+  // Enable/disable motor controls based on checkbox state
+  bool motorEnabled = m_cbUseMotor->IsChecked();
+  m_sMotorSpeedThreshold->Enable(motorEnabled);
+  m_sMotorSpeed->Enable(motorEnabled);
+
   SET_CHOICE_VALUE(Integrator,
                    ((*it).Integrator == RouteMapConfiguration::RUNGE_KUTTA
                         ? _T("Runge Kutta")
@@ -360,6 +378,13 @@ void ConfigurationDialog::OnResetAdvanced(wxCommandEvent& event) {
   m_sFromDegree->SetValue(0);
   m_sToDegree->SetValue(180);
   m_sByDegrees->SetValue(5.0);
+
+  // Motor settings
+  m_cbUseMotor->SetValue(false);
+  m_sMotorSpeedThreshold->SetValue(2.0);
+  m_sMotorSpeed->SetValue(5.0);
+  m_sMotorSpeedThreshold->Enable(false);
+  m_sMotorSpeed->Enable(false);
 
   m_bBlockUpdate = false;
   Update();
@@ -551,6 +576,22 @@ void ConfigurationDialog::Update() {
     GET_SPIN(FromDegree);
     GET_SPIN(ToDegree);
     GET_SPIN(ByDegrees);
+
+    // Motor settings
+    GET_CHECKBOX(UseMotor);
+    if (NO_EDITED_CONTROLS ||
+        std::find(m_edited_controls.begin(), m_edited_controls.end(),
+                  (wxObject*)m_sMotorSpeedThreshold) !=
+            m_edited_controls.end()) {
+      configuration.MotorSpeedThreshold = m_sMotorSpeedThreshold->GetValue();
+      m_sMotorSpeedThreshold->SetForegroundColour(wxColour(0, 0, 0));
+    }
+    if (NO_EDITED_CONTROLS ||
+        std::find(m_edited_controls.begin(), m_edited_controls.end(),
+                  (wxObject*)m_sMotorSpeed) != m_edited_controls.end()) {
+      configuration.MotorSpeed = m_sMotorSpeed->GetValue();
+      m_sMotorSpeed->SetForegroundColour(wxColour(0, 0, 0));
+    }
 
     (*it)->SetConfiguration(configuration);
 
