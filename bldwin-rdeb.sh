@@ -67,13 +67,11 @@ bash ./cloudsmith-upload.sh
 
 
 # cp -rv ./SourceFolder ./DestFolder
-# cp -r ./dist/* ./out
-#    -r - Copy all files and folders inside a directory
 #    -i - Ask before replacing files
 #    -u - Copy only if the source is newer
 #    -v - Verbose mode, show files being copied
 # copy ..\build\relwithdebinfo\weather_routing_pi.dll to  C:\Users\fcgle\source\opencpn\build\RelWithDebInfo\plugins
 # copy ..\build\relwithdebinfo\weather_routing_pi.pdb to  C:\Users\fcgle\source\opencpn\build\RelWithDebInfo\plugins
 
-cp -uv ./relwithdebinfo/weather_routing_pi.dll C:/Users/fcgle/source/opencpn/build/RelWithDebInfo/plugins
-cp -uv ./relwithdebinfo/weather_routing_pi.pdb C:/Users/fcgle/source/opencpn/build/RelWithDebInfo/plugins
+cp -uv ./relwithdebinfo/*_pi.dll C:/Users/fcgle/source/opencpn/build/RelWithDebInfo/plugins
+cp -uv ./relwithdebinfo/*_pi.pdb C:/Users/fcgle/source/opencpn/build/RelWithDebInfo/plugins
