@@ -63,3 +63,5 @@ The plugin code is licensed under the terms of the GPL v3+
 
 Part of the icons made by Smashicons (https://www.flaticon.com/authors/smashicons) from Flaticon (https://www.flaticon.com/) and is licensed under CC BY 3.0 (http://creativecommons.org/licenses/by/3.0)
 
+Ignore from here on:
+1. Small change to trigger CI build.
