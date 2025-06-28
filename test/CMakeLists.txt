@@ -30,48 +30,94 @@ adv
 aui
 REQUIRED)
 
-set(TEST_SRC
+set(SRC
+    # Test source files, in alphabetical order
+    IsoRoute_tests.cpp
     Polar_tests.cpp
     PolygonRegion_tests.cpp
     Utilities_tests.cpp
-    ${CMAKE_SOURCE_DIR}/src/Utilities.cpp
+
+    #Mock source files, in alphabetical order
+    mock_plugin_api.cpp
+    mock_plugin_impl.c # For functions with "C" linkage
+    mock_plugin_impl.cpp # For functions with C++ linkage.
+
+    # Plugin files, in alphabetical order
+    ${CMAKE_SOURCE_DIR}/src/AboutDialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/Boat.cpp
+    ${CMAKE_SOURCE_DIR}/src/BoatDialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ConfigurationBatchDialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ConfigurationDialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ConstraintChecker.cpp
+    ${CMAKE_SOURCE_DIR}/src/EditPolarDialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/FilterRoutesDialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/GribRecord.cpp
+    ${CMAKE_SOURCE_DIR}/src/georef.cpp
+    ${CMAKE_SOURCE_DIR}/src/icons.cpp
+    ${CMAKE_SOURCE_DIR}/src/LineBufferOverlay.cpp
+    ${CMAKE_SOURCE_DIR}/src/IsoRoute.cpp
+    ${CMAKE_SOURCE_DIR}/src/navobj_util.cpp
+    ${CMAKE_SOURCE_DIR}/src/PlotDialog.cpp
     ${CMAKE_SOURCE_DIR}/src/PolygonRegion.cpp
     ${CMAKE_SOURCE_DIR}/src/Polar.cpp
+    ${CMAKE_SOURCE_DIR}/src/Position.cpp
+    ${CMAKE_SOURCE_DIR}/src/ReportDialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/RoutingTablePanel.cpp
+    ${CMAKE_SOURCE_DIR}/src/RouteMap.cpp
+    ${CMAKE_SOURCE_DIR}/src/RouteMapOverlay.cpp
+    ${CMAKE_SOURCE_DIR}/src/RoutePoint.cpp
+    ${CMAKE_SOURCE_DIR}/src/RouteSimplifier.cpp
+    ${CMAKE_SOURCE_DIR}/src/SettingsDialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/StatisticsDialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/SunCalculator.cpp
+    ${CMAKE_SOURCE_DIR}/src/Utilities.cpp
+    ${CMAKE_SOURCE_DIR}/src/WeatherDataProvider.cpp
+    ${CMAKE_SOURCE_DIR}/src/WeatherRouting.cpp
+    ${CMAKE_SOURCE_DIR}/src/WeatherRoutingUI.cpp
+    ${CMAKE_SOURCE_DIR}/src/weather_routing_pi.cpp
     ${CMAKE_SOURCE_DIR}/src/zuFile.cpp
    )
    
-   add_executable(weather_routing_pi_tests ${TEST_SRC})
+   add_executable(weather_routing_pi_tests ${SRC})
 
    # Uncomment include directories as needed - @todo tests should inherit this from main plugin
    target_include_directories(weather_routing_pi_tests 
         PRIVATE
             ${CMAKE_SOURCE_DIR}/src
-   #         ${CMAKE_SOURCE_DIR}/opencpn-libs/api-18/include
-            ${CMAKE_SOURCE_DIR}/opencpn-libs/libtess2/include
-            ${CMAKE_SOURCE_DIR}/opencpn-libs/tinyxml/include
-   #         ${CMAKE_SOURCE_DIR}/opencpn-libs/plugin_dc/dc_utils/include
-   #         ${CMAKE_SOURCE_DIR}/opencpn-libs/jsonlib/include
-   #         ${CMAKE_SOURCE_DIR}/opencpn-libs/odapi
-   #         ${CMAKE_SOURCE_DIR}/opencpn-libs/pugixml
+
+            ${CMAKE_SOURCE_DIR}/opencpn-libs/${PKG_API_LIB}/include
             ${GTEST_INCLUDE_DIRS}
             ${wxWidgets_INCLUDE_DIRS}
+
+            ${CMAKE_SOURCE_DIR}/opencpn-libs/libtess2/include
+            ${CMAKE_SOURCE_DIR}/opencpn-libs/tinyxml/include
+            ${CMAKE_SOURCE_DIR}/opencpn-libs/plugin_dc/dc_utils/include
+            ${CMAKE_SOURCE_DIR}/opencpn-libs/jsonlib/include
+            ${CMAKE_SOURCE_DIR}/opencpn-libs/odapi
+            ${CMAKE_SOURCE_DIR}/opencpn-libs/pugixml
+            ${GMOCK_INCLUDE_DIRS}
     )
    
    # Uncomment required libraries as needed - @todo tests should inherit this from main plugin
-   target_link_libraries(weather_routing_pi_tests 
-       PRIVATE 
-           GTest::gtest_main
-           ${wxWidgets_LIBRARIES}
-           ocpn::libtess2
-           ocpn::tinyxml
-           # ocpn::dc-utils
-           # ocpn::jsonlib
-           # ocpn::api_wx32
-           # ocpn::iso8211
-           # ocpn::json-schema-validator
-           # ocpn::wxsvg
-           ocpn::bzip2
-           ${ZLIB_LIBRARIES}
+    target_link_libraries(weather_routing_pi_tests 
+        PRIVATE 
+            GTest::gtest_main
+            GTest::gmock_main
+            ${wxWidgets_LIBRARIES}
+            ocpn::api
+            # ${OCPN_API_WX32}
+            # ${OCPN_API}
+            ocpn::pugixml
+            ocpn::libtess2
+            ocpn::tinyxml
+            ocpn::dc-utils
+            ocpn::jsonlib
+            ocpn::api_wx32
+            # ocpn::iso8211
+            # ocpn::json-schema-validator
+            # ocpn::wxsvg
+            ocpn::bzip2
+            ${ZLIB_LIBRARIES}
    )
    
    # Workaround as per https://discourse.cmake.org/t/how-to-get-an-lc-rpath-and-rpath-prefix-on-a-dylib-on-macos/5540/5
@@ -88,6 +134,7 @@ target_compile_definitions(weather_routing_pi_tests
     PUBLIC
         USE_MOCK_DEFS CMAKE_BINARY_DIR="${CMAKE_BINARY_DIR}"
         TESTDATADIR="${CMAKE_CURRENT_LIST_DIR}/testdata"
+        UNIT_TESTS
 )
 
 include(GoogleTest)
