@@ -138,8 +138,6 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
         UNIT_TESTS
 )
 
-# Add the test
-add_test(NAME weather_routing_pi_tests COMMAND weather_routing_pi_tests)
 gtest_discover_tests(${PROJECT_NAME})
 
 # Create UNIT_UNDER_TEST_OBJECT_DIR variable
