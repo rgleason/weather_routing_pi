@@ -81,7 +81,7 @@ set(SRC
     ${CMAKE_SOURCE_DIR}/src/zuFile.cpp
 )
 
-add_executable(${PROJECT_NAME} ${TEST_SRC})
+add_executable(${PROJECT_NAME} ${SRC})
 
 # Compile and link with code coverage
 target_compile_options(${PROJECT_NAME} PRIVATE -coverage)
