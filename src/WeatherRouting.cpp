@@ -1729,11 +1729,10 @@ void WeatherRouting::OnResetAll(wxCommandEvent& event) {
 }
 
 void WeatherRouting::OnSaveAsTrack(wxCommandEvent& event) {
-  std::list<RouteMapOverlay*> routemapoverlays = CurrentRouteMaps(true);
-  for (std::list<RouteMapOverlay*>::iterator it = routemapoverlays.begin();
-       it != routemapoverlays.end(); it++)
-    SaveAsTrack(**it);
+    auto overlays = CurrentRouteMaps(true);
+    SaveRoutesCommon(overlays, "track");
 }
+
 
 /**
  * Shows a dialog to get route saving options from the user.
@@ -1812,85 +1811,16 @@ WeatherRouting::SaveRouteOptions WeatherRouting::ShowRouteSaveOptionsDialog() {
 }
 
 void WeatherRouting::OnSaveAsRoute(wxCommandEvent& event) {
-  std::list<RouteMapOverlay*> routemapoverlays = CurrentRouteMaps(true);
-  if (routemapoverlays.empty()) {
-    wxMessageDialog mdlg(this, _("No weather route selected"),
-                         _("Weather Routing"), wxOK | wxICON_WARNING);
-    mdlg.ShowModal();
-    return;
-  }
-
-  // Get route saving options from user
-  SaveRouteOptions options = ShowRouteSaveOptionsDialog();
-  if (!options.dialogAccepted) {
-    return;  // User canceled
-  }
-
-  // Process each selected route
-  for (std::list<RouteMapOverlay*>::iterator it = routemapoverlays.begin();
-       it != routemapoverlays.end(); it++) {
-    RouteMapOverlay* routemap = *it;
-
-    if (options.simplifyRoute) {
-      // Create and run simplifier.
-      RouteSimplifier simplifier(routemap);
-
-      // Configure simplification parameters.
-      SimplificationParams params;
-      params.maxDurationPenaltyPercent = options.maxDurationPenalty;
-
-      // Perform simplification.
-      SimplificationResult result = simplifier.Simplify(params);
-
-      if (!result.success) {
-        wxMessageDialog errorDlg(
-            this, _("Failed to simplify route: ") + result.message,
-            _("Weather Routing"), wxOK | wxICON_ERROR);
-        errorDlg.ShowModal();
-
-        // Still save the original route if simplification failed.
-        SaveAsRoute(*routemap);
-      } else {
-        // Get the results.
-        std::list<Position*> simplifiedRoute = result.simplifiedRoute;
-        // Save the simplified route.
-        SaveSimplifiedRoute(*routemap, simplifiedRoute);
-        wxMessageDialog resultDlg(this, result.message,
-                                  _("Route Simplification"),
-                                  wxOK | wxICON_INFORMATION);
-        resultDlg.ShowModal();
-      }
-    } else {
-      // Save the original route without simplification.
-      SaveAsRoute(*routemap);
-    }
-  }
+    auto overlays = CurrentRouteMaps(true);
+    SaveRoutesCommon(overlays, "route");
 }
+
 
 void WeatherRouting::OnExportRouteAsGPX(wxCommandEvent& event) {
-  std::list<RouteMapOverlay*> routemapoverlays = CurrentRouteMaps(true);
-  int nfail = 0;
-  for (std::list<RouteMapOverlay*>::iterator it = routemapoverlays.begin();
-       it != routemapoverlays.end(); it++) {
-    std::list<PlotData> plotdata = (*it)->GetPlotData(false);
-
-    if (plotdata.empty())
-      nfail++;
-    else
-      ExportRoute(**it);
-  }
-  if (nfail) {
-    wxString nc;
-    nc.Printf("%d ", nfail);
-    wxString msg(_("Route export failed"));
-    msg += "\n";
-    msg += nc;
-    msg += _("Route(s) not computed, cannot export");
-    wxMessageDialog mdlg(this, msg, _("Weather Routing"),
-                         wxOK | wxICON_WARNING);
-    mdlg.ShowModal();
-  }
+    auto overlays = CurrentRouteMaps(true);
+    SaveRoutesCommon(overlays, "gpx");
 }
+
 
 void WeatherRouting::OnSaveAllAsTracks(wxCommandEvent& event) {
   for (int i = 0; i < m_panel->m_lWeatherRoutes->GetItemCount(); i++)
@@ -3594,4 +3524,16 @@ void WeatherRouting::SaveSimplifiedRoute(
   // Add route to OpenCPN
   AddPlugInRoute(newRoute);
   RequestRefresh(GetParent());
+}
+  // private method inside WeatherRouting class
+void WeatherRouting::SaveRoutesCommon(const std::list<RouteMapOverlay*>& overlays, const wxString& type) {
+    for (auto& overlay : overlays) {
+        if (type == "track") {
+            SaveAsTrack(*overlay);
+        } else if (type == "route") {
+            SaveAsRoute(*overlay);
+        } else if (type == "gpx") {
+            ExportRoute(*overlay);
+        }
+    }
 }
