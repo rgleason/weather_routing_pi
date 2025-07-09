@@ -20,11 +20,13 @@
 #ifndef _WEATHER_ROUTING_POSITION_H_
 #define _WEATHER_ROUTING_POSITION_H_
 
+#include <json/json.h>
 #include <wx/wx.h>
 
 #include "RoutePoint.h"
 #include "IsoRoute.h"
 #include "ConstraintChecker.h"
+
 
 class SkipPosition;
 class WR_GribRecordSet;
@@ -40,7 +42,12 @@ public:
            int sail_plan_change_count = 0, DataMask data_mask = DataMask::NONE,
            bool data_deficient = false);
   Position(const Position* p);
-
+  /**
+   * Constructs a Position from a JSON object.
+   * See also toJson() method.
+   * @param json JSON object containing Position data.
+   */
+  Position(const Json::Value& json);
   SkipPosition* BuildSkipList();
 
   /**
@@ -86,6 +93,19 @@ public:
     }
     return route;
   }
+
+    /**
+    * Serializes the Position object to JSON format.
+    *
+    * This method converts the Position's data into a JSON object, which can be
+    * used for storage, transmission, or debugging purposes. The JSON object will
+    * include all relevant fields such as latitude, longitude, parent heading,
+    * parent bearing, and propagation status.
+    *
+    * @param json Reference to a Json::Value object where the Position data will
+    *             be stored.
+  */
+  void toJson(Json::Value &json) const;
 
   /** Helper method to get error as string. */
   static wxString GetErrorText(PropagationError error);
@@ -136,7 +156,6 @@ public:
 
   /** Indicates why propagation failed. */
   PropagationError propagation_error;
-
 private:
   /** Reset error tracking information. */
   void ResetErrorTracking();
@@ -150,6 +169,7 @@ private:
                RouteMapConfiguration& configuration, WR_GribRecordSet* grib,
                const wxDateTime& time, int newpolar, double& rk_BG,
                double& rk_dist, DataMask& data_mask);
+  
 };
 
 /**
