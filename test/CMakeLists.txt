@@ -80,14 +80,16 @@ set(SRC
     ${CMAKE_SOURCE_DIR}/src/weather_routing_pi.cpp
     ${CMAKE_SOURCE_DIR}/src/zuFile.cpp
 )
-add_executable(${PROJECT_NAME} ${TEST_SRC})
+add_executable(${PROJECT_NAME} ${SRC})
 
-# Compile and link with code coverage
-target_compile_options(${PROJECT_NAME} PRIVATE -coverage)
-target_link_options(${PROJECT_NAME} PRIVATE -coverage)
+# Compile and link with code coverage (only for GCC or Clang)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(${PROJECT_NAME} PRIVATE -coverage)
+    target_link_options(${PROJECT_NAME} PRIVATE -coverage)
+endif()
 
 # Uncomment include directories as needed - @todo tests should inherit this from main plugin
-target_include_directories(weather_routing_pi_tests 
+target_include_directories(${PROJECT_NAME} 
     PRIVATE
         ${CMAKE_SOURCE_DIR}/src
         ${CMAKE_SOURCE_DIR}/opencpn-libs/${PKG_API_LIB}/include
@@ -103,7 +105,7 @@ target_include_directories(weather_routing_pi_tests
 )
 
 # Uncomment required libraries as needed - @todo tests should inherit this from main plugin
-target_link_libraries(weather_routing_pi_tests 
+target_link_libraries(${PROJECT_NAME} 
     PRIVATE 
         GTest::gtest_main
         GTest::gmock_main
@@ -124,12 +126,12 @@ target_link_libraries(weather_routing_pi_tests
 
 # Workaround as per https://discourse.cmake.org/t/how-to-get-an-lc-rpath-and-rpath-prefix-on-a-dylib-on-macos/5540/5
 # TODO: Quinton: Make this robust on non-Mac platforms.
-set_target_properties(weather_routing_pi_tests PROPERTIES
+set_target_properties(${PROJECT_NAME} PROPERTIES
     BUILD_RPATH "../lib"
     INSTALL_RPATH "../lib"    
     )
-   
-target_compile_definitions(weather_routing_pi_tests
+
+    target_compile_definitions(weather_routing_pi_tests
     PUBLIC
         USE_MOCK_DEFS CMAKE_BINARY_DIR="${CMAKE_BINARY_DIR}"
         TESTDATADIR="${CMAKE_CURRENT_LIST_DIR}/testdata"
