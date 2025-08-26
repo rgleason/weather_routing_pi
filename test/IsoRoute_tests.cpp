@@ -8,33 +8,24 @@
 
  class IsoRouteTest: public ::testing::Test {
  protected:
-  //  std::string
-  //    m_testDataDir = TESTDATADIR,
-  //    m_testBoatFileRelativePath = "polars/Hallberg-Rassy_40_test.pol",
-  //    m_testBoatFileName = m_testDataDir + "/" + m_testBoatFileRelativePath,
-  //    m_testFileOpenMessage = "";
-
   Position* m_position[3];                        
   IsoRoute *m_isoRoute;
 
     IsoRouteTest() {
-       // You can do set-up work for each test here.
-       int i = 0;
-       // Create a sequence of points (i, i*i) - just something to do basic tests with.
-       for(i = 0; i < sizeof(m_position)/sizeof(Position*); ++i){
-         m_position[i] = new Position(i, i*i);
-       }
-       // Set up the circular linked list
-       i = i-1;
-       m_position[i]->prev = m_position[i-1];
-       m_position[i]->next = m_position[0];
-       m_position[0]->prev = m_position[i];
-       m_position[0]->next = m_position[1];
-       for(int i = 1; i < sizeof(m_position)/sizeof(Position*) -1; ++i) {
-         m_position[i]->prev = m_position[i-1];
-         m_position[i]->next = m_position[i+1];
-       }
-       m_isoRoute = new IsoRoute(m_position[0]->BuildSkipList(), 1);
+      // You can do set-up work for each test here.
+      const int size = sizeof(m_position)/sizeof(Position*);
+      // Create a sequence of points (i, i*i) - just something to do basic tests with.
+      for(int i = 0; i < size; ++i){
+        m_position[i] = new Position(i, i*i);
+      }
+      // Create a simple triangular boundary in lat/lon coordinate space to verify that
+      // the point-in-polygon detection works correctly for determining whether a
+      // boat's position falls within a particular routing zone.
+      for(int i = 0; i < size; ++i) {
+        m_position[i]->prev = m_position[(i + size - 1) % size];  // Previous (wraps around)
+        m_position[i]->next = m_position[(i + 1) % size];     
+      }
+      m_isoRoute = new IsoRoute(m_position[0]->BuildSkipList(), 1);
     }
  
    ~IsoRouteTest() override {
@@ -60,6 +51,7 @@
   EXPECT_TRUE(m_isoRoute->children.empty());
  }
 
+// Find and set the polygon's starting point to the position with the minimum latitude.
  TEST_F(IsoRouteTest, MinimizeLatBasic) {
   auto initialLat = m_isoRoute->skippoints->point->lat;
   m_isoRoute->MinimizeLat();
@@ -84,43 +76,21 @@ TEST_F(IsoRouteTest, IntersectionCountOutside) {
  // or neither.  The tests below are empirical base on the current behavior 
  // of the ray casting algorithm used, and  may need to be adjusted if the algorithm
  // changes in the future.
- TEST_F(IsoRouteTest, IntersectionCountVertex0) {
-  // At a vertex of the test polygon.
-  EXPECT_EQ(m_isoRoute->IntersectionCount(*m_position[0])%2, 0); // Should be outside, even count.
+ TEST_F(IsoRouteTest, IntersectionCountVertices) {
+    for(int i = 0; i < 3; ++i) {
+        EXPECT_EQ(m_isoRoute->IntersectionCount(*m_position[i]) % 2, 0);
+    }
  }
 
- TEST_F(IsoRouteTest, IntersectionCountVertex1) {
-  // At a vertex of of the test polygon.
-  EXPECT_EQ(m_isoRoute->IntersectionCount(*m_position[1])%2, 0); // Should be outside, even count.
- }
-
- TEST_F(IsoRouteTest, IntersectionCountVertex2) {
-  // At a vertex of of the test polygon.
-  EXPECT_EQ(m_isoRoute->IntersectionCount(*m_position[2])%2, 0); // Should be outside, even count.
- }
-
- TEST_F(IsoRouteTest, IntersectionCountBoundary0) {
-  // On a boundary of the test polygon. Use a point in the middle of the first boundary.
-  Position onBoundary(
-    m_position[0]->lon + (m_position[1]->lon - m_position[0]->lon)/2, 
-    m_position[0]->lat + (m_position[1]->lat - m_position[0]->lat)/2); 
-  EXPECT_EQ(m_isoRoute->IntersectionCount(onBoundary)%2, 0); // Should be outside, even count.
- }
-
- TEST_F(IsoRouteTest, IntersectionCountBoundary1) {
-  // On a boundary of the test polygon. Use a point in the middle of the second boundary.
-  Position onBoundary(
-    m_position[1]->lon + (m_position[2]->lon - m_position[1]->lon)/2, 
-    m_position[1]->lat + (m_position[2]->lat - m_position[1]->lat)/2); 
-  EXPECT_EQ(m_isoRoute->IntersectionCount(onBoundary)%2, 0); // Should be outside, even count.
- }
-
- TEST_F(IsoRouteTest, IntersectionCountBoundary2) {
-  // On a boundary of the test polygon. Use a point in the middle of the third boundary.
-  Position onBoundary(
-    m_position[0]->lon + (m_position[2]->lon - m_position[0]->lon)/2, 
-    m_position[0]->lat + (m_position[2]->lat - m_position[0]->lat)/2);   
+ TEST_F(IsoRouteTest, IntersectionCountBoundaries) {
+  // On a boundary of the test polygon. Use a point in the middle of the ith boundary.
+  const int size = 3;
+  for(int i = 0; i < size; ++i) {
+    Position onBoundary(
+      m_position[i]->lon + (m_position[(i+1)%size]->lon - m_position[i]->lon)/2, 
+      m_position[i]->lat + (m_position[(i+1)%size]->lat - m_position[i]->lat)/2); 
     EXPECT_EQ(m_isoRoute->IntersectionCount(onBoundary)%2, 0); // Should be outside, even count.
+  }
  }
 
  TEST_F(IsoRouteTest, ContainsInside) {
@@ -133,26 +103,19 @@ TEST_F(IsoRouteTest, ContainsOutside) {
   EXPECT_FALSE(m_isoRoute->Contains(outsidePos, true)); // Should be outside.
  }
 
-TEST_F(IsoRouteTest, ContainsBoundary0) {
-  // On a boundary of the test polygon. Use a point in the middle of the first boundary.
-  Position onBoundary(
-    m_position[0]->lon + (m_position[1]->lon - m_position[0]->lon)/2, 
-    m_position[0]->lat + (m_position[1]->lat - m_position[0]->lat)/2); 
-  EXPECT_FALSE(m_isoRoute->Contains(onBoundary, true)); // Should be outside.
+ Position getMidpoint(const Position& p1, const Position& p2) {
+    return Position(
+        p1.lon + (p2.lon - p1.lon) / 2,
+        p1.lat + (p2.lat - p1.lat) / 2
+    );
  }
 
- TEST_F(IsoRouteTest, ContainsBoundary1) {
-  // On a boundary of the test polygon. Use a point in the middle of the second boundary.
-    Position onBoundary(
-    m_position[1]->lon + (m_position[2]->lon - m_position[1]->lon)/2, 
-    m_position[1]->lat + (m_position[2]->lat - m_position[1]->lat)/2); 
-  EXPECT_FALSE(m_isoRoute->Contains(onBoundary, true)); // Should be outside.
- }
-
- TEST_F(IsoRouteTest, ContainsBoundary2) {
-  // On a boundary of the test polygon. Use a point in the middle of the third boundary.
-  Position onBoundary(
-    m_position[0]->lon + (m_position[2]->lon - m_position[0]->lon)/2, 
-    m_position[1]->lat + (m_position[2]->lat - m_position[0]->lat)/2); 
-  EXPECT_FALSE(m_isoRoute->Contains(onBoundary, true)); // Should be outside.
+ TEST_F(IsoRouteTest, ContainsBoundaryPoints) {
+    std::vector<std::pair<int,int>> edges = {{0,1}, {1,2}, {2,0}};
+    
+    for(const auto& [start, end] : edges) {
+        Position midpoint = getMidpoint(*m_position[start], *m_position[end]);
+        EXPECT_FALSE(m_isoRoute->Contains(midpoint, true)) 
+            << "Midpoint of edge " << start << "->" << end << " should be outside";
+    }
  }
