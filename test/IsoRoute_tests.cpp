@@ -224,55 +224,23 @@ TEST_F(IsoRouteTest, IntersectionCountOutside) {
  // of the ray casting algorithm used, and  may need to be adjusted if the algorithm
  // changes in the future.
  TEST_F(IsoRouteTest, IntersectionCountVertices) {
-    for(int i = 0; i < 3; ++i) {
-        EXPECT_EQ(m_isoRoute->IntersectionCount(*m_position[i]) % 2, 0);
+    int result[m_positionCount] = {0, 1, 0, 1, 0, 1, 0, 0,};
+    for(int i = 0; i < m_positionCount; ++i) {
+        EXPECT_EQ(m_isoRoute->IntersectionCount(*m_position[i]) % 2, result[i]) << "Intersection count of (" 
+      << m_position[i]->lat << ", " << m_position[i]->lon << ") [vertex " << i << "] should be " << ((result[i] == 0) ? "even" : "odd"); ;
     }
  }
 
-<<<<<<< HEAD
  TEST_F(IsoRouteTest, IntersectionCountBoundaries) {
   // On a boundary of the test polygon. Use a point in the middle of the ith boundary.
-  const int size = 3;
-  for(int i = 0; i < size; ++i) {
+  int result[m_positionCount] = { 0,1,0,1,0,1,0,1, };
+  for(int i = 0; i < m_positionCount; ++i) {
     Position onBoundary(
-      m_position[i]->lon + (m_position[(i+1)%size]->lon - m_position[i]->lon)/2, 
-      m_position[i]->lat + (m_position[(i+1)%size]->lat - m_position[i]->lat)/2); 
-    EXPECT_EQ(m_isoRoute->IntersectionCount(onBoundary)%2, 0); // Should be outside, even count.
+      m_position[i]->lat + (m_position[(i+1)%m_positionCount]->lat - m_position[i]->lat)/2, 
+      m_position[i]->lon + (m_position[(i+1)%m_positionCount]->lon - m_position[i]->lon)/2); 
+    EXPECT_EQ(m_isoRoute->IntersectionCount(onBoundary)%2, result[i]) << "Intersection count of (" 
+      << m_position[i]->lat << ", " << m_position[i]->lon << ") [midpoint of edge "<< i << "] should be " << ((result[i] == 0) ? "even" : "odd"); 
   }
-=======
- TEST_F(IsoRouteTest, IntersectionCountVertex1) {
-  // At a vertex of of the test polygon.
-  EXPECT_EQ(m_isoRoute->IntersectionCount(*m_position[1])%2, 1); // Should be inside, odd count.
- }
-
- TEST_F(IsoRouteTest, IntersectionCountVertex2) {
-  // At a vertex of of the test polygon.
-  EXPECT_EQ(m_isoRoute->IntersectionCount(*m_position[2])%2, 0); // Should be outside, even count.
- }
-
- TEST_F(IsoRouteTest, IntersectionCountBoundary0) {
-  // On a boundary of the test polygon. Use a point in the middle of the first boundary.
-  Position onBoundary(
-    m_position[0]->lon + (m_position[1]->lon - m_position[0]->lon)/2, 
-    m_position[0]->lat + (m_position[1]->lat - m_position[0]->lat)/2); 
-  EXPECT_EQ(m_isoRoute->IntersectionCount(onBoundary)%2, 0); // Should be outside, even count.
- }
-
- TEST_F(IsoRouteTest, IntersectionCountBoundary1) {
-  // On a boundary of the test polygon. Use a point in the middle of the second boundary.
-  Position onBoundary(
-    m_position[1]->lon + (m_position[2]->lon - m_position[1]->lon)/2, 
-    m_position[1]->lat + (m_position[2]->lat - m_position[1]->lat)/2); 
-  EXPECT_EQ(m_isoRoute->IntersectionCount(onBoundary)%2, 1); // Should be inside, odd count.
- }
-
- TEST_F(IsoRouteTest, IntersectionCountBoundary2) {
-  // On a boundary of the test polygon. Use a point in the middle of the third boundary.
-  Position onBoundary(
-    m_position[0]->lon + (m_position[2]->lon - m_position[0]->lon)/2, 
-    m_position[0]->lat + (m_position[2]->lat - m_position[0]->lat)/2);   
-    EXPECT_EQ(m_isoRoute->IntersectionCount(onBoundary)%2, 1); // Should be inside, odd count.
->>>>>>> f20adac (Improve testing coverage of IsoRoute.cpp from 30% to 60% including important Normalize() function)
  }
 
  TEST_F(IsoRouteTest, ContainsInside) {
@@ -292,32 +260,14 @@ TEST_F(IsoRouteTest, ContainsOutside) {
     );
  }
 
-<<<<<<< HEAD
  TEST_F(IsoRouteTest, ContainsBoundaryPoints) {
     std::vector<std::pair<int,int>> edges = {{0,1}, {1,2}, {2,0}};
-    
+    bool inside[] = { 0, 1, 1 };
+    int i=0;
     for(const auto& [start, end] : edges) {
         Position midpoint = getMidpoint(*m_position[start], *m_position[end]);
-        EXPECT_FALSE(m_isoRoute->Contains(midpoint, true)) 
-            << "Midpoint of edge " << start << "->" << end << " should be outside";
+        EXPECT_EQ(m_isoRoute->Contains(midpoint, true), inside[i]) 
+            << "Midpoint of edge " << start << "->" << end << " should be " << (inside[i] ? "inside" : "outside");
+        i++;
     }
  }
-=======
- TEST_F(IsoRouteTest, ContainsBoundary1) {
-  // On a boundary of the test polygon. Use a point in the middle of the second boundary.
-    Position onBoundary(
-    m_position[1]->lon + (m_position[2]->lon - m_position[1]->lon)/2, 
-    m_position[1]->lat + (m_position[2]->lat - m_position[1]->lat)/2); 
-  EXPECT_TRUE(m_isoRoute->Contains(onBoundary, true)); // Should be inside.
- }
-
- TEST_F(IsoRouteTest, ContainsBoundary2) {
-  // On a boundary of the test polygon. Use a point in the middle of the third boundary.
-  Position onBoundary(
-    m_position[0]->lon + (m_position[2]->lon - m_position[0]->lon)/2, 
-    m_position[1]->lat + (m_position[2]->lat - m_position[0]->lat)/2); 
-  EXPECT_TRUE(m_isoRoute->Contains(onBoundary, true)); // Should be inside.
- }
-
- 
->>>>>>> f20adac (Improve testing coverage of IsoRoute.cpp from 30% to 60% including important Normalize() function)
