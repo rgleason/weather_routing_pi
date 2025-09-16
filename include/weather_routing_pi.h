@@ -188,6 +188,33 @@ private:
   void RequestOcpnDrawSetting();
   void NewWR();
 
+  /**
+   * Warns the user if a plugin version is outside the supported range.
+   * @param  plugin_name Name of the plugin to display.
+   * @param version_major Major version of the plugin.
+   * @param version_minor Minor version of the plugin.
+   * @param min_major Minimum supported major version.
+   * @param min_minor Minimum supported minor version.
+   * @param max_major Maximum supported major version (default 100, 
+   *  i.e. effectively none, for backwards compatible plugins).
+   * @param max_minor Maximum supported minor version (default 100).
+   * @param consequence_msg Message to display about potential consequences of 
+   *  using an unsupported version (default "otherwise unexpected results may occur").
+   * @param recommended_version_msg_prefix Prefix for the recommended version message 
+   *  (default "Use versions").
+   * @param version_msg_suffix Suffix for the version message 
+   *  (default "is not officially supported.").
+   * @return true if a warning was shown, false otherwise.
+   */
+  bool WarnAboutPluginVersion(
+    const std::string plugin_name,
+    int version_major, int version_minor, 
+    int min_major, int min_minor, 
+    int max_major = 100, int max_minor = 100,
+    const std::string consequence_msg = _(", otherwise unexpected results may occur.").ToStdString(),
+    const std::string recommended_version_msg_prefix = _("Use versions").ToStdString(), 
+    const std::string version_msg_suffix = _("is not officially supported.").ToStdString());
+
   bool LoadConfig();
   bool SaveConfig();
 
