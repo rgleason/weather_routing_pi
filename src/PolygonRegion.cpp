@@ -1,9 +1,4 @@
 /***************************************************************************
- *
- * Project:  OpenCPN Weather Routing plugin
- * Author:   Sean D'Epagnier
- *
- ***************************************************************************
  *   Copyright (C) 2016 by Sean D'Epagnier                                 *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
@@ -20,8 +15,7 @@
  *   along with this program; if not, write to the                         *
  *   Free Software Foundation, Inc.,                                       *
  *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,  USA.         *
- ***************************************************************************
- */
+ **************************************************************************/
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -70,6 +64,17 @@ void Contour::Reverse() {
     points[i] = points[j], points[i + 1] = points[j + 1];
     points[j] = x, points[j + 1] = y;
   }
+}
+
+float Contour::Area() const {
+  if (n < 3) return 0.0f;
+
+  float area = 0.0f;
+  for (int i = 0; i < 2 * n; i += 2) {
+    int pn = i < 2 * (n - 1) ? i + 2 : 0;
+    area += (points[pn + 0] - points[i + 0]) * (points[pn + 1] + points[i + 1]);
+  }
+  return fabsf(area) * 0.5f;  // Return absolute area
 }
 
 void Contour::Simplify(float epsilon) {
@@ -290,7 +295,53 @@ void PolygonRegion::Subtract(PolygonRegion& region) {
   Put(region, TESS_WINDING_POSITIVE, true);
 }
 
-void PolygonRegion::Simplify(float epsilon) {
+void PolygonRegion::RemoveTinySubRegions() {
+  if (contours.size() <= 1) {
+    return;
+  }
+  float threshold = NAN;
+  // Calculate threshold based on outer boundary areas
+  float total_outer_area = 0.0f;
+  int outer_count = 0;
+
+  for (std::list<Contour>::iterator it = contours.begin(); it != contours.end();
+       it++) {
+    if (it->CCW()) {  // Counter-clockwise = outer boundary
+      total_outer_area += it->Area();
+      outer_count++;
+    }
+  }
+
+  if (outer_count > 0) {
+    // Set threshold to 0.5% of outer boundary area.
+    threshold = total_outer_area * 0.005f;
+  } else {
+    threshold = 1.0f;  // Fallback threshold
+  }
+
+  // Remove tiny holes and regular sub-regions.
+  int removed_holes = 0;
+  std::list<Contour>::iterator it = contours.begin();
+  while (it != contours.end()) {
+    if (it->Area() < threshold) {  // Sub-region area below threshold
+      // Outer boundaries are counter-clockwise, holes are clockwise.
+      wxLogMessage(
+          "PolygonRegion::Simplify: remove %s. Area=%.6f. Percentage "
+          "area=%.2f%%)",
+          (!it->CCW() ? "hole" : "regular sub-region"), it->Area(),
+          (it->Area() / total_outer_area) * 100.0f);
+      it = contours.erase(it);
+      removed_holes++;
+    } else {
+      it++;
+    }
+  }
+}
+
+void PolygonRegion::Simplify(float epsilon, bool remove_small_sub_regions) {
+  if (contours.empty()) return;
+
+  // First pass: simplify vertices
   std::list<Contour>::iterator it = contours.begin();
   while (it != contours.end()) {
     it->Simplify(epsilon);
@@ -298,6 +349,11 @@ void PolygonRegion::Simplify(float epsilon) {
       it = contours.erase(it);
     else
       it++;
+  }
+
+  // Second pass: remove small holes and regular sub-regions if requested.
+  if (remove_small_sub_regions) {
+    RemoveTinySubRegions();
   }
 }
 

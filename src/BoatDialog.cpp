@@ -908,6 +908,123 @@ void BoatDialog::OnPaintCrossOverChart(wxPaintEvent& event) {
     bool bold = i == index;
     wxColour col(colors[c].Red(), colors[c].Green(), colors[c].Blue(),
                  bold ? 230 : 90);
+    if (++c == (sizeof colors) / (sizeof *colors)) c = 0;
+
+    // First, draw standalone regions with dotted outlines (no fill)
+    if (!m_Boat.Polars[i].StandaloneRegion.Empty()) {
+      // Set up dotted pen for standalone regions
+      wxPen dottedPen(col, bold ? 3 : 1, wxPENSTYLE_DOT);
+      dc.SetPen(dottedPen);
+      dc.SetBrush(*wxTRANSPARENT_BRUSH);
+
+      // Tessellate as boundary contours (not triangles)
+      TESStesselator* boundaryTess =
+          m_Boat.Polars[i].StandaloneRegion.Tesselate(false);
+
+      if (boundaryTess) {
+        const float* boundaryVerts = tessGetVertices(boundaryTess);
+        const int* boundaryElems = tessGetElements(boundaryTess);
+        const int boundaryNelems = tessGetElementCount(boundaryTess);
+
+        // Draw boundary contours
+        for (int j = 0; j < boundaryNelems; ++j) {
+          int b = boundaryElems[j * 2];      // Start index
+          int n = boundaryElems[j * 2 + 1];  // Number of vertices
+
+          if (n < 3) continue;  // Skip invalid contours
+
+          if (polar) {
+            // For polar coordinates, we need to interpolate along curves
+            // Convert boundary vertices to Cartesian points first
+            std::vector<wxPoint> cartesianPoints;
+            cartesianPoints.reserve(n);
+
+            for (int k = 0; k < n; k++) {
+              float H = boundaryVerts[2 * (b + k) + 0];   // True Wind Angle
+              float VW = boundaryVerts[2 * (b + k) + 1];  // True Wind Speed
+              wxPoint pt(H * w / 180, h - VW * h / 40);
+              cartesianPoints.push_back(pt);
+            }
+
+            // Now draw interpolated curves between consecutive points
+            for (size_t k = 0; k < cartesianPoints.size(); k++) {
+              size_t next = (k + 1) % cartesianPoints.size();
+              wxPoint p1 = cartesianPoints[k];
+              wxPoint p2 = cartesianPoints[next];
+
+              // Calculate number of interpolation points needed
+              int count = CalcPolarPoints(p1, p2);
+
+              // Interpolate and draw the curve
+              wxPoint lastPolarPoint;
+              bool first = true;
+
+              for (int l = 0; l <= count; l++) {
+                double d = count > 0 ? (double)l / count : 0;
+                double px = p1.x * (1 - d) + p2.x * d;
+                double py = p1.y * (1 - d) + p2.y * d;
+                double H = px / w * 180;
+                double VW = (h - py) / h * 40;
+
+                wxPoint polarPoint(xc + scale * VW * sin(deg2rad(H)),
+                                   h / 2 - scale * VW * cos(deg2rad(H)));
+
+                if (!first) {
+                  dc.DrawLine(lastPolarPoint, polarPoint);
+                }
+                lastPolarPoint = polarPoint;
+                first = false;
+              }
+
+              // Draw mirrored version if full plot
+              if (full) {
+                first = true;
+                for (int l = 0; l <= count; l++) {
+                  double d = count > 0 ? (double)l / count : 0;
+                  double px = p1.x * (1 - d) + p2.x * d;
+                  double py = p1.y * (1 - d) + p2.y * d;
+                  double H = px / w * 180;
+                  double VW = (h - py) / h * 40;
+
+                  wxPoint polarPoint(
+                      2 * xc - (xc + scale * VW * sin(deg2rad(H))),
+                      h / 2 - scale * VW * cos(deg2rad(H)));
+
+                  if (!first) {
+                    dc.DrawLine(lastPolarPoint, polarPoint);
+                  }
+                  lastPolarPoint = polarPoint;
+                  first = false;
+                }
+              }
+            }
+          } else {
+            // For rectangular coordinates, simple straight lines are fine
+            std::vector<wxPoint> points;
+            points.reserve(n);
+
+            // Convert boundary vertices to screen coordinates
+            for (int k = 0; k < n; k++) {
+              float H = boundaryVerts[2 * (b + k) + 0];   // True Wind Angle
+              float VW = boundaryVerts[2 * (b + k) + 1];  // True Wind Speed
+              wxPoint pt(H * w / 180, h - VW * h / 40);
+              points.push_back(pt);
+            }
+
+            // Draw the contour outline with straight lines
+            if (points.size() >= 3) {
+              for (size_t k = 0; k < points.size(); k++) {
+                size_t next = (k + 1) % points.size();
+                dc.DrawLine(points[k], points[next]);
+              }
+            }
+          }
+        }
+        tessDeleteTess(boundaryTess);
+      }
+    }
+
+    // Second, draw crossover regions with solid fill
 #if wxUSE_GRAPHICS_CONTEXT
     wxGCDC gdc(dc);
     gdc.SetPen(*wxTRANSPARENT_PEN);
@@ -917,7 +1034,6 @@ void BoatDialog::OnPaintCrossOverChart(wxPaintEvent& event) {
     if (bold) dc.SetBrush(*wxBLACK);
     dc.SetBrush(col);
 #endif
-    if (++c == (sizeof colors) / (sizeof *colors)) c = 0;
 
     bool tri = true;
     TESStesselator* tess = m_Boat.Polars[i].CrossOverRegion.Tesselate(tri);
@@ -931,44 +1047,44 @@ void BoatDialog::OnPaintCrossOverChart(wxPaintEvent& event) {
     const int nelems = tessGetElementCount(tess);
 
     // Draw polygons.
-    for (int i = 0; i < nelems; ++i) {
+    for (int j = 0; j < nelems; ++j) {
       if (tri) {
-        const int* p = &elems[i * 3];
+        const int* p = &elems[j * 3];
         wxPoint points[3];
-        for (unsigned j = 0; j < 3 && p[j] != TESS_UNDEF; ++j) {
-          double H = verts[p[j] * 2 + 0];
-          double VW = verts[p[j] * 2 + 1];
-          points[j] = wxPoint(H * w / 180, h - VW * h / 40);
+        for (unsigned k = 0; k < 3 && p[k] != TESS_UNDEF; ++k) {
+          double H = verts[p[k] * 2 + 0];
+          double VW = verts[p[k] * 2 + 1];
+          points[k] = wxPoint(H * w / 180, h - VW * h / 40);
         }
         if (polar) {
           int count[3] = {CalcPolarPoints(points[0], points[1]),
                           CalcPolarPoints(points[1], points[2]),
                           CalcPolarPoints(points[2], points[0])};
           wxPoint* pts = new wxPoint[count[0] + count[1] + count[2]];
-          int c = 0;
-          for (int j = 0; j < 3; j++) {
-            int jp1 = j + 1 == 3 ? 0 : j + 1;
-            for (int k = 0; k < count[j]; k++) {
-              double d = (double)k / count[j];
-              double px = points[j].x * (1 - d) + points[jp1].x * d;
-              double py = points[j].y * (1 - d) + points[jp1].y * d;
+          int c_pts = 0;
+          for (int k = 0; k < 3; k++) {
+            int kp1 = k + 1 == 3 ? 0 : k + 1;
+            for (int l = 0; l < count[k]; l++) {
+              double d = (double)l / count[k];
+              double px = points[k].x * (1 - d) + points[kp1].x * d;
+              double py = points[k].y * (1 - d) + points[kp1].y * d;
               double H = px / w * 180;
               double VW = (h - py) / h * 40;
-              pts[c++] = wxPoint(xc + scale * VW * sin(deg2rad(H)),
-                                 h / 2 - scale * VW * cos(deg2rad(H)));
+              pts[c_pts++] = wxPoint(xc + scale * VW * sin(deg2rad(H)),
+                                     h / 2 - scale * VW * cos(deg2rad(H)));
             }
           }
 #if wxUSE_GRAPHICS_CONTEXT
-          gdc.DrawPolygon(c, pts);
+          gdc.DrawPolygon(c_pts, pts);
 #else
-          dc.DrawPolygon(c, pts);
+          dc.DrawPolygon(c_pts, pts);
 #endif
           if (full) {
-            for (int j = 0; j < c; j++) pts[j].x = 2 * xc - pts[j].x;
+            for (int k = 0; k < c_pts; k++) pts[k].x = 2 * xc - pts[k].x;
 #if wxUSE_GRAPHICS_CONTEXT
-            gdc.DrawPolygon(c, pts);
+            gdc.DrawPolygon(c_pts, pts);
 #else
-            dc.DrawPolygon(c, pts);
+            dc.DrawPolygon(c_pts, pts);
 #endif
           }
           delete[] pts;
@@ -980,13 +1096,13 @@ void BoatDialog::OnPaintCrossOverChart(wxPaintEvent& event) {
 #endif
         }
       } else {
-        int b = elems[i * 2];
-        int n = elems[i * 2 + 1];
+        int b = elems[j * 2];
+        int n = elems[j * 2 + 1];
 
         wxPoint pl;
-        for (int j = 0; j <= n; j++) {
-          int k = j < n ? j : 0;
-          float H = verts[2 * (b + k) + 0], VW = verts[2 * (b + k) + 1];
+        for (int k = 0; k <= n; k++) {
+          int l = k < n ? k : 0;
+          float H = verts[2 * (b + l) + 0], VW = verts[2 * (b + l) + 1];
           wxPoint p0;
           if (polar)
             p0 = wxPoint(xc + scale * VW * sin(deg2rad(H)),
@@ -994,7 +1110,7 @@ void BoatDialog::OnPaintCrossOverChart(wxPaintEvent& event) {
           else
             p0 = wxPoint(H * w / 180, h - VW * h / 40);
 
-          if (j > 0) dc.DrawLine(pl, p0);
+          if (k > 0) dc.DrawLine(pl, p0);
           pl = p0;
         }
       }
@@ -1002,9 +1118,37 @@ void BoatDialog::OnPaintCrossOverChart(wxPaintEvent& event) {
 
     tessDeleteTess(tess);
   }
+
+  // Draw legend to explain the two types of regions
+  dc.SetPen(wxPen(*wxBLACK, 1, wxPENSTYLE_SOLID));
+  dc.SetBrush(*wxWHITE_BRUSH);
+  dc.SetTextForeground(*wxBLACK);
+
+  int legendX = 10;
+  int legendY = 10;
+  int legendWidth = 200;
+  int legendHeight = 60;
+
+  // Draw legend background
+  dc.DrawRectangle(legendX, legendY, legendWidth, legendHeight);
+
+  // Draw legend items
+  int lineY = legendY + 15;
+
+  // Solid fill legend item
+  dc.SetBrush(wxBrush(wxColour(255, 0, 0, 150)));
+  dc.DrawRectangle(legendX + 5, lineY - 5, 15, 10);
+  dc.DrawText(_("Optimal regions (solid)"), legendX + 25, lineY - 8);
+
+  // Dotted line legend item
+  lineY += 20;
+  dc.SetPen(wxPen(*wxRED, 2, wxPENSTYLE_DOT));
+  dc.SetBrush(*wxTRANSPARENT_BRUSH);
+  dc.DrawRectangle(legendX + 5, lineY - 5, 15, 10);
+  dc.DrawText(_("Standalone regions (dotted)"), legendX + 25, lineY - 8);
 }
 
-void BoatDialog::OnOverlapPercentage(wxSpinEvent& event) {
+void BoatDialog::OnOverlapPercentage(wxSpinDoubleEvent& event) {
   long i = SelectedPolar();
   if (i != -1)
     m_Boat.Polars[i].m_crossoverpercentage =
@@ -1108,7 +1252,7 @@ void BoatDialog::OnPolarSelected() {
   m_sOverlapPercentage->Enable(i != -1);
   if (i != -1)
     m_sOverlapPercentage->SetValue(m_Boat.Polars[i].m_crossoverpercentage *
-                                   100);
+                                   100.0);
 
   RefreshPlots();
   UpdateVMG();
@@ -1393,7 +1537,7 @@ void BoatDialog::UpdateCursorInfo() {
 
   if (m_CursorValid) {
     m_stCursorWindAngle->SetLabel(
-        wxString::Format(_("%.1f°"), m_CursorWindAngle));
+        wxString::Format(_("%.1f\u00B0"), m_CursorWindAngle));
     m_stCursorWindSpeed->SetLabel(
         wxString::Format(_("%.1f kts"), m_CursorWindSpeed));
     m_stCursorBoatSpeed->SetLabel(
@@ -1402,7 +1546,7 @@ void BoatDialog::UpdateCursorInfo() {
     if (m_stCursorVMGAngle) {
       // Show the actual cursor angle (course angle)
       m_stCursorVMGAngle->SetLabel(
-          wxString::Format(_("%.1f°"), m_CursorWindAngle));
+          wxString::Format(_("%.1f\u00B0"), m_CursorWindAngle));
     }
   } else {
     m_stCursorWindAngle->SetLabel(_("N/A"));
@@ -1460,7 +1604,8 @@ void BoatDialog::UpdateBestVMGInfo() {
     double upwindSpeed = polar.Speed(upwindAngle, referenceWindSpeed);
     double upwindVMG = upwindSpeed * cos(deg2rad(upwindAngle));
 
-    m_stBestVMGUpwindAngle->SetLabel(wxString::Format(_("%.1f°"), upwindAngle));
+    m_stBestVMGUpwindAngle->SetLabel(
+        wxString::Format(_("%.1f\u00B0"), upwindAngle));
     m_stBestVMGUpwindSpeed->SetLabel(
         wxString::Format(_("%.1f kts"), upwindSpeed));
     m_stBestVMGUpwindVMG->SetLabel(wxString::Format(_("%.1f kts"), upwindVMG));
@@ -1481,7 +1626,7 @@ void BoatDialog::UpdateBestVMGInfo() {
     double downwindVMG = downwindSpeed * cos(deg2rad(180.0 - downwindAngle));
 
     m_stBestVMGDownwindAngle->SetLabel(
-        wxString::Format(_("%.1f°"), downwindAngle));
+        wxString::Format(_("%.1f\u00B0"), downwindAngle));  // "°"
     m_stBestVMGDownwindSpeed->SetLabel(
         wxString::Format(_("%.1f kts"), downwindSpeed));
     m_stBestVMGDownwindVMG->SetLabel(

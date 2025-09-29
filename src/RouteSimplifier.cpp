@@ -136,7 +136,8 @@ std::vector<RouteSegment> RouteSimplifier::SplitRouteByManeuvers(
         CalculateSegmentDuration(currentSegment.points);
     segments.push_back(currentSegment);
   }
-  wxLogMessage(
+  wxLogGeneric(
+      wxLOG_Debug,
       "RouteSimplifier: Split route into %zu segments at maneuver points",
       segments.size());
   return segments;
@@ -145,47 +146,58 @@ std::vector<RouteSegment> RouteSimplifier::SplitRouteByManeuvers(
 wxTimeSpan RouteSimplifier::CalculateSegmentDuration(
     const std::list<Position*>& segment) const {
   if (segment.size() <= 1) {
-    wxLogMessage("Segment has only %zu waypoints", segment.size());
+    wxLogGeneric(wxLOG_Debug, "Segment has only %zu waypoints", segment.size());
     return wxTimeSpan(-1);  // No duration for a single point or empty segment.
   }
 
-  // Find the duration by looking at the earliest and latest positions
-  // in the segment and finding their corresponding isochrones.
+  // Calculate duration by finding which isochrones the positions belong to
+  // and using their actual time stamps, rather than assuming constant delta
+  // time.
+  Position* firstPos = segment.front();
+  Position* lastPos = segment.back();
+
   if (!m_routemap) {
-    wxLogMessage(
-        "RouteSimplifier: No routemap available for timing information");
+    wxLogGeneric(
+        wxLOG_Debug,
+        "RouteSimplifier: No routemap available for duration calculation");
     return wxTimeSpan(-1);
   }
 
   const IsoChronList& isochrones = m_routemap->GetIsoChronList();
   if (isochrones.empty()) {
-    wxLogMessage(
-        "RouteSimplifier: Empty isochrone list, cannot calculate time");
+    wxLogGeneric(
+        wxLOG_Debug,
+        "RouteSimplifier: No isochrones available for duration calculation");
     return wxTimeSpan(-1);
   }
 
-  // Find the first and last position in the segment to determine time span.
-  Position* firstPos = segment.front();
-  Position* lastPos = segment.back();
-  wxDateTime firstTime, lastTime;
-  for (IsoChronList::const_iterator it = isochrones.begin();
-       it != isochrones.end(); ++it) {
-    if (!firstTime.IsValid() && (*it)->Contains(*firstPos)) {
-      firstTime = (*it)->time;
-    }
+  // Find which isochrone each position belongs to by traversing parent chain
+  wxTimeSpan firstTime = FindPositionTime(firstPos, isochrones);
+  wxTimeSpan lastTime = FindPositionTime(lastPos, isochrones);
 
-    // Only check for lastPos if we've already firstPos.
-    // Since isochrones are in time order, lastPos must be in a later isochrone
-    // than firstPos.
-    if (firstTime.IsValid() && (*it)->Contains(*lastPos)) {
-      lastTime = (*it)->time;
-      // We found both positions, so we can break the loop
-      return wxTimeSpan(lastTime - firstTime);
-    }
+  if (firstTime < 0 || lastTime < 0) {
+    wxLogMessage(
+        "RouteSimplifier: Failed to find position times in isochrones");
+    return wxTimeSpan(-1);
   }
-  wxLogMessage("Failed to find segment duration. firstTime %d. lastTime: %d",
-               firstTime.IsValid(), lastTime.IsValid());
-  return wxTimeSpan(-1);
+
+  if (lastTime < firstTime) {
+    wxLogMessage("RouteSimplifier: Invalid time order: first=%s, last=%s",
+                 firstTime.Format("%D days %H:%M:%S"),
+                 lastTime.Format("%D days %H:%M:%S"));
+    return wxTimeSpan(-1);
+  }
+
+  wxTimeSpan duration = lastTime - firstTime;
+
+  wxLogGeneric(
+      wxLOG_Debug,
+      "RouteSimplifier: Segment duration calculated: first=%s, last=%s, "
+      "duration=%s",
+      firstTime.Format("%D days %H:%M:%S"), lastTime.Format("%D days %H:%M:%S"),
+      duration.Format("%D days %H:%M:%S"));
+
+  return duration;
 }
 
 SimplificationResult RouteSimplifier::Simplify(
@@ -251,7 +263,8 @@ SimplificationResult RouteSimplifier::Simplify(
 
         if (durationPenaltyPercent <= params.maxDurationPenaltyPercent &&
             alternate.totalManeuvers < initialManeuvers) {
-          wxLogMessage(
+          wxLogGeneric(
+              wxLOG_Debug,
               "RouteSimplifier: Selected alternate route with %d maneuvers "
               "(reduced from %d) with %.1f%% duration penalty",
               alternate.totalManeuvers, initialManeuvers,
@@ -268,11 +281,12 @@ SimplificationResult RouteSimplifier::Simplify(
   }
 
   // Split route into segments at maneuver points.
-  wxLogMessage("RouteSimplifier: Splitting route by maneuvers");
+  wxLogGeneric(wxLOG_Debug, "RouteSimplifier: Splitting route by maneuvers");
   std::vector<RouteSegment> segments = SplitRouteByManeuvers(routeToSimplify);
 
   // Simplify each segment with Douglas-Peucker.
-  wxLogMessage("RouteSimplifier: Geometric simplification of segments");
+  wxLogGeneric(wxLOG_Debug,
+               "RouteSimplifier: Geometric simplification of segments");
   double epsilon = CalculateInitialEpsilon();
 
   size_t originalTotalPoints = routeToSimplify.size();
@@ -292,7 +306,8 @@ SimplificationResult RouteSimplifier::Simplify(
                                     segment.points.begin(),
                                     segment.points.end());
       totalSimplifiedDuration += segment.originalDuration;
-      wxLogMessage(
+      wxLogGeneric(
+          wxLOG_Debug,
           "RouteSimplifier: Segment %zu too short to simplify (%zu points). "
           "Duration: %s",
           i, segment.points.size(),
@@ -304,15 +319,16 @@ SimplificationResult RouteSimplifier::Simplify(
     std::list<Position*> simplifiedSegment = segment.points;
     ApplyDouglasPeucker(simplifiedSegment, epsilon);
 
-    wxLogMessage(
+    wxLogGeneric(
+        wxLOG_Debug,
         "RouteSimplifier: Segment %zu simplified from %zu to %zu points", i,
         originalSegmentSize, simplifiedSegment.size());
 
     // Validate simplified segment can be sailed.
-    wxLogMessage(
-        "RouteSimplifier: Validating simplified segment %zu with "
-        "RhumbLinePropagateToPoint",
-        i);
+    wxLogGeneric(wxLOG_Debug,
+                 "RouteSimplifier: Validating simplified segment %zu with "
+                 "RhumbLinePropagateToPoint",
+                 i);
 
     // Only apply RhumbLinePropagateToPoint if simplification actually reduced
     // the number of points.
@@ -346,7 +362,8 @@ SimplificationResult RouteSimplifier::Simplify(
           // Create a copy of the configuration to use for validation.
           RouteMapConfiguration tempConfig = m_configuration;
 
-          wxLogMessage(
+          wxLogGeneric(
+              wxLOG_Debug,
               "RouteSimplifier: Segment from (%.6f,%.6f) to (%.6f,%.6f) "
               "distance=%.1f nm, validating with RhumbLinePropagateToPoint",
               start->lat, start->lon, end->lat, end->lon, distance);
@@ -357,10 +374,10 @@ SimplificationResult RouteSimplifier::Simplify(
               totalDistance, averageSpeed, maxSegmentLength);
 
           if (!std::isnan(propagationTime)) {
-            wxLogMessage(
-                "RouteSimplifier: Validated rhumb line segment: "
-                "%.1f nm, %.1f knots avg",
-                totalDistance, averageSpeed);
+            wxLogGeneric(wxLOG_Debug,
+                         "RouteSimplifier: Validated rhumb line segment: "
+                         "%.1f nm, %.1f knots avg",
+                         totalDistance, averageSpeed);
 
             // Add all intermediate waypoints to our validated segment.
             for (size_t j = 0; j < intermediatePoints.size(); j++) {
@@ -387,7 +404,8 @@ SimplificationResult RouteSimplifier::Simplify(
             }
           } else {
             // If rhumb line propagation failed, fall back to direct connection.
-            wxLogMessage(
+            wxLogGeneric(
+                wxLOG_Debug,
                 "RouteSimplifier: Rhumb line propagation failed, using direct "
                 "connection");
             validatedSegment.push_back(end);
@@ -405,7 +423,8 @@ SimplificationResult RouteSimplifier::Simplify(
       // Replace simplified segment with validated segment if it's reasonable.
       if (!validatedSegment.empty() &&
           validatedSegment.size() <= segment.points.size() * 0.8) {
-        wxLogMessage(
+        wxLogGeneric(
+            wxLOG_Debug,
             "RouteSimplifier: Using validated segment with %zu points (vs "
             "original %zu)",
             validatedSegment.size(), segment.points.size());
@@ -420,7 +439,7 @@ SimplificationResult RouteSimplifier::Simplify(
       continue;
     }
     totalSimplifiedDuration += segmentSimplifiedDuration;
-    wxLogMessage("RouteSimplifier: Segment %zu duration = %s", i,
+    wxLogGeneric(wxLOG_Debug, "RouteSimplifier: Segment %zu duration = %s", i,
                  segmentSimplifiedDuration.Format("%D days %H:%M:%S"));
 
     // Add this segment to the final route.
@@ -872,6 +891,211 @@ Position* RouteSimplifier::FindClosestPositionInRoute(IsoRoute* route,
   return closest;
 }
 
+wxTimeSpan RouteSimplifier::FindPositionTime(
+    Position* position, const IsoChronList& isochrones) const {
+  if (!position || isochrones.empty()) {
+    return wxTimeSpan(-1);
+  }
+
+  // Get the start time from the first isochrone
+  wxDateTime startTime;
+  if (!isochrones.empty() && isochrones.front()) {
+    startTime = isochrones.front()->time;
+  } else {
+    return wxTimeSpan(-1);
+  }
+
+  // Search through each isochrone to find the one containing our position
+  for (const IsoChron* isochron : isochrones) {
+    if (!isochron) continue;
+
+    // Check each route within this isochrone
+    for (IsoRoute* route : isochron->routes) {
+      if (!route || !route->skippoints) continue;
+
+      // Check each position in this route
+      SkipPosition* skippos = route->skippoints;
+      do {
+        if (skippos->point == position) {
+          // Found the position! Return the time difference from start
+          wxTimeSpan timeFromStart = isochron->time - startTime;
+          wxLogGeneric(wxLOG_Debug,
+                       "RouteSimplifier: Found position at time %s (offset %s)",
+                       isochron->time.Format("%H:%M:%S"),
+                       timeFromStart.Format("%D days %H:%M:%S"));
+          return timeFromStart;
+        }
+        skippos = skippos->next;
+      } while (skippos != route->skippoints);
+    }
+  }
+
+  // If not found by pointer, try geometric containment check
+  // This handles destination positions that are interpolated within isochrone
+  // polygons
+  for (const IsoChron* isochron : isochrones) {
+    if (!isochron) continue;
+
+    // Need to cast away const for Contains method
+    IsoChron* nonConstIsochron = const_cast<IsoChron*>(isochron);
+    if (nonConstIsochron->Contains(*position)) {
+      wxTimeSpan timeFromStart = isochron->time - startTime;
+      wxLogGeneric(
+          wxLOG_Debug,
+          "RouteSimplifier: Position found by geometric containment at time %s "
+          "(offset %s)",
+          isochron->time.Format("%H:%M:%S"),
+          timeFromStart.Format("%D days %H:%M:%S"));
+      return timeFromStart;
+    }
+  }
+
+  // If not found directly, try to find by exact coordinates as fallback
+  // This handles cases where positions might have been created during
+  // simplification
+  const double tolerance =
+      1e-8;  // Very small tolerance for coordinate comparison
+  for (const IsoChron* isochron : isochrones) {
+    if (!isochron) continue;
+
+    for (IsoRoute* route : isochron->routes) {
+      if (!route || !route->skippoints) continue;
+
+      SkipPosition* skippos = route->skippoints;
+      do {
+        Position* pos = skippos->point;
+        if (pos && std::abs(pos->lat - position->lat) < tolerance &&
+            std::abs(pos->lon - position->lon) < tolerance) {
+          wxTimeSpan timeFromStart = isochron->time - startTime;
+          wxLogGeneric(
+              wxLOG_Debug,
+              "RouteSimplifier: Found position by coordinates at time %s "
+              "(offset %s)",
+              isochron->time.Format("%H:%M:%S"),
+              timeFromStart.Format("%D days %H:%M:%S"));
+          return timeFromStart;
+        }
+        skippos = skippos->next;
+      } while (skippos != route->skippoints);
+    }
+  }
+
+  // Position not found in isochrones. Use parent chain fallback method.
+  // This handles positions created outside the normal isochrone propagation
+  wxLogMessage(
+      "RouteSimplifier: Position not found in any isochrone (%.6f, %.6f), "
+      "using parent chain fallback",
+      position->lat, position->lon);
+
+  return FindPositionTimeByParentChain(position, isochrones, startTime);
+}
+
+wxTimeSpan RouteSimplifier::FindPositionTimeByParentChain(
+    Position* position, const IsoChronList& isochrones,
+    const wxDateTime& startTime) const {
+  if (!position) {
+    return wxTimeSpan(-1);
+  }
+
+  // Walk up the parent chain to find a position that exists in the isochrones
+  Position* current = position;
+  std::vector<Position*> parentChain;
+
+  while (current) {
+    parentChain.push_back(current);
+
+    // Check if this position exists in any isochrone
+    for (const IsoChron* isochron : isochrones) {
+      if (!isochron) continue;
+
+      for (IsoRoute* route : isochron->routes) {
+        if (!route || !route->skippoints) continue;
+
+        SkipPosition* skippos = route->skippoints;
+        do {
+          if (skippos->point == current) {
+            // Found a parent position in the isochrones!
+            wxTimeSpan parentTime = isochron->time - startTime;
+
+            // If this is the position we're looking for, return its time
+            if (current == position) {
+              wxLogGeneric(
+                  wxLOG_Debug,
+                  "RouteSimplifier: Found position in parent chain at time %s",
+                  parentTime.Format("%D days %H:%M:%S"));
+              return parentTime;
+            }
+
+            // Otherwise, estimate the time by using the average delta time
+            // from the parent to the target position
+            int stepsFromParent = parentChain.size() - 1;
+            if (stepsFromParent > 0 && isochrones.size() >= 2) {
+              // Calculate average delta time between isochrones
+              auto it1 = isochrones.begin();
+              auto it2 = std::next(it1);
+              wxTimeSpan avgDelta = (*it2)->time - (*it1)->time;
+
+              wxTimeSpan estimatedTime =
+                  parentTime + avgDelta * stepsFromParent;
+              wxLogGeneric(
+                  wxLOG_Debug,
+                  "RouteSimplifier: Estimated time for position: parent time "
+                  "%s + %d steps * %s = %s",
+                  parentTime.Format("%D days %H:%M:%S"), stepsFromParent,
+                  avgDelta.Format("%D days %H:%M:%S"),
+                  estimatedTime.Format("%D days %H:%M:%S"));
+              return estimatedTime;
+            }
+
+            // If we can't estimate, just return the parent time
+            wxLogGeneric(wxLOG_Debug,
+                         "RouteSimplifier: Using parent time %s for position",
+                         parentTime.Format("%D days %H:%M:%S"));
+            return parentTime;
+          }
+          skippos = skippos->next;
+        } while (skippos != route->skippoints);
+      }
+    }
+
+    current = current->parent;
+  }
+
+  // If we get here, no position in the parent chain was found in isochrones
+  // This shouldn't happen in a properly constructed route, but let's handle it
+  // gracefully
+  wxLogGeneric(
+      wxLOG_Debug,
+      "RouteSimplifier: No position in parent chain found in isochrones");
+
+  // As a last resort, estimate based on position in route and total route time
+  if (!isochrones.empty()) {
+    wxTimeSpan totalRouteTime = isochrones.back()->time - startTime;
+
+    // Find position's location in the original route to estimate its relative
+    // time
+    auto it =
+        std::find(m_originalRoute.begin(), m_originalRoute.end(), position);
+    if (it != m_originalRoute.end()) {
+      size_t positionIndex = std::distance(m_originalRoute.begin(), it);
+      double relativePosition =
+          static_cast<double>(positionIndex) / (m_originalRoute.size() - 1);
+      wxTimeSpan estimatedTime = totalRouteTime * relativePosition;
+
+      wxLogGeneric(
+          wxLOG_Debug,
+          "RouteSimplifier: Estimated time based on route position: %zu/%zu = "
+          "%.2f%% of total time %s = %s",
+          positionIndex, m_originalRoute.size() - 1, relativePosition * 100.0,
+          totalRouteTime.Format("%D days %H:%M:%S"),
+          estimatedTime.Format("%D days %H:%M:%S"));
+      return estimatedTime;
+    }
+  }
+
+  return wxTimeSpan(-1);
+}
+
 std::vector<RouteSimplifier::RouteStats>
 RouteSimplifier::FindAlternateRoutesWithFewerManeuvers(
     const SimplificationParams& params, int maxRoutes) {
@@ -897,13 +1121,15 @@ RouteSimplifier::FindAlternateRoutesWithFewerManeuvers(
 
   // If there are no maneuvers, we can't reduce them further.
   if (originalRoute.totalManeuvers == 0) {
-    wxLogMessage(
+    wxLogGeneric(
+        wxLOG_Debug,
         "RouteSimplifier: Original route has no maneuvers, skipping alternate "
         "route search");
     return alternateRoutes;
   }
 
-  wxLogMessage(
+  wxLogGeneric(
+      wxLOG_Debug,
       "RouteSimplifier: Original route has %d tacks, %d jibes, %d sail changes "
       "(total: %d maneuvers). Duration: %s",
       originalRoute.totalTacks, originalRoute.totalJibes,
@@ -912,14 +1138,16 @@ RouteSimplifier::FindAlternateRoutesWithFewerManeuvers(
 
   // Access the routemap and ensure we can access the isochrones.
   if (!m_routemap) {
-    wxLogMessage(
+    wxLogGeneric(
+        wxLOG_Debug,
         "RouteSimplifier: No routemap available, skipping alternate routes");
     return alternateRoutes;
   }
 
   const IsoChronList& isochrones = m_routemap->GetIsoChronList();
   if (isochrones.empty()) {
-    wxLogMessage(
+    wxLogGeneric(
+        wxLOG_Debug,
         "RouteSimplifier: Empty isochrone list, skipping alternate routes");
     return alternateRoutes;
   }
@@ -940,7 +1168,8 @@ RouteSimplifier::FindAlternateRoutesWithFewerManeuvers(
     routeConfig.JibingTime = maneuverDuration;
     routeConfig.SailPlanChangeTime = maneuverDuration;
 
-    wxLogMessage(
+    wxLogGeneric(
+        wxLOG_Debug,
         "RouteSimplifier: Attempting alternate route with maneuver duration "
         "%.1f seconds",
         maneuverDuration);
@@ -961,20 +1190,21 @@ RouteSimplifier::FindAlternateRoutesWithFewerManeuvers(
           params, isochrones, routeConfig, dest, alternate);
 
       if (!found || alternate.totalManeuvers >= originalRoute.totalManeuvers) {
-        wxLogMessage(
+        wxLogGeneric(
+            wxLOG_Debug,
             "RouteSimplifier: maneuver time %.1f. Found: %d, Maneuvers: %d, "
             "Original: %d",
             maneuverDuration, found, alternate.totalManeuvers,
             originalRoute.totalManeuvers);
         continue;
       }
-      wxLogMessage(
-          "RouteSimplifier: Found alternate route: "
-          "%d tacks, %d jibes, %d sail changes, delta: %s",
-          alternate.totalManeuvers, alternate.totalTacks, alternate.totalJibes,
-          alternate.totalSailChanges,
-          (alternate.totalDuration - originalRoute.totalDuration)
-              .Format("%D days %H:%M:%S"));
+      wxLogGeneric(wxLOG_Debug,
+                   "RouteSimplifier: Found alternate route: "
+                   "%d tacks, %d jibes, %d sail changes, delta: %s",
+                   alternate.totalManeuvers, alternate.totalTacks,
+                   alternate.totalJibes, alternate.totalSailChanges,
+                   (alternate.totalDuration - originalRoute.totalDuration)
+                       .Format("%D days %H:%M:%S"));
 
       // Check if it's sufficiently different from existing routes.
       bool isDuplicate = false;

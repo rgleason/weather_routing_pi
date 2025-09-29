@@ -41,7 +41,7 @@ public:
   /**
    * Calculates sunrise and sunset times for a specific location and date
    *
-   * This function implements the US Naval Observatory algorithm from the
+   * Implements the US Naval Observatory algorithm from the
    * "Almanac for Computers, 1990" to compute sunrise and sunset times.
    * The calculated times are returned in UTC.
    *
@@ -69,7 +69,7 @@ public:
   /**
    * Determines whether it's day or night at a specific location and time.
    *
-   * This function checks if a given time at a particular location is during
+   * Checks if a given time at a particular location is during
    * daylight or nighttime by calculating the sunrise and sunset times. It uses
    * an internal caching mechanism to improve performance for repeated lookups
    * of similar coordinates and dates.

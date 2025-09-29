@@ -348,7 +348,7 @@ public:
    * Attempts to reach a specific target point from the current position.
    *
    * Calculates whether and how a vessel can reach a specified target point
-   * (dlat, dlon) from the current position. This function uses an iterative
+   * (dlat, dlon) from the current position. Uses an iterative
    * solver to determine the correct heading that accounts for current drift,
    * but does NOT optimize for best route - it simply tries to go directly to
    * the target.

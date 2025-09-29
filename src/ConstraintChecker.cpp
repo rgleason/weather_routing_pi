@@ -24,6 +24,12 @@
 #include <cmath>
 #include <sstream>
 #include <cstdint>
+#include <chrono>
+#include <vector>
+#include <tuple>
+#include <algorithm>
+#include <mutex>
+#include <atomic>
 
 #include "ConstraintChecker.h"
 #include "WeatherDataProvider.h"
@@ -35,6 +41,27 @@
 
 // Quantize to 1e-5 deg (about 1m)
 constexpr double QUANT = 1e5;
+
+/**
+ * Thread-safe segment cache with size limit.
+ *
+ * All cache operations are protected by land_cache_mutex to ensure thread
+ * safety during concurrent isochron propagations. Statistics counters use
+ * std::atomic for lock-free updates.
+ */
+struct SegmentCacheEntry {
+  bool crosses_land;
+  std::chrono::steady_clock::time_point last_used;
+
+  SegmentCacheEntry()
+      : crosses_land(false), last_used(std::chrono::steady_clock::now()) {}
+
+  SegmentCacheEntry(bool crosses)
+      : crosses_land(crosses), last_used(std::chrono::steady_clock::now()) {}
+};
+
+constexpr size_t MAX_SEGMENT_CACHE_SIZE = 10000;
+
 struct SegmentKey {
   uint64_t packed;
   SegmentKey(double lat1, double lon1, double lat2, double lon2) {
@@ -65,38 +92,137 @@ struct std::hash<SegmentKey> {
   }
 };
 
-static std::unordered_map<SegmentKey, bool> land_cache;
-static size_t cache_hits = 0, cache_misses = 0, cache_queries = 0;
+static std::unordered_map<SegmentKey, SegmentCacheEntry> land_cache;
+static std::mutex land_cache_mutex;
+
+static std::atomic<size_t> segment_cache_hits{0}, segment_cache_misses{0},
+    segment_cache_queries{0};
+static std::atomic<size_t> df_hits{0}, df_misses{0}, df_queries{0},
+    df_safe_water_optimizations{0};
+static std::atomic<size_t> segment_evictions{0}, distance_field_evictions{0};
 constexpr size_t LOG_INTERVAL = 1000;
 
+// LRU eviction for segment cache
+// Note: This function assumes the caller already holds land_cache_mutex
+void evict_oldest_segment_entries() {
+  if (land_cache.size() <= MAX_SEGMENT_CACHE_SIZE) return;
+
+  std::vector<std::pair<SegmentKey, std::chrono::steady_clock::time_point>>
+      entries;
+  entries.reserve(land_cache.size());
+
+  for (const auto& pair : land_cache) {
+    entries.emplace_back(pair.first, pair.second.last_used);
+  }
+
+  // Sort by last_used time (oldest first)
+  std::sort(
+      entries.begin(), entries.end(),
+      [](const std::pair<SegmentKey, std::chrono::steady_clock::time_point>& a,
+         const std::pair<SegmentKey, std::chrono::steady_clock::time_point>&
+             b) { return a.second < b.second; });
+
+  // Remove oldest 20% of entries
+  size_t to_remove = land_cache.size() - MAX_SEGMENT_CACHE_SIZE * 0.8;
+  for (size_t i = 0; i < to_remove && i < entries.size(); ++i) {
+    land_cache.erase(entries[i].first);
+  }
+  segment_evictions.fetch_add(to_remove);
+}
+
 void log_cache_stats() {
-  double hitrate = cache_queries ? (double)cache_hits / cache_queries : 0.0;
-  std::ostringstream oss;
+  size_t queries = segment_cache_queries.load();
+  size_t hits = segment_cache_hits.load();
+  size_t misses = segment_cache_misses.load();
+  size_t evictions = segment_evictions.load();
+  size_t df_queries_val = df_queries.load();
+  size_t df_safe_water_opt = df_safe_water_optimizations.load();
+
+  double segment_hit_rate = queries ? (double)hits / queries : 0.0;
+  // How often segments using distance field avoided expensive GSHHS calls.
+  double df_optimization_rate =
+      df_queries_val ? (double)df_safe_water_opt / df_queries_val : 0.0;
+
+  // Note: land_cache.size() must be called under mutex protection
+  std::lock_guard<std::mutex> lock(land_cache_mutex);
   wxLogMessage(
-      "[WeatherRouting] land cache: "
-      "queries=%d, hits=%d, misses=%d, size=%zu, hitrate=%.2f%%",
-      cache_queries, cache_hits, cache_misses, land_cache.size(),
-      100.0 * hitrate);
+      "WeatherRouting Segment cache: queries=%zu, hits=%zu, misses=%zu, "
+      "size=%zu, hitrate=%.1f%%, evictions=%zu",
+      queries, hits, misses, land_cache.size(), 100.0 * segment_hit_rate,
+      evictions);
+}
+
+void maintain_land_cache() {
+  static std::atomic<size_t> last_log_queries{0};
+  size_t current_queries = segment_cache_queries.load();
+  size_t last_queries = last_log_queries.load();
+
+  {
+    std::lock_guard<std::mutex> lock(land_cache_mutex);
+    evict_oldest_segment_entries();
+  }
+
+  if (current_queries - last_queries > LOG_INTERVAL) {
+    last_log_queries.store(current_queries);
+    log_cache_stats();
+  }
+}
+
+/**
+ * Determine if a route segment crosses land or is entirely in navigable water.
+ *
+ * @param lat1 Latitude of segment start point (degrees)
+ * @param lon1 Longitude of segment start point (degrees)
+ * @param lat2 Latitude of segment end point (degrees)
+ * @param lon2 Longitude of segment end point (degrees)
+ * @return true if segment crosses land or is entirely on land (invalid route),
+ *         false if segment is entirely in navigable water (valid route)
+ *
+ * Segment cache check (o(1)):
+ * - First check if we've computed this exact segment before
+ * - If cache hit, return immediately with known result
+ *
+ * Exact computation fallback:
+ * - For near-coastline segments or on-land grid points, use expensive
+ * PlugIn_GSHHS_CrossesLand()
+ * - Cache the exact result for future use
+ */
+bool Cached_CrossesLand(double lat1, double lon1, double lat2, double lon2) {
+  SegmentKey key(lat1, lon1, lat2, lon2);
+  segment_cache_queries.fetch_add(1);
+
+  // Check segment cache first.
+  {
+    std::lock_guard<std::mutex> lock(land_cache_mutex);
+    auto it = land_cache.find(key);
+    if (it != land_cache.end()) {
+      it->second.last_used = std::chrono::steady_clock::now();
+      segment_cache_hits.fetch_add(1);
+      return it->second.crosses_land;
+    }
+  }
+
+  segment_cache_misses.fetch_add(1);
+  bool result = PlugIn_GSHHS_CrossesLand(lat1, lon1, lat2, lon2);
+
+  // Cache the result
+  {
+    std::lock_guard<std::mutex> lock(land_cache_mutex);
+    if (land_cache.size() >= MAX_SEGMENT_CACHE_SIZE) {
+      evict_oldest_segment_entries();
+    }
+    land_cache.emplace(key, SegmentCacheEntry(result));
+  }
+  return result;
 }
 
 void clear_land_cache() {
+  std::lock_guard<std::mutex> lock(land_cache_mutex);
   land_cache.clear();
-  cache_hits = cache_misses = cache_queries = 0;
-}
-
-// Wrapper for PlugIn_GSHHS_CrossesLand with caching
-bool Cached_CrossesLand(double lat1, double lon1, double lat2, double lon2) {
-  SegmentKey key(lat1, lon1, lat2, lon2);
-  ++cache_queries;
-  auto it = land_cache.find(key);
-  if (it != land_cache.end()) {
-    ++cache_hits;
-    return it->second;
-  }
-  ++cache_misses;
-  bool result = PlugIn_GSHHS_CrossesLand(lat1, lon1, lat2, lon2);
-  land_cache[key] = result;
-  return result;
+  segment_cache_hits.store(0);
+  segment_cache_misses.store(0);
+  segment_cache_queries.store(0);
+  segment_evictions.store(0);
 }
 
 bool ConstraintChecker::CheckSwellConstraint(
@@ -104,6 +230,11 @@ bool ConstraintChecker::CheckSwellConstraint(
     PropagationError& error_code) {
   swell = WeatherDataProvider::GetSwell(configuration, lat, lon);
   if (swell > configuration.MaxSwellMeters) {
+    wxLogGeneric(
+        wxLOG_Debug,
+        "WeatherRouting: Swell constraint exceeded at lat=%.6f lon=%.6f: %.2fm "
+        "> %.2fm max",
+        lat, lon, swell, configuration.MaxSwellMeters);
     error_code = PROPAGATION_EXCEEDED_MAX_SWELL;
     return false;
   }
@@ -114,6 +245,10 @@ bool ConstraintChecker::CheckMaxLatitudeConstraint(
     RouteMapConfiguration& configuration, double lat,
     PropagationError& error_code) {
   if (fabs(lat) > configuration.MaxLatitude) {
+    wxLogGeneric(
+        wxLOG_Debug,
+        "WeatherRouting: Max latitude constraint exceeded: %.6f > %.6f",
+        fabs(lat), configuration.MaxLatitude);
     error_code = PROPAGATION_EXCEEDED_MAX_LATITUDE;
     return false;
   }
@@ -242,9 +377,10 @@ bool ConstraintChecker::CheckWindVsCurrentConstraint(
     double twdOverWater, double currentSpeed, double currentDir,
     PropagationError& error_code) {
   if (configuration.WindVSCurrent) {
-    /* Calculate the wind vector (Wx, Wy) and ocean current vector (Cx, Cy). */
-    /* these are already computed in GroundToWaterFrame could optimize by
-     * reusing them
+    /*
+     * Calculate the wind vector (Wx, Wy) and ocean current vector (Cx, Cy).
+     * these are already computed in GroundToWaterFrame could optimize by
+     * reusing them.
      */
     double Wx = twsOverWater * cos(deg2rad(twdOverWater)),
            Wy = twsOverWater * sin(deg2rad(twdOverWater));

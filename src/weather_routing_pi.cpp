@@ -28,6 +28,8 @@
 #include <wx/treectrl.h>
 #include <wx/fileconf.h>
 
+#include <sstream>
+
 #include "Utilities.h"
 #include "Boat.h"
 #include "RoutePoint.h"
@@ -222,6 +224,39 @@ void weather_routing_pi::SetCursorLatLon(double lat, double lon) {
   m_cursor_lon = lon;
 }
 
+bool weather_routing_pi::WarnAboutPluginVersion(
+  const std::string plugin_name,
+  int version_major, int version_minor, 
+  int min_major, int min_minor, 
+  int max_major, int max_minor,    
+  const std::string consequence_msg,
+  const std::string recommended_version_msg_prefix, 
+  const std::string version_msg_suffix)
+{
+  int version = 1000 * version_major + version_minor,
+    version_min = 1000 * min_major + min_minor,
+    version_max = 1000 * max_major + max_minor;
+
+  if (version < version_min || version > version_max) {
+    std::stringstream msg;
+    msg << plugin_name << " " << _("plugin version") << ' '
+        << version_major << '.'<< version_minor << ' '
+        << _("is not officially supported.") << std::endl << std::endl
+        << recommended_version_msg_prefix << ' '
+        << min_major << '.' << min_minor << " - " 
+        << max_major << '.' << max_minor
+        << consequence_msg;      
+
+    wxMessageDialog mdlg(
+        m_parent_window,
+        msg.str(),
+        _("Weather Routing") + " - " + _("Warning"), wxOK | wxICON_WARNING);
+    mdlg.ShowModal();
+    return true;
+  }
+  return false;
+}
+
 void weather_routing_pi::SetPluginMessage(wxString& message_id,
                                           wxString& message_body) {
   if (message_id == "GRIB_VALUES") {
@@ -255,29 +290,17 @@ void weather_routing_pi::SetPluginMessage(wxString& message_id,
     Json::Reader r;
     Json::Value v;
     r.parse(static_cast<std::string>(message_body), v);
-
     static bool shown_warnings;
     if (!shown_warnings) {
       shown_warnings = true;
-
-      int grib_version_major = v["GribVersionMajor"].asInt();
-      int grib_version_minor = v["GribVersionMinor"].asInt();
-
-      int grib_version = 1000 * grib_version_major + grib_version_minor;
-      int grib_min = 1000 * GRIB_MIN_MAJOR + GRIB_MIN_MINOR;
-      int grib_max = 1000 * GRIB_MAX_MAJOR + GRIB_MAX_MINOR;
-
-      if (grib_version < grib_min || grib_version > grib_max) {
-        wxString ver = _("Use versions");
-        wxMessageDialog mdlg(
-            m_parent_window,
-            _("Grib plugin version not supported.") + "\n\n" +
-                wxString::Format("%s %d.%d to %d.%d", ver, GRIB_MIN_MAJOR,
-                                 GRIB_MIN_MINOR, GRIB_MAX_MAJOR,
-                                 GRIB_MAX_MINOR),
-            _("Weather Routing"), wxOK | wxICON_WARNING);
-        mdlg.ShowModal();
-      }
+      WarnAboutPluginVersion(
+        _("Grib").ToStdString(),
+        v["GribVersionMajor"].asInt(),
+        v["GribVersionMinor"].asInt(),
+        GRIB_MIN_MAJOR,
+        GRIB_MIN_MINOR,
+        GRIB_MAX_MAJOR,
+        GRIB_MAX_MINOR);
     }
 
     wxString sptr = v["TimelineSetPtr"].asString();
@@ -306,30 +329,16 @@ void weather_routing_pi::SetPluginMessage(wxString& message_id,
     static bool shown_warnings;
     if (!shown_warnings) {
       shown_warnings = true;
-
-      int climatology_version_major = v["ClimatologyVersionMajor"].asInt();
-      int climatology_version_minor = v["ClimatologyVersionMinor"].asInt();
-
-      int climatology_version =
-          1000 * climatology_version_major + climatology_version_minor;
-      int climatology_min =
-          1000 * CLIMATOLOGY_MIN_MAJOR + CLIMATOLOGY_MIN_MINOR;
-      int climatology_max =
-          1000 * CLIMATOLOGY_MAX_MAJOR + CLIMATOLOGY_MAX_MINOR;
-
-      if (climatology_version < climatology_min ||
-          climatology_version > climatology_max) {
-        wxString ver = _("Use versions");
-        wxMessageDialog mdlg(
-            m_parent_window,
-            _("Climatology plugin version not supported, no climatology "
-              "data.") +
-                "\n\n" +
-                wxString::Format("%s %d.%d to %d.%d", ver,
-                                 CLIMATOLOGY_MIN_MAJOR, CLIMATOLOGY_MIN_MINOR,
-                                 CLIMATOLOGY_MAX_MAJOR, CLIMATOLOGY_MAX_MINOR),
-            _("Weather Routing"), wxOK | wxICON_WARNING);
-        mdlg.ShowModal();
+      if (WarnAboutPluginVersion(
+        _("Climatology").ToStdString(),
+        v["ClimatologyVersionMajor"].asInt(),
+        v["ClimatologyVersionMinor"].asInt(),
+        CLIMATOLOGY_MIN_MAJOR,
+        CLIMATOLOGY_MIN_MINOR,
+        CLIMATOLOGY_MAX_MAJOR,
+        CLIMATOLOGY_MAX_MINOR,
+        ".\n\n " + _("No climatology data will be available.").ToStdString())
+      ) {
         return;
       }
     }

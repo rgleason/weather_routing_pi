@@ -275,6 +275,27 @@ private:
                                               double lon);
 
   /**
+   * Find the time at which a position was reached by searching through
+   * isochrones.
+   * @param position Position to find time for
+   * @param isochrones List of isochrones to search
+   * @return Time span from start, or -1 if not found
+   */
+  wxTimeSpan FindPositionTime(Position* position,
+                              const IsoChronList& isochrones) const;
+
+  /**
+   * Find time for a position using parent chain when not found in isochrones.
+   * @param position Position to find time for
+   * @param isochrones List of isochrones to search
+   * @param startTime Start time from first isochrone
+   * @return Time span from start, or -1 if not found
+   */
+  wxTimeSpan FindPositionTimeByParentChain(Position* position,
+                                           const IsoChronList& isochrones,
+                                           const wxDateTime& startTime) const;
+
+  /**
    * Find an alternate path through existing isochrones with fewer maneuvers.
    * @param isochrones List of existing isochrones
    * @param config Configuration with modified maneuver penalties

@@ -326,7 +326,7 @@ ZEXTERN int ZEXPORT deflate OF((z_streamp strm, int flush));
 ZEXTERN int ZEXPORT deflateEnd OF((z_streamp strm));
 /*
      All dynamically allocated data structures for this stream are freed.
-   This function discards any unprocessed input and does not flush any
+   Discards any unprocessed input and does not flush any
    pending output.
 
      deflateEnd returns Z_OK if success, Z_STREAM_ERROR if the

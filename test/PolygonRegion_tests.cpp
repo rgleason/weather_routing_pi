@@ -180,3 +180,34 @@ TEST(PolygonRegionTests, AssertionsBasic) {
     // Simplifying an empty polygon results in an empty polygon
     EXPECT_EQ(s.Empty(), true); 
   }
+
+  TEST(PolygonRegionTests, ContourAreaBasic) {
+    // Test Area() directly with Contour constructor using coordinate array
+    float points[] = { 0.0, 0.0, 2.0, 0.0, 2.0, 2.0, 0.0, 2.0 }; // Square
+    Contour contour(points, 4); // 4 vertices
+    
+    float area = contour.Area();
+    
+    // Square with side length 2 should have area 4
+    EXPECT_FLOAT_EQ(area, 4.0f);
+  }
+
+  TEST(PolygonRegionTests, ContourAreaTriangle) {
+    // Test Area() with a triangle
+    float points[] = { 0.0, 0.0, 3.0, 0.0, 1.5, 3.0 }; // Triangle
+    Contour contour(points, 3); // 3 vertices
+    
+    float area = contour.Area();
+    
+    // Triangle with base 3 and height 3 should have area 4.5
+    EXPECT_FLOAT_EQ(area, 4.5f);
+  }
+
+  TEST(PolygonRegionTests, ContourAreaEmpty) {
+    // Test Area() with empty/degenerate contours
+    float points[] = { 0.0, 0.0, 1.0, 1.0 }; // Only 2 points, less than 3
+    Contour contour(points, 2);
+    
+    float area = contour.Area();
+    EXPECT_FLOAT_EQ(area, 0.0f);
+  }

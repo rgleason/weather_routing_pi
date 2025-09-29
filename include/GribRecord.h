@@ -212,7 +212,7 @@ public:
   /**
    * Interpolates vector values from two GRIB records at a specified point.
    *
-   * This function calculates the magnitude and angle of a vector by
+   * Calculates the magnitude and angle of a vector by
    * interpolating X and Y component values from two GRIB records at the given
    * geographic coordinates. It handles cases where the requested point might
    * cross the date line by adjusting the longitude if needed.

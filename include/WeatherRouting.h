@@ -477,6 +477,10 @@ private:
   void OnWeatherRouteSort(wxListEvent& event);
   void OnWeatherRouteSelected();
   void OnWeatherRouteSelected(wxListEvent& event) { OnWeatherRouteSelected(); }
+  void OnWeatherPositionSelected();
+  void OnWeatherPositionSelected(wxListEvent& event) {
+    OnWeatherPositionSelected();
+  }
   void OnWeatherRouteKeyDown(wxListEvent& event);
   void OnWeatherRoutesListLeftDown(wxMouseEvent& event);
   void UpdateComputeState();

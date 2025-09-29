@@ -40,11 +40,11 @@ public:
    * Determines if a specific polar represents the fastest sail configuration
    * for given conditions.
    *
-   * This function compares the boat speed from the specified polar against all
-   * other available polars to determine if it provides the best performance in
-   * the given wind conditions. It applies the crossover percentage to give a
-   * small bonus to the currently selected polar, which helps prevent excessive
-   * sail changes.
+   * Compares the boat speed from the specified polar against all other
+   * available polars to determine if it provides the best performance in the
+   * given wind conditions. It applies the crossover percentage to give a small
+   * bonus to the currently selected polar, which helps prevent excessive sail
+   * changes.
    *
    * The crossover percentage creates a "hysteresis" effect, meaning a sail must
    * be significantly faster (by the percentage specified) to trigger a change
@@ -71,25 +71,31 @@ public:
    */
   bool FastestPolar(int p, float H, float VW);
   /**
-   * Generates CrossOverRegion polygons for each polar in the boat
-   * configuration.
+   * Generates CrossOverRegion and StandaloneRegion polygons for each polar in
+   * the boat configuration.
    *
-   * This function builds a "CrossOverRegion" for each polar (sail
-   * configuration), which defines the exact wind conditions (combinations of
-   * wind angle and wind speed) where that particular sail configuration is
-   * optimal. These regions are used during routing to automatically select the
-   * most appropriate sail for the current conditions.
+   * Builds two types of regions for each polar (sail configuration):
+   * 1. CrossOverRegion: Defines wind conditions where that particular sail
+   *    configuration is optimal compared to all other available sails
+   * 2. StandaloneRegion: Defines all wind conditions where the sail can
+   *    provide meaningful boat speed, regardless of other sails' performance
+   *
+   * CrossOverRegions are used during routing to automatically select the
+   * most appropriate sail for the current conditions. StandaloneRegions are
+   * useful for what-if scenarios and analysis when specific sails become
+   * unavailable.
    *
    * The algorithm works by:
    * 1. Creating a grid of wind angle (H) vs. wind speed (VW) points
-   * 2. Testing each point to see if the current polar is the optimal choice
-   * 3. Finding the boundaries where the optimal sail changes
-   * 4. Constructing a polygon that encloses all conditions where this sail is
-   * fastest
-   * 5. Simplifying the polygon to improve performance
+   * 2. For CrossOverRegion: Testing each point to see if the current polar is
+   * optimal
+   * 3. For StandaloneRegion: Testing each point to see if the polar can sail
+   * 4. Finding the boundaries where conditions change
+   * 5. Constructing polygons that enclose the respective conditions
+   * 6. Simplifying the polygons to improve performance
    *
    * The grid uses a resolution of 1/8 knot for wind speed and 1/8 degree for
-   * wind angle, allowing for precise definition of crossover boundaries while
+   * wind angle, allowing for precise definition of boundaries while
    * maintaining reasonable computational performance.
    *
    * @param arg User-defined argument to pass to the status callback function
@@ -108,10 +114,10 @@ public:
    * defines the valid ranges of wind speeds and angles for that particular sail
    * configuration. In sailing, different sail configurations (e.g., full main +
    * jib, reefed main, spinnaker, etc.) perform optimally in different
-   * conditions. This function helps the routing algorithm automatically select
+   * conditions. Helps the routing algorithm automatically select
    * the appropriate sail configuration based on the current wind and course.
    *
-   * This function follows a multi-step process to select the optimal polar.
+   * Follows a multi-step process to select the optimal polar.
    * 1. Check if the current polar is still valid for the conditions. If so,
    *    it's retained for continuity.
    * 2. If current polar is invalid, tries to find any suitable polar from the
@@ -154,6 +160,36 @@ public:
                                 PolarSpeedStatus* status = nullptr);
 
 private:
+  /**
+   * Determines if a polar can provide meaningful boat speed for given
+   * conditions.
+   *
+   * Checks if the polar has valid data for the specified wind
+   * angle and wind speed, and whether it produces positive boat speed. Unlike
+   * FastestPolar(), this function only considers the polar itself, not its
+   * performance relative to other polars.
+   *
+   * @param p Index of the polar to test
+   * @param H Wind angle in degrees (0-180)
+   * @param VW Wind speed in knots
+   * @return true if the polar can provide meaningful speed for these conditions
+   */
+  bool PolarCanSail(int p, float H, float VW);
+
+  /**
+   * Generates the standalone operational envelope for a specific polar.
+   *
+   * Creates a polygon region representing all wind conditions where the
+   * specified polar can provide meaningful boat speed, regardless of other
+   * available polars. This is used for what-if analysis scenarios.
+   *
+   * @param p Index of the polar to analyze
+   * @param arg User-defined argument to pass to status callback
+   * @param status Optional progress callback function
+   */
+  void GenerateStandaloneRegion(int p, void* arg = 0,
+                                void (*status)(void*, int, int) = 0);
+
   Point Interp(const Point& p0, const Point& p1, int q, bool q0, bool q1);
   void NewSegment(Point& p0, Point& p1, std::list<Segment>& segments);
   void GenerateSegments(float H, float VW, float step, bool q[4],

@@ -73,11 +73,11 @@ void StatisticsDialog::SetRouteMapOverlays(
   m_stState->SetLabel(routemapoverlays.empty() ? _("No Route")
                       : running                ? _("Running")
                                                : _("Stopped"));
-  m_stIsoChrons->SetLabel(wxString::Format(_T("%d"), tisochrons));
-  m_stRoutes->SetLabel(wxString::Format(_T("%d"), troutes));
-  m_stInvRoutes->SetLabel(wxString::Format(_T("%d"), tinvroutes));
-  m_stSkipPositions->SetLabel(wxString::Format(_T("%d"), tskippositions));
-  m_stPositions->SetLabel(wxString::Format(_T("%d"), tpositions));
+  m_stIsoChrons->SetLabel(wxString::Format("%d", tisochrons));
+  m_stRoutes->SetLabel(wxString::Format("%d", troutes));
+  m_stInvRoutes->SetLabel(wxString::Format("%d", tinvroutes));
+  m_stSkipPositions->SetLabel(wxString::Format("%d", tskippositions));
+  m_stPositions->SetLabel(wxString::Format("%d", tpositions));
 
   Fit();
 }

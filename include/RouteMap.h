@@ -1011,7 +1011,7 @@ protected:
    * Determines the time step for the next isochrone generation based on current
    * routing conditions.
    *
-   * This function dynamically adjusts the time step to provide more detailed
+   * Dynamically adjusts the time step to provide more detailed
    * isochrones in critical areas:
    * 1. Near the starting point
    * 2. Approaching the destination

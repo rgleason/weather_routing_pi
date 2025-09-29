@@ -126,7 +126,7 @@ public:
   /**
    * Calculates the Apparent Wind Speed (AWS).
    *
-   * This function computes the Apparent Wind Speed (AWS) that a vessel
+   * Computes the Apparent Wind Speed (AWS) that a vessel
    * experiences, based on the vessel's speed through water and the
    * water-relative wind.
    * The calculation uses the law of cosines: c² = a² + b² * - 2ab·cos(C)
@@ -220,7 +220,7 @@ public:
    * Finds the closest wind speed indices in the polar data for a given wind
    * speed.
    *
-   * This function searches through the wind_speeds vector to find the indices
+   * Searches through the wind_speeds vector to find the indices
    * of the two wind speed entries that bracket the given wind speed (VW). These
    * indices can be used for interpolation between wind speed data points.
    *
@@ -356,7 +356,7 @@ public:
   /**
    * Calculates the true wind speed given boat speed and true wind angle.
    *
-   * This function solves for the true wind speed that would result in the
+   * Solves for the true wind speed that would result in the
    * given boat speed at the specified true wind angle. It handles cases where
    * the polar may be inverted at high wind speeds (where higher wind speeds
    * result in lower boat speeds).
@@ -375,7 +375,7 @@ public:
   /**
    * Determines if the current sailing state is within the crossover contour.
    *
-   * This function checks if the given True Wind Angle (TWA) and True Wind Speed
+   * Checks if the given True Wind Angle (TWA) and True Wind Speed
    * (TWS) combination falls within the defined crossover region. The crossover
    * region typically represents conditions where a sail change would be
    * beneficial.
@@ -399,7 +399,52 @@ public:
    */
   bool InsideCrossOverContour(float twa, float tws, bool optimize_tacking,
                               PolarSpeedStatus* status = nullptr);
+
+  /**
+   * Defines the optimal wind conditions where this sail configuration
+   * outperforms other available sail configurations.
+   *
+   * The CrossOverRegion is a polygon in TWA (True Wind Angle) vs TWS (True Wind
+   * Speed) coordinate space that represents the envelope of conditions where
+   * this specific polar (sail configuration) provides the best boat performance
+   * compared to other available polars in the boat's sail inventory.
+   *
+   * Key characteristics:
+   * - Coordinates: x = TWA (degrees), y = TWS (knots)
+   * - Non-overlapping: Each CrossOverRegion is mutually exclusive with others
+   * - Performance-based: Boundaries determined by speed comparisons between
+   * polars
+   * - Sail-specific: Different sail configurations have different optimal
+   * regions
+   *
+   * Example scenarios:
+   * - A lightweight spinnaker polar might have a CrossOverRegion covering
+   *   broad angles (120-180°) in light winds (4-12 knots)
+   * - A heavy weather jib polar might cover close-hauled angles (40-80°)
+   *   in strong winds (20+ knots)
+   * - A working jib polar might fill gaps where other sails are less optimal
+   */
   PolygonRegion CrossOverRegion;
+
+  /**
+   * Defines the complete operational envelope of this sail configuration,
+   * assuming no other sail configurations are available.
+   *
+   * The StandaloneRegion represents all wind conditions where this polar
+   * can provide meaningful boat speed, regardless of whether other sails
+   * might perform better. This is useful for what-if scenarios and analysis
+   * when specific sails become unavailable.
+   *
+   * Key characteristics:
+   * - Coordinates: x = TWA (degrees), y = TWS (knots)
+   * - Single polar analysis: Based only on this polar's performance
+   * - Operational limits: Bounded by minimum/maximum angles and wind speeds
+   * - What-if analysis: Shows potential when other sails are unavailable
+   *
+   * This region is displayed with dotted lines in the cross-over chart
+   * to distinguish it from the optimal CrossOverRegion (solid lines).
+   */
+  PolygonRegion StandaloneRegion;
 
   void Generate(const std::list<PolarMeasurement>& measurements);
   void AddDegreeStep(double twa);
@@ -407,6 +452,7 @@ public:
   void AddWindSpeed(double tws);
   void RemoveWindSpeed(int index);
 
+  // Crossover region configuration
   double m_crossoverpercentage;
 
 private:
@@ -497,7 +543,7 @@ private:
    * Calculate optimal sailing angle for best Velocity Made Good (VMG) at a
    * given wind speed.
    *
-   * This function determines if a better VMG can be achieved by sailing at a
+   * Determines if a better VMG can be achieved by sailing at a
    * different angle than the requested course. If so, it modifies the wind
    * angle (W) to the optimal VMG angle. The Speed() function then uses this to
    * calculate the projected boat speed on the original course.

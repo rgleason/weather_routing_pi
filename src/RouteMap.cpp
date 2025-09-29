@@ -392,6 +392,9 @@ bool RouteMap::Propagate() {
   // take note of possible failure reasons
   UpdateStatus(configuration);
 
+  // Maintain land cache periodically
+  maintain_land_cache();
+
   Unlock();
 
   return true;

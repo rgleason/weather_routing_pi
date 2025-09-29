@@ -232,10 +232,12 @@ protected:
   virtual void OnLeftUp(wxMouseEvent& event) { event.Skip(); }
   virtual void OnLeftDown(wxMouseEvent& event) { event.Skip(); }
   virtual void OnPositionKeyDown(wxListEvent& event) { event.Skip(); }
+  virtual void OnWeatherPositionSelected(wxListEvent& event) { event.Skip(); }
   virtual void OnEditConfigurationClick(wxMouseEvent& event) { event.Skip(); }
   virtual void OnWeatherRoutesListLeftDown(wxMouseEvent& event) {
     event.Skip();
   }
+  virtual void OnWeatherRoutesListLeftUp(wxMouseEvent& event) { event.Skip(); }
   virtual void OnWeatherRouteSort(wxListEvent& event) { event.Skip(); }
   virtual void OnWeatherRouteSelected(wxListEvent& event) { event.Skip(); }
   virtual void OnWeatherRouteKeyDown(wxListEvent& event) { event.Skip(); }
@@ -632,7 +634,7 @@ protected:
   /**
    * Get the list of available weather routing variables.
    *
-   * This function returns an array of VariableInfo structures, each containing
+   * Returns an array of VariableInfo structures, each containing
    * the enum value and display name of a variable. The count of variables is
    * also returned through the count parameter.
    *
@@ -738,8 +740,10 @@ protected:
   wxPanel* m_panel10;
   wxScrolledWindow* m_CrossOverChart;
   wxStaticText* m_staticText137;
-  wxSpinCtrl* m_sOverlapPercentage;
+  wxSpinCtrlDouble* m_sOverlapPercentage;
   wxStaticText* m_staticText138;
+  wxStaticText* m_staticText139;
+  wxChoice* m_cLowWindSpeedInterpolationMethod;
   wxPanel* m_panel24;
   wxStaticText* m_staticText125;
   wxStaticText* m_stBestCourseUpWindPortTack;
@@ -787,7 +791,7 @@ protected:
   virtual void OnPaintPlot(wxPaintEvent& event) { event.Skip(); }
   virtual void OnUpdatePlot(wxSizeEvent& event) { event.Skip(); }
   virtual void OnPaintCrossOverChart(wxPaintEvent& event) { event.Skip(); }
-  virtual void OnOverlapPercentage(wxSpinEvent& event) { event.Skip(); }
+  virtual void OnOverlapPercentage(wxSpinDoubleEvent& event) { event.Skip(); }
   virtual void OnVMGWindSpeed(wxSpinEvent& event) { event.Skip(); }
   virtual void OnUpdatePlot(wxCommandEvent& event) { event.Skip(); }
   virtual void OnPolarSelected(wxListEvent& event) { event.Skip(); }

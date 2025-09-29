@@ -43,7 +43,7 @@ private:
   void OnPaintPlot(wxPaintEvent& event);
   void OnUpdatePlot(wxSizeEvent& event) { OnUpdatePlot(); }
   void OnPaintCrossOverChart(wxPaintEvent& event);
-  void OnOverlapPercentage(wxSpinEvent& event);
+  void OnOverlapPercentage(wxSpinDoubleEvent& event);
   void OnSizePlot(wxSizeEvent& event) { RefreshPlots(); }
   void OnVMGWindSpeed(wxSpinEvent& event) { UpdateVMG(); }
   void OnUpdatePlot();

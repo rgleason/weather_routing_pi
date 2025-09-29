@@ -453,8 +453,8 @@ wxString Position::GetDetailedErrorInfo() const {
     // Add wind and current data if available
     if (parent) {
       wxString s1 = _("Heading from parent"), s2 = _("Bearing from parent");
-      info += wxString::Format("  %s: %.1f°\n", s1, parent_heading);
-      info += wxString::Format("  %s: %.1f°\n", s2, parent_bearing);
+      info += wxString::Format("  %s: %.1f\u00B0\n", s1, parent_heading);
+      info += wxString::Format("  %s: %.1f\u00B0\n", s2, parent_bearing);
     }
   }
 

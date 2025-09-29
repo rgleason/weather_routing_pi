@@ -107,7 +107,7 @@ void datumParams(short datum, double* a, double* es);
 /**
  * Converts decimal degrees to degrees-minutes-seconds (DMS) format.
  *
- * This function formats a decimal angle value into the traditional DMS notation
+ * Formats a decimal angle value into the traditional DMS notation
  * (DD°MM'SS.S") and places the result in the provided buffer.
  *
  * @param a Angle in decimal degrees to be converted.
@@ -118,7 +118,7 @@ extern "C" void toDMS(double a, char* bufp, int bufplen);
 /**
  * Converts decimal degrees to degrees-decimal minutes (DMM) format.
  *
- * This function formats a decimal angle value into the degrees and decimal
+ * Formats a decimal angle value into the degrees and decimal
  * minutes notation (DD MM.MMM') and places the result in the provided buffer.
  *
  * @param a Angle in decimal degrees to be converted
@@ -131,7 +131,7 @@ extern "C" void toDMM(double a, char* bufp, int bufplen);
  * Converts decimal degrees to degrees-decimal minutes (DMM) format with
  * optional hemisphere indicator.
  *
- * This function formats a decimal angle value into degrees and decimal minutes,
+ * Formats a decimal angle value into degrees and decimal minutes,
  * with flexible formatting options controlled by the flag parameter.
  *
  * @param flag Formatting control: 0 for standard format, 1 for latitude with
@@ -146,7 +146,7 @@ extern "C" void todmm(int flag, double a, char* bufp, int bufplen);
  * Converts geographic coordinates to Transverse Mercator projection
  * coordinates.
  *
- * This function implements the direct Transverse Mercator projection,
+ * Implements the direct Transverse Mercator projection,
  * calculating easting (x) and northing (y) coordinates from geographic
  * coordinates. The projection is centered at the specified reference point
  * (lat0, lon0).
@@ -165,7 +165,7 @@ extern "C" void toTM(float lat, float lon, float lat0, float lon0, double* x,
  * Converts Transverse Mercator projection coordinates to geographic
  * coordinates.
  *
- * This function implements the inverse Transverse Mercator projection,
+ * Implements the inverse Transverse Mercator projection,
  * calculating latitude and longitude from projected easting (x) and northing
  * (y) coordinates. The projection is centered at the specified reference point
  * (lat0, lon0).
@@ -183,7 +183,7 @@ extern "C" void fromTM(double x, double y, double lat0, double lon0,
 /**
  * Converts geographic coordinates to Simple Mercator projection coordinates.
  *
- * This function implements the direct Mercator projection relative to a
+ * Implements the direct Mercator projection relative to a
  * reference point, calculating x and y coordinates from geographic coordinates.
  * The projection is centered at the specified reference point (lat0, lon0).
  *
@@ -200,7 +200,7 @@ extern "C" void toSM(double lat, double lon, double lat0, double lon0,
 /**
  * Pre-calculates a value needed for optimized Simple Mercator projection.
  *
- * This function calculates the y-value at the reference latitude that will be
+ * Calculates the y-value at the reference latitude that will be
  * subtracted in the toSMcache function. Use this with toSMcache for better
  * performance when projecting many points with the same reference latitude.
  *
@@ -229,7 +229,7 @@ extern "C" void toSMcache(double lat, double lon, double y30, double lon0,
 /**
  * Converts Simple Mercator projection coordinates to geographic coordinates.
  *
- * This function implements the inverse Mercator projection, calculating
+ * Implements the inverse Mercator projection, calculating
  * latitude and longitude from x and y coordinates. The projection is centered
  * at the specified reference point (lat0, lon0) and uses the WGS84 semimajor
  * axis.
@@ -302,7 +302,7 @@ extern "C" void fromSM_ECC(double x, double y, double lat0, double lon0,
 /**
  * Converts geographic coordinates to Polyconic projection coordinates.
  *
- * This function implements the direct Polyconic projection, calculating x and y
+ * Implements the direct Polyconic projection, calculating x and y
  * coordinates from latitude and longitude. The projection is centered at the
  * specified reference point. The Polyconic projection maintains scale along
  * each parallel and the central meridian.
@@ -320,7 +320,7 @@ extern "C" void toPOLY(double lat, double lon, double lat0, double lon0,
 /**
  * Converts Polyconic projection coordinates to geographic coordinates.
  *
- * This function implements the inverse Polyconic projection, calculating
+ * Implements the inverse Polyconic projection, calculating
  * latitude and longitude from x and y coordinates. The projection is centered
  * at the specified reference point. This is the inverse of toPOLY.
  *
@@ -351,7 +351,7 @@ extern "C" void cache_phi0(double lat0, double* sin_phi0, double* cos_phi0);
 /**
  * Converts geographic coordinates to Orthographic projection coordinates.
  *
- * This function implements the direct Orthographic projection, a perspective
+ * Implements the direct Orthographic projection, a perspective
  * projection that views the globe from an infinite distance. Points on the far
  * side of the Earth from the projection center will return NaN values.
  *
@@ -370,7 +370,7 @@ extern "C" void toORTHO(double lat, double lon, double sin_phi0,
 /**
  * Converts Orthographic projection coordinates to geographic coordinates.
  *
- * This function implements the inverse Orthographic projection, calculating
+ * Implements the inverse Orthographic projection, calculating
  * latitude and longitude from x and y coordinates. This is the inverse of
  * toORTHO.
  *
@@ -399,7 +399,7 @@ extern "C" double toPOLARcache_e(double lat0);
 /**
  * Converts geographic coordinates to Polar projection coordinates.
  *
- * This function implements the direct Polar projection (a form of azimuthal
+ * Implements the direct Polar projection (a form of azimuthal
  * projection) that is especially useful for representing polar regions with
  * minimal distortion.
  *
@@ -417,7 +417,7 @@ extern "C" void toPOLAR(double lat, double lon, double e, double lat0,
 /**
  * Converts Polar projection coordinates to geographic coordinates.
  *
- * This function implements the inverse Polar projection, calculating latitude
+ * Implements the inverse Polar projection, calculating latitude
  * and longitude from x and y coordinates. This is the inverse of toPOLAR.
  *
  * @param x X-coordinate in the Polar projection (in meters)
@@ -433,7 +433,7 @@ extern "C" void fromPOLAR(double x, double y, double lat0, double lon0,
 /**
  * Converts geographic coordinates to stereographic projection coordinates.
  *
- * This function performs the stereographic projection, mapping
+ * Performs the stereographic projection, mapping
  * latitude/longitude to x/y coordinates. The stereographic projection is
  * conformal (preserves angles) and is useful for mapping polar regions. The
  * projection is centered at the point specified by sin_phi0/cos_phi0 and lon0.

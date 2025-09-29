@@ -622,14 +622,22 @@ WeatherRoutingPanel::WeatherRoutingPanel(wxWindow* parent, wxWindowID id,
       wxMouseEventHandler(WeatherRoutingPanel::OnEditPositionClick), NULL,
       this);
   m_lPositions->Connect(wxEVT_LEFT_DOWN,
-                        wxMouseEventHandler(WeatherRoutingPanel::OnLeftUp),
+                        wxMouseEventHandler(WeatherRoutingPanel::OnLeftDown),
                         NULL, this);
   m_lPositions->Connect(wxEVT_LEFT_UP,
-                        wxMouseEventHandler(WeatherRoutingPanel::OnLeftDown),
+                        wxMouseEventHandler(WeatherRoutingPanel::OnLeftUp),
                         NULL, this);
   m_lPositions->Connect(
       wxEVT_COMMAND_LIST_KEY_DOWN,
       wxListEventHandler(WeatherRoutingPanel::OnPositionKeyDown), NULL, this);
+  m_lPositions->Connect(
+      wxEVT_COMMAND_LIST_ITEM_SELECTED,
+      wxListEventHandler(WeatherRoutingPanel::OnWeatherPositionSelected), NULL,
+      this);
+  m_lPositions->Connect(
+      wxEVT_COMMAND_LIST_ITEM_DESELECTED,
+      wxListEventHandler(WeatherRoutingPanel::OnWeatherPositionSelected), NULL,
+      this);
   m_lWeatherRoutes->Connect(
       wxEVT_LEFT_DCLICK,
       wxMouseEventHandler(WeatherRoutingPanel::OnEditConfigurationClick), NULL,
@@ -674,14 +682,22 @@ WeatherRoutingPanel::~WeatherRoutingPanel() {
       wxMouseEventHandler(WeatherRoutingPanel::OnEditPositionClick), NULL,
       this);
   m_lPositions->Disconnect(wxEVT_LEFT_DOWN,
-                           wxMouseEventHandler(WeatherRoutingPanel::OnLeftUp),
+                           wxMouseEventHandler(WeatherRoutingPanel::OnLeftDown),
                            NULL, this);
   m_lPositions->Disconnect(wxEVT_LEFT_UP,
-                           wxMouseEventHandler(WeatherRoutingPanel::OnLeftDown),
+                           wxMouseEventHandler(WeatherRoutingPanel::OnLeftUp),
                            NULL, this);
   m_lPositions->Disconnect(
       wxEVT_COMMAND_LIST_KEY_DOWN,
       wxListEventHandler(WeatherRoutingPanel::OnPositionKeyDown), NULL, this);
+  m_lPositions->Disconnect(
+      wxEVT_COMMAND_LIST_ITEM_SELECTED,
+      wxListEventHandler(WeatherRoutingPanel::OnWeatherPositionSelected), NULL,
+      this);
+  m_lPositions->Disconnect(
+      wxEVT_COMMAND_LIST_ITEM_DESELECTED,
+      wxListEventHandler(WeatherRoutingPanel::OnWeatherPositionSelected), NULL,
+      this);
   m_lWeatherRoutes->Disconnect(
       wxEVT_LEFT_DCLICK,
       wxMouseEventHandler(WeatherRoutingPanel::OnEditConfigurationClick), NULL,
@@ -3982,10 +3998,13 @@ BoatDialogBase::BoatDialogBase(wxWindow* parent, wxWindowID id,
                                      wxDefaultPosition, wxDefaultSize, 0);
   m_staticText137->Wrap(-1);
   fgSizer107->Add(m_staticText137, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
-
-  m_sOverlapPercentage =
-      new wxSpinCtrl(m_panel10, wxID_ANY, wxEmptyString, wxDefaultPosition,
-                     wxDefaultSize, wxSP_ARROW_KEYS, 0, 100, 0);
+  // Set default overlap to a small, non-zero value.
+  // This is to ensure that after the polygon simplification process,
+  // there are no gaps in the cross-over chart.
+  const double default_overlap = 0.2;
+  m_sOverlapPercentage = new wxSpinCtrlDouble(
+      m_panel10, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize,
+      wxSP_ARROW_KEYS, 0.0, 100.0, default_overlap, 0.1);
   m_sOverlapPercentage->SetMaxSize(wxSize(140, -1));
 
   fgSizer107->Add(m_sOverlapPercentage, 0, wxALL, 5);
@@ -3995,11 +4014,11 @@ BoatDialogBase::BoatDialogBase(wxWindow* parent, wxWindowID id,
   m_staticText138->Wrap(-1);
   fgSizer107->Add(m_staticText138, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
 
+  // Add the gauge to complete row 1
   m_gCrossOverChart = new wxGauge(m_panel10, wxID_ANY, 100, wxDefaultPosition,
                                   wxDefaultSize, wxGA_HORIZONTAL | wxGA_SMOOTH);
   m_gCrossOverChart->SetValue(0);
   m_gCrossOverChart->Enable(false);
-
   fgSizer107->Add(m_gCrossOverChart, 0,
                   wxALL | wxEXPAND | wxALIGN_CENTER_VERTICAL, 5);
 
@@ -4277,8 +4296,9 @@ BoatDialogBase::BoatDialogBase(wxWindow* parent, wxWindowID id,
       wxEVT_PAINT, wxPaintEventHandler(BoatDialogBase::OnPaintCrossOverChart),
       NULL, this);
   m_sOverlapPercentage->Connect(
-      wxEVT_COMMAND_SPINCTRL_UPDATED,
-      wxSpinEventHandler(BoatDialogBase::OnOverlapPercentage), NULL, this);
+      wxEVT_COMMAND_SPINCTRLDOUBLE_UPDATED,
+      wxSpinDoubleEventHandler(BoatDialogBase::OnOverlapPercentage), NULL,
+      this);
   m_sVMGWindSpeed->Connect(wxEVT_COMMAND_SPINCTRL_UPDATED,
                            wxSpinEventHandler(BoatDialogBase::OnVMGWindSpeed),
                            NULL, this);
@@ -4390,8 +4410,9 @@ BoatDialogBase::~BoatDialogBase() {
       wxEVT_PAINT, wxPaintEventHandler(BoatDialogBase::OnPaintCrossOverChart),
       NULL, this);
   m_sOverlapPercentage->Disconnect(
-      wxEVT_COMMAND_SPINCTRL_UPDATED,
-      wxSpinEventHandler(BoatDialogBase::OnOverlapPercentage), NULL, this);
+      wxEVT_COMMAND_SPINCTRLDOUBLE_UPDATED,
+      wxSpinDoubleEventHandler(BoatDialogBase::OnOverlapPercentage), NULL,
+      this);
   m_sVMGWindSpeed->Disconnect(
       wxEVT_COMMAND_SPINCTRL_UPDATED,
       wxSpinEventHandler(BoatDialogBase::OnVMGWindSpeed), NULL, this);

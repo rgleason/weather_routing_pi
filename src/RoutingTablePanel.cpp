@@ -822,9 +822,9 @@ void RoutingTablePanel::PopulateTable() {
       displayTime = data.time.FromUTC();
     }
     if (useLocalTime) {
-      timeString = displayTime.Format(_T("%Y-%m-%d %H:%M %Z"));
+      timeString = displayTime.Format("%Y-%m-%d %H:%M %Z");
     } else {
-      timeString = displayTime.Format(_T("%Y-%m-%d %H:%M UTC"));
+      timeString = displayTime.Format("%Y-%m-%d %H:%M UTC");
     }
 #endif
     // ETA column with time-of-day background color
