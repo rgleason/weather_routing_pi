@@ -25,6 +25,7 @@
 
 #include <stdlib.h>
 #include <math.h>
+#include <cmath>
 #include <time.h>
 
 #include <wx/glcanvas.h>
@@ -361,8 +362,9 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
         wxEVT_COLLAPSIBLEPANE_CHANGED,
         wxCollapsiblePaneEventHandler(WeatherRouting::OnCollPaneChanged), NULL,
         this);
-  // m_panel->m_lPositions->Connect( wxEVT_LEFT_DCLICK, wxMouseEventHandler(
-  // WeatherRouting::OnEditPositionClick ), NULL, this );
+  m_panel->m_lPositions->Connect(
+      wxEVT_LEFT_DCLICK,
+      wxMouseEventHandler(WeatherRouting::OnEditPositionClick), NULL, this);
   m_panel->m_lPositions->Connect(
       wxEVT_COMMAND_LIST_KEY_DOWN,
       wxListEventHandler(WeatherRouting::OnPositionKeyDown), NULL, this);
@@ -436,8 +438,9 @@ WeatherRouting::~WeatherRouting() {
         wxEVT_COLLAPSIBLEPANE_CHANGED,
         wxCollapsiblePaneEventHandler(WeatherRouting::OnCollPaneChanged), NULL,
         this);
-  // m_panel->m_lPositions->Disconnect( wxEVT_LEFT_DCLICK, wxMouseEventHandler(
-  // WeatherRouting::OnEditPositionClick ), NULL, this );
+  m_panel->m_lPositions->Disconnect(
+      wxEVT_LEFT_DCLICK,
+      wxMouseEventHandler(WeatherRouting::OnEditPositionClick), NULL, this);
   m_panel->m_lPositions->Disconnect(
       wxEVT_LEFT_UP, wxMouseEventHandler(WeatherRouting::OnLeftUp), NULL, this);
   m_panel->m_lPositions->Disconnect(
@@ -1205,13 +1208,13 @@ void WeatherRouting::OnListLabelEdit( wxListEvent& event )
 {
     long index = event.GetIndex();
     int col = event.GetColumn();
-    
+
     long i = 0;
     for(std::list<RouteMapPosition>::iterator it = RouteMap::Positions.begin();
         it != RouteMap::Positions.end(); it++, i++)
         if(i == index) {
             if(col == POSITION_NAME) {
-                (*it).Name = event.GetText(); 
+                (*it).Name = event.GetText();
             } else {
                 double value;
                 event.GetText().ToDouble(&value);
@@ -1290,6 +1293,43 @@ void WeatherRouting::OnEditConfiguration() {
     if(!boatfilename.empty() && !wxFileName::FileExists(boatfilename))
         m_ConfigurationDialog.EditBoat();
 #endif
+}
+
+void WeatherRouting::OnEditPosition() {
+  if (RouteMap::Positions.empty()) return;
+  if (m_panel->m_lPositions->GetSelectedItemCount() == 0) return;
+
+  // Find selected item in GUI
+  long item = m_panel->m_lPositions->GetNextItem(-1, wxLIST_NEXT_ALL,
+                                                 wxLIST_STATE_SELECTED);
+  wxString name = m_panel->m_lPositions->GetItemText(item, POSITION_NAME);
+
+  // Fill dialog with position data
+  NewPositionDialog dlg(this);
+  for (const auto& p : RouteMap::Positions) {
+    if (p.Name == name) {
+      dlg.m_tName->SetValue(p.Name);
+      double degrees;
+      double minutes = std::modf(p.lat, &degrees);
+      dlg.m_tLatitudeDegrees->SetValue(wxString::Format(wxT("%3.0f"), degrees));
+      dlg.m_tLatitudeMinutes->SetValue(
+          wxString::Format(wxT("%2.4f"), std::fabs(60 * minutes)));
+      minutes = std::modf(p.lon, &degrees);
+      dlg.m_tLongitudeDegrees->SetValue(
+          wxString::Format(wxT("%3.0f"), degrees));
+      dlg.m_tLongitudeMinutes->SetValue(
+          wxString::Format(wxT("%2.4f"), std::fabs(60 * minutes)));
+      break;
+    }
+  }
+
+  // Show dialog and store result
+  if (dlg.ShowModal() == wxID_OK) {
+    AddPosition(
+        dlg.m_tLatitudeDegrees->GetValue(), dlg.m_tLatitudeMinutes->GetValue(),
+        dlg.m_tLongitudeDegrees->GetValue(),
+        dlg.m_tLongitudeMinutes->GetValue(), dlg.m_tName->GetValue(), true);
+  }
 }
 
 void WeatherRouting::OnGoTo(wxCommandEvent& event) {
