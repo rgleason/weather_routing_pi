@@ -722,15 +722,43 @@ void WeatherRouting::UpdateDisplaySettings() {
 
 void WeatherRouting::AddPosition(double lat, double lon) {
   wxTextEntryDialog pd(this, _("Enter Name"), _("New Position"));
-  if (pd.ShowModal() == wxID_OK) AddPosition(lat, lon, pd.GetValue());
+  if (pd.ShowModal() == wxID_OK) AddPosition(lat, lon, pd.GetValue(), false);
 }
 
-void WeatherRouting::AddPosition(double lat, double lon, wxString name) {
+void WeatherRouting::AddPosition(const wxString& latitude_degrees,
+                                 const wxString& latitude_minutes,
+                                 const wxString& longitude_degrees,
+                                 const wxString& longitude_minutes,
+                                 wxString name, const bool suppress_prompt) {
+  double lat = 0, lon = 0, lat_minutes = 0, lon_minutes = 0;
+
+  latitude_degrees.ToDouble(&lat);
+  latitude_minutes.ToDouble(&lat_minutes);
+  lat_minutes = fabs(lat_minutes);
+  if (lat < 0) lat_minutes = -lat_minutes;
+  lat += lat_minutes / 60;
+
+  longitude_degrees.ToDouble(&lon);
+  longitude_minutes.ToDouble(&lon_minutes);
+  lon_minutes = fabs(lon_minutes);
+  if (lon < 0) lon_minutes = -lon_minutes;
+  lon += lon_minutes / 60;
+
+  AddPosition(lat, lon, std::move(name), suppress_prompt);
+}
+
+void WeatherRouting::AddPosition(double lat, double lon, wxString name,
+                                 const bool suppress_prompt) {
   for (auto& it : RouteMap::Positions) {
     if (it.GUID.IsEmpty() && it.Name == name) {
-      wxMessageDialog mdlg(this, _("This name already exists, replace?\n"),
-                           _("Weather Routing"), wxYES | wxNO | wxICON_WARNING);
-      if (mdlg.ShowModal() == wxID_YES) {
+      int replace = wxID_YES;
+      if (!suppress_prompt) {
+        wxMessageDialog mdlg(this, _("This name already exists, replace?\n"),
+                             _("Weather Routing"),
+                             wxYES | wxNO | wxICON_WARNING);
+        replace = mdlg.ShowModal();
+      }
+      if (replace == wxID_YES) {
         long index = m_panel->m_lPositions->FindItem(0, it.ID);
         assert(index >= 0);
 
@@ -775,7 +803,7 @@ void WeatherRouting::AddPosition(double lat, double lon, wxString name) {
 
 void WeatherRouting::AddPosition(double lat, double lon, wxString name,
                                  wxString GUID) {
-  if (GUID.IsEmpty()) return AddPosition(lat, lon, name);
+  if (GUID.IsEmpty()) return AddPosition(lat, lon, std::move(name), false);
 
   for (auto& it : RouteMap::Positions) {
     if (it.GUID.IsEmpty()) continue;
@@ -1143,25 +1171,10 @@ void WeatherRouting::UpdateRoutePositionDialog() {
 void WeatherRouting::OnNewPosition(wxCommandEvent& event) {
   NewPositionDialog dlg(this);
   if (dlg.ShowModal() == wxID_OK) {
-    double lat = 0, lon = 0, lat_minutes = 0, lon_minutes = 0;
-
-    wxString latitude_degrees = dlg.m_tLatitudeDegrees->GetValue();
-    wxString latitude_minutes = dlg.m_tLatitudeMinutes->GetValue();
-    latitude_degrees.ToDouble(&lat);
-    latitude_minutes.ToDouble(&lat_minutes);
-    lat_minutes = fabs(lat_minutes);
-    if (lat < 0) lat_minutes = -lat_minutes;
-    lat += lat_minutes / 60;
-
-    wxString longitude_degrees = dlg.m_tLongitudeDegrees->GetValue();
-    wxString longitude_minutes = dlg.m_tLongitudeMinutes->GetValue();
-    longitude_degrees.ToDouble(&lon);
-    longitude_minutes.ToDouble(&lon_minutes);
-    lon_minutes = fabs(lon_minutes);
-    if (lon < 0) lon_minutes = -lon_minutes;
-    lon += lon_minutes / 60;
-
-    AddPosition(lat, lon, dlg.m_tName->GetValue());
+    AddPosition(
+        dlg.m_tLatitudeDegrees->GetValue(), dlg.m_tLatitudeMinutes->GetValue(),
+        dlg.m_tLongitudeDegrees->GetValue(),
+        dlg.m_tLongitudeMinutes->GetValue(), dlg.m_tName->GetValue(), false);
   }
 }
 
@@ -1183,7 +1196,7 @@ void WeatherRouting::OnUpdateBoat(wxCommandEvent& event) {
       return;
     }
 
-  AddPosition(lat, lon, _("Boat"));
+  AddPosition(lat, lon, _("Boat"), false);
 }
 
 #if 0 /* wx widgets is shit, can only allow users \
