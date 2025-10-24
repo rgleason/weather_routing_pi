@@ -432,6 +432,7 @@ private:
   void OnClose(wxCloseEvent& event) { Hide(); }
   void OnPositionKeyDown(wxListEvent& event);
   void OnEditConfiguration();
+  void OnEditPosition();
 
   void SaveSimplifiedRoute(RouteMapOverlay& routemapoverlay,
                            const std::list<Position*>& simplifiedRoute);
@@ -478,6 +479,7 @@ private:
   void OnSize(wxSizeEvent& event);
   void OnNew(wxCommandEvent& event);
   void OnEditConfigurationClick(wxMouseEvent& event) { OnEditConfiguration(); }
+  void OnEditPositionClick(wxMouseEvent& event) { OnEditPosition(); }
   void OnWeatherRouteSort(wxListEvent& event);
   void OnWeatherRouteSelected();
   void OnWeatherRouteSelected(wxListEvent& event) { OnWeatherRouteSelected(); }
@@ -495,6 +497,7 @@ private:
   void OnPositions(wxCommandEvent& event);
   void OnBatch(wxCommandEvent& event);
   void OnEditConfiguration(wxCommandEvent& event) { OnEditConfiguration(); }
+  void OnEditPosition(wxCommandEvent& event) { OnEditPosition(); }
   void OnGoTo(wxCommandEvent& event);
   void OnDelete(wxCommandEvent& event);
   void OnDeleteAll(wxCommandEvent& event);
