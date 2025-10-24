@@ -376,11 +376,17 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
       this);
   m_panel->m_lWeatherRoutes->Connect(
       wxEVT_LEFT_UP, wxMouseEventHandler(WeatherRouting::OnLeftUp), NULL, this);
+  m_panel->m_lWeatherRoutes->Connect(
+      wxEVT_RIGHT_UP, wxMouseEventHandler(WeatherRouting::OnRightUp), NULL,
+      this);
   m_panel->m_lPositions->Connect(
       wxEVT_LEFT_DOWN, wxMouseEventHandler(WeatherRouting::OnLeftDown), NULL,
       this);
   m_panel->m_lPositions->Connect(
       wxEVT_LEFT_UP, wxMouseEventHandler(WeatherRouting::OnLeftUp), NULL, this);
+  m_panel->m_lPositions->Connect(wxEVT_RIGHT_UP,
+                                 wxMouseEventHandler(WeatherRouting::OnRightUp),
+                                 NULL, this);
   m_panel->m_lWeatherRoutes->Connect(
       wxEVT_COMMAND_LIST_COL_CLICK,
       wxListEventHandler(WeatherRouting::OnWeatherRouteSort), NULL, this);
@@ -433,6 +439,11 @@ WeatherRouting::~WeatherRouting() {
   // m_panel->m_lPositions->Disconnect( wxEVT_LEFT_DCLICK, wxMouseEventHandler(
   // WeatherRouting::OnEditPositionClick ), NULL, this );
   m_panel->m_lPositions->Disconnect(
+      wxEVT_LEFT_UP, wxMouseEventHandler(WeatherRouting::OnLeftUp), NULL, this);
+  m_panel->m_lPositions->Disconnect(
+      wxEVT_RIGHT_UP, wxMouseEventHandler(WeatherRouting::OnRightUp), NULL,
+      this);
+  m_panel->m_lPositions->Disconnect(
       wxEVT_COMMAND_LIST_KEY_DOWN,
       wxListEventHandler(WeatherRouting::OnPositionKeyDown), NULL, this);
   m_panel->m_lWeatherRoutes->Disconnect(
@@ -440,8 +451,13 @@ WeatherRouting::~WeatherRouting() {
       wxMouseEventHandler(WeatherRouting::OnEditConfigurationClick), NULL,
       this);
   m_panel->m_lWeatherRoutes->Disconnect(
+      wxEVT_LEFT_UP, wxMouseEventHandler(WeatherRouting::OnLeftUp), NULL, this);
+  m_panel->m_lWeatherRoutes->Disconnect(
       wxEVT_LEFT_DOWN,
       wxMouseEventHandler(WeatherRouting::OnWeatherRoutesListLeftDown), NULL,
+      this);
+  m_panel->m_lWeatherRoutes->Disconnect(
+      wxEVT_RIGHT_UP, wxMouseEventHandler(WeatherRouting::OnRightUp), NULL,
       this);
   m_panel->m_lWeatherRoutes->Disconnect(
       wxEVT_COMMAND_LIST_COL_CLICK,
@@ -542,6 +558,11 @@ void WeatherRouting::OnLeftUp(wxMouseEvent& event) { m_tDownTimer.Stop(); }
 
 void WeatherRouting::OnDownTimer(wxTimerEvent&) {
   m_panel->m_lWeatherRoutes->PopupMenu(m_mContextMenu, m_downPos);
+}
+
+void WeatherRouting::OnRightUp(wxMouseEvent& event) {
+  if (event.GetEventObject() == m_panel->m_lWeatherRoutes)
+    m_panel->m_lWeatherRoutes->PopupMenu(m_mContextMenu, event.GetPosition());
 }
 
 void WeatherRouting::CopyDataFiles(wxString from, wxString to) {

@@ -263,6 +263,7 @@ public:
   void OnLeftDown(wxMouseEvent& event);
   void OnLeftUp(wxMouseEvent& event);
   void OnDownTimer(wxTimerEvent&);
+  void OnRightUp(wxMouseEvent& event);
 
   void Reset();
 
