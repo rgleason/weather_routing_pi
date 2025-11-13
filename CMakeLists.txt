@@ -19,7 +19,7 @@
 # - xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx,                                       *
 # - xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx                                       *
 # -----------------------------------------------------------------------------
-# Frontend2 Author: Jon Gough Testplugin(TP) v1.0.341.0 30/04/2025 DD/MM/YYYY
+# Frontend2 Author: Jon Gough Testplugin(TP) v1.0.345.0 15/10/2025 DD/MM/YYYY
 # format buildCI:yes useODAPI:no validateJSON:no
 # ---------------------------------------------------------------------------
 ## -- When changing this file do NOT change the order of the sections.    -- ##
@@ -34,7 +34,7 @@ set(CMLOC "CMakeLists: ")
 option(OCPN_BUILD_TEST "Build plugin tests" OFF)
 
 # define minimum cmake version
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.15)
 if(COMMAND cmake_policy)
   if (POLICY CMP0043)
     cmake_policy(SET CMP0043 NEW)
@@ -77,7 +77,7 @@ set(VERSION_MINOR "15")
 
 set(VERSION_PATCH "33")
 set(VERSION_TWEAK "2")
-set(VERSION_DATE  "26/06/2025")#DD/MM/YYYY format
+set(VERSION_DATE "26/06/2025") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov58")
 
 set(OCPN_API_VERSION_MAJOR "1")
@@ -86,9 +86,8 @@ set(TP_COMMENT "  * Release using CI")
 
 set(PARENT "opencpn")
 
-#Use to set up a local webserver with git installed.
-#Default is github.com. Now set in pluginconfigure.cmake
-#set(GIT_REPOSITORY_SERVER "github.com")
+# Use to set up a local webserver with git installed. Default is github.com.
+# Now set in PluginSetup.cmake set(GIT_REPOSITORY_SERVER "github.com")
 
 ## Specifies Cloudsmith upload repository suffix for each catalog
 set(PROD "prod")   #Standard Repos
@@ -268,8 +267,8 @@ set(SRC ${SRCS} ${HDRS} )
 
 include_directories(BEFORE ${PROJECT_SOURCE_DIR}/include)
 
-## Change target_sources to match your project needs.
-##==============================================================
+# Change target_sources to match your project needs.
+# ==============================================================
 
 target_sources(${PACKAGE_NAME} PUBLIC ${SRC} )
 
