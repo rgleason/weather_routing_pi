@@ -15,15 +15,16 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ***********************************************************************/
-
+/**
+ * \file
+ * \implements \ref GribRecord.h
+ */
 #include "wx/wxprec.h"
 
 #ifndef WX_PRECOMP
 #include "wx/wx.h"
 #endif  // precompiled headers
 
-// #include "dychart.h"        // for some compile time fixups
-// #include "cutil.h"
 #include <stdlib.h>
 
 // #include <QDateTime>
@@ -58,12 +59,12 @@ GribRecord::GribRecord(const GribRecord& rec) {
   *this = rec;
   IsDuplicated = true;
   // recopie les champs de bits
-  if (rec.data != NULL) {
+  if (rec.data != nullptr) {
     int size = rec.Ni * rec.Nj;
     this->data = new double[size];
     for (int i = 0; i < size; i++) this->data[i] = rec.data[i];
   }
-  if (rec.BMSbits != NULL) {
+  if (rec.BMSbits != nullptr) {
     int size = rec.BMSsize;
     this->BMSbits = new zuchar[size];
     for (int i = 0; i < size; i++) this->BMSbits[i] = rec.BMSbits[i];
@@ -164,14 +165,14 @@ GribRecord* GribRecord::InterpolatedRecord(const GribRecord& rec1,
   if (!GetInterpolatedParameters(rec1, rec2, La1, Lo1, La2, Lo2, Di, Dj, im1,
                                  jm1, im2, jm2, Ni, Nj, rec1offi, rec1offj,
                                  rec2offi, rec2offj))
-    return NULL;
+    return nullptr;
 
   // recopie les champs de bits
   int size = Ni * Nj;
   double* data = new double[size];
 
-  zuchar* BMSbits = NULL;
-  if (rec1.BMSbits != NULL && rec2.BMSbits != NULL)
+  zuchar* BMSbits = nullptr;
+  if (rec1.BMSbits != nullptr && rec2.BMSbits != nullptr)
     BMSbits = new zuchar[(Ni * Nj - 1) / 8 + 1]();
 
   for (int i = 0; i < Ni; i++)
@@ -235,7 +236,7 @@ GribRecord* GribRecord::Interpolated2DRecord(
   if (!GetInterpolatedParameters(rec1x, rec2x, La1, Lo1, La2, Lo2, Di, Dj, im1,
                                  jm1, im2, jm2, Ni, Nj, rec1offi, rec1offj,
                                  rec2offi, rec2offj))
-    return NULL;
+    return nullptr;
 
   if (!rec1y.data || !rec2y.data || !rec1y.isOk() || !rec2y.isOk() ||
       rec1x.Di != rec1y.Di || rec1x.Dj != rec1y.Dj || rec2x.Di != rec2y.Di ||
@@ -293,7 +294,7 @@ GribRecord* GribRecord::Interpolated2DRecord(
   ret->Lo1 = Lo1, ret->Lo2 = Lo2;
 
   ret->data = datax;
-  ret->BMSbits = NULL;
+  ret->BMSbits = nullptr;
   ret->hasBMS = false;  // I don't think wind or current ever use BMS correct?
 
   ret->latMin = wxMin(La1, La2), ret->latMax = wxMax(La1, La2);
@@ -303,7 +304,7 @@ GribRecord* GribRecord::Interpolated2DRecord(
   *rety = *ret;
   rety->dataType = rec1y.dataType;
   rety->data = datay;
-  rety->BMSbits = NULL;
+  rety->BMSbits = nullptr;
   rety->hasBMS = false;
 
   return ret;
@@ -324,7 +325,7 @@ GribRecord* GribRecord::MagnitudeRecord(const GribRecord& rec1,
   } else
     rec->ok = false;
 
-  if (rec1.BMSbits != NULL && rec2.BMSbits != NULL) {
+  if (rec1.BMSbits != nullptr && rec2.BMSbits != nullptr) {
     if (rec1.BMSsize == rec2.BMSsize) {
       int size = rec1.BMSsize;
       for (int i = 0; i < size; i++)
@@ -348,8 +349,13 @@ void GribRecord::Polar2UV(GribRecord* pDIR, GribRecord* pSPEED) {
         pSPEED->data[i] = -speed * cos(dir * M_PI / 180.);
       }
     }
-    pDIR->dataType = GRB_WIND_VX;
-    pSPEED->dataType = GRB_WIND_VY;
+    if (pDIR->dataType == GRB_WIND_DIR) {
+      pDIR->dataType = GRB_WIND_VX;
+      pSPEED->dataType = GRB_WIND_VY;
+    } else {
+      pDIR->dataType = GRB_UOGRD;
+      pSPEED->dataType = GRB_VOGRD;
+    }
   }
 }
 
@@ -420,13 +426,8 @@ void GribRecord::setDataType(const zuchar t) {
   dataKey = makeKey(dataType, levelType, levelValue);
 }
 //------------------------------------------------------------------------------
-std::string GribRecord::makeKey(
-    int dataType, int levelType,
-    int levelValue) {  // Make data type key  sample:'11-100-850'
-                       //	char ktmp[32];
-  //	wxSnprintf((wxChar *)ktmp, 32, "%d-%d-%d", dataType, levelType,
-  // levelValue); 	return std::string(ktmp);
-
+std::string GribRecord::makeKey(int dataType, int levelType, int levelValue) {
+  // Make data type key  sample:'11-100-850'
   wxString k;
   k.Printf(_T("%d-%d-%d"), dataType, levelType, levelValue);
   return std::string(k.mb_str());
@@ -435,11 +436,11 @@ std::string GribRecord::makeKey(
 GribRecord::~GribRecord() {
   if (data) {
     delete[] data;
-    data = NULL;
+    data = nullptr;
   }
   if (BMSbits) {
     delete[] BMSbits;
-    BMSbits = NULL;
+    BMSbits = nullptr;
   }
 
   // if (dataType==GRB_TEMP) printf("record destroyed %s   %d\n",
@@ -641,7 +642,7 @@ double GribRecord::getInterpolatedValue(double px, double py,
   return k2 * vx + (1 - k2) * vy;
 }
 
-bool GribRecord::getInterpolatedValues(double& magnitude, double& angle,
+bool GribRecord::getInterpolatedValues(double& M, double& A,
                                        const GribRecord* GRX,
                                        const GribRecord* GRY, double px,
                                        double py, bool numericalInterpolation) {
@@ -685,8 +686,8 @@ bool GribRecord::getInterpolatedValues(double& magnitude, double& angle,
     vy = GRY->getValue(i0, j0);
     if (vx == GRIB_NOTDEF || vy == GRIB_NOTDEF) return false;
 
-    magnitude = sqrt(vx * vx + vy * vy);
-    angle = atan2(-vx, -vy) * 180 / M_PI;
+    M = sqrt(vx * vx + vy * vy);
+    A = atan2(-vx, -vy) * 180 / M_PI;
     return true;
   }
 
@@ -744,10 +745,10 @@ bool GribRecord::getInterpolatedValues(double& magnitude, double& angle,
     double x1m = (1 - dx) * x01m + dx * x11m,
            x1a = interp_angle(x01a, x11a, dx, M_PI);
 
-    magnitude = (1 - dy) * x0m + dy * x1m;
-    angle = interp_angle(x0a, x1a, dy, M_PI);
-    angle *= 180 / M_PI;  // degrees
-    angle += 180;
+    M = (1 - dy) * x0m + dy * x1m;
+    A = interp_angle(x0a, x1a, dy, M_PI);
+    A *= 180 / M_PI;  // degrees
+    A += 180;
 
     return true;
   }
