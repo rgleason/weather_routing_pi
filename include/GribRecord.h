@@ -82,6 +82,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define GRB_CLOUD_TOT 71   /* %      */
 #define GRB_HTSGW 100      /* m      */
 #define GRB_WTMP 80        /* "Water Temperature", "K" */
+#define GRB_COMP_REFL 212  /* dBZ */
 
 #define GRB_WVDIR 101
 #define GRB_WVHGT 102
@@ -93,6 +94,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define GRB_PERPW 108
 #define GRB_DIRSW 109
 #define GRB_PERSW 110
+#define GRB_PER 209
+#define GRB_DIR 210
 
 #define GRB_CRAIN 140         /* "Categorical rain", "yes=1;no=0" */
 #define GRB_FRZRAIN_CATEG 141 /* 1=yes 0=no */
@@ -102,6 +105,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define GRB_TSEC \
   171 /* "Seconds prior to initial reference time (defined in bytes 18-20)" */
 #define GRB_WIND_GUST 180    /* m/s "wind gust */
+#define GRB_WIND_GUST_VX 181 /* m/s */
+#define GRB_WIND_GUST_VY 182 /* m/s */
 
 #define GRB_USCT 190 /* Scatterometer estimated U Wind, NCEP Center 7  */
 #define GRB_VSCT 191 /* Scatterometer estimated V Wind, NCEP Center 7  */
@@ -116,6 +121,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define LV_ISOTHERM0 4
 #define LV_ISOBARIC 100
 #define LV_MSL 102
+#define LV_ABOV_MSL 103
 #define LV_ABOV_GND 105
 #define LV_SIGMA 107
 #define LV_ATMOS_ENT 10
@@ -129,6 +135,9 @@ enum DataCenterModel {
   FNMOC_WW3_GLB,
   FNMOC_WW3_MED,
   NORWAY_METNO,
+  ECMWF_ERA5,
+  KNMI_HIRLAM,
+  KNMI_HARMONIE_AROME,
   OTHER_DATA_CENTER
 };
 
