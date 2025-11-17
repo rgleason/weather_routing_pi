@@ -2424,8 +2424,8 @@ void WeatherRouting::SaveXML(wxString filename) {
     TiXmlElement* c = new TiXmlElement("Position");
 
     c->SetAttribute("Name", (*it).Name.mb_str());
-    c->SetAttribute("Latitude", wxString::Format("%.5f", (*it).lat).mb_str());
-    c->SetAttribute("Longitude", wxString::Format("%.5f", (*it).lon).mb_str());
+    c->SetAttribute("Latitude", wxString::Format("%.6f", (*it).lat).mb_str());
+    c->SetAttribute("Longitude", wxString::Format("%.6f", (*it).lon).mb_str());
     if (!(*it).GUID.IsEmpty()) c->SetAttribute("GUID", (*it).GUID.mb_str());
 
     root->LinkEndChild(c);
