@@ -67,6 +67,8 @@ bash ./cloudsmith-upload.sh
 
 
 # cp -rv ./SourceFolder ./DestFolder
+# cp -r ./dist/* ./out
+#    -r - Copy all files and folders inside a directory
 #    -i - Ask before replacing files
 #    -u - Copy only if the source is newer
 #    -v - Verbose mode, show files being copied

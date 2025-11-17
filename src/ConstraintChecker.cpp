@@ -153,6 +153,7 @@ void log_cache_stats() {
 }
 
 void maintain_land_cache() {
+#if 0
   static std::atomic<size_t> last_log_queries{0};
   size_t current_queries = segment_cache_queries.load();
   size_t last_queries = last_log_queries.load();
@@ -166,6 +167,7 @@ void maintain_land_cache() {
     last_log_queries.store(current_queries);
     log_cache_stats();
   }
+#endif
 }
 
 /**
@@ -188,6 +190,7 @@ void maintain_land_cache() {
  * - Cache the exact result for future use
  */
 bool Cached_CrossesLand(double lat1, double lon1, double lat2, double lon2) {
+#if 0
   SegmentKey key(lat1, lon1, lat2, lon2);
   segment_cache_queries.fetch_add(1);
 
@@ -204,7 +207,6 @@ bool Cached_CrossesLand(double lat1, double lon1, double lat2, double lon2) {
 
   segment_cache_misses.fetch_add(1);
   bool result = PlugIn_GSHHS_CrossesLand(lat1, lon1, lat2, lon2);
-
   // Cache the result
   {
     std::lock_guard<std::mutex> lock(land_cache_mutex);
@@ -213,6 +215,8 @@ bool Cached_CrossesLand(double lat1, double lon1, double lat2, double lon2) {
     }
     land_cache.emplace(key, SegmentCacheEntry(result));
   }
+#endif
+  bool result = PlugIn_GSHHS_CrossesLand(lat1, lon1, lat2, lon2);
   return result;
 }
 
