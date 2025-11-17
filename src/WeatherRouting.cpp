@@ -3103,6 +3103,7 @@ void WeatherRouting::SaveAsTrack(RouteMapOverlay& routemapoverlay) {
   RouteMapConfiguration c = routemapoverlay.GetConfiguration();
   newPath->m_StartString = c.Start;
   newPath->m_EndString = c.End;
+  newPath->m_GUID = GetNewGUID();
 
   for (auto const& it : plotdata) {
     PlugIn_Waypoint* newPoint = new PlugIn_Waypoint(
@@ -3160,6 +3161,7 @@ void WeatherRouting::SaveAsRoute(RouteMapOverlay& routemapoverlay) {
   newRoute->m_StartString = c.Start;
   newRoute->m_EndString = c.End;
   newRoute->m_isVisible = true;
+  newRoute->m_GUID = GetNewGUID();
 
   for (auto const& it : plotdata) {
     PlugIn_Waypoint_Ex* newPoint = new PlugIn_Waypoint_Ex(
