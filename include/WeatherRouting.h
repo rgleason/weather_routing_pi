@@ -263,6 +263,7 @@ public:
   void OnLeftDown(wxMouseEvent& event);
   void OnLeftUp(wxMouseEvent& event);
   void OnDownTimer(wxTimerEvent&);
+  void OnRightUp(wxMouseEvent& event);
 
   void Reset();
 
@@ -363,10 +364,13 @@ public:
    * @param lat Latitude of the position in decimal degrees
    * @param lon Longitude of the position in decimal degrees
    * @param name Name identifier for the position
+   * @param suppress_prompt If true, suppresses the prompt for replacement and
+   * does the replacement
    * @see UpdateConfigurations() For updating route configurations with the new
    * position
    */
-  void AddPosition(double lat, double lon, wxString name);
+  void AddPosition(double lat, double lon, wxString name,
+                   const bool suppress_prompt);
   /**
    * Adds a position with specified GUID (Globally Unique Identifier).
    *
@@ -428,6 +432,7 @@ private:
   void OnClose(wxCloseEvent& event) { Hide(); }
   void OnPositionKeyDown(wxListEvent& event);
   void OnEditConfiguration();
+  void OnEditPosition();
 
   void SaveSimplifiedRoute(RouteMapOverlay& routemapoverlay,
                            const std::list<Position*>& simplifiedRoute);
@@ -474,6 +479,7 @@ private:
   void OnSize(wxSizeEvent& event);
   void OnNew(wxCommandEvent& event);
   void OnEditConfigurationClick(wxMouseEvent& event) { OnEditConfiguration(); }
+  void OnEditPositionClick(wxMouseEvent& event) { OnEditPosition(); }
   void OnWeatherRouteSort(wxListEvent& event);
   void OnWeatherRouteSelected();
   void OnWeatherRouteSelected(wxListEvent& event) { OnWeatherRouteSelected(); }
@@ -491,6 +497,7 @@ private:
   void OnPositions(wxCommandEvent& event);
   void OnBatch(wxCommandEvent& event);
   void OnEditConfiguration(wxCommandEvent& event) { OnEditConfiguration(); }
+  void OnEditPosition(wxCommandEvent& event) { OnEditPosition(); }
   void OnGoTo(wxCommandEvent& event);
   void OnDelete(wxCommandEvent& event);
   void OnDeleteAll(wxCommandEvent& event);
@@ -567,6 +574,30 @@ private:
    * configuration data
    */
   void UpdateItem(long index, bool stateonly = false);
+  /**
+   * Adds or modifies a new position with the given name.
+   *
+   * Internal method to process the contents of the NewPosition dialog
+   *
+   * @param latitude_degrees Latitude of the position (degrees, signed integer
+   * number)
+   * @param latitude_minutes Latitude of the position (minutes, unsigned
+   * floating point number)
+   * @param longitude_degrees Longitude of the position (degrees, signed integer
+   * number)
+   * @param longitude_minutes Longitude of the position (minutes, unsigned
+   * floating point number)
+   * @param name
+   * @param suppress_prompt Suppresses the prompt and replaces existing position
+   * without asking
+   * @see AddPosition(double lat, double lon, wxString name) The method that
+   * performs the actual addition
+   */
+  void AddPosition(const wxString& latitude_degrees,
+                   const wxString& latitude_minutes,
+                   const wxString& longitude_degrees,
+                   const wxString& longitude_minutes, wxString name,
+                   const bool suppress_prompt);
 
   RouteMap* SelectedRouteMap();
   /** Save weather routing as OpenCPN track. */
