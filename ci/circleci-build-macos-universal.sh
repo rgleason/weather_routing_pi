@@ -64,6 +64,7 @@ cmake \
   -DCMAKE_OSX_DEPLOYMENT_TARGET=${MACOSX_DEPLOYMENT_TARGET} \
   -DOCPN_TARGET_TUPLE="darwin-wx32;10;universal" \
   -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+  -DOCPN_BUILD_TEST=ON \
   ..
 
 if [[ -z "$CI" ]]; then
@@ -72,6 +73,9 @@ if [[ -z "$CI" ]]; then
     exit 0
 fi
 
+make -j 12 # Should ideally be 'make -j $(nproc)' but nproc is not installed in circleci VM
+# See https://man7.org/linux/man-pages/man1/nproc.1.html - we could install GNU coreutils
+make test
 # non-reproducible error on first invocation, seemingly tarball-conf-stamp
 # is not created as required.
 make package || make package
