@@ -38,6 +38,8 @@ set(SRC
     IsoRoute_tests.cpp
     Polar_tests.cpp
     PolygonRegion_tests.cpp
+    Position_tests.cpp
+    RoutePoint_tests
     Utilities_tests.cpp
 
     #Mock source files, in alphabetical order

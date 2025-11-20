@@ -89,6 +89,16 @@ Position::Position(const Position* p)
       copied(true),
       propagation_error(p->propagation_error) {}
 
+Position::Position(const Json::Value& json)
+    : RoutePoint(json),
+      parent_heading(json["parent_heading"].asDouble()),
+      parent_bearing(json["parent_bearing"].asDouble()),
+      parent(nullptr),  // parent is not serialized, will be set later
+      propagated(json["propagated"].asBool()),
+      copied(false),
+      propagation_error(static_cast<PropagationError>(json["propagation_error"].asInt())) {
+}
+
 SkipPosition* Position::BuildSkipList() {
   /* build skip list of positions, skipping over strings of positions in
      the same quadrant */
@@ -459,6 +469,14 @@ wxString Position::GetDetailedErrorInfo() const {
   }
 
   return info;
+}
+
+void Position::toJson(Json::Value &json) const {
+    RoutePoint::toJson(json);
+    json["parent_heading"] = parent_heading;
+    json["parent_bearing"] = parent_bearing;
+    json["propagated"] = propagated;
+    json["propagation_error"] = static_cast<int>(propagation_error);
 }
 
 SkipPosition::SkipPosition(Position* p, int q) : point(p), quadrant(q) {}

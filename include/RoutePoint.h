@@ -22,6 +22,7 @@
 
 #include <cstdint>
 #include <vector>
+#include <json/json.h>
 
 #include "ConstraintChecker.h"
 
@@ -279,6 +280,18 @@ public:
         grib_is_data_deficient(data_deficient),
         data_mask(dm) {}
 
+  // Constructor that initializes a RoutePoint from a serialized JSON object.
+  // See also toJson() method.
+  RoutePoint(const Json::Value& json)
+      : lat(json["lat"].asDouble()),
+        lon(json["lon"].asDouble()),
+        polar(json["polar"].asInt()),
+        tacks(json["tacks"].asInt()),
+        jibes(json["jibes"].asInt()),
+        sail_plan_changes(json["sail_plan_changes"].asInt()),
+        grib_is_data_deficient(json["grib_is_data_deficient"].asBool()),
+        data_mask(static_cast<DataMask>(json["data_mask"].asUInt())) {}
+
   virtual ~RoutePoint() {};
 
   double lat;
@@ -375,6 +388,16 @@ public:
   double PropagateToPoint(double dlat, double dlon, RouteMapConfiguration& cf,
                           double& heading, DataMask& data_mask,
                           bool end = true);
+
+  /**
+   * Serializes the RoutePoint to JSON format.
+   * This method populates the provided JSON object with the
+   * RoutePoint's data, including latitude, longitude, polar index,
+   * tacks, jibes, sail plan changes, data deficiency status, and data mask
+   */
+  void toJson(Json::Value &json) const;
+
+
 
   DataMask data_mask;
 };
