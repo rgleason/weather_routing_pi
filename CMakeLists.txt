@@ -63,6 +63,10 @@ endif (COMMAND cmake_policy)
 # set for vscode/vscodium
 set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
 
+# point to your OpenCPN source and build:
+set(OCPN_SOURCE_DIR "C:/Users/fcgle/source/OpenCPN")
+set(OCPN_BUILD_DIR  "C:/Users/fcgle/source/OpenCPN/build")
+
 # define plugin name, owner and versions
 set(VERBOSE_NAME "WeatherRouting")
 set(COMMON_NAME "WeatherRouting")  # Search "getcommonname"in <plugin_pi>.cpp
@@ -76,8 +80,8 @@ set(VERSION_MAJOR "1")
 set(VERSION_MINOR "15")
 
 set(VERSION_PATCH "34")
-set(VERSION_TWEAK "0")
-set(VERSION_DATE "13/11/2025") # DD/MM/YYYY format
+set(VERSION_TWEAK "1")
+set(VERSION_DATE "25/11/2025") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov58")
 
 set(OCPN_API_VERSION_MAJOR "1")
@@ -266,6 +270,11 @@ set(SRC ${SRCS} ${HDRS} )
 ##=============================================================
 
 include_directories(BEFORE ${PROJECT_SOURCE_DIR}/include)
+
+# Ensure the plugin compiles against the same headers and libraries as your OpenCPN MSVC build.
+# include_directories(${OCPN_SOURCE_DIR}/include)
+# link_directories(${OCPN_BUILD_DIR}/lib)
+
 
 # Change target_sources to match your project needs.
 # ==============================================================

@@ -75,5 +75,5 @@ bash ./cloudsmith-upload.sh
 # copy ..\build\relwithdebinfo\weather_routing_pi.dll to  C:\Users\fcgle\source\opencpn\build\RelWithDebInfo\plugins
 # copy ..\build\relwithdebinfo\weather_routing_pi.pdb to  C:\Users\fcgle\source\opencpn\build\RelWithDebInfo\plugins
 
-cp -uv ./relwithdebinfo/*_pi.dll C:/Users/fcgle/source/opencpn/build/RelWithDebInfo/plugins
-cp -uv ./relwithdebinfo/*_pi.pdb C:/Users/fcgle/source/opencpn/build/RelWithDebInfo/plugins
+cp -uv ./RelWithDebInfo/*_pi.dll C:/Users/fcgle/source/opencpn/build/RelWithDebInfo/plugins
+cp -uv ./RelWithDebInfo/*_pi.pdb C:/Users/fcgle/source/opencpn/build/RelWithDebInfo/plugins
