@@ -52,10 +52,15 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
 
   m_mPosition = new wxMenu();
   wxMenuItem* m_mNewPosition;
-  m_mNewPosition =
-      new wxMenuItem(m_mPosition, wxID_ANY, wxString(_("&New Position")),
-                     wxEmptyString, wxITEM_NORMAL);
+  m_mNewPosition = new wxMenuItem(m_mPosition, wxID_ANY, _("&New Position"),
+                                  wxEmptyString, wxITEM_NORMAL);
   m_mPosition->Append(m_mNewPosition);
+
+  wxMenuItem* m_mEditPosition;
+  m_mEditPosition =
+      new wxMenuItem(m_mPosition, wxID_ANY, wxString(_("&Edit Position")),
+                     wxEmptyString, wxITEM_NORMAL);
+  m_mPosition->Append(m_mEditPosition);
 
   wxMenuItem* m_mUpdateBoat;
   m_mUpdateBoat = new wxMenuItem(
@@ -326,6 +331,23 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
   m_menu1->Append(m_mRoutePosition1);
 
   m_mContextMenu->Append(m_menu1Item);
+  // Context menu for positions list
+  m_mContextMenuPositions = new wxMenu();
+  wxMenuItem* m_mNewPosition1 =
+      new wxMenuItem(m_mContextMenuPositions, wxID_ANY,
+                     _("&New") + '\t' + "Ctrl+N", wxEmptyString, wxITEM_NORMAL);
+  m_mContextMenuPositions->Append(m_mNewPosition1);
+
+  wxMenuItem* m_mEditPosition1 = new wxMenuItem(
+      m_mContextMenuPositions, wxID_ANY, _("&Edit") + '\t' + "Ctrl+E",
+      wxEmptyString, wxITEM_NORMAL);
+  m_mContextMenuPositions->Append(m_mEditPosition1);
+
+  wxMenuItem* m_mDeletePosition1 = new wxMenuItem(
+      m_mContextMenuPositions, wxID_ANY, _("&Delete") + '\t' + "Ctrl+D",
+      wxEmptyString, wxITEM_NORMAL);
+  m_mContextMenuPositions->Append(m_mDeletePosition1);
+
   this->Connect(
       wxEVT_RIGHT_DOWN,
       wxMouseEventHandler(WeatherRoutingBase::WeatherRoutingBaseOnContextMenu),
@@ -352,6 +374,9 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
   m_mPosition->Bind(wxEVT_COMMAND_MENU_SELECTED,
                     wxCommandEventHandler(WeatherRoutingBase::OnNewPosition),
                     this, m_mNewPosition->GetId());
+  m_mPosition->Bind(wxEVT_COMMAND_MENU_SELECTED,
+                    wxCommandEventHandler(WeatherRoutingBase::OnEditPosition),
+                    this, m_mEditPosition->GetId());
   m_mPosition->Bind(wxEVT_COMMAND_MENU_SELECTED,
                     wxCommandEventHandler(WeatherRoutingBase::OnUpdateBoat),
                     this, m_mUpdateBoat->GetId());
@@ -489,6 +514,19 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
   m_menu1->Bind(wxEVT_COMMAND_MENU_SELECTED,
                 wxCommandEventHandler(WeatherRoutingBase::OnRoutePosition),
                 this, m_mRoutePosition1->GetId());
+
+  m_mContextMenuPositions->Bind(
+      wxEVT_COMMAND_MENU_SELECTED,
+      wxCommandEventHandler(WeatherRoutingBase::OnNewPosition), this,
+      m_mNewPosition1->GetId());
+  m_mContextMenuPositions->Bind(
+      wxEVT_COMMAND_MENU_SELECTED,
+      wxCommandEventHandler(WeatherRoutingBase::OnEditPosition), this,
+      m_mEditPosition1->GetId());
+  m_mContextMenuPositions->Bind(
+      wxEVT_COMMAND_MENU_SELECTED,
+      wxCommandEventHandler(WeatherRoutingBase::OnDeletePosition), this,
+      m_mDeletePosition1->GetId());
 }
 
 WeatherRoutingBase::~WeatherRoutingBase() {
@@ -5731,64 +5769,27 @@ NewPositionDialog::NewPositionDialog(wxWindow* parent, wxWindowID id,
                            wxDefaultSize, 0);
   fgSizer119->Add(m_tName, 0, wxALL | wxEXPAND, 5);
 
-  fgSizer120->Add(fgSizer119, 1, wxEXPAND, 5);
-
-  wxFlexGridSizer* fgSizer122;
-  fgSizer122 = new wxFlexGridSizer(0, 5, 0, 0);
-  fgSizer122->SetFlexibleDirection(wxBOTH);
-  fgSizer122->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
-
   m_staticText142 = new wxStaticText(this, wxID_ANY, _("latitude"),
                                      wxDefaultPosition, wxDefaultSize, 0);
   m_staticText142->Wrap(-1);
-  fgSizer122->Add(m_staticText142, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
+  fgSizer119->Add(m_staticText142, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
-  m_tLatitudeDegrees = new wxTextCtrl(this, wxID_ANY, wxEmptyString,
-                                      wxDefaultPosition, wxDefaultSize, 0);
-  fgSizer122->Add(m_tLatitudeDegrees, 1,
-                  wxALL | wxEXPAND | wxALIGN_CENTER_VERTICAL, 5);
-
-  m_staticText143 = new wxStaticText(this, wxID_ANY, _("degrees"),
-                                     wxDefaultPosition, wxDefaultSize, 0);
-  m_staticText143->Wrap(-1);
-  fgSizer122->Add(m_staticText143, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
-
-  m_tLatitudeMinutes = new wxTextCtrl(this, wxID_ANY, wxEmptyString,
-                                      wxDefaultPosition, wxDefaultSize, 0);
-  fgSizer122->Add(m_tLatitudeMinutes, 1,
-                  wxALL | wxEXPAND | wxALIGN_CENTER_VERTICAL, 5);
-
-  m_staticText144 = new wxStaticText(this, wxID_ANY, _("minutes"),
-                                     wxDefaultPosition, wxDefaultSize, 0);
-  m_staticText144->Wrap(-1);
-  fgSizer122->Add(m_staticText144, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
+  m_tLatitude = new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition,
+                               wxDefaultSize, 0);
+  fgSizer119->Add(m_tLatitude, 1, wxALL | wxEXPAND | wxALIGN_CENTER_VERTICAL,
+                  5);
 
   m_staticText145 = new wxStaticText(this, wxID_ANY, _("longitude"),
                                      wxDefaultPosition, wxDefaultSize, 0);
   m_staticText145->Wrap(-1);
-  fgSizer122->Add(m_staticText145, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
+  fgSizer119->Add(m_staticText145, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
-  m_tLongitudeDegrees = new wxTextCtrl(this, wxID_ANY, wxEmptyString,
-                                       wxDefaultPosition, wxDefaultSize, 0);
-  fgSizer122->Add(m_tLongitudeDegrees, 1,
-                  wxALL | wxEXPAND | wxALIGN_CENTER_VERTICAL, 5);
+  m_tLongitude = new wxTextCtrl(this, wxID_ANY, wxEmptyString,
+                                wxDefaultPosition, wxDefaultSize, 0);
+  fgSizer119->Add(m_tLongitude, 1, wxALL | wxEXPAND | wxALIGN_CENTER_VERTICAL,
+                  5);
 
-  m_staticText146 = new wxStaticText(this, wxID_ANY, _("degrees"),
-                                     wxDefaultPosition, wxDefaultSize, 0);
-  m_staticText146->Wrap(-1);
-  fgSizer122->Add(m_staticText146, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
-
-  m_tLongitudeMinutes = new wxTextCtrl(this, wxID_ANY, wxEmptyString,
-                                       wxDefaultPosition, wxDefaultSize, 0);
-  fgSizer122->Add(m_tLongitudeMinutes, 1,
-                  wxALL | wxEXPAND | wxALIGN_CENTER_VERTICAL, 5);
-
-  m_staticText147 = new wxStaticText(this, wxID_ANY, _("minutes"),
-                                     wxDefaultPosition, wxDefaultSize, 0);
-  m_staticText147->Wrap(-1);
-  fgSizer122->Add(m_staticText147, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
-
-  fgSizer120->Add(fgSizer122, 1, wxEXPAND, 5);
+  fgSizer120->Add(fgSizer119, 1, wxEXPAND, 5);
 
   m_sdbSizer4 = new wxStdDialogButtonSizer();
   m_sdbSizer4OK = new wxButton(this, wxID_OK);
