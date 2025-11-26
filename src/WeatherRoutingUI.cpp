@@ -52,10 +52,15 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
 
   m_mPosition = new wxMenu();
   wxMenuItem* m_mNewPosition;
-  m_mNewPosition =
-      new wxMenuItem(m_mPosition, wxID_ANY, wxString(_("&New Position")),
-                     wxEmptyString, wxITEM_NORMAL);
+  m_mNewPosition = new wxMenuItem(m_mPosition, wxID_ANY, _("&New Position"),
+                                  wxEmptyString, wxITEM_NORMAL);
   m_mPosition->Append(m_mNewPosition);
+
+  wxMenuItem* m_mEditPosition;
+  m_mEditPosition =
+      new wxMenuItem(m_mPosition, wxID_ANY, wxString(_("&Edit Position")),
+                     wxEmptyString, wxITEM_NORMAL);
+  m_mPosition->Append(m_mEditPosition);
 
   wxMenuItem* m_mUpdateBoat;
   m_mUpdateBoat = new wxMenuItem(
@@ -326,6 +331,23 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
   m_menu1->Append(m_mRoutePosition1);
 
   m_mContextMenu->Append(m_menu1Item);
+  // Context menu for positions list
+  m_mContextMenuPositions = new wxMenu();
+  wxMenuItem* m_mNewPosition1 =
+      new wxMenuItem(m_mContextMenuPositions, wxID_ANY,
+                     _("&New") + '\t' + "Ctrl+N", wxEmptyString, wxITEM_NORMAL);
+  m_mContextMenuPositions->Append(m_mNewPosition1);
+
+  wxMenuItem* m_mEditPosition1 = new wxMenuItem(
+      m_mContextMenuPositions, wxID_ANY, _("&Edit") + '\t' + "Ctrl+E",
+      wxEmptyString, wxITEM_NORMAL);
+  m_mContextMenuPositions->Append(m_mEditPosition1);
+
+  wxMenuItem* m_mDeletePosition1 = new wxMenuItem(
+      m_mContextMenuPositions, wxID_ANY, _("&Delete") + '\t' + "Ctrl+D",
+      wxEmptyString, wxITEM_NORMAL);
+  m_mContextMenuPositions->Append(m_mDeletePosition1);
+
   this->Connect(
       wxEVT_RIGHT_DOWN,
       wxMouseEventHandler(WeatherRoutingBase::WeatherRoutingBaseOnContextMenu),
@@ -352,6 +374,9 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
   m_mPosition->Bind(wxEVT_COMMAND_MENU_SELECTED,
                     wxCommandEventHandler(WeatherRoutingBase::OnNewPosition),
                     this, m_mNewPosition->GetId());
+  m_mPosition->Bind(wxEVT_COMMAND_MENU_SELECTED,
+                    wxCommandEventHandler(WeatherRoutingBase::OnEditPosition),
+                    this, m_mEditPosition->GetId());
   m_mPosition->Bind(wxEVT_COMMAND_MENU_SELECTED,
                     wxCommandEventHandler(WeatherRoutingBase::OnUpdateBoat),
                     this, m_mUpdateBoat->GetId());
@@ -489,6 +514,19 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
   m_menu1->Bind(wxEVT_COMMAND_MENU_SELECTED,
                 wxCommandEventHandler(WeatherRoutingBase::OnRoutePosition),
                 this, m_mRoutePosition1->GetId());
+
+  m_mContextMenuPositions->Bind(
+      wxEVT_COMMAND_MENU_SELECTED,
+      wxCommandEventHandler(WeatherRoutingBase::OnNewPosition), this,
+      m_mNewPosition1->GetId());
+  m_mContextMenuPositions->Bind(
+      wxEVT_COMMAND_MENU_SELECTED,
+      wxCommandEventHandler(WeatherRoutingBase::OnEditPosition), this,
+      m_mEditPosition1->GetId());
+  m_mContextMenuPositions->Bind(
+      wxEVT_COMMAND_MENU_SELECTED,
+      wxCommandEventHandler(WeatherRoutingBase::OnDeletePosition), this,
+      m_mDeletePosition1->GetId());
 }
 
 WeatherRoutingBase::~WeatherRoutingBase() {

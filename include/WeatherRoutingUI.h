@@ -144,6 +144,7 @@ protected:
   virtual void OnSaveAs(wxCommandEvent& event) { event.Skip(); }
   virtual void OnClose(wxCommandEvent& event) { event.Skip(); }
   virtual void OnNewPosition(wxCommandEvent& event) { event.Skip(); }
+  virtual void OnEditPosition(wxCommandEvent& event) { event.Skip(); }
   virtual void OnUpdateBoat(wxCommandEvent& event) { event.Skip(); }
   virtual void OnDeletePosition(wxCommandEvent& event) { event.Skip(); }
   virtual void OnDeleteAllPositions(wxCommandEvent& event) { event.Skip(); }
@@ -201,6 +202,7 @@ protected:
 public:
   wxMenuItem* m_mDeleteAll;
   wxMenu* m_mContextMenu;
+  wxMenu* m_mContextMenuPositions;
 
   WeatherRoutingBase(wxWindow* parent, wxWindowID id = wxID_ANY,
                      const wxString& title = _("Weather Routing"),
@@ -1112,7 +1114,7 @@ public:
   wxTextCtrl* m_tLongitudeMinutes;
 
   NewPositionDialog(wxWindow* parent, wxWindowID id = wxID_ANY,
-                    const wxString& title = _("New Weather Routing Position"),
+                    const wxString& title = _("Edit Weather Routing Position"),
                     const wxPoint& pos = wxDefaultPosition,
                     const wxSize& size = wxDefaultSize,
                     long style = wxDEFAULT_DIALOG_STYLE);
