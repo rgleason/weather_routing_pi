@@ -130,7 +130,7 @@ jobs:
 ## ---------------------
     build-android-arm64:
         docker:
-        - image: cimg/android:2023.12-ndk
+        - image: cimg/android:2025.04-ndk
         resource_class: large
         environment:
         - OCPN_TARGET:  android-arm64
@@ -144,7 +144,7 @@ jobs:
             install_python: true
     build-android-armhf:
         docker:
-        - image: cimg/android:2023.12-ndk
+        - image: cimg/android:2025.04-ndk
         resource_class: large
         environment:
         - OCPN_TARGET:  android-armhf
