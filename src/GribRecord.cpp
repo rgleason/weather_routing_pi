@@ -156,7 +156,7 @@ bool GribRecord::GetInterpolatedParameters(
 //-------------------------------------------------------------------------------
 // Constructeur de interpolate
 //-------------------------------------------------------------------------------
-GribRecord* GribRecord::InterpolatedRecord(const GribRecord& rec1,
+std::shared_ptr<GribRecord> GribRecord::InterpolatedRecord(const GribRecord& rec1,
                                            const GribRecord& rec2, double d,
                                            bool dir) {
   double La1, Lo1, La2, Lo2, Di, Dj;
@@ -202,7 +202,7 @@ GribRecord* GribRecord::InterpolatedRecord(const GribRecord& rec1,
 
   /* should maybe update strCurDate ? */
 
-  GribRecord* ret = new GribRecord;
+  auto ret = std::make_shared<GribRecord>();
   *ret = rec1;
 
   ret->Di = Di, ret->Dj = Dj;
@@ -225,8 +225,8 @@ GribRecord* GribRecord::InterpolatedRecord(const GribRecord& rec1,
 /* for interpolation for x and y records, we must do them together because
    otherwise we end up with a vector interpolation which is not what we want..
    instead we want to interpolate from the polar magnitude, and angles */
-GribRecord* GribRecord::Interpolated2DRecord(
-    GribRecord*& rety, const GribRecord& rec1x, const GribRecord& rec1y,
+std::shared_ptr<GribRecord> GribRecord::Interpolated2DRecord(
+    std::shared_ptr<GribRecord>& rety, const GribRecord& rec1x, const GribRecord& rec1y,
     const GribRecord& rec2x, const GribRecord& rec2y, double d) {
   double La1, Lo1, La2, Lo2, Di, Dj;
   int im1, jm1, im2, jm2;
@@ -244,9 +244,9 @@ GribRecord* GribRecord::Interpolated2DRecord(
       rec2x.Ni != rec2y.Ni || rec2x.Nj != rec2y.Nj) {
     // could also make sure lat and lon min/max are the same...
     // copy first
-    rety = new GribRecord(rec1y);
+    rety = std::make_shared<GribRecord>(rec1y);
 
-    return new GribRecord(rec1x);
+    return std::make_shared<GribRecord>(rec1x);
   }
   // recopie les champs de bits
   int size = Ni * Nj;
@@ -283,7 +283,7 @@ GribRecord* GribRecord::Interpolated2DRecord(
 
   /* should maybe update strCurDate ? */
 
-  GribRecord* ret = new GribRecord;
+  auto ret = std::make_shared<GribRecord>();
 
   *ret = rec1x;
 
@@ -300,7 +300,7 @@ GribRecord* GribRecord::Interpolated2DRecord(
   ret->latMin = wxMin(La1, La2), ret->latMax = wxMax(La1, La2);
   ret->lonMin = Lo1, ret->lonMax = Lo2;
 
-  rety = new GribRecord;
+  rety = std::make_shared<GribRecord>();
   *rety = *ret;
   rety->dataType = rec1y.dataType;
   rety->data = datay;
@@ -310,9 +310,9 @@ GribRecord* GribRecord::Interpolated2DRecord(
   return ret;
 }
 
-GribRecord* GribRecord::MagnitudeRecord(const GribRecord& rec1,
+std::shared_ptr<GribRecord> GribRecord::MagnitudeRecord(const GribRecord& rec1,
                                         const GribRecord& rec2) {
-  GribRecord* rec = new GribRecord(rec1);
+  auto rec = std::make_shared<GribRecord>(rec1);
 
   /* generate a record which is the combined magnitude of two records */
   if (rec1.data && rec2.data && rec1.Ni == rec2.Ni && rec1.Nj == rec2.Nj) {

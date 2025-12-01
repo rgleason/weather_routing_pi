@@ -597,7 +597,6 @@ void RouteMap::SetNewGrib(GribRecordSet* grib) {
       case Idx_COMP_REFL:
         if (grib->m_GribRecordPtrArray[i]) {
           m_NewGrib->SetUnRefGribRecord(
-              // i, new GribRecord(*grib->m_GribRecordPtrArray[i]));
               i, grib->m_GribRecordPtrArray[i]);
         }
         break;
@@ -638,7 +637,6 @@ void RouteMap::SetNewGrib(WR_GribRecordSet* grib) {
       case Idx_SEACURRENT_VY:
         if (grib->m_GribRecordPtrArray[i]) {
           m_NewGrib->SetUnRefGribRecord(
-              // i, new GribRecord(*grib->m_GribRecordPtrArray[i]));
               i, grib->m_GribRecordPtrArray[i]);
         }
         break;
