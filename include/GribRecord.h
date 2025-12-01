@@ -29,6 +29,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include <iostream>
 #include <cmath>
+#include <memory>
 
 #define DEBUG_INFO false
 #define DEBUG_ERROR true

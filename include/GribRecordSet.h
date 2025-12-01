@@ -20,6 +20,8 @@
 #ifndef _WEATHER_ROUTING_GRIB_RECORD_SET_H_
 #define _WEATHER_ROUTING_GRIB_RECORD_SET_H_
 
+#include <memory> 
+
 #include "GribRecord.h"
 
 // These are indexes into the array

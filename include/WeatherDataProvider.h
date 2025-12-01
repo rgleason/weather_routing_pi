@@ -23,6 +23,7 @@
 #include <wx/wx.h>
 
 #include <functional>
+#include <memory>
 
 #include "GribRecord.h"
 #include "GribRecordSet.h"
