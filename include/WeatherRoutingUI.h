@@ -503,7 +503,8 @@ public:
       wxWindow* parent, wxWindowID id = wxID_ANY,
       const wxString& title = _("Weather Routing Configuration"),
       const wxPoint& pos = wxDefaultPosition,
-      const wxSize& size = wxSize(-1, -1), long style = wxDEFAULT_DIALOG_STYLE);
+      const wxSize& size = wxSize(-1, -1), 
+      long style = wxDEFAULT_DIALOG_STYLE | wxMAXIMIZE_BOX | wxMINIMIZE_BOX);
   ~ConfigurationDialogBase();
 };
 
