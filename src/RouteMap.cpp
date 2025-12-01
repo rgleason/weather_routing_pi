@@ -555,7 +555,7 @@ void RouteMap::SetNewGrib(GribRecordSet* grib) {
   // XXX should be grib->m_ID in a newer OpenCPN version
   unsigned int bogus_ID;  // grib->m_ID
 
-  GribRecord* tmp = grib->m_GribRecordPtrArray[Idx_WIND_VX];
+  auto tmp = grib->m_GribRecordPtrArray[Idx_WIND_VX];
   // RecordRefDate is time_t and high byte is likely the same in many grib
   // files, add some entropy
   bogus_ID = tmp->getRecordRefDate() ^ (tmp->getIdCenter() << 24) ^
@@ -597,7 +597,8 @@ void RouteMap::SetNewGrib(GribRecordSet* grib) {
       case Idx_COMP_REFL:
         if (grib->m_GribRecordPtrArray[i]) {
           m_NewGrib->SetUnRefGribRecord(
-              i, new GribRecord(*grib->m_GribRecordPtrArray[i]));
+              // i, new GribRecord(*grib->m_GribRecordPtrArray[i]));
+              i, grib->m_GribRecordPtrArray[i]);
         }
         break;
       default:
@@ -637,7 +638,8 @@ void RouteMap::SetNewGrib(WR_GribRecordSet* grib) {
       case Idx_SEACURRENT_VY:
         if (grib->m_GribRecordPtrArray[i]) {
           m_NewGrib->SetUnRefGribRecord(
-              i, new GribRecord(*grib->m_GribRecordPtrArray[i]));
+              // i, new GribRecord(*grib->m_GribRecordPtrArray[i]));
+              i, grib->m_GribRecordPtrArray[i]);
         }
         break;
       default:

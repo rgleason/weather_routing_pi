@@ -76,10 +76,10 @@ public:
   virtual ~GribRecordSet() { RemoveGribRecords(); }
 
   /* copy and paste by plugins, keep functions in header */
-  void SetUnRefGribRecord(int i, GribRecord* pGR) {
+  void SetUnRefGribRecord(int i, std::shared_ptr<GribRecord> pGR) {
     assert(i >= 0 && i < Idx_COUNT);
     if (m_GribRecordUnref[i] == true) {
-      delete m_GribRecordPtrArray[i];
+      m_GribRecordPtrArray[i].reset();
     }
     m_GribRecordPtrArray[i] = pGR;
     m_GribRecordUnref[i] = true;
@@ -88,7 +88,7 @@ public:
   void RemoveGribRecords() {
     for (int i = 0; i < Idx_COUNT; i++) {
       if (m_GribRecordUnref[i] == true) {
-        delete m_GribRecordPtrArray[i];
+        m_GribRecordPtrArray[i].reset();
       }
     }
   }
@@ -96,7 +96,7 @@ public:
   time_t m_Reference_Time;
   unsigned int m_ID;
 
-  GribRecord* m_GribRecordPtrArray[Idx_COUNT];
+  std::shared_ptr<GribRecord> m_GribRecordPtrArray[Idx_COUNT];
 
 private:
   // grib records files are stored and owned by reader mapGribRecords

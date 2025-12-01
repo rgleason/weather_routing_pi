@@ -529,8 +529,8 @@ public:
    * @note The method expects the input components to follow meteorological
    * conventions where u is positive eastward and v is positive northward
    */
-  static bool getInterpolatedValues(double& M, double& A, const GribRecord* GRX,
-                                    const GribRecord* GRY, double px, double py,
+  static bool getInterpolatedValues(double& M, double& A, const std::shared_ptr<GribRecord> GRX,
+                                    const std::shared_ptr<GribRecord> GRY, double px, double py,
                                     bool numericalInterpolation = true);
 
   /**

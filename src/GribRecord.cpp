@@ -643,8 +643,8 @@ double GribRecord::getInterpolatedValue(double px, double py,
 }
 
 bool GribRecord::getInterpolatedValues(double& M, double& A,
-                                       const GribRecord* GRX,
-                                       const GribRecord* GRY, double px,
+                                       const std::shared_ptr<GribRecord> GRX,
+                                       const std::shared_ptr<GribRecord> GRY, double px,
                                        double py, bool numericalInterpolation) {
   if (!GRX || !GRY) return false;
 
