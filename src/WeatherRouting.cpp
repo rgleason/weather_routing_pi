@@ -560,12 +560,19 @@ void WeatherRouting::OnLeftDown(wxMouseEvent& event) {
 void WeatherRouting::OnLeftUp(wxMouseEvent& event) { m_tDownTimer.Stop(); }
 
 void WeatherRouting::OnDownTimer(wxTimerEvent&) {
-  m_panel->m_lWeatherRoutes->PopupMenu(m_mContextMenu, m_downPos);
+  int flags = wxLIST_HITTEST_NOWHERE | wxLIST_HITTEST_ONITEM;
+  if (m_panel->m_lWeatherRoutes->HitTest(m_downPos, flags) != wxNOT_FOUND)
+    m_panel->m_lWeatherRoutes->PopupMenu(m_mContextMenu, m_downPos);
+  else
+    m_panel->m_lPositions->PopupMenu(m_mContextMenuPositions, m_downPos);
 }
 
 void WeatherRouting::OnRightUp(wxMouseEvent& event) {
   if (event.GetEventObject() == m_panel->m_lWeatherRoutes)
     m_panel->m_lWeatherRoutes->PopupMenu(m_mContextMenu, event.GetPosition());
+  else
+    m_panel->m_lPositions->PopupMenu(m_mContextMenuPositions,
+                                     event.GetPosition());
 }
 
 void WeatherRouting::CopyDataFiles(wxString from, wxString to) {
@@ -726,28 +733,6 @@ void WeatherRouting::UpdateDisplaySettings() {
 void WeatherRouting::AddPosition(double lat, double lon) {
   wxTextEntryDialog pd(this, _("Enter Name"), _("New Position"));
   if (pd.ShowModal() == wxID_OK) AddPosition(lat, lon, pd.GetValue(), false);
-}
-
-void WeatherRouting::AddPosition(const wxString& latitude_degrees,
-                                 const wxString& latitude_minutes,
-                                 const wxString& longitude_degrees,
-                                 const wxString& longitude_minutes,
-                                 wxString name, const bool suppress_prompt) {
-  double lat = 0, lon = 0, lat_minutes = 0, lon_minutes = 0;
-
-  latitude_degrees.ToDouble(&lat);
-  latitude_minutes.ToDouble(&lat_minutes);
-  lat_minutes = fabs(lat_minutes);
-  if (lat < 0) lat_minutes = -lat_minutes;
-  lat += lat_minutes / 60;
-
-  longitude_degrees.ToDouble(&lon);
-  longitude_minutes.ToDouble(&lon_minutes);
-  lon_minutes = fabs(lon_minutes);
-  if (lon < 0) lon_minutes = -lon_minutes;
-  lon += lon_minutes / 60;
-
-  AddPosition(lat, lon, std::move(name), suppress_prompt);
 }
 
 void WeatherRouting::AddPosition(double lat, double lon, wxString name,
@@ -1174,10 +1159,9 @@ void WeatherRouting::UpdateRoutePositionDialog() {
 void WeatherRouting::OnNewPosition(wxCommandEvent& event) {
   NewPositionDialog dlg(this);
   if (dlg.ShowModal() == wxID_OK) {
-    AddPosition(
-        dlg.m_tLatitudeDegrees->GetValue(), dlg.m_tLatitudeMinutes->GetValue(),
-        dlg.m_tLongitudeDegrees->GetValue(),
-        dlg.m_tLongitudeMinutes->GetValue(), dlg.m_tName->GetValue(), false);
+    AddPosition(fromDMM_Plugin(dlg.m_tLatitude->GetValue()),
+                fromDMM_Plugin(dlg.m_tLongitude->GetValue()),
+                dlg.m_tName->GetValue(), false);
   }
 }
 
@@ -1311,24 +1295,17 @@ void WeatherRouting::OnEditPosition() {
       dlg.m_tName->SetValue(p.Name);
       double degrees;
       double minutes = std::modf(p.lat, &degrees);
-      dlg.m_tLatitudeDegrees->SetValue(wxString::Format(wxT("%3.0f"), degrees));
-      dlg.m_tLatitudeMinutes->SetValue(
-          wxString::Format(wxT("%2.4f"), std::fabs(60 * minutes)));
-      minutes = std::modf(p.lon, &degrees);
-      dlg.m_tLongitudeDegrees->SetValue(
-          wxString::Format(wxT("%3.0f"), degrees));
-      dlg.m_tLongitudeMinutes->SetValue(
-          wxString::Format(wxT("%2.4f"), std::fabs(60 * minutes)));
+      dlg.m_tLatitude->SetValue(toSDMM_PlugIn(1, p.lat));
+      dlg.m_tLongitude->SetValue(toSDMM_PlugIn(2, p.lon));
       break;
     }
   }
 
   // Show dialog and store result
   if (dlg.ShowModal() == wxID_OK) {
-    AddPosition(
-        dlg.m_tLatitudeDegrees->GetValue(), dlg.m_tLatitudeMinutes->GetValue(),
-        dlg.m_tLongitudeDegrees->GetValue(),
-        dlg.m_tLongitudeMinutes->GetValue(), dlg.m_tName->GetValue(), true);
+    AddPosition(fromDMM_Plugin(dlg.m_tLatitude->GetValue()),
+                fromDMM_Plugin(dlg.m_tLongitude->GetValue()),
+                dlg.m_tName->GetValue(), true);
   }
 }
 
