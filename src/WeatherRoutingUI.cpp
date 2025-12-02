@@ -4522,7 +4522,7 @@ void BoatDialogBase::CreateCursorInfoPanel(wxWindow* parent,
   bestVMGSizer->Add(windSpeedSizer, 0, wxEXPAND | wxALL, 3);
 
   // Create a grid for upwind and downwind VMG data
-  wxFlexGridSizer* vmgGridSizer = new wxFlexGridSizer(7, 2, 3, 10);
+  wxFlexGridSizer* vmgGridSizer = new wxFlexGridSizer(9, 2, 3, 10);
   vmgGridSizer->AddGrowableCol(1);
 
   // Upwind section header
