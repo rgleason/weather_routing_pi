@@ -57,6 +57,53 @@ Test project weather_routing_pi/build
 All tests are intended to pass.  If any tests fail, please report an issue, providing enough context 
 for a developer to reproduce and fix the problem.
 
+Test Coverage
+=============
+
+`gcov` can be used to determine and display test coverage (i.e. the percentage of source code 
+lines that are executed by automated unit tests) as follows (from the build directory, as usual):
+
+```
+make coverage
+```
+
+You should see something like this:
+
+```
+File 'IsoRoute.cpp'
+Lines executed:60.44% of 771
+
+File 'LineBufferOverlay.cpp'
+Lines executed:63.95% of 172
+
+File 'PlotDialog.cpp'
+Lines executed:0.00% of 218
+
+File 'Polar.cpp'
+Lines executed:69.87% of 634
+
+File 'PolygonRegion.cpp'
+Lines executed:61.07% of 298
+
+File 'Position.cpp'
+Lines executed:43.85% of 317
+
+```
+
+Occasionally you might see an error like this:
+
+```
+Invalid .gcda File!
+```
+The simplest fix for this is simply to delete all the '.gcda' files in the build directory and it's subdirectories, and then run `make gcov` again to regenerate these "Google coverage data" files.  For example (on Linux, MacOS and similar platforms):
+
+```
+ find . -name '*.gcda' | xargs rm    
+```
+
+PR's to increase the amount of automated testing, and overall test coverage are highly appreciated.
+Test code is located in the `test` directory.
+
 License
 =======
 The plugin code is licensed under the terms of the GPL v3+ 
