@@ -244,10 +244,14 @@ void RouteMapOverlay::DrawLine(const RoutePoint* p1, const RoutePoint* p2,
   WR_GetCanvasPixLL(&vp, &p2p, p2->lat, p2->lon);
 
 #ifndef __OCPN__ANDROID__
-  if (!dc.GetDC()) glVertex2d(p1p.x, p1p.y), glVertex2d(p2p.x, p2p.y);
-  else
+  if (!dc.GetDC()) {
+    glVertex2d(p1p.x, p1p.y);
+    glVertex2d(p2p.x, p2p.y);
+  } else
 #endif
+  {
     dc.StrokeLine(p1p.x, p1p.y, p2p.x, p2p.y);
+  }
 }
 
 void RouteMapOverlay::DrawLine(const RoutePoint* p1, wxColour& color1,
@@ -469,39 +473,35 @@ void RouteMapOverlay::Render(wxDateTime time, SettingsDialog& settingsdialog,
           settingsdialog.m_sAlternateRouteThickness->GetValue();
       if (AlternateRouteThickness) {
         Lock();
-        if (origin.empty()) {
-          Unlock();
-        } else {
-          IsoChronList::iterator it;
+        IsoChronList::iterator it;
 
-          /* reset drawn flag for all positions
-             this is used to avoid duplicating alternate route segments */
-          for (it = origin.begin(); it != origin.end(); ++it)
-            (*it)->ResetDrawnFlag();
+        /* reset drawn flag for all positions
+           this is used to avoid duplicating alternate route segments */
+        for (it = origin.begin(); it != origin.end(); ++it)
+          (*it)->ResetDrawnFlag();
 
-          bool AlternatesForAll = settingsdialog.m_cbAlternatesForAll->GetValue();
-          if (AlternatesForAll)
-            it = origin.begin();
-          else {
-            it = origin.end();
-            it--;
+        bool AlternatesForAll = settingsdialog.m_cbAlternatesForAll->GetValue();
+        if (AlternatesForAll)
+          it = origin.begin();
+        else {
+          it = origin.end();
+          it--;
+        }
+
+        SetWidth(dc, AlternateRouteThickness);
+#ifndef __OCPN__ANDROID__
+        if (!dc.GetDC()) glBegin(GL_LINES);
+#endif
+        for (; it != origin.end(); ++it)
+          for (IsoRouteList::iterator rit = (*it)->routes.begin();
+               rit != (*it)->routes.end(); ++rit) {
+            RenderAlternateRoute(*rit, !AlternatesForAll, dc, nvp);
           }
 
-          SetWidth(dc, AlternateRouteThickness);
 #ifndef __OCPN__ANDROID__
-          if (!dc.GetDC()) glBegin(GL_LINES);
+        if (!dc.GetDC()) glEnd();
 #endif
-          for (; it != origin.end(); ++it)
-            for (IsoRouteList::iterator rit = (*it)->routes.begin();
-                 rit != (*it)->routes.end(); ++rit) {
-              RenderAlternateRoute(*rit, !AlternatesForAll, dc, nvp);
-            }
-
-#ifndef __OCPN__ANDROID__
-          if (!dc.GetDC()) glEnd();
-#endif
-          Unlock();
-        }
+        Unlock();
       }
 
       static const unsigned char routecolors[][3] = {
@@ -756,7 +756,6 @@ wxString RouteMapOverlay::sailingConditionText(int level) {
 }
 
 // -----------------------------------------------------
-// AI Rewrote
 
 void RouteMapOverlay::RenderCourse(bool cursor_route, piDC& dc,
                                    PlugIn_ViewPort& vp, bool comfortRoute) {
@@ -785,8 +784,16 @@ void RouteMapOverlay::RenderCourse(bool cursor_route, piDC& dc,
   }
   Unlock();
 
+  /* ComfortDisplay Customization
+   * ------------------------------------------------
+   * To get weather data (wind, current, waves) on a
+   * position and through time, iterate over the
+   * position and in parallel on GetPlotData
+   * Thanks Sean for your help :-)
+   */
   std::list<PlotData> plot = GetPlotData(false);
   std::list<PlotData>::reverse_iterator itt = plot.rbegin();
+  std::list<PlotData>::reverse_iterator inext = itt;
 
   if (itt == plot.rend()) {
     return;
@@ -794,29 +801,28 @@ void RouteMapOverlay::RenderCourse(bool cursor_route, piDC& dc,
 
   wxColor lc = sailingConditionColor(sailingConditionLevel(*itt));
 
+  /* draw lines to this route */
 #ifndef __OCPN__ANDROID__
   if (!dc.GetDC()) glBegin(GL_LINES);
 #endif
 
-  RoutePoint* to = pos;
-  for (auto it = plot.rbegin(); it != plot.rend(); ++it) {
-    RoutePoint* from = &(*it);
+  /* end point if reached is not in GetPlotData */
+  RoutePoint *to, from;
+  for (to = pos; itt != plot.rend(); inext = itt, itt++, to = &(*itt)) {
+    RoutePoint* from = &(*inext);
     if (comfortRoute) {
-      wxColor c = sailingConditionColor(sailingConditionLevel(*it));
+      wxColor c = sailingConditionColor(sailingConditionLevel(*itt));
       DrawLine(to, c, from, lc, dc, vp);
       lc = c;
     } else {
       DrawLine(to, from, dc, vp);
     }
-    to = from;
   }
 
 #ifndef __OCPN__ANDROID__
   if (!dc.GetDC()) glEnd();
 #endif
 }
-
-// END AI REWROTE
 
 void RouteMapOverlay::RenderBoatOnCourse(bool cursor_route, wxDateTime time,
                                          piDC& dc, PlugIn_ViewPort& vp) {
@@ -911,7 +917,7 @@ void RouteMapOverlay::RenderWindBarbsOnRoute(piDC& dc, PlugIn_ViewPort& vp,
     //   ctw  stw  : boat speed over water
     float windSpeed = it->twsOverWater;
     float windDirection =
-        it->twdOverWater;  // heading_resolve(it->ctw - windDirection);
+        it->twdOverWater;  // heading_resolve(it->ctw - it->W);
 
     // By default, display true wind
     float finalWindSpeed = windSpeed;
@@ -1248,7 +1254,7 @@ void RouteMapOverlay::RenderCurrent(piDC& dc, PlugIn_ViewPort& vp) {
           do {
             if (++it == origin.end()) {  // don't plot outside map
               it--;
-              goto skip2;
+              goto skip;
             }
           } while (!(*it)->Contains(p));
           it--;
@@ -1282,7 +1288,7 @@ void RouteMapOverlay::RenderCurrent(piDC& dc, PlugIn_ViewPort& vp) {
           p.grib_is_data_deficient = configuration.grib_is_data_deficient;
           v2 = p.GetCurrentData(configuration, W2, VW2, data_mask2);
           if (!v1 || !v2) {
-            goto skip2;
+            goto skip;
           }
 #if 0
                 // XX climatology angle is to not from
@@ -1312,7 +1318,7 @@ void RouteMapOverlay::RenderCurrent(piDC& dc, PlugIn_ViewPort& vp) {
                                               deg2rad(W + 180) + nvp.rotation,
                                               lat < 0);
         }
-      skip2:;
+      skip:;
       }
     }
 
@@ -1428,9 +1434,6 @@ std::list<PlotData>& RouteMapOverlay::GetPlotData(bool cursor_route) {
 
     Position* pos = next->parent;
 
-    // Guard against single-node routes: if next has no parent, no isochrone mapping possible
-    if (!pos) return plotdata;
-
     RouteMapConfiguration configuration = GetConfiguration();
     Lock();
     IsoChronList::iterator it = origin.begin(), itp;
@@ -1442,35 +1445,27 @@ std::list<PlotData>& RouteMapOverlay::GetPlotData(bool cursor_route) {
       }
     it--;
 
-	while (pos) {
-		// If we're at begin(), there is no previous isochrone to step back to.
-		// Stop to avoid decrementing begin().
-		if (it == origin.begin()) {
-			// Option: process the current isochrone once, then break.
-			// Here we break to avoid invalid iterator decrement.
-			break;
-		}
+    while (pos) {
+      itp = it;
+      itp--;
 
-		// Safe previous iterator
-		itp = std::prev(it);
+      configuration.grib = (*it)->m_Grib;
+      configuration.time = (*it)->time;
+      // printf("grib time %p %d\n", configuration.grib, configuration.time);
 
-		configuration.grib = (*it)->m_Grib;
-		configuration.time = (*it)->time;
+      configuration.UsedDeltaTime = (*it)->delta;
+      PlotData data;
 
-		configuration.UsedDeltaTime = (*it)->delta;
-		PlotData data;
+      double dt = configuration.UsedDeltaTime;
+      data.time = (*it)->time;
 
-		double dt = configuration.UsedDeltaTime;
-		data.time = (*it)->time;
+      if (pos->GetPlotData(next, dt, configuration, data))
+        plotdata.push_front(data);
 
-		if (pos->GetPlotData(next, dt, configuration, data))
-			plotdata.push_front(data);
-
-		it = itp;
-		next = pos;
-		pos = pos->parent;
-	}
-	
+      it = itp;
+      next = pos;
+      pos = pos->parent;
+    }
 
     Unlock();
   }
@@ -1583,10 +1578,6 @@ int RouteMapOverlay::Cyclones(int* months) {
   int cyclones = 0;
 
   Lock();
-  if (origin.empty()) {
-    Unlock();
-    return 0;
-  }
   wxDateTime ptime = m_EndTime;
   IsoChronList::iterator it = origin.end();
 
@@ -1647,59 +1638,51 @@ void RouteMapOverlay::UpdateDestination() {
   if (done) {
     Lock();
     delete destination_position;
+    destination_position = 0;
+    /* this doesn't happen often, so can be slow.. for each position in the last
+       isochrone, we try to propagate to the destination */
+    IsoChronList::iterator iit = origin.end();
+    iit--;
+    iit--; /* second from last isochrone */
+    IsoChron* isochrone = *iit;
+    double mindt = INFINITY;
+    Position* endp;
+    double minH;
+    bool mintacked;
+    bool minjibes;
+    bool minsail_plan_changed;
+    DataMask mindata_mask;
 
-    // If not enough isochrones available, fall back to closest position logic
-    if (origin.size() < 2) {
+    for (IsoRouteList::iterator it = isochrone->routes.begin();
+         it != isochrone->routes.end(); ++it) {
+      configuration.grib = isochrone->m_Grib;
+      configuration.grib_is_data_deficient =
+          isochrone->m_Grib_is_data_deficient;
+
+      configuration.time = isochrone->time;
+      configuration.UsedDeltaTime = isochrone->delta;
+      (*it)->PropagateToEnd(configuration, mindt, endp, minH, mintacked,
+                            minjibes, minsail_plan_changed, mindata_mask);
+    }
+    Unlock();
+
+    if (std::isinf(mindt)) {
+      // destination is between two isochrones
+      // but propagate can't reach it (land or boundaries in the way).
+      // Use an upper bound time for EndTime, not defined times are too much
+      // trouble later.
+      m_EndTime = isochrone->time + wxTimeSpan(0, 0, isochrone->delta);
       last_destination_position =
           ClosestPosition(configuration.EndLat, configuration.EndLon);
-      m_EndTime = wxDateTime();  // invalid
-      Unlock();
     } else {
-      /* this doesn't happen often, so can be slow.. for each position in the last
-         isochrone, we try to propagate to the destination */
-      IsoChronList::iterator iit = origin.end();
-      iit--;
-      iit--; /* second from last isochrone */
-      IsoChron* isochrone = *iit;
-      double mindt = INFINITY;
-      Position* endp;
-      double minH;
-      bool mintacked;
-      bool minjibes;
-      bool minsail_plan_changed;
-      DataMask mindata_mask;
+      destination_position = new Position(
+          configuration.EndLat, configuration.EndLon, endp, minH, NAN,
+          endp->polar, endp->tacks + mintacked, endp->jibes + minjibes,
+          endp->sail_plan_changes + minsail_plan_changed, mindata_mask);
 
-      for (IsoRouteList::iterator it = isochrone->routes.begin();
-           it != isochrone->routes.end(); ++it) {
-        configuration.grib = isochrone->m_Grib;
-        configuration.grib_is_data_deficient =
-            isochrone->m_Grib_is_data_deficient;
-
-        configuration.time = isochrone->time;
-        configuration.UsedDeltaTime = isochrone->delta;
-        (*it)->PropagateToEnd(configuration, mindt, endp, minH, mintacked,
-                              minjibes, minsail_plan_changed, mindata_mask);
-      }
-      Unlock();
-
-      if (std::isinf(mindt)) {
-        // destination is between two isochrones
-        // but propagate can't reach it (land or boundaries in the way).
-        // Use an upper bound time for EndTime, not defined times are too much
-        // trouble later.
-        m_EndTime = isochrone->time + wxTimeSpan(0, 0, isochrone->delta);
-        last_destination_position =
-            ClosestPosition(configuration.EndLat, configuration.EndLon);
-      } else {
-        destination_position = new Position(
-            configuration.EndLat, configuration.EndLon, endp, minH, NAN,
-            endp->polar, endp->tacks + mintacked, endp->jibes + minjibes,
-            endp->sail_plan_changes + minsail_plan_changed, mindata_mask);
-
-        m_EndTime = isochrone->time + wxTimeSpan::Milliseconds(1000 * mindt);
-        isochrone->delta = mindt;
-        last_destination_position = destination_position;
-      }
+      m_EndTime = isochrone->time + wxTimeSpan::Milliseconds(1000 * mindt);
+      isochrone->delta = mindt;
+      last_destination_position = destination_position;
     }
   } else {
     last_destination_position =
