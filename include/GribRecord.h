@@ -142,6 +142,7 @@ enum DataCenterModel {
 };
 
 //----------------------------------------------
+
 class GribCode {
 public:
   static zuint makeCode(zuchar dataType, zuchar levelType, zuint levelValue) {
@@ -179,13 +180,71 @@ public:
  * - Unit conversions and statistical calculations.
  *
  */
+
 class GribRecord {
 public:
   /** Copy constructor performs a deep copy of the GribRecord. */
   GribRecord(const GribRecord& rec);
-  GribRecord() { m_bfilled = false; }
+  // Default constructor: fully initialize all members to safe defaults.
+  GribRecord()
+    : id(0),
+      ok(false),
+      knownData(false),
+      waveData(false),
+      IsDuplicated(false),
+      eof(false),
+      dataKey(),
+      dataCenterModel(OTHER_DATA_CENTER),
+      m_bfilled(false),
+      editionNumber(0),
+      idCenter(0),
+      idModel(0),
+      idGrid(0),
+      dataType(0),
+      levelType(0),
+      levelValue(0),
+      hasBMS(false),
+      refyear(0), refmonth(0), refday(0), refhour(0), refminute(0),
+      periodP1(0), periodP2(0),
+      timeRange(0),
+      periodsec(0),
+      refDate(0),
+      curDate(0),
+      NV(0), PV(0),
+      gridType(0),
+      Ni(0), Nj(0),
+      La1(0.0), Lo1(0.0),
+      La2(0.0), Lo2(0.0),
+      latMin(0.0), lonMin(0.0), latMax(0.0), lonMax(0.0),
+      Di(0.0), Dj(0.0),
+      resolFlags(0), scanFlags(0),
+      hasDiDj(false),
+      isEarthSpheric(false),
+      isUeastVnorth(false),
+      isScanIpositive(false),
+      isScanJpositive(false),
+      isAdjacentI(false),
+      BMSsize(0), BMSbits(nullptr),
+      data(nullptr)
+  {
+    strRefDate[0] = '\0';
+    strCurDate[0] = '\0';
+  }
 
   virtual ~GribRecord();
+
+  // ... rest of header unchanged ...
+
+// AI end
+
+
+// class GribRecord {
+// public:
+  /** Copy constructor performs a deep copy of the GribRecord. */
+//  GribRecord(const GribRecord& rec);
+//  GribRecord() { m_bfilled = false; }
+//
+//  virtual ~GribRecord();
 
   /**
    * Creates a new GribRecord by temporally interpolating between two time

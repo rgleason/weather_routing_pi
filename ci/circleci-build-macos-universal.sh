@@ -80,6 +80,7 @@ make test
 # is not created as required.
 make package || make package
 
+
 # Create the cached /usr/local archive
 if [ -n "$CI"  ]; then
   tar -C /usr -cf /tmp/local.cache.tar  local
