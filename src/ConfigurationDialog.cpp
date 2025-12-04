@@ -127,29 +127,14 @@ void ConfigurationDialog::OnBoatFilename(wxCommandEvent& event) {
   if (openDialog.ShowModal() == wxID_OK) SetBoatFilename(openDialog.GetPath());
 }
 
-#define SET_CHECKBOX_FIELD(FIELD, VALUE)                          \
-  do {                                                            \
-    bool alltrue = true, allfalse = true;                         \
-    for (std::list<RouteMapConfiguration>::iterator it =          \
-             configurations.begin();                              \
-         it != configurations.end(); it++)                        \
-      if (VALUE)                                                  \
-        allfalse = false;                                         \
-      else                                                        \
-        alltrue = false;                                          \
-    m_cb##FIELD->Set3StateValue(alltrue    ? wxCHK_CHECKED        \
-                                : allfalse ? wxCHK_UNCHECKED      \
-                                           : wxCHK_UNDETERMINED); \
-  } while (0)
-
-#define SET_CHECKBOX(FIELD) SET_CHECKBOX_FIELD(FIELD, (*it).FIELD)
-
+// --- Macros for filling controls from configurations --------------------------------
+// Control helper used by many SET_* macros
 #define SET_CONTROL_VALUE(VALUE, CONTROL, SETTER, TYPE, NULLVALUE)          \
   do {                                                                      \
     bool allsame = true;                                                    \
     std::list<RouteMapConfiguration>::iterator it = configurations.begin(); \
     TYPE value = VALUE;                                                     \
-    for (it++; it != configurations.end(); it++) {                          \
+    for (it++; it != configurations.end(); ++it) {                          \
       if (value != VALUE) {                                                 \
         allsame = false;                                                    \
         break;                                                              \
@@ -173,7 +158,7 @@ void ConfigurationDialog::OnBoatFilename(wxCommandEvent& event) {
     bool allsame = true;                                                      \
     std::list<RouteMapConfiguration>::iterator it = configurations.begin();   \
     wxString value = VALUE;                                                   \
-    for (it++; it != configurations.end(); it++) {                            \
+    for (it++; it != configurations.end(); ++it) {                            \
       if (value != VALUE) {                                                   \
         allsame = false;                                                      \
         break;                                                                \
@@ -187,6 +172,7 @@ void ConfigurationDialog::OnBoatFilename(wxCommandEvent& event) {
       m_c##FIELD->SetValue(wxEmptyString);                                    \
     }                                                                         \
   } while (0)
+
 #define SET_CHOICE(FIELD) SET_CHOICE_VALUE(FIELD, (*it).FIELD)
 
 #define SET_SPIN_VALUE(FIELD, VALUE) \
@@ -199,11 +185,52 @@ void ConfigurationDialog::OnBoatFilename(wxCommandEvent& event) {
 
 #define SET_SPIN_DOUBLE(FIELD) SET_SPIN_DOUBLE_VALUE(FIELD, (*it).FIELD)
 
+// Safer checkbox macros: use internal wr_cfg loop and safe fallback for 2-state
+#define SET_CHECKBOX_FIELD(FIELD, VALUE_EXPR)                             \
+  do {                                                                    \
+    bool wr_alltrue = true, wr_allfalse = true;                           \
+    for (const auto& wr_cfg : configurations) {                           \
+      if (VALUE_EXPR)                                                      \
+        wr_allfalse = false;                                               \
+      else                                                                 \
+        wr_alltrue = false;                                                \
+    }                                                                      \
+    wxCheckBox* cb = m_cb##FIELD;                                          \
+    if ( cb && cb->Is3State() ) {                                          \
+      cb->Set3StateValue(wr_alltrue ? wxCHK_CHECKED                        \
+                         : wr_allfalse ? wxCHK_UNCHECKED                   \
+                                       : wxCHK_UNDETERMINED);              \
+    } else if ( cb ) {                                                     \
+      /* 2-state fallback: if unanimous keep value, otherwise choose false */\
+      if (wr_alltrue) cb->SetValue(true);                                  \
+      else cb->SetValue(false);                                            \
+    }                                                                      \
+  } while (0)
+
+#define SET_CHECKBOX(FIELD) SET_CHECKBOX_FIELD(FIELD, wr_cfg.FIELD)
+
+#define GET_CHECKBOX(FIELD)                                                 \
+  do {                                                                       \
+    wxCheckBox* cb = m_cb##FIELD;                                            \
+    if (cb && cb->Is3State()) {                                              \
+      wxCheckBoxState wr_st = cb->Get3StateValue();                          \
+      if (wr_st == wxCHK_UNCHECKED)                                          \
+        configuration.FIELD = false;                                         \
+      else if (wr_st == wxCHK_CHECKED)                                       \
+        configuration.FIELD = true;                                          \
+      /* UNDETERMINED: leave configuration.FIELD unchanged */                \
+    } else if (cb) {                                                         \
+      /* 2-state checkbox: use boolean value */                              \
+      configuration.FIELD = cb->GetValue();                                  \
+    }                                                                        \
+  } while (0)
+
 #ifdef __OCPN__ANDROID__
 #define NO_EDITED_CONTROLS 1
 #else
 #define NO_EDITED_CONTROLS 0
 #endif
+// ---------------------------------------------------------------------------------
 
 void ConfigurationDialog::SetConfigurations(
     std::list<RouteMapConfiguration> configurations) {
@@ -406,14 +433,6 @@ void ConfigurationDialog::SetStartDateTime(wxDateTime datetime) {
   }
 }
 
-#define GET_CHECKBOX(FIELD)                                  \
-  do {                                                       \
-    if (m_cb##FIELD->Get3StateValue() == wxCHK_UNCHECKED)    \
-      configuration.FIELD = false;                           \
-    else if (m_cb##FIELD->Get3StateValue() == wxCHK_CHECKED) \
-      configuration.FIELD = true;                            \
-  } while (0)
-
 #define GET_SPIN(FIELD)                                              \
   if (NO_EDITED_CONTROLS ||                                          \
       std::find(m_edited_controls.begin(), m_edited_controls.end(),  \
@@ -431,6 +450,7 @@ void ConfigurationDialog::SetStartDateTime(wxDateTime datetime) {
       if (m_c##FIELD->GetString(m_c##FIELD->GetCount() - 1) == wxEmptyString) \
         m_c##FIELD->Delete(m_c##FIELD->GetCount() - 1);                       \
     }
+	
 
 void ConfigurationDialog::Update() {
   if (m_bBlockUpdate) return;
@@ -468,7 +488,22 @@ void ConfigurationDialog::Update() {
       // We must preserve the time in case only date but not time, is being
       // changed by the user... configuration.StartTime is UTC, m_dpStartDate
       // Local or UTC so adjust
-      wxDateTime time = configuration.StartTime;
+	// Replace each occurrence of:
+	//    wxDateTime time = configuration.StartTime;
+	// with the defensive version below.
+	
+	wxDateTime time = configuration.StartTime;
+	if (!time.IsValid())
+	{
+		// Defensive fallback: avoid passing an invalid wxDateTime to SetValue().
+		// Policy choices:
+		//  - Use current time to keep UI populated: time = wxDateTime::Now();
+		//  - Skip calling SetValue() for invalid dates (requires branch at call site)
+		//  - Use SetStartDateTime(time) which shows a warning (not ideal in bulk updates)
+		//
+		// Here we choose to fall back to now to avoid the wxCHECK abort.
+		time = wxDateTime::Now();
+	}
       if (m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue())
         time = time.FromUTC();
 
@@ -490,7 +525,23 @@ void ConfigurationDialog::Update() {
                   (wxObject*)m_tpTime) != m_edited_controls.end()) {
       // must use correct data on UTC conversion to preserve Daylight Savings
       // Time changes across dates
-      wxDateTime time = configuration.StartTime;
+
+	// Replace each occurrence of:
+	//    wxDateTime time = configuration.StartTime;
+	// with the defensive version below.
+
+	wxDateTime time = configuration.StartTime;
+	if (!time.IsValid())
+	{
+		// Defensive fallback: avoid passing an invalid wxDateTime to SetValue().
+		// Policy choices:
+		//  - Use current time to keep UI populated: time = wxDateTime::Now();
+		//  - Skip calling SetValue() for invalid dates (requires branch at call site)
+		//  - Use SetStartDateTime(time) which shows a warning (not ideal in bulk updates)
+		//
+		// Here we choose to fall back to now to avoid the wxCHECK abort.
+		time = wxDateTime::Now();
+}
       if (m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue())
         time = time.FromUTC();
 
