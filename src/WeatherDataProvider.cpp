@@ -435,7 +435,7 @@ double WeatherDataProvider::GetWeatherParameter(
   if (!grib) return returnOnEmpty;
 
   // Try to retrieve the data from local GRIB
-  GribRecord* grh = grib->m_GribRecordPtrArray[gribIndex];
+  std::shared_ptr<GribRecord> grh = grib->m_GribRecordPtrArray[gribIndex];
   if (!grh) return returnOnEmpty;
 
   double value = grh->getInterpolatedValue(lon, lat, true);

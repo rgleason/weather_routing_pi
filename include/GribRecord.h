@@ -29,6 +29,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include <iostream>
 #include <cmath>
+#include <memory>
 
 #define DEBUG_INFO false
 #define DEBUG_ERROR true
@@ -277,7 +278,7 @@ public:
    * @note For vector fields (e.g., wind, currents), use Interpolated2DRecord()
    *       instead to properly handle both components together
    */
-  static GribRecord* InterpolatedRecord(const GribRecord& rec1,
+  static std::shared_ptr<GribRecord> InterpolatedRecord(const GribRecord& rec1,
                                         const GribRecord& rec2, double d,
                                         bool dir = false);
 
@@ -306,13 +307,13 @@ public:
    *         - Any input record is invalid
    *         - Memory allocation fails
    */
-  static GribRecord* Interpolated2DRecord(GribRecord*& rety,
+  static std::shared_ptr<GribRecord> Interpolated2DRecord(std::shared_ptr<GribRecord>& rety,
                                           const GribRecord& rec1x,
                                           const GribRecord& rec1y,
                                           const GribRecord& rec2x,
                                           const GribRecord& rec2y, double d);
 
-  static GribRecord* MagnitudeRecord(const GribRecord& rec1,
+  static std::shared_ptr<GribRecord> MagnitudeRecord(const GribRecord& rec1,
                                      const GribRecord& rec2);
 
   /**
@@ -588,8 +589,8 @@ public:
    * @note The method expects the input components to follow meteorological
    * conventions where u is positive eastward and v is positive northward
    */
-  static bool getInterpolatedValues(double& M, double& A, const GribRecord* GRX,
-                                    const GribRecord* GRY, double px, double py,
+  static bool getInterpolatedValues(double& M, double& A, const std::shared_ptr<GribRecord> GRX,
+                                    const std::shared_ptr<GribRecord> GRY, double px, double py,
                                     bool numericalInterpolation = true);
 
   /**
