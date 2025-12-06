@@ -552,7 +552,8 @@ double RoutePoint::PropagateToPoint(double dlat, double dlon,
     ctw =
         weather_data.twdOverWater + heading; /* rotated relative to true wind */
 
-    double timeseconds;  // not used
+    double timeseconds = 0.0;  // Set to negative values for sail plan changes,
+                               // tacking and jibing
 
     if (!boat_data.GetBestPolarAndBoatSpeed(
             configuration, weather_data, heading, ctw, NAN /*parent_heading*/,
