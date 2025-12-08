@@ -238,14 +238,53 @@ void ConfigurationDialog::SetConfigurations(
 
   m_edited_controls.clear();
 
+  //-----------
+
+  // Keep original behaviour for multi-selection fields
   SET_CHOICE(Start);
 
-  bool ult = m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue();
+  // If there are no configurations, nothing to populate - bail out safely.
+  if (configurations.empty()) {
+    m_bBlockUpdate = false;
+    return;
+  }
+
+  // Create iterator used by the existing macros that expect (*it)
+  std::list<RouteMapConfiguration>::iterator it = configurations.begin();
+
+  const bool ult =
+      m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue();
 #define STARTTIME (ult ? it->StartTime.FromUTC() : it->StartTime)
 
-  SET_CONTROL_VALUE(STARTTIME.GetDateOnly(), m_dpStartDate, SetValue,
-                    wxDateTime, wxDateTime());
-  SET_CONTROL_VALUE(STARTTIME, m_tpTime, SetValue, wxDateTime, wxDateTime());
+  // Populate date/time from the first configuration safely
+  if (it != configurations.end()) {
+    // Date part: only set if valid (avoid MSW assert), otherwise set "none"
+    // only when the control supports wxDP_ALLOWNONE
+    wxDateTime dateVal = STARTTIME.GetDateOnly();
+    wxSize s(m_dpStartDate->GetSize());
+    if (dateVal.IsValid()) {
+      m_dpStartDate->SetValue(dateVal);
+      m_dpStartDate->SetForegroundColour(wxColour(0, 0, 0));
+    } else if (m_dpStartDate->GetWindowStyle() & wxDP_ALLOWNONE) {
+      m_dpStartDate->SetValue(wxDefaultDateTime);
+      m_dpStartDate->SetForegroundColour(wxColour(180, 180, 180));
+    }  // else leave control unchanged
+    m_dpStartDate->Fit();
+    m_dpStartDate->SetSize(s);
+
+    // Time part: only set if valid (time control usually requires a valid
+    // value)
+    wxDateTime timeVal = STARTTIME;
+    wxSize s2(m_tpTime->GetSize());
+    if (timeVal.IsValid()) {
+      m_tpTime->SetValue(timeVal);
+      m_tpTime->SetForegroundColour(wxColour(0, 0, 0));
+    }  // else leave control unchanged
+    m_tpTime->Fit();
+    m_tpTime->SetSize(s2);
+  }
+
+// -------------
 
   SET_CHECKBOX(UseCurrentTime);
 
