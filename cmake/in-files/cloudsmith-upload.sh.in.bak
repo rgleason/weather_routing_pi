@@ -58,13 +58,13 @@ if [ -z "$CLOUDSMITH_API_KEY" ] && [ "$LOCAL_BUILD" = "false" ]; then
     echo 'Cannot deploy to cloudsmith, missing $CLOUDSMITH_API_KEY'
     exit 0
 fi
-if [ -z "$CIRCLE_USERNAME" ]; then
-  echo "CircleCI username not set. Defaulting to 'unknown'."
-  CIRCLE_USERNAME="unknown"
-fi
+# if [ -z "$CIRCLE_USERNAME" ]; then
+#  echo "CircleCI username not set. Defaulting to 'unknown'."
+#  CIRCLE_USERNAME="unknown"
+# fi
 
-echo "Uploading as $CIRCLE_USERNAME..."
-Proceed with upload logic
+# echo "Uploading as $CIRCLE_USERNAME..."
+# Proceed with upload logic
 set -x
 
 if [ "$CIRCLECI" ] || [ "$TRAVIS" ]; then

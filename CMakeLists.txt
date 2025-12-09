@@ -67,6 +67,7 @@ set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
 set(OCPN_SOURCE_DIR "C:/Users/fcgle/source/OpenCPN")
 set(OCPN_BUILD_DIR  "C:/Users/fcgle/source/OpenCPN/build")
 
+
 # define plugin name, owner and versions
 set(VERBOSE_NAME "WeatherRouting")
 set(COMMON_NAME "WeatherRouting")  # Search "getcommonname"in <plugin_pi>.cpp
