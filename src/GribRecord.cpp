@@ -26,6 +26,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #endif  // precompiled headers
 
 #include <stdlib.h>
+#include <cstring>  // memcpy
+
+#include <cstdio>
+#include <cstdlib>
+#include <cmath>
 
 // #include <QDateTime>
 
@@ -53,29 +58,437 @@ void GribRecord::print() {
 }
 
 //-------------------------------------------------------------------------------
-// Constructeur de recopie
+// Default constructor: initialize members to safe defaults
 //-------------------------------------------------------------------------------
-GribRecord::GribRecord(const GribRecord& rec) {
-  *this = rec;
-  IsDuplicated = true;
-  // recopie les champs de bits
-  if (rec.data != nullptr) {
-    int size = rec.Ni * rec.Nj;
-    this->data = new double[size];
-    for (int i = 0; i < size; i++) this->data[i] = rec.data[i];
+GribRecord::GribRecord()
+    : id(0),
+      ok(false),
+      knownData(false),
+      waveData(false),
+      IsDuplicated(false),
+      eof(false),
+      dataKey(),
+      dataCenterModel(0),
+      m_bfilled(false),
+      editionNumber(0),
+      idCenter(0),
+      idModel(0),
+      idGrid(0),
+      dataType(0),
+      levelType(0),
+      levelValue(0),
+      hasBMS(false),
+      refyear(0),
+      refmonth(0),
+      refday(0),
+      refhour(0),
+      refminute(0),
+      periodP1(0),
+      periodP2(0),
+      timeRange(0),
+      periodsec(0),
+      refDate(0),
+      curDate(0),
+      NV(0),
+      PV(0),
+      gridType(0),
+      Ni(0),
+      Nj(0),
+      La1(0.0),
+      Lo1(0.0),
+      La2(0.0),
+      Lo2(0.0),
+      latMin(0.0),
+      lonMin(0.0),
+      latMax(0.0),
+      lonMax(0.0),
+      Di(0.0),
+      Dj(0.0),
+      resolFlags(0),
+      scanFlags(0),
+      hasDiDj(false),
+      isEarthSpheric(false),
+      isUeastVnorth(false),
+      isScanIpositive(false),
+      isScanJpositive(false),
+      isAdjacentI(false),
+      BMSsize(0),
+      BMSbits(nullptr),
+      data(nullptr) {
+  strRefDate[0] = '\0';
+  strCurDate[0] = '\0';
+}
+
+//-------------------------------------------------------------------------------
+// Copy constructor (deep copy)
+//-------------------------------------------------------------------------------
+GribRecord::GribRecord(const GribRecord &rec)
+    : GribRecord() {  // initialize members, then deep-copy arrays
+  // copy simple/scalar members
+  id = rec.id;
+  ok = rec.ok;
+  knownData = rec.knownData;
+  waveData = rec.waveData;
+  IsDuplicated = true;  // as per original semantics
+  eof = rec.eof;
+  dataKey = rec.dataKey;
+  std::memcpy(strRefDate, rec.strRefDate, sizeof(strRefDate));
+  std::memcpy(strCurDate, rec.strCurDate, sizeof(strCurDate));
+  dataCenterModel = rec.dataCenterModel;
+  m_bfilled = rec.m_bfilled;
+  editionNumber = rec.editionNumber;
+  idCenter = rec.idCenter;
+  idModel = rec.idModel;
+  idGrid = rec.idGrid;
+  dataType = rec.dataType;
+  levelType = rec.levelType;
+  levelValue = rec.levelValue;
+  hasBMS = rec.hasBMS;
+  refyear = rec.refyear;
+  refmonth = rec.refmonth;
+  refday = rec.refday;
+  refhour = rec.refhour;
+  refminute = rec.refminute;
+  periodP1 = rec.periodP1;
+  periodP2 = rec.periodP2;
+  timeRange = rec.timeRange;
+  periodsec = rec.periodsec;
+  refDate = rec.refDate;
+  curDate = rec.curDate;
+  NV = rec.NV;
+  PV = rec.PV;
+  gridType = rec.gridType;
+  Ni = rec.Ni;
+  Nj = rec.Nj;
+  La1 = rec.La1;
+  Lo1 = rec.Lo1;
+  La2 = rec.La2;
+  Lo2 = rec.Lo2;
+  latMin = rec.latMin;
+  lonMin = rec.lonMin;
+  latMax = rec.latMax;
+  lonMax = rec.lonMax;
+  Di = rec.Di;
+  Dj = rec.Dj;
+  resolFlags = rec.resolFlags;
+  scanFlags = rec.scanFlags;
+  hasDiDj = rec.hasDiDj;
+  isEarthSpheric = rec.isEarthSpheric;
+  isUeastVnorth = rec.isUeastVnorth;
+  isScanIpositive = rec.isScanIpositive;
+  isScanJpositive = rec.isScanJpositive;
+  isAdjacentI = rec.isAdjacentI;
+  BMSsize = rec.BMSsize;
+
+  // Deep-copy data array if present
+  if (rec.data != nullptr && rec.Ni > 0 && rec.Nj > 0) {
+    zuint n = rec.Ni * rec.Nj;
+    try {
+      data = new double[n];
+      std::memcpy(data, rec.data, n * sizeof(double));
+    } catch (...) {
+      // ensure invariants in face of exceptions
+      data = nullptr;
+      BMSbits = nullptr;
+      throw;
+    }
+  } else {
+    data = nullptr;
   }
-  if (rec.BMSbits != nullptr) {
-    int size = rec.BMSsize;
-    this->BMSbits = new zuchar[size];
-    for (int i = 0; i < size; i++) this->BMSbits[i] = rec.BMSbits[i];
+
+  // Deep-copy BMSbits if present
+  if (rec.BMSbits != nullptr && rec.BMSsize > 0) {
+    try {
+      BMSbits = new zuchar[rec.BMSsize];
+      std::memcpy(BMSbits, rec.BMSbits, rec.BMSsize);
+    } catch (...) {
+      // clean up data if BMS allocation fails
+      delete[] data;
+      data = nullptr;
+      BMSbits = nullptr;
+      throw;
+    }
+  } else {
+    BMSbits = nullptr;
   }
 }
 
+//-------------------------------------------------------------------------------
+// Move constructor
+//-------------------------------------------------------------------------------
+GribRecord::GribRecord(GribRecord &&other) noexcept
+    : GribRecord() {
+  // Steal resources
+  swap(other);
+  // leave other in a safe-to-destroy state
+  other.data = nullptr;
+  other.BMSbits = nullptr;
+  other.BMSsize = 0;
+  other.Ni = other.Nj = 0;
+  other.IsDuplicated = false;
+}
+
+//-------------------------------------------------------------------------------
+/* Copy assignment: allocate copies first, then replace existing pointers.
+   This provides strong exception safety: if allocation fails, the object is
+   unchanged.
+*/
+//-------------------------------------------------------------------------------
+GribRecord &GribRecord::operator=(const GribRecord &rec) {
+  if (this == &rec) return *this;
+
+  // Copy scalar fields first (those that don't depend on allocations)
+  id = rec.id;
+  ok = rec.ok;
+  knownData = rec.knownData;
+  waveData = rec.waveData;
+  IsDuplicated = rec.IsDuplicated;
+  eof = rec.eof;
+  dataKey = rec.dataKey;
+  std::memcpy(strRefDate, rec.strRefDate, sizeof(strRefDate));
+  std::memcpy(strCurDate, rec.strCurDate, sizeof(strCurDate));
+  dataCenterModel = rec.dataCenterModel;
+  m_bfilled = rec.m_bfilled;
+  editionNumber = rec.editionNumber;
+  idCenter = rec.idCenter;
+  idModel = rec.idModel;
+  idGrid = rec.idGrid;
+  dataType = rec.dataType;
+  levelType = rec.levelType;
+  levelValue = rec.levelValue;
+  hasBMS = rec.hasBMS;
+  refyear = rec.refyear;
+  refmonth = rec.refmonth;
+  refday = rec.refday;
+  refhour = rec.refhour;
+  refminute = rec.refminute;
+  periodP1 = rec.periodP1;
+  periodP2 = rec.periodP2;
+  timeRange = rec.timeRange;
+  periodsec = rec.periodsec;
+  refDate = rec.refDate;
+  curDate = rec.curDate;
+  NV = rec.NV;
+  PV = rec.PV;
+  gridType = rec.gridType;
+  Ni = rec.Ni;
+  Nj = rec.Nj;
+  La1 = rec.La1;
+  Lo1 = rec.Lo1;
+  La2 = rec.La2;
+  Lo2 = rec.Lo2;
+  latMin = rec.latMin;
+  lonMin = rec.lonMin;
+  latMax = rec.latMax;
+  lonMax = rec.lonMax;
+  Di = rec.Di;
+  Dj = rec.Dj;
+  resolFlags = rec.resolFlags;
+  scanFlags = rec.scanFlags;
+  hasDiDj = rec.hasDiDj;
+  isEarthSpheric = rec.isEarthSpheric;
+  isUeastVnorth = rec.isUeastVnorth;
+  isScanIpositive = rec.isScanIpositive;
+  isScanJpositive = rec.isScanJpositive;
+  isAdjacentI = rec.isAdjacentI;
+
+  // Allocate new arrays before touching existing ones to keep strong exception
+  // safety.
+  double *newData = nullptr;
+  zuchar *newBMS = nullptr;
+  zuint newBMSsize = rec.BMSsize;
+
+  if (rec.data != nullptr && rec.Ni > 0 && rec.Nj > 0) {
+    zuint n = rec.Ni * rec.Nj;
+    newData = new double[n];
+    std::memcpy(newData, rec.data, n * sizeof(double));
+  }
+
+  if (rec.BMSbits != nullptr && rec.BMSsize > 0) {
+    newBMS = new zuchar[rec.BMSsize];
+    std::memcpy(newBMS, rec.BMSbits, rec.BMSsize);
+  }
+
+  // Replace existing buffers
+  delete[] data;
+  delete[] BMSbits;
+
+  data = newData;
+  BMSbits = newBMS;
+  BMSsize = newBMSsize;
+
+  return *this;
+}
+
+//-------------------------------------------------------------------------------
+// Move assignment
+//-------------------------------------------------------------------------------
+GribRecord &GribRecord::operator=(GribRecord &&other) noexcept {
+  if (this != &other) {
+    // free current resources
+    delete[] data;
+    delete[] BMSbits;
+
+    // Move scalars
+    id = other.id;
+    ok = other.ok;
+    knownData = other.knownData;
+    waveData = other.waveData;
+    IsDuplicated = other.IsDuplicated;
+    eof = other.eof;
+    dataKey = std::move(other.dataKey);
+    std::memcpy(strRefDate, other.strRefDate, sizeof(strRefDate));
+    std::memcpy(strCurDate, other.strCurDate, sizeof(strCurDate));
+    dataCenterModel = other.dataCenterModel;
+    m_bfilled = other.m_bfilled;
+    editionNumber = other.editionNumber;
+    idCenter = other.idCenter;
+    idModel = other.idModel;
+    idGrid = other.idGrid;
+    dataType = other.dataType;
+    levelType = other.levelType;
+    levelValue = other.levelValue;
+    hasBMS = other.hasBMS;
+    refyear = other.refyear;
+    refmonth = other.refmonth;
+    refday = other.refday;
+    refhour = other.refhour;
+    refminute = other.refminute;
+    periodP1 = other.periodP1;
+    periodP2 = other.periodP2;
+    timeRange = other.timeRange;
+    periodsec = other.periodsec;
+    refDate = other.refDate;
+    curDate = other.curDate;
+    NV = other.NV;
+    PV = other.PV;
+    gridType = other.gridType;
+    Ni = other.Ni;
+    Nj = other.Nj;
+    La1 = other.La1;
+    Lo1 = other.Lo1;
+    La2 = other.La2;
+    Lo2 = other.Lo2;
+    latMin = other.latMin;
+    lonMin = other.lonMin;
+    latMax = other.latMax;
+    lonMax = other.lonMax;
+    Di = other.Di;
+    Dj = other.Dj;
+    resolFlags = other.resolFlags;
+    scanFlags = other.scanFlags;
+    hasDiDj = other.hasDiDj;
+    isEarthSpheric = other.isEarthSpheric;
+    isUeastVnorth = other.isUeastVnorth;
+    isScanIpositive = other.isScanIpositive;
+    isScanJpositive = other.isScanJpositive;
+    isAdjacentI = other.isAdjacentI;
+
+    // Steal buffers
+    data = other.data;
+    BMSbits = other.BMSbits;
+    BMSsize = other.BMSsize;
+
+    // Leave other in safe-to-destroy state
+    other.data = nullptr;
+    other.BMSbits = nullptr;
+    other.BMSsize = 0;
+    other.Ni = other.Nj = 0;
+    other.IsDuplicated = false;
+  }
+  return *this;
+}
+
+//-------------------------------------------------------------------------------
+void GribRecord::swap(GribRecord &other) noexcept {
+  using std::swap;
+  swap(id, other.id);
+  swap(ok, other.ok);
+  swap(knownData, other.knownData);
+  swap(waveData, other.waveData);
+  swap(IsDuplicated, other.IsDuplicated);
+  swap(eof, other.eof);
+  dataKey.swap(other.dataKey);
+  char tmpRef[32];
+  std::memcpy(tmpRef, strRefDate, sizeof(strRefDate));
+  std::memcpy(strRefDate, other.strRefDate, sizeof(strRefDate));
+  std::memcpy(other.strRefDate, tmpRef, sizeof(strRefDate));
+  std::memcpy(tmpRef, strCurDate, sizeof(strCurDate));
+  std::memcpy(strCurDate, other.strCurDate, sizeof(strCurDate));
+  std::memcpy(other.strCurDate, tmpRef, sizeof(strCurDate));
+  swap(dataCenterModel, other.dataCenterModel);
+  swap(m_bfilled, other.m_bfilled);
+  swap(editionNumber, other.editionNumber);
+  swap(idCenter, other.idCenter);
+  swap(idModel, other.idModel);
+  swap(idGrid, other.idGrid);
+  swap(dataType, other.dataType);
+  swap(levelType, other.levelType);
+  swap(levelValue, other.levelValue);
+  swap(hasBMS, other.hasBMS);
+  swap(refyear, other.refyear);
+  swap(refmonth, other.refmonth);
+  swap(refday, other.refday);
+  swap(refhour, other.refhour);
+  swap(refminute, other.refminute);
+  swap(periodP1, other.periodP1);
+  swap(periodP2, other.periodP2);
+  swap(timeRange, other.timeRange);
+  swap(periodsec, other.periodsec);
+  swap(refDate, other.refDate);
+  swap(curDate, other.curDate);
+  swap(NV, other.NV);
+  swap(PV, other.PV);
+  swap(gridType, other.gridType);
+  swap(Ni, other.Ni);
+  swap(Nj, other.Nj);
+  swap(La1, other.La1);
+  swap(Lo1, other.Lo1);
+  swap(La2, other.La2);
+  swap(Lo2, other.Lo2);
+  swap(latMin, other.latMin);
+  swap(lonMin, other.lonMin);
+  swap(latMax, other.latMax);
+  swap(lonMax, other.lonMax);
+  swap(Di, other.Di);
+  swap(Dj, other.Dj);
+  swap(resolFlags, other.resolFlags);
+  swap(scanFlags, other.scanFlags);
+  swap(hasDiDj, other.hasDiDj);
+  swap(isEarthSpheric, other.isEarthSpheric);
+  swap(isUeastVnorth, other.isUeastVnorth);
+  swap(isScanIpositive, other.isScanIpositive);
+  swap(isScanJpositive, other.isScanJpositive);
+  swap(isAdjacentI, other.isAdjacentI);
+  swap(BMSsize, other.BMSsize);
+  swap(BMSbits, other.BMSbits);
+  swap(data, other.data);
+}
+
+//-------------------------------------------------------------------------------
+GribRecord::~GribRecord() {
+  if (data) {
+    delete[] data;
+    data = nullptr;
+  }
+  if (BMSbits) {
+    delete[] BMSbits;
+    BMSbits = nullptr;
+  }
+
+  // if (dataType==GRB_TEMP) printf("record destroyed %s   %d\n",
+  // dataKey.mb_str(), (int)curDate/3600);
+}
+
+//-------------------------------------------------------------------------------
+// (rest of implementation unchanged)...
+//-------------------------------------------------------------------------------
+
 bool GribRecord::GetInterpolatedParameters(
-    const GribRecord& rec1, const GribRecord& rec2, double& La1, double& Lo1,
-    double& La2, double& Lo2, double& Di, double& Dj, int& im1, int& jm1,
-    int& im2, int& jm2, int& Ni, int& Nj, int& rec1offi, int& rec1offj,
-    int& rec2offi, int& rec2offj) {
+    const GribRecord &rec1, const GribRecord &rec2, double &La1, double &Lo1,
+    double &La2, double &Lo2, double &Di, double &Dj, int &im1, int &jm1,
+    int &im2, int &jm2, int &Ni, int &Nj, int &rec1offi, int &rec1offj,
+    int &rec2offi, int &rec2offj) {
   if (!rec1.isOk() || !rec2.isOk()) return false;
 
   /* make sure Dj both have same sign */
@@ -156,8 +569,8 @@ bool GribRecord::GetInterpolatedParameters(
 //-------------------------------------------------------------------------------
 // Constructeur de interpolate
 //-------------------------------------------------------------------------------
-GribRecord* GribRecord::InterpolatedRecord(const GribRecord& rec1,
-                                           const GribRecord& rec2, double d,
+GribRecord *GribRecord::InterpolatedRecord(const GribRecord &rec1,
+                                           const GribRecord &rec2, double d,
                                            bool dir) {
   double La1, Lo1, La2, Lo2, Di, Dj;
   int im1, jm1, im2, jm2;
@@ -169,9 +582,9 @@ GribRecord* GribRecord::InterpolatedRecord(const GribRecord& rec1,
 
   // recopie les champs de bits
   int size = Ni * Nj;
-  double* data = new double[size];
+  double *data = new double[size];
 
-  zuchar* BMSbits = nullptr;
+  zuchar *BMSbits = nullptr;
   if (rec1.BMSbits != nullptr && rec2.BMSbits != nullptr)
     BMSbits = new zuchar[(Ni * Nj - 1) / 8 + 1]();
 
@@ -202,7 +615,7 @@ GribRecord* GribRecord::InterpolatedRecord(const GribRecord& rec1,
 
   /* should maybe update strCurDate ? */
 
-  GribRecord* ret = new GribRecord;
+  GribRecord *ret = new GribRecord;
   *ret = rec1;
 
   ret->Di = Di, ret->Dj = Dj;
@@ -225,9 +638,9 @@ GribRecord* GribRecord::InterpolatedRecord(const GribRecord& rec1,
 /* for interpolation for x and y records, we must do them together because
    otherwise we end up with a vector interpolation which is not what we want..
    instead we want to interpolate from the polar magnitude, and angles */
-GribRecord* GribRecord::Interpolated2DRecord(
-    GribRecord*& rety, const GribRecord& rec1x, const GribRecord& rec1y,
-    const GribRecord& rec2x, const GribRecord& rec2y, double d) {
+GribRecord *GribRecord::Interpolated2DRecord(
+    GribRecord *&rety, const GribRecord &rec1x, const GribRecord &rec1y,
+    const GribRecord &rec2x, const GribRecord &rec2y, double d) {
   double La1, Lo1, La2, Lo2, Di, Dj;
   int im1, jm1, im2, jm2;
   int Ni, Nj, rec1offi, rec1offj, rec2offi, rec2offj;
@@ -283,7 +696,7 @@ GribRecord* GribRecord::Interpolated2DRecord(
 
   /* should maybe update strCurDate ? */
 
-  GribRecord* ret = new GribRecord;
+  GribRecord *ret = new GribRecord;
 
   *ret = rec1x;
 
@@ -310,9 +723,9 @@ GribRecord* GribRecord::Interpolated2DRecord(
   return ret;
 }
 
-GribRecord* GribRecord::MagnitudeRecord(const GribRecord& rec1,
-                                        const GribRecord& rec2) {
-  GribRecord* rec = new GribRecord(rec1);
+GribRecord *GribRecord::MagnitudeRecord(const GribRecord &rec1,
+                                        const GribRecord &rec2) {
+  GribRecord *rec = new GribRecord(rec1);
 
   /* generate a record which is the combined magnitude of two records */
   if (rec1.data && rec2.data && rec1.Ni == rec2.Ni && rec1.Nj == rec2.Nj) {
@@ -337,7 +750,7 @@ GribRecord* GribRecord::MagnitudeRecord(const GribRecord& rec1,
   return rec;
 }
 
-void GribRecord::Polar2UV(GribRecord* pDIR, GribRecord* pSPEED) {
+void GribRecord::Polar2UV(GribRecord *pDIR, GribRecord *pSPEED) {
   if (pDIR->data && pSPEED->data && pDIR->Ni == pSPEED->Ni &&
       pDIR->Nj == pSPEED->Nj) {
     int size = pDIR->Ni * pDIR->Nj;
@@ -359,7 +772,7 @@ void GribRecord::Polar2UV(GribRecord* pDIR, GribRecord* pSPEED) {
   }
 }
 
-void GribRecord::Substract(const GribRecord& rec, bool pos) {
+void GribRecord::Substract(const GribRecord &rec, bool pos) {
   // for now only substract records of same size
   if (rec.data == 0 || !rec.isOk()) return;
 
@@ -387,7 +800,7 @@ void GribRecord::Substract(const GribRecord& rec, bool pos) {
 }
 
 //------------------------------------------------------------------------------
-void GribRecord::Average(const GribRecord& rec) {
+void GribRecord::Average(const GribRecord &rec) {
   // for now only average records of same size
   // this : 6-12
   // rec  : 6-9
@@ -426,26 +839,31 @@ void GribRecord::setDataType(const zuchar t) {
   dataKey = makeKey(dataType, levelType, levelValue);
 }
 //------------------------------------------------------------------------------
-std::string GribRecord::makeKey(int dataType, int levelType, int levelValue) {
-  // Make data type key  sample:'11-100-850'
+std::string GribRecord::makeKey(
+    int dataType, int levelType,
+    int levelValue) {  // Make data type key  sample:'11-100-850'
+                       //  char ktmp[32];
+  //  wxSnprintf((wxChar *)ktmp, 32, "%d-%d-%d", dataType, levelType,
+  //  levelValue); return std::string(ktmp);
+
   wxString k;
   k.Printf(_T("%d-%d-%d"), dataType, levelType, levelValue);
   return std::string(k.mb_str());
 }
 //-----------------------------------------
-GribRecord::~GribRecord() {
-  if (data) {
-    delete[] data;
-    data = nullptr;
-  }
-  if (BMSbits) {
-    delete[] BMSbits;
-    BMSbits = nullptr;
-  }
+// GribRecord::~GribRecord() {
+//  if (data) {
+//    delete[] data;
+//    data = nullptr;
+//  }
+//  if (BMSbits) {
+//    delete[] BMSbits;
+//    BMSbits = nullptr;
+//  }
 
   // if (dataType==GRB_TEMP) printf("record destroyed %s   %d\n",
   // dataKey.mb_str(), (int)curDate/3600);
-}
+//}
 
 //-------------------------------------------------------------------------------
 void GribRecord::multiplyAllData(double k) {
@@ -464,7 +882,7 @@ void GribRecord::multiplyAllData(double k) {
 void GribRecord::setRecordCurrentDate(time_t t) {
   curDate = t;
 
-  struct tm* date = gmtime(&t);
+  struct tm *date = gmtime(&t);
 
   zuint year = date->tm_year + 1900;
   zuint month = date->tm_mon + 1;
@@ -517,9 +935,9 @@ double GribRecord::getInterpolatedValue(double px, double py,
   if (!ok || Di == 0 || Dj == 0) return GRIB_NOTDEF;
 
   if (!isPointInMap(px, py)) {
-    px += 360.0;  // tour du monde Ã  droite ?
+    px += 360.0;  // tour du monde à droite ?
     if (!isPointInMap(px, py)) {
-      px -= 2 * 360.0;  // tour du monde Ã  gauche ?
+      px -= 2 * 360.0;  // tour du monde à gauche ?
       if (!isPointInMap(px, py)) {
         return GRIB_NOTDEF;
       }
@@ -642,18 +1060,18 @@ double GribRecord::getInterpolatedValue(double px, double py,
   return k2 * vx + (1 - k2) * vy;
 }
 
-bool GribRecord::getInterpolatedValues(double& M, double& A,
-                                       const GribRecord* GRX,
-                                       const GribRecord* GRY, double px,
+bool GribRecord::getInterpolatedValues(double &M, double &A,
+                                       const GribRecord *GRX,
+                                       const GribRecord *GRY, double px,
                                        double py, bool numericalInterpolation) {
   if (!GRX || !GRY) return false;
 
   if (!GRX->ok || !GRY->ok || GRX->Di == 0 || GRX->Dj == 0) return false;
 
   if (!GRX->isPointInMap(px, py) || !GRY->isPointInMap(px, py)) {
-    px += 360.0;  // tour du monde Ã  droite ?
+    px += 360.0;  // tour du monde à droite ?
     if (!GRX->isPointInMap(px, py) || !GRY->isPointInMap(px, py)) {
-      px -= 2 * 360.0;  // tour du monde Ã  gauche ?
+      px -= 2 * 360.0;  // tour du monde à gauche ?
       if (!GRX->isPointInMap(px, py) || !GRY->isPointInMap(px, py)) {
         return false;
       }
@@ -803,7 +1221,7 @@ bool GribRecord::getInterpolatedValues(double& M, double& A,
         double vy = k*xc + (1-k)*xa;
         // diagonal interpolation
         double k2 = kx / k;
-        val =  k2*vx + (1-k2)*vy;
+        val =  k2*vx + (1-k2) * vy;
     }
     return val;
 #endif
