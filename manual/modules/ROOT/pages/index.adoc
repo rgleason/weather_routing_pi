@@ -21,9 +21,9 @@ Development Details: PI Manager (PIM) Workflow uses the Testplugin Template +
 
 *Weather and Land Data: Land Mass, wind, wave and current* 
 
-* xref:opencpn-plugins:chart_downloader_tab:chart_downloader_tab.adoc[Chartdownloader] to download High resolution (GSHHS) required to _Detect Land_.
+* xref:chartdldr::index.adoc[Chartdownloader chartdldr_pi] to download High resolution (GSHHS) required to _Detect Land_.
 * xref:climatology::index.adoc[Climatology_pi] Data for default examples and longer voyages. 30 years of NOAA wind, wave & Current data, averaged by month. Climatology is required to run the Examples.
-* xref:opencpn-plugins:grib_weather:grib_weather.adoc[Grib_pi (grb, grb2)] Data predictive wind, wave & current. Used daily, but not with initial Examples.
+* xref:grib::index.adoc[Grib_pi (grb, grb2)] Data predictive wind, wave & current. Used daily, but not with initial Examples.
 * xref:opencpn-plugins:misc:plugin-install.adoc[Instructions] Install and Enable these plugins now.
 
 *Boat Performance Data: Polar Files*
@@ -165,7 +165,7 @@ Generally we recommend that the plugin and configuration artifacts should be com
 
 === 1.Setup Grib_pi
 
-xref:opencpn-plugins:grib_weather:grib_weather.adoc[Grib_pi] is installed with OpenCPN. Learn how to use it and download a fresh Grib file with wind, current & waves.
+xref:grib::index.adoc[Grib_pi] is installed with OpenCPN. Learn how to use it and download a fresh Grib file with wind, current & waves.
 
 * Initially the grib area should be larger than the area between start and finish by at least two time intervals,
 * The number of days Should be for several more days than expected and dependent on how long the voyage is expected.
@@ -196,7 +196,7 @@ image::climatology-wind.jpg[title="Set Size to 100 and Spacing to 50",width=500,
 
 If you are working with Land Interferance *Detect Land* you must *install GSHHS*.  
 
-Use xref:opencpn-plugins:chart_downloader_tab:chart_downloader_tab.adoc[Chart downloader] to download and install a GSHHS High Resolution Background for routing with *Detect Land* checked.
+Use xref:chartdldr::index.adoc[Chart downloader] to download and install a GSHHS High Resolution Background for routing with *Detect Land* checked.
 
 * Select the GSHHS Catalog and update the catalog. Then download the GSHHS to the default location. 
 * We also suggest that under *Options > Charts Tab > Chart Files* that you add the path to the GSHHS files.
