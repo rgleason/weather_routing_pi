@@ -205,6 +205,10 @@ public:
    * @param newpolar [in] Index of the polar to use from the boat's polar array
    * @param twa [in] True Wind Angle (TWA) (degrees)
    * @param ctw [in] Boat's bearing relative to true wind (W+twa)
+   * @param parent_heading [in] Boat's heading from parent position (degrees)
+   * @param performance [in] Speed performance
+   * @param newperformance [out] The performance after taking into account
+   * course changes, tacking, jibing and recovery
    * @param data_mask [in/out] Bit mask indicating data sources (GRIB,
    * climatology, etc.)
    * @param bound [in] If true, returns NAN when wind speed is outside the range
@@ -217,6 +221,8 @@ public:
   bool GetBoatSpeedForPolar(RouteMapConfiguration& configuration,
                             const WeatherData& weather, double timeseconds,
                             int newpolar, double twa, double ctw,
+                            const double parent_heading,
+                            const double performance, double& newperformance,
                             DataMask& data_mask, bool bound = true,
                             const char* caller = "unknown");
 
@@ -229,6 +235,9 @@ public:
    * @param parent_heading [in] Boat's heading from parent position (degrees)
    * @param data_mask [in/out] Bit mask indicating data sources (GRIB,
    * climatology, etc.)
+   * @param performance [in] Speed performance
+   * @param newperformance [out] The performance after taking into account
+   * course changes, tacking, jibing and recovery
    * @param polar [in] The index to current polar from the parent weather
    * position.
    * @param newpolar [out] The best polar for the current weather conditions.
@@ -239,8 +248,9 @@ public:
   bool GetBestPolarAndBoatSpeed(RouteMapConfiguration& configuration,
                                 const WeatherData& weather_data, double twa,
                                 double ctw, double parent_heading,
-                                DataMask& data_mask, int polar, int& newpolar,
-                                double& timeseconds);
+                                DataMask& data_mask, const double performance,
+                                double& newperformance, int polar,
+                                int& newpolar, double& timeseconds);
 
 private:
   void Reset() {
@@ -271,14 +281,15 @@ public:
   RoutePoint(double latitude = 0., double longitude = 0., int polar_idx = -1,
              int tack_count = 0, int jibe_count = 0,
 
-             int sail_plan_change_count = 0, DataMask dm = DataMask::NONE,
-             bool data_deficient = false)
+             int sail_plan_change_count = 0, double performance_value = 1.0,
+             DataMask dm = DataMask::NONE, bool data_deficient = false)
       : lat(latitude),
         lon(longitude),
         polar(polar_idx),
         tacks(tack_count),
         jibes(jibe_count),
         sail_plan_changes(sail_plan_change_count),
+        performance(performance_value),
         grib_is_data_deficient(data_deficient),
         data_mask(dm) {}
 
@@ -291,6 +302,7 @@ public:
         tacks(json["tacks"].asInt()),
         jibes(json["jibes"].asInt()),
         sail_plan_changes(json["sail_plan_changes"].asInt()),
+        performance(json["performance"].asDouble()),
         grib_is_data_deficient(json["grib_is_data_deficient"].asBool()),
         data_mask(static_cast<DataMask>(json["data_mask"].asUInt())) {}
 
@@ -306,6 +318,9 @@ public:
   int jibes;
   /** The cumulative number of sail plan changes to get to this position. */
   int sail_plan_changes;
+  /// Theoretical boat speed from polar multiplied with performance gives actual
+  /// boat speed
+  double performance;
 
   bool grib_is_data_deficient;
 

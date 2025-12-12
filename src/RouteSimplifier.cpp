@@ -390,6 +390,7 @@ SimplificationResult RouteSimplifier::Simplify(
                 pos->tacks = rp->tacks;
                 pos->jibes = rp->jibes;
                 pos->sail_plan_changes = rp->sail_plan_changes;
+                pos->performance = rp->performance;
                 pos->data_mask = rp->data_mask;
                 // Add to our list for later cleanup.
                 m_newPositions.push_back(pos);
@@ -614,7 +615,8 @@ bool RouteSimplifier::ValidateSegmentWithDetailedPropagation(
           bestPosition->lat, bestPosition->lon, start,
           bestPosition->parent_heading, bestPosition->parent_bearing,
           bestPosition->polar, bestPosition->tacks, bestPosition->jibes,
-          bestPosition->sail_plan_changes, bestPosition->data_mask);
+          bestPosition->sail_plan_changes, bestPosition->performance,
+          bestPosition->data_mask);
       m_newPositions.push_back(validatedEnd);
       return true;
     }

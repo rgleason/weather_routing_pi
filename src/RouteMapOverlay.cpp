@@ -223,11 +223,11 @@ void RouteMapOverlay::RouteAnalysis(PlugIn_Route* proute) {
   Lock();
   m_bUpdated = true;
   m_UpdateOverlay = true;
-  last_destination_position =
-      new Position(data.lat, data.lon, nullptr /* position */,
-                   NAN /* heading */, NAN /* bearing*/, data.polar,
-                   0 /* tacks */, 0 /* jibes */, 0 /* sailplan changes */,
-                   DataMask::NONE /* data_mask */, true /* data_deficient */);
+  last_destination_position = new Position(
+      data.lat, data.lon, nullptr /* position */, NAN /* heading */,
+      NAN /* bearing*/, data.polar, 0 /* tacks */, 0 /* jibes */,
+      0 /* sailplan changes */, 1.0 /* performance */,
+      DataMask::NONE /* data_mask */, true /* data_deficient */);
 
   last_cursor_plotdata = last_destination_plotdata;
   if (ok) {
@@ -1736,8 +1736,9 @@ void RouteMapOverlay::UpdateDestination() {
         // empty()
         destination_position = new Position(
             configuration.EndLat, configuration.EndLon, endp, minH, NAN,
-            endp->polar, endp->tacks + mintacked,  endp->jibes + minjibes,
-            endp->sail_plan_changes + minsail_plan_changed, mindata_mask);
+            endp->polar, endp->tacks + mintacked, endp->jibes + minjibes,
+            endp->sail_plan_changes + minsail_plan_changed, endp->performance,
+            mindata_mask);
         // NOLINTEND
 
         m_EndTime = isochrone->time + wxTimeSpan::Milliseconds(1000 * mindt);

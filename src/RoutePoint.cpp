@@ -147,7 +147,10 @@ bool RoutePoint::GetCurrentData(RouteMapConfiguration& configuration,
 bool BoatData::GetBoatSpeedForPolar(RouteMapConfiguration& configuration,
                                     const WeatherData& weather_data,
                                     double timeseconds, int newpolar,
-                                    double twa, double ctw, DataMask& data_mask,
+                                    double twa, double ctw,
+                                    const double parent_heading,
+                                    const double performance,
+                                    double& newperformance, DataMask& data_mask,
                                     bool bound, const char* caller) {
   if (newpolar < 0 ||
       newpolar >= static_cast<int>(configuration.boat.Polars.size())) {
@@ -250,6 +253,27 @@ bool BoatData::GetBoatSpeedForPolar(RouteMapConfiguration& configuration,
     }
   }
 
+  if (!using_motor) {
+    // Calculate new performance value
+    if ((this->tacked || this->jibed) && performance >= 0.93)
+      // Performance loss through tacking or jibing
+      newperformance =
+          performance * (1.0 - this->stw * performance / 2.0 / 100.0);
+    else if (std::fabs(parent_heading - twa) > 1E-6 && performance >= 0.93)
+      // Performance loss through course change
+      newperformance = performance * (1.0 - std::fabs(parent_heading - twa) /
+                                                180.0 * PI / 25.0);
+
+    // Performance recovery, probably happens in every server jump even when
+    // there is a loss Calculation assumes that loss is calculated right at the
+    // beginning of the jump, but it may be at any time during the jump
+    double current_stw =
+        this->stw * newperformance;  // TODO Average of old and new performance?
+    double integral_performance = std::min(
+        1.0, newperformance + timeseconds * 3.0 / (20.0 * current_stw) /
+                                  100.0);  // For comparison
+    this->stw = current_stw;
+    newperformance = integral_performance;
   // Calculate boat movement over ground by combining boat speed with current.
   WeatherDataProvider::TransformToGroundFrame(
       ctw, stw, weather_data.currentDir, weather_data.currentSpeed, cog, sog);
@@ -303,12 +327,11 @@ bool WeatherData::ReadWeatherDataAndCheckConstraints(
   return true;
 }
 
-bool BoatData::GetBestPolarAndBoatSpeed(RouteMapConfiguration& configuration,
-                                        const WeatherData& weather_data,
-                                        double twa, double ctw,
-                                        double parent_heading,
-                                        DataMask& data_mask, int polar,
-                                        int& newpolar, double& timeseconds) {
+bool BoatData::GetBestPolarAndBoatSpeed(
+    RouteMapConfiguration& configuration, const WeatherData& weather_data,
+    double twa, double ctw, double parent_heading, DataMask& data_mask,
+    const double performance, double& newperformance, int polar, int& newpolar,
+    double& timeseconds) {
   Reset();
   PolarSpeedStatus status;
   newpolar = configuration.boat.FindBestPolarForCondition(
@@ -359,7 +382,8 @@ bool BoatData::GetBestPolarAndBoatSpeed(RouteMapConfiguration& configuration,
   // we already know the wind is too light for the polar.
 
   if (!GetBoatSpeedForPolar(configuration, weather_data, timeseconds, newpolar,
-                            twa, ctw, data_mask,
+                            twa, ctw, parent_heading, performance,
+                            newperformance, data_mask,
                             inside_polar_bounds, /* when using out-of-bound sail
               plan, set bound=false */
                             "Propagate")) {
@@ -396,9 +420,9 @@ double RoutePoint::RhumbLinePropagateToPoint(
         PropagateToPoint(dlat, dlon, configuration, heading, data_mask, true);
     if (!std::isnan(time)) {
       // If the destination is reachable, add it to intermediate points
-      RoutePoint* endpoint =
-          new RoutePoint(dlat, dlon, polar, tacks, jibes, sail_plan_changes,
-                         data_mask, configuration.grib_is_data_deficient);
+      RoutePoint* endpoint = new RoutePoint(
+          dlat, dlon, polar, tacks, jibes, sail_plan_changes, performance,
+          data_mask, configuration.grib_is_data_deficient);
       intermediatePoints.push_back(endpoint);
     }
     return time;
@@ -486,7 +510,8 @@ double RoutePoint::RhumbLinePropagateToPoint(
     // Create a new RoutePoint to represent this waypoint
     RoutePoint* waypoint = new RoutePoint(
         nextLat, nextLon, currentPoint->polar, currentPoint->tacks,
-        currentPoint->jibes, currentPoint->sail_plan_changes, data_mask,
+        currentPoint->jibes, currentPoint->sail_plan_changes,
+        currentPoint->performance, data_mask,
         configuration.grib_is_data_deficient);
 
     intermediatePoints.push_back(waypoint);
@@ -540,6 +565,7 @@ double RoutePoint::PropagateToPoint(double dlat, double dlon,
   int iters = 0;
   heading = 0;
   int newpolar = polar;
+  double newperformance = performance;
   bool old = configuration.OptimizeTacking;
   if (end) configuration.OptimizeTacking = true;
   PolarSpeedStatus status;
@@ -559,7 +585,7 @@ double RoutePoint::PropagateToPoint(double dlat, double dlon,
 
     if (!boat_data.GetBestPolarAndBoatSpeed(
             configuration, weather_data, heading, ctw, NAN /*parent_heading*/,
-            data_mask, this->polar, newpolar,
+            data_mask, this->performance, newperformance, this->polar, newpolar,
             timeseconds) ||
         ++iters == 10  // give up
     ) {
@@ -602,6 +628,7 @@ double RoutePoint::PropagateToPoint(double dlat, double dlon,
     return NAN;
   }
   polar = newpolar;
+  performance = newperformance;
 
   return 3600.0 * dist / boat_data.sog;
 }

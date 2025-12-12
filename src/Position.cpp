@@ -65,9 +65,10 @@ int ComputeQuadrantFast(Position* p, Position* q) {
 Position::Position(double latitude, double longitude, Position* p,
                    double pheading, double pbearing, int polar_idx,
                    int tack_count, int jibe_count, int sail_plan_change_count,
-                   DataMask data_mask, bool data_deficient)
+                   double performance, DataMask data_mask, bool data_deficient)
     : RoutePoint(latitude, longitude, polar_idx, tack_count, jibe_count,
-                 sail_plan_change_count, data_mask, data_deficient),
+                 sail_plan_change_count, performance, data_mask,
+                 data_deficient),
       parent_heading(pheading),
       parent_bearing(pbearing),
       parent(p),
@@ -83,7 +84,8 @@ Position::Position(double latitude, double longitude, Position* p,
 
 Position::Position(const Position* p)
     : RoutePoint(p->lat, p->lon, p->polar, p->tacks, p->jibes,
-                 p->sail_plan_changes, p->data_mask, p->grib_is_data_deficient),
+                 p->sail_plan_changes, p->performance, p->data_mask,
+                 p->grib_is_data_deficient),
       parent_heading(p->parent_heading),
       parent_bearing(p->parent_bearing),
       parent(p->parent),
@@ -196,9 +198,11 @@ bool Position::rk_step(double timeseconds, double cog, double dist, double twa,
       weather_data.twdOverWater + twa; /* rotated relative to true wind */
 
   BoatData boat_data;
-  if (!boat_data.GetBoatSpeedForPolar(configuration, weather_data, timeseconds,
-                                      newpolar, twa, ctw, data_mask,
-                                      true /* check bounds */, "rk_step")) {
+  double newperformance;
+  if (!boat_data.GetBoatSpeedForPolar(
+          configuration, weather_data, timeseconds, newpolar, twa, ctw,
+          this->parent_bearing, this->performance, newperformance, data_mask,
+          true /* check bounds */, "rk_step")) {
     return false;
   }
   rk_cog = boat_data.cog;
@@ -277,9 +281,14 @@ bool Position::Propagate(IsoRouteList& routelist,
     {
       BoatData boat_data;
       int newpolar = -1;
+      // Note: newperformance is applied to the boat_data.stw, boat_data.cog and
+      // boat_data.dist Penalties for sail plan change, tacking and jibing are
+      // subtracted from timeseconds, which is used to calculated boat_data.dist
+      double newperformance = performance;
       if (!boat_data.GetBestPolarAndBoatSpeed(
               configuration, weather_data, twa, ctw, parent_heading, data_mask,
-              this->polar, newpolar, timeseconds)) {
+              this->performance, newperformance, this->polar, newpolar,
+              timeseconds)) {
         continue;
       }
 
@@ -382,7 +391,9 @@ bool Position::Propagate(IsoRouteList& routelist,
       rp = new Position(dlat, dlon, this, twa, ctw, newpolar,
                         tacks + boat_data.tacked, jibes + boat_data.jibed,
                         sail_plan_changes + boat_data.sail_plan_changed,
-                        data_mask, configuration.grib_is_data_deficient);
+                        newperformance, data_mask,
+                        configuration.grib_is_data_deficient);
+
     }
   add_position:
     if (points) {

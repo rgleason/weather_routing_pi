@@ -127,7 +127,7 @@ bool RouteMapConfiguration::Update() {
     if (StartLat != NAN && StartLon != NAN) {
       havestart = true;
     }
-    StartCog = GetBoatCog(); // Not a problem if NAN
+    StartCog = GetBoatCog();  // Not a problem if NAN
   }
 
   if (!RouteGUID.IsEmpty()) {
@@ -336,7 +336,8 @@ bool RouteMap::Propagate() {
   IsoRouteList routelist;
   if (origin.empty()) {
     // The routing calculation has not started yet.
-    Position* np = new Position(configuration.StartLat, configuration.StartLon, nullptr, configuration.StartCog);
+    Position* np = new Position(configuration.StartLat, configuration.StartLon,
+                                nullptr, configuration.StartCog);
     np->prev = np->next = np;
     routelist.push_back(new IsoRoute(np->BuildSkipList()));
     configuration.grib = nullptr;
