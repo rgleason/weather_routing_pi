@@ -575,6 +575,7 @@ bool weather_routing_pi::InBoundary(double lat, double lon) {
 void weather_routing_pi::SetPositionFixEx(PlugIn_Position_Fix_Ex& pfix) {
   m_boat_lat = pfix.Lat;
   m_boat_lon = pfix.Lon;
+  m_boat_cog = pfix.Cog;
 }
 
 void weather_routing_pi::ShowPreferencesDialog(wxWindow* parent) {}

@@ -587,6 +587,9 @@ struct RouteMapConfiguration {
   double EndLat;
   /** The longitude of the destination position, in decimal degrees. */
   double EndLon;
+  /** The boat speed at the starting position, in knots */
+  // Note: This is important to handle maneuver penalties
+  double StartCog;
 
   /**
    * The initial bearing from Start position to End position, following the
@@ -610,6 +613,8 @@ struct RouteMapConfiguration {
   static double GetBoatLat();
   /** Returns the current longitude of the boat, in degrees. */
   static double GetBoatLon();
+  /** Returns the current course over ground of the boat, in degrees. */
+  static double GetBoatCog();
 
   static weather_routing_pi* s_plugin_instance;
 

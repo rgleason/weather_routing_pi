@@ -3355,6 +3355,7 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
     // Use the current boat position from the plugin
     configuration.StartLat = m_weather_routing_pi.m_boat_lat;
     configuration.StartLon = m_weather_routing_pi.m_boat_lon;
+    configuration.StartCog = m_weather_routing_pi.m_boat_cog;
     // Set "Boat" as the starting point name for display purposes
     configuration.Start = _("Boat");
     // Clear any StartGUID since we're using the boat position, not a waypoint

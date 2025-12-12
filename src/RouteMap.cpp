@@ -98,6 +98,7 @@ RouteMapConfiguration::RouteMapConfiguration()
       MotorSpeed(5.0),
       StartLon(0),
       EndLon(0),
+      StartCog(NAN),
       grib(nullptr),
       grib_is_data_deficient(false) {}
 
@@ -111,6 +112,11 @@ double RouteMapConfiguration::GetBoatLon() {
   return NAN;
 }
 
+double RouteMapConfiguration::GetBoatCog() {
+  if (s_plugin_instance) return s_plugin_instance->m_boat_cog;
+  return NAN;
+}
+
 bool RouteMapConfiguration::Update() {
   bool havestart = false, haveend = false;
   PlugIn_Waypoint waypoint;
@@ -121,6 +127,7 @@ bool RouteMapConfiguration::Update() {
     if (StartLat != NAN && StartLon != NAN) {
       havestart = true;
     }
+    StartCog = GetBoatCog(); // Not a problem if NAN
   }
 
   if (!RouteGUID.IsEmpty()) {
@@ -128,6 +135,7 @@ bool RouteMapConfiguration::Update() {
         !StartGUID.IsEmpty() && GetSingleWaypoint(StartGUID, &waypoint)) {
       StartLat = waypoint.m_lat;
       StartLon = waypoint.m_lon;
+      StartLat = NAN;
       havestart = true;
     }
     if (!EndGUID.IsEmpty() && GetSingleWaypoint(EndGUID, &waypoint)) {
@@ -164,6 +172,7 @@ bool RouteMapConfiguration::Update() {
       }
       StartLat = lat;
       StartLon = lon;
+      StartCog = NAN;
 
       havestart = true;
     }
@@ -181,7 +190,7 @@ bool RouteMapConfiguration::Update() {
   }
 
   if (!havestart || !haveend) {
-    StartLat = StartLon = EndLat = EndLon = NAN;
+    StartLat = StartLon = EndLat = EndLon = StartCog = NAN;
     return false;
   }
 
@@ -327,7 +336,7 @@ bool RouteMap::Propagate() {
   IsoRouteList routelist;
   if (origin.empty()) {
     // The routing calculation has not started yet.
-    Position* np = new Position(configuration.StartLat, configuration.StartLon);
+    Position* np = new Position(configuration.StartLat, configuration.StartLon, nullptr, configuration.StartCog);
     np->prev = np->next = np;
     routelist.push_back(new IsoRoute(np->BuildSkipList()));
     configuration.grib = nullptr;

@@ -194,6 +194,7 @@ public:
   double m_boat_lon;    //!< Longitude of the boat position, in degrees.
   double m_cursor_lat;  //!< Latitude of the cursor position, in degrees.
   double m_cursor_lon;  //!< Longitude of the cursor position, in degrees.
+  double m_boat_cog;    //!< Course over ground, in knots.
 
 #ifdef __WXMSW__
   /**
