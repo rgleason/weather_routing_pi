@@ -27,6 +27,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include <stdlib.h>
 #include <cstring>  // memcpy
+#include <vector>
+#include <algorithm>
 
 #include <cstdio>
 #include <cstdlib>
@@ -58,71 +60,9 @@ void GribRecord::print() {
 }
 
 //-------------------------------------------------------------------------------
-// Default constructor: initialize members to safe defaults
-//-------------------------------------------------------------------------------
-GribRecord::GribRecord()
-    : id(0),
-      ok(false),
-      knownData(false),
-      waveData(false),
-      IsDuplicated(false),
-      eof(false),
-      dataKey(),
-      dataCenterModel(0),
-      m_bfilled(false),
-      editionNumber(0),
-      idCenter(0),
-      idModel(0),
-      idGrid(0),
-      dataType(0),
-      levelType(0),
-      levelValue(0),
-      hasBMS(false),
-      refyear(0),
-      refmonth(0),
-      refday(0),
-      refhour(0),
-      refminute(0),
-      periodP1(0),
-      periodP2(0),
-      timeRange(0),
-      periodsec(0),
-      refDate(0),
-      curDate(0),
-      NV(0),
-      PV(0),
-      gridType(0),
-      Ni(0),
-      Nj(0),
-      La1(0.0),
-      Lo1(0.0),
-      La2(0.0),
-      Lo2(0.0),
-      latMin(0.0),
-      lonMin(0.0),
-      latMax(0.0),
-      lonMax(0.0),
-      Di(0.0),
-      Dj(0.0),
-      resolFlags(0),
-      scanFlags(0),
-      hasDiDj(false),
-      isEarthSpheric(false),
-      isUeastVnorth(false),
-      isScanIpositive(false),
-      isScanJpositive(false),
-      isAdjacentI(false),
-      BMSsize(0),
-      BMSbits(nullptr),
-      data(nullptr) {
-  strRefDate[0] = '\0';
-  strCurDate[0] = '\0';
-}
-
-//-------------------------------------------------------------------------------
 // Copy constructor (deep copy)
 //-------------------------------------------------------------------------------
-GribRecord::GribRecord(const GribRecord &rec)
+GribRecord::GribRecord(const GribRecord& rec)
     : GribRecord() {  // initialize members, then deep-copy arrays
   // copy simple/scalar members
   id = rec.id;
@@ -183,11 +123,108 @@ GribRecord::GribRecord(const GribRecord &rec)
   // Deep-copy data array if present
   if (rec.data != nullptr && rec.Ni > 0 && rec.Nj > 0) {
     zuint n = rec.Ni * rec.Nj;
+    // allocate; if allocation fails it will throw std::bad_alloc (no SEH catch)
+    data = new double[n];
+    // memcpy may raise an access violation (SEH) if rec.data is invalid.
+    // Do not catch(...) here; catching SEH leads to rethrow with no C++ type
+    // info.
+    std::memcpy(data, rec.data, n * sizeof(double));
+  } else {
+    data = nullptr;
+  }
+
+  // Deep-copy BMSbits if present
+  if (rec.BMSbits != nullptr && rec.BMSsize > 0) {
     try {
+      BMSbits = new zuchar[rec.BMSsize];
+      std::memcpy(BMSbits, rec.BMSbits, rec.BMSsize);
+    } catch (const std::bad_alloc&) {
+      // Clean-up any previously allocated C++ heap objects and propagate the
+      // C++ exception.
+      delete[] data;
+      data = nullptr;
+      BMSbits = nullptr;
+      throw;
+    }
+  } else {
+    BMSbits = nullptr;
+  }
+}
+
+//-------------------------------------------------------------------------------
+// Copy constructor (deep copy)
+//-------------------------------------------------------------------------------
+GribRecord::GribRecord(const GribRecord& rec)
+    : GribRecord() {  // initialize members, then deep-copy arrays
+  // copy simple/scalar members
+  id = rec.id;
+  ok = rec.ok;
+  knownData = rec.knownData;
+  waveData = rec.waveData;
+  IsDuplicated = true;  // as per original semantics
+  eof = rec.eof;
+  dataKey = rec.dataKey;
+  std::memcpy(strRefDate, rec.strRefDate, sizeof(strRefDate));
+  std::memcpy(strCurDate, rec.strCurDate, sizeof(strCurDate));
+  dataCenterModel = rec.dataCenterModel;
+  m_bfilled = rec.m_bfilled;
+  editionNumber = rec.editionNumber;
+  idCenter = rec.idCenter;
+  idModel = rec.idModel;
+  idGrid = rec.idGrid;
+  dataType = rec.dataType;
+  levelType = rec.levelType;
+  levelValue = rec.levelValue;
+  hasBMS = rec.hasBMS;
+  refyear = rec.refyear;
+  refmonth = rec.refmonth;
+  refday = rec.refday;
+  refhour = rec.refhour;
+  refminute = rec.refminute;
+  periodP1 = rec.periodP1;
+  periodP2 = rec.periodP2;
+  timeRange = rec.timeRange;
+  periodsec = rec.periodsec;
+  refDate = rec.refDate;
+  curDate = rec.curDate;
+  NV = rec.NV;
+  PV = rec.PV;
+  gridType = rec.gridType;
+  Ni = rec.Ni;
+  Nj = rec.Nj;
+  La1 = rec.La1;
+  Lo1 = rec.Lo1;
+  La2 = rec.La2;
+  Lo2 = rec.Lo2;
+  latMin = rec.latMin;
+  lonMin = rec.lonMin;
+  latMax = rec.latMax;
+  lonMax = rec.lonMax;
+  Di = rec.Di;
+  Dj = rec.Dj;
+  resolFlags = rec.resolFlags;
+  scanFlags = rec.scanFlags;
+  hasDiDj = rec.hasDiDj;
+  isEarthSpheric = rec.isEarthSpheric;
+  isUeastVnorth = rec.isUeastVnorth;
+  isScanIpositive = rec.isScanIpositive;
+  isScanJpositive = rec.isScanJpositive;
+  isAdjacentI = rec.isAdjacentI;
+  BMSsize = rec.BMSsize;
+
+    // Deep-copy data array if present
+  if (rec.data != nullptr && rec.Ni > 0 && rec.Nj > 0) {
+    zuint n = rec.Ni * rec.Nj;
+    try {
+      // use std::vector to get exception-safe temporary storage
+      std::vector<double> tmp(n);
+      std::copy_n(rec.data, n, tmp.begin());
+
+      // commit to this->data: allocate and copy from tmp
       data = new double[n];
-      std::memcpy(data, rec.data, n * sizeof(double));
-    } catch (...) {
-      // ensure invariants in face of exceptions
+      std::memcpy(data, tmp.data(), n * sizeof(double));
+    } catch (const std::bad_alloc&) {
+      // preserve invariants and propagate a concrete C++ exception
       data = nullptr;
       BMSbits = nullptr;
       throw;
@@ -196,7 +233,7 @@ GribRecord::GribRecord(const GribRecord &rec)
     data = nullptr;
   }
 
-  // Deep-copy BMSbits if present
+   // Deep-copy BMSbits if present
   if (rec.BMSbits != nullptr && rec.BMSsize > 0) {
     try {
       BMSbits = new zuchar[rec.BMSsize];
