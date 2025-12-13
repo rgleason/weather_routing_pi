@@ -164,7 +164,6 @@ void RouteMapOverlay::RouteAnalysis(PlugIn_Route* proute) {
     pwp = pwpnode->GetData();
     configuration.time = data.time;
     data.lat = pwp->m_lat, data.lon = pwp->m_lon;
-    double eta = dt;
     pwpnode = pwpnode->GetNext();  // PlugInWaypoint
     if (pwpnode == nullptr) break;
 
@@ -173,8 +172,8 @@ void RouteMapOverlay::RouteAnalysis(PlugIn_Route* proute) {
     pwp = pwpnode->GetData();
     rte.lat = pwp->m_lat, rte.lon = pwp->m_lon;
     next = &rte;
-    eta = data.PropagateToPoint(rte.lat, rte.lon, configuration, H, data_mask,
-                                false);
+    double eta = data.PropagateToPoint(rte.lat, rte.lon, configuration, H,
+                                       data_mask, false);
     if (std::isnan(eta)) {
       ok = false;
       eta = dt;

@@ -1114,7 +1114,6 @@ void ll_gc_ll(double lat, double lon, double brg, double dist, double* dlat,
     if (merid) {
       phi2 = atan(tan(HALFPI + s1 - ds) / onef);
       if (al21 > 0.) {
-        al21 = PI;
         if (signS)
           de = PI;
         else {
@@ -1122,7 +1121,6 @@ void ll_gc_ll(double lat, double lon, double brg, double dist, double* dlat,
           de = 0.;
         }
       } else {
-        al21 = 0.;
         if (signS) {
           phi2 = -phi2;
           de = 0;
@@ -1208,7 +1206,6 @@ void ll_gc_ll_reverse(double lat1, double lon1, double lat2, double lon2,
       dthm = .5 * (th2 - th1);
       dlamm = .5 * (dlam = adjlon(lam2 - lam1));
       if (fabs(dlam) < DTOL && fabs(dthm) < DTOL) {
-        al12 = al21 = geod_S = 0.;
         if (bearing) *bearing = 0.;
         if (dist) *dist = 0.;
         return;
@@ -1250,7 +1247,6 @@ void ll_gc_ll_reverse(double lat1, double lon1, double lat2, double lon2,
       u = atan2(sindthm, (tandlammp * costhm));
       v = atan2(cosdthm, (tandlammp * sinthm));
       al12 = adjlon(TWOPI + v - u);
-      al21 = adjlon(TWOPI - v - u);
       if (al12 < 0) al12 += 2 * PI;
       if (bearing) *bearing = al12 / DEGREE;
       if (dist) *dist = geod_S / 1852.0;
@@ -1588,10 +1584,6 @@ int Georef_Calculate_Coefficients(struct GeoRef* cp, int nlin_lon) {
       cp->txmin -
           ((cp->txmax - cp->txmin) * cp->lonmin / (cp->lonmax - cp->lonmin)),
       (cp->txmax - cp->txmin) / (cp->lonmax - cp->lonmin), 0.0);
-
-  //      if blin_lon > 0, force cross terms in latitude equation coefficients
-  //      to be zero by making ty not dependent on lon,
-  px = nlin_lon ? &pnull[0] : cp->lon;
 
   int r4 = Georef_Calculate_Coefficients_Onedir(
       cp->count, mp_lat, &pnull[0] /*cp->lon*/, cp->lat, cp->ty, cp->wpy,

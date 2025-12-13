@@ -1076,7 +1076,6 @@ startnormalizing:
         if (pstart) break; /* have start, must be done */
       startingp:;
       } while (q != sq->point);
-      p = pstart;
       if (!pstart) goto done;
       //    if(pstart == pend)  // this is never hit in practice
       //      goto done;

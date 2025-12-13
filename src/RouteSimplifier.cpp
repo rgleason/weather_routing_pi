@@ -449,10 +449,6 @@ SimplificationResult RouteSimplifier::Simplify(
 
     // Update statistics.
     simplifiedTotalPoints += simplifiedSegment.size();
-
-    // Weight the time penalty by segment length.
-    double segmentWeight =
-        static_cast<double>(originalSegmentSize) / originalTotalPoints;
   }
 
   // Calculate final statistics.

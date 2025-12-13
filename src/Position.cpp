@@ -351,7 +351,6 @@ bool Position::Propagate(IsoRouteList& routelist,
           ll_gc_ll(lat, lon, heading_resolve(boat_data.cog), dist2test, &dlat1,
                    &dlon1);
         } else {
-          dist2test = boat_data.dist;
           dlat1 = dlat;
           dlon1 = dlon;
         }

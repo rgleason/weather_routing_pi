@@ -403,11 +403,9 @@ void BoatDialog::OnMouseEventsPolarPlot(wxMouseEvent& event) {
       }
     }
 
-    bool need_refresh = false;
     if (closest_wind_index != m_HoveredWindSpeedIndex) {
       m_HoveredWindSpeedIndex = closest_wind_index;
       m_ShowHoverInfo = (closest_wind_index >= 0);
-      need_refresh = true;
     }
 
     // Always refresh to update cursor position
@@ -649,7 +647,10 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
           case 2:
           case 3:
             stw = polar.SpeedAtApparentWindSpeed(W, aws);
+#if 0
+            // This result is only used in the #if 0 block below
             VW = Polar::VelocityTrueWind(aws, stw, W);
+#endif
             break;
         }
 

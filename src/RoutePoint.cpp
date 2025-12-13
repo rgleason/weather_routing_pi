@@ -364,6 +364,18 @@ bool BoatData::GetBestPolarAndBoatSpeed(RouteMapConfiguration& configuration,
   return true;
 }
 
+double calculateRhumbBearing(const double dlon, const double lon,
+                             const double dlat, const double lat) {
+  // We need to calculate the constant bearing for a rhumb line
+  double y = sin(deg2rad(dlon - lon)) * cos(deg2rad(dlat));
+  double x = cos(deg2rad(lat)) * sin(deg2rad(dlat)) -
+             sin(deg2rad(lat)) * cos(deg2rad(dlat)) * cos(deg2rad(dlon - lon));
+  double rhumbBearing = rad2deg(atan2(y, x));
+
+  // Normalize to 0-360
+  return heading_resolve(rhumbBearing);
+}
+
 double RoutePoint::RhumbLinePropagateToPoint(
     double dlat, double dlon, RouteMapConfiguration& configuration,
     std::vector<RoutePoint*>& intermediatePoints, DataMask& data_mask,
@@ -372,15 +384,6 @@ double RoutePoint::RhumbLinePropagateToPoint(
   double rhumbDistance = DistLoxodrome(lat, lon, dlat, dlon);
 
   totalDistance = rhumbDistance;
-
-  // Calculate rhumb line bearing
-  // We need to calculate the constant bearing for a rhumb line
-  double y = sin(deg2rad(dlon - lon)) * cos(deg2rad(dlat));
-  double x = cos(deg2rad(lat)) * sin(deg2rad(dlat)) -
-             sin(deg2rad(lat)) * cos(deg2rad(dlat)) * cos(deg2rad(dlon - lon));
-  double rhumbBearing = rad2deg(atan2(y, x));
-  // Normalize to 0-360
-  rhumbBearing = heading_resolve(rhumbBearing);
 
   // If distance is very short, use regular PropagateToPoint
   if (rhumbDistance <= maxSegmentLength) {
@@ -399,7 +402,6 @@ double RoutePoint::RhumbLinePropagateToPoint(
 
   // Calculate number of segments needed
   int numSegments = std::ceil(rhumbDistance / maxSegmentLength);
-  double segmentDistance = rhumbDistance / numSegments;
 
   // Propagate through each segment sequentially
   double totalTime = 0;
@@ -438,10 +440,6 @@ double RoutePoint::RhumbLinePropagateToPoint(
       auto meridionalParts = [](double lat) -> double {
         return log(tan(M_PI / 4 + lat / 2));
       };
-
-      double mp1 = meridionalParts(lat1);
-      double mp2 = meridionalParts(lat2);
-      double mp_i = mp1 + fraction * (mp2 - mp1);
 
       // Calculate intermediate longitude
       double lon_i;
