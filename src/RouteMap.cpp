@@ -215,7 +215,7 @@ std::list<RouteMapPosition> RouteMap::Positions;
 
 RouteMap::RouteMap() {}
 
-RouteMap::~RouteMap() { Clear(); }
+RouteMap::~RouteMap() { RouteMap::Clear(); }
 
 void RouteMap::PositionLatLon(wxString Name, double& lat, double& lon) {
   for (std::list<RouteMapPosition>::iterator it = Positions.begin();

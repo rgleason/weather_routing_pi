@@ -91,6 +91,8 @@ RouteMapOverlay::~RouteMapOverlay() {
   delete destination_position;
 
   if (m_Thread) Stop();
+
+  Clear();
 }
 
 bool RouteMapOverlay::Start(wxString& error) {
