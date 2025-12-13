@@ -2048,9 +2048,8 @@ void WeatherRouting::OnWeatherTable(wxCommandEvent& event) {
 
 void WeatherRouting::OnManual(wxCommandEvent& event) {
   wxLaunchDefaultBrowser(
-      "https://opencpn.org/wiki/dokuwiki/"
-      "doku.php?id=opencpn:opencpn_user_manual:plugins:weather:weather_"
-      "routing");
+   "https://opencpn-manuals.github.io/main/weather_routing/index.html"
+  );
 }
 
 void WeatherRouting::OnInformation(wxCommandEvent& event) {
