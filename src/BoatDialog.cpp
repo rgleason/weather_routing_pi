@@ -569,7 +569,10 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
       double W0 = polar.degree_steps[0];
       double Wn = polar.degree_steps[polar.degree_steps.size() - 1];
       double Wd = Wn - W0, Ws = Wd / floor(Wd);
-      for (double W = W0; W <= Wn; W += Ws) {
+
+      double W = W0;
+      while (W <= Wn + 1E-3) {  // Avoid missing the last step by a tiny
+                                // fraction, due to rounding errors
         double stw = 0;
         switch (selection) {
           case 0:
@@ -585,6 +588,7 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
 
         if (std::isnan(stw)) {
           lastvalid = false;
+          W += Ws;
           continue;
         }
 
@@ -614,6 +618,7 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
 
         lx = px, ly = py;
         lastvalid = true;
+        W += Ws;
       }
     }
   } else {
