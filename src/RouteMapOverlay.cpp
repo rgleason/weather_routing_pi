@@ -1681,7 +1681,9 @@ void RouteMapOverlay::UpdateDestination() {
       }
       Unlock();
 
-      if (std::isinf(mindt)) {
+      // Note: else branch will crash when empty() because endp is not
+      // initialized
+      if (std::isinf(mindt) || isochrone->routes.empty()) {
         // destination is between two isochrones
         // but propagate can't reach it (land or boundaries in the way).
         // Use an upper bound time for EndTime, not defined times are too much
@@ -1690,10 +1692,13 @@ void RouteMapOverlay::UpdateDestination() {
         last_destination_position =
             ClosestPosition(configuration.EndLat, configuration.EndLon);
       } else {
+        // NOLINTBEGIN: endp is always initialized when isochrone->routes is not
+        // empty()
         destination_position = new Position(
             configuration.EndLat, configuration.EndLon, endp, minH, NAN,
-            endp->polar, endp->tacks + mintacked, endp->jibes + minjibes,
+            endp->polar, endp->tacks + mintacked,  endp->jibes + minjibes,
             endp->sail_plan_changes + minsail_plan_changed, mindata_mask);
+        // NOLINTEND
 
         m_EndTime = isochrone->time + wxTimeSpan::Milliseconds(1000 * mindt);
         isochrone->delta = mindt;
