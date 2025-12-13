@@ -506,12 +506,14 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
 
   if (plottype == 0) {
     /* polar meridians */
-    for (double ctw = 0; ctw < DEGREES; ctw += 15) {
+    for (unsigned ctw = 0; ctw < DEGREES;
+         ctw += 15) {  // DEGREES must be integer, since it is used as index
+                       // into degree_step_index
       double x = maxVB * m_PlotScale * sin(deg2rad(ctw));
       double y = maxVB * m_PlotScale * cos(deg2rad(ctw));
       if (ctw < 180) dc.DrawLine(xc - x, h / 2 + y, xc + x, h / 2 - y);
 
-      wxString str = wxString::Format(_T("%.0f"), ctw);
+      wxString str = wxString::Format(_T("%u"), ctw);
       int sw, sh;
       dc.GetTextExtent(str, &sw, &sh);
       dc.DrawText(str, xc + .9 * x - sw / 2, h / 2 - .9 * y - sh / 2);
@@ -873,32 +875,31 @@ void BoatDialog::OnPaintCrossOverChart(wxPaintEvent& event) {
   int xc = full ? w / 2 : 0;
   if (polar) scale = wxMin(full ? w / 2 : w, h / 2) / 40.0;
 
-  for (double VW = 0; VW < 40; VW += 10) {
+  for (unsigned VW = 0; VW < 40; VW += 10) {
     if (polar) {
       dc.DrawCircle(xc, h / 2, VW * scale);
-      dc.DrawText(wxString::Format(_T("%.0f"), VW), xc,
-                  h / 2 + (int)VW * scale);
+      dc.DrawText(wxString::Format(_T("%u"), VW), xc, h / 2 + VW * scale);
     } else {
       int y = h - VW * h / 40;
       dc.DrawLine(0, y, w, y);
-      dc.DrawText(wxString::Format(_T("%.0f"), VW), 0, y);
+      dc.DrawText(wxString::Format(_T("%u"), VW), 0, y);
     }
   }
 
-  for (double H = 0; H < 180; H += 10) {
+  for (unsigned H = 0; H < 180; H += 10) {
     if (polar) {
       double x = scale * sin(deg2rad(H));
       double y = scale * cos(deg2rad(H));
       if (H < 180) dc.DrawLine(xc - x, h / 2 + y, xc + x, h / 2 - y);
 
-      wxString str = wxString::Format(_T("%.0f"), H);
+      wxString str = wxString::Format(_T("%u"), H);
       int sw, sh;
       dc.GetTextExtent(str, &sw, &sh);
       dc.DrawText(str, xc + .9 * x - sw / 2, h / 2 - .9 * y - sh / 2);
     } else {
       int x = H * w / 180;
       dc.DrawLine(x, 0, x, h);
-      dc.DrawText(wxString::Format(_T("%.0f"), H), x, 0);
+      dc.DrawText(wxString::Format(_T("%u"), H), x, 0);
     }
   }
 
