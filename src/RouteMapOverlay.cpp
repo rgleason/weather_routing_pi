@@ -1022,7 +1022,7 @@ void RouteMapOverlay::RenderWindBarbs(piDC& dc, PlugIn_ViewPort& vp) {
       vp.view_scale_ppm != wind_barb_cache_scale ||
       vp.m_projection_type != wind_barb_cache_projection) {
     wxStopWatch timer;
-    static double step = 36.0;
+    static double step = 36.0;  // Must be float, is adjusted by 1.5 below
 
     wind_barb_cache_origin_size = origin.size();
     wind_barb_cache_scale = vp.view_scale_ppm;
@@ -1041,8 +1041,10 @@ void RouteMapOverlay::RenderWindBarbs(piDC& dc, PlugIn_ViewPort& vp) {
 
     IsoChronList::iterator it = origin.end();
     it--;
-    for (double x = r.x + xoff; x < r.x + r.width; x += step) {
-      for (double y = r.y + yoff; y < r.y + r.height; y += step) {
+    double x = r.x + xoff;
+    while (x < r.x + r.width) {
+      double y = r.y + yoff;
+      while (y < r.y + r.height) {
         double lat, lon;
         GetCanvasLLPix(&nvp, wxPoint(x, y), &lat, &lon);
 
@@ -1112,7 +1114,9 @@ void RouteMapOverlay::RenderWindBarbs(piDC& dc, PlugIn_ViewPort& vp) {
               wind_barb_cache, x, y, VW, deg2rad(W) + nvp.rotation, lat < 0);
         }
       skip:;
+        y += step;
       }
+      x += step;
     }
 
     Unlock();
@@ -1214,7 +1218,7 @@ void RouteMapOverlay::RenderCurrent(piDC& dc, PlugIn_ViewPort& vp) {
       vp.view_scale_ppm != current_cache_scale ||
       vp.m_projection_type != current_cache_projection) {
     wxStopWatch timer;
-    static double step = 80.0;
+    static double step = 80.0;  // Must be float, is adjusted by 1.5 below
 
     current_cache_origin_size = origin.size();
     current_cache_scale = vp.view_scale_ppm;
@@ -1233,8 +1237,10 @@ void RouteMapOverlay::RenderCurrent(piDC& dc, PlugIn_ViewPort& vp) {
 
     IsoChronList::iterator it = origin.end();
     it--;
-    for (double x = r.x + xoff; x < r.x + r.width; x += step) {
-      for (double y = r.y + yoff; y < r.y + r.height; y += step) {
+    double x = r.x + xoff;
+    while (x < r.x + r.width) {
+      double y = r.y + yoff;
+      while (y < r.y + r.height) {
         double lat, lon;
         GetCanvasLLPix(&nvp, wxPoint(x, y), &lat, &lon);
 
@@ -1314,7 +1320,9 @@ void RouteMapOverlay::RenderCurrent(piDC& dc, PlugIn_ViewPort& vp) {
                                               lat < 0);
         }
       skip2:;
+        y += step;
       }
+      x += step;
     }
 
     Unlock();
