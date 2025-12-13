@@ -584,9 +584,12 @@ bool RouteSimplifier::ValidateSegmentWithDetailedPropagation(
 
   // Generate degree steps
   tempConfig.DegreeSteps.clear();
-  for (double angle = tempConfig.FromDegree; angle <= tempConfig.ToDegree;
-       angle += tempConfig.ByDegrees) {
+  double angle = tempConfig.FromDegree;
+  while (angle <=
+         tempConfig.ToDegree + 1E-3) {  // Avoid missing the last step by a tiny
+                                        // fraction, due to rounding errors
     tempConfig.DegreeSteps.push_back(heading_resolve(angle));
+    angle += tempConfig.ByDegrees;
   }
 
   // Try propagation
