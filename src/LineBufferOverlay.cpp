@@ -133,9 +133,11 @@ void LineBufferOverlay::setLineBuffer() {
   int r = 2 * m_lineWidth;
   int i = 0;
   double s = 2 * M_PI / 10.;
-  for (double a = 0; a < 2 * M_PI; a += s)
+  for (int i = 0; i < 10; ++i) {
+    double a = i * s;
     m_WindArrowCache[0].pushLine(r * sin(a), r * cos(a), r * sin(a + s),
                                  r * cos(a + s));
+  }
 
   int dec = windArrowSize / 2;
 
