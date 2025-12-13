@@ -263,8 +263,11 @@ bool Position::Propagate(IsoRouteList& routelist,
           first_avoid = false;
           rp = new Position(this);
           double dp = .95;
+          // NOLINTBEGIN: parent cannot be nullptr, because otherwise bearing1
+          // would be NAN and we would not reach this branch
           rp->lat = (1 - dp) * lat + dp * parent->lat;
           rp->lon = (1 - dp) * lon + dp * parent->lon;
+          // NOLINTEND
           rp->propagated =
               true;  // not a "real" position so we don't propagate it either.
           goto add_position;
