@@ -36,7 +36,11 @@ WeatherData::WeatherData(RoutePoint* position)
       twsOverWater(0),
       currentDir(0),
       currentSpeed(0),
-      swell(0) {}
+      swell(0) {
+  // Silence warning about uninitialized fields
+  atlas.storm = 0;
+  atlas.calm = 0;
+}
 
 /* get data from a position for plotting */
 bool RoutePoint::GetPlotData(RoutePoint* next, double dt,

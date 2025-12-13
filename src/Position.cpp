@@ -72,7 +72,10 @@ Position::Position(double latitude, double longitude, Position* p,
       parent_heading(pheading),
       parent_bearing(pbearing),
       parent(p),
+      prev(nullptr),
+      next(nullptr),
       propagated(false),
+      drawn(false),
       copied(false),
       propagation_error(PROPAGATION_NO_ERROR) {
   lat = EPSILON * std::round(lat / EPSILON);
