@@ -187,9 +187,12 @@ bool RouteMapConfiguration::Update() {
     if (FromDegree > ToDegree) FromDegree = ToDegree;
     ByDegrees = wxMax(wxMin(ByDegrees, 60), .1);
 
-    for (double step = FromDegree; step <= ToDegree; step += ByDegrees) {
+    double step = FromDegree;
+    while (step <= ToDegree + 1E-3) {  // Avoid missing the last step by a tiny
+                                       // fraction, due to rounding errors
       DegreeSteps.push_back(step);
       if (step > 0 && step < 180) DegreeSteps.push_back(360 - step);
+      step += ByDegrees;
     }
   } else {
     DegreeSteps.push_back(0.);
