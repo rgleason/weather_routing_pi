@@ -466,8 +466,10 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
   dc.SetTextForeground(wxColour(0, 55, 75));
 
   if (maxVB <= 0) maxVB = 1; /* avoid lock */
+  // Since 5.0 and all multiples of it have an exact representation as a floating
+  // point number, this is safe
   double Vstep = ceil(maxVB / 5);
-  maxVB += Vstep;
+  double Vend = maxVB + Vstep;
 
   bool full = m_cbFullPlot->GetValue();
 
@@ -489,16 +491,41 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
 
   if (plottype == 0) {
     /* polar circles */
-    for (double V = Vstep; V <= maxVB; V += Vstep) {
+    // Note that Vstep is an integer and all integers have an exact representation
+    // as floating point numbers. Thus V never has any rounding errors.
+    // Vend can be an arbitrary value and may have rounding errors.
+    // The loop steps will be:
+    // maxVB < 5: 1 .. ceil(maxVB).  If maxVB is very close to 5, then there
+    // might be an extra loop step ceil(maxVB) + 1
+    // maxVB = 5: 2, 4, 6 (always)
+    // 5 < maxVB < 6: 2, 4, 6. If maxVB very close to 6, maybe extra step
+    // 6 <= maxVB < 8: 2, 4, 6, 8. If maxVB very close to 8, maybe extra step
+    // 8 <= maxVB < 10: 2, 4, 6, 8, 10. If maxVB very close to 10, maybe extra step
+    // maxVB = 10: 3, 6, 9, 12 (always)
+    // 10 < maxVB < 12: 3, 6, 9, 12. If maxVB very close to 12, maybe extra step
+    // 12 <= maxVB < 15: 3, 6, 9, 12, 15. If maxVB very close to 15, maybe extra step
+    // maxVB = 15: 4, 8, 12, 16 (always)
+    // 15 < maxVB < 16: 4, 8, 12, 16. If maxVB very close to 16, maybe extra step
+    // 16 <= maxVB < 20: 4, 8, 12, 16, 20. If maxVB very close to 20, maybe extra step
+    // maxVB = 20: 5, 10, 15, 20, 25 (always)
+    // 20 < maxVB < 25: 5, 10, 15, 20, 25. If maxVB very close to 25, maybe extra step
+    // maxVB = 25: 6, 12, 18, 24, 30 (always)
+    // 25 < maxVB < 30: 6, 12, 18, 24, 30. If maxVB very close to 30, maybe extra step
+    // etc.
+    double V = Vstep;
+    while (V <= Vend - 1E-3) {
       dc.DrawCircle(xc, h / 2, V * m_PlotScale);
       dc.DrawText(wxString::Format(_T("%.0f"), V), xc,
                   h / 2 + (int)V * m_PlotScale);
+      V += Vstep;
     }
   } else {
-    for (double V = Vstep; V <= maxVB; V += Vstep) {
+    double V = Vstep;
+    while (V <= Vend - 1E-3) {
       int y = h - 2 * V * m_PlotScale;
       dc.DrawLine(0, y, w, y);
       dc.DrawText(wxString::Format(_T("%.0f"), V), 0, y);
+      V += Vstep;
     }
   }
 
