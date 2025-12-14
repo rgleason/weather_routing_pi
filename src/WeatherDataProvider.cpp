@@ -383,7 +383,10 @@ bool WeatherDataProvider::ReadWindAndCurrents(
     if (configuration.grib_is_data_deficient &&
         GetGribWind(configuration, position->lat, position->lon, twdOverGround,
                     twsOverGround)) {
+      // NOLINTBEGIN: data_mask might take the value 5, which is not listed
+      // in the enum
       data_mask |= DataMask::GRIB_WIND | DataMask::DATA_DEFICIENT_WIND;
+      // NOLINTEND
 
       break;
     }
