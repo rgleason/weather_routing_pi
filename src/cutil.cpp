@@ -26,9 +26,7 @@
  */
 #include <stdio.h>
 #include <stdarg.h>
-#include <string.h>
 #include <math.h>
-#include <ctype.h>
 
 #include "cutil.h"
 

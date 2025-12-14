@@ -21,8 +21,6 @@
 
 #include <functional>
 
-#include "json/json.h"
-
 #include "RoutePoint.h"
 #include "WeatherDataProvider.h"
 #include "RouteMap.h"

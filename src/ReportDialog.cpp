@@ -28,8 +28,6 @@
 
 #include "ocpn_plugin.h"
 
-#include "Utilities.h"
-#include "Boat.h"
 #include "RouteMapOverlay.h"
 
 #include "WeatherRouting.h"

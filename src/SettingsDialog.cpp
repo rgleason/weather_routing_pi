@@ -28,11 +28,8 @@
 
 #include <stdlib.h>
 #include <math.h>
-#include <time.h>
 
 #include "SettingsDialog.h"
-#include "Utilities.h"
-#include "Boat.h"
 #include "RouteMapOverlay.h"
 #include "weather_routing_pi.h"
 #include "WeatherRouting.h"

@@ -25,11 +25,9 @@
 
 #include <wx/wx.h>
 
-#include "weather_routing_pi.h"
 #include "Boat.h"
 #include "BoatDialog.h"
 #include "EditPolarDialog.h"
-#include "Utilities.h"
 
 enum {
   spTRUE_WIND_SPEED,

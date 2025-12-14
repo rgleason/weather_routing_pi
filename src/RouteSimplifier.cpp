@@ -21,11 +21,8 @@
 
 #include "ocpn_plugin.h"
 #include "Utilities.h"
-#include "Boat.h"
-#include "GribRecordSet.h"
 #include "RouteSimplifier.h"
 #include "RouteMapOverlay.h"
-#include "georef.h"
 
 #include <algorithm>
 #include <cmath>

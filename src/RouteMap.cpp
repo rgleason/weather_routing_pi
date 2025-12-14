@@ -66,17 +66,14 @@
 
 #include <stdlib.h>
 #include <math.h>
-#include <functional>
 #include <list>
 #include <map>
 
 #include "Utilities.h"
-#include "Boat.h"
 #include "ConstraintChecker.h"
 #include "RoutePoint.h"
 #include "IsoRoute.h"
 #include "RouteMap.h"
-#include "SunCalculator.h"
 #include "WeatherDataProvider.h"
 #include "weather_routing_pi.h"
 

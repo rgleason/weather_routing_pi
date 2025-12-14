@@ -20,17 +20,13 @@
 #include <wx/wx.h>
 #include <wx/glcanvas.h>
 
-#include <functional>
 #include <list>
 
 #include "ocpn_plugin.h"
 #include "pidc.h"
-#include "json/json.h"
 #include "Utilities.h"
-#include "Boat.h"
 #include "RouteMapOverlay.h"
 #include "SettingsDialog.h"
-#include "georef.h"
 
 void WR_GetCanvasPixLL(PlugIn_ViewPort* vp, wxPoint* pp, double lat,
                        double lon) {

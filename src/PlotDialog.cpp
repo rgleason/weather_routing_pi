@@ -23,13 +23,10 @@
 #include <stdlib.h>
 #include <math.h>
 #include <cmath>  // For std::isnan
-#include <time.h>
 
 #include "Utilities.h"
-#include "Boat.h"
 #include "RouteMapOverlay.h"
 #include "WeatherRouting.h"
-#include "wx28compat.h"
 
 //---------------------------------------------------------------------------------------
 //          Weather Routing Dialog Implementation

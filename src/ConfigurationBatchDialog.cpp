@@ -29,9 +29,7 @@
 
 #include <stdlib.h>
 #include <math.h>
-#include <time.h>
 
-#include "Utilities.h"
 #include "Boat.h"
 #include "BoatDialog.h"
 #include "RouteMapOverlay.h"

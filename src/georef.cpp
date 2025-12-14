@@ -39,9 +39,9 @@
 #include <wx/debug.h>
 
 #include "georef.h"
-#include "cutil.h"
 
 #ifdef __MSVC__
+#include "cutil.h"
 #define snprintf mysnprintf
 #endif
 

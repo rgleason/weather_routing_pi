@@ -30,8 +30,6 @@
 
 #include <sstream>
 
-#include "Utilities.h"
-#include "Boat.h"
 #include "RoutePoint.h"
 #include "RouteMap.h"
 #include "RouteMapOverlay.h"

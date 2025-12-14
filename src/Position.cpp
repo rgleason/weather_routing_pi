@@ -24,7 +24,6 @@
 #include "Utilities.h"
 
 #include "georef.h"
-#include "ocpn_plugin.h"
 
 /* sufficient for routemap uses only.. is this faster than below? if not, remove
  * it */
