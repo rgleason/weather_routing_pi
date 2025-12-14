@@ -250,6 +250,9 @@ void IsoChron::PropagateIntoList(IsoRouteList& routelist,
 
     /* build up a list of iso regions for each point
        in the current iso */
+    // Note: Propagate() must not change the configuration.Anchoring field,
+    // otherwise x might not be initialized
+    // const& configuration is not possible because the polarstatus is set
     if ((*it)->Propagate(routelist, configuration)) propagated = true;
 
     if (!configuration.Anchoring) x = new IsoRoute(*it);
@@ -263,7 +266,10 @@ void IsoChron::PropagateIntoList(IsoRouteList& routelist,
         y = nullptr;
       if ((*cit)->Propagate(routelist, configuration)) {
         if (!configuration.Anchoring) y = new IsoRoute(*cit, x);
+        // NOLINTBEGIN: x is always initialized for any value of
+        // configuration.Anchoring
         x->children.push_back(y); /* copy child */
+        // NOLINTEND
         propagated = true;
       } else
         delete y;
