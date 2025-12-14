@@ -334,7 +334,7 @@ bool WeatherDataProvider::ReadWindAndCurrents(
               atlas.directions, speeds, atlas.storm, atlas.calm)) {
         /* compute wind speeds over water with the given current */
         for (int i = 0; i < windatlas_count; i++) {
-          double twd = i * 360 / windatlas_count;
+          double twd = static_cast<double>(i) * 360 / windatlas_count;
           double tws = speeds[i] * configuration.WindStrength;
           GroundToWaterFrame(twd, tws, currentDir, -currentSpeed, atlas.W[i],
                              atlas.VW[i]);
