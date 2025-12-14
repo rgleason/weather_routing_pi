@@ -184,7 +184,7 @@ void BoatDialog::OnMouseEventsPolarPlot(wxMouseEvent& event) {
     bool full = m_cbFullPlot->GetValue();
     int cx = full ? w / 2 : 0;
     double x = (double)p.x - cx;
-    double y = (double)p.y - h / 2;
+    double y = (double)p.y - int(h / 2);
 
     double mouse_distance = sqrt(x * x + y * y) / m_PlotScale;
     double mouse_angle = rad2posdeg(atan2(x, -y));
@@ -516,7 +516,7 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
     while (V <= Vend - 1E-3) {
       dc.DrawCircle(xc, h / 2, V * m_PlotScale);
       dc.DrawText(wxString::Format(_T("%.0f"), V), xc,
-                  h / 2 + (int)V * m_PlotScale);
+                  int(h / 2) + (int)V * m_PlotScale);
       V += Vstep;
     }
   } else {
@@ -538,18 +538,18 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
                        // into degree_step_index
       double x = maxVB * m_PlotScale * sin(deg2rad(ctw));
       double y = maxVB * m_PlotScale * cos(deg2rad(ctw));
-      if (ctw < 180) dc.DrawLine(xc - x, h / 2 + y, xc + x, h / 2 - y);
+      if (ctw < 180) dc.DrawLine(xc - x, int(h / 2) + y, xc + x, int(h / 2) - y);
 
       wxString str = wxString::Format(_T("%u"), ctw);
       int sw, sh;
       dc.GetTextExtent(str, &sw, &sh);
-      dc.DrawText(str, xc + .9 * x - sw / 2, h / 2 - .9 * y - sh / 2);
+      dc.DrawText(str, xc + .9 * x - int(sw / 2), int(h / 2) - .9 * y - int(sh / 2));
     }
   } else {
     for (int s = 0; s < num_wind_speeds; s++) {
       double windspeed = wind_speeds[s];
 
-      double x = s * w / num_wind_speeds;
+      double x = int(s * w / num_wind_speeds);
       dc.DrawLine(x, 0, x, h);
 
       wxString str = wxString::Format(_T("%.0f"), windspeed);
@@ -708,8 +708,8 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
           if (wind_speeds[s] > windspeed) break;
         {  // interpolate into non-linear windspeed space
           double x = windspeed, x1 = wind_speeds[s], x2 = wind_speeds[s + 1];
-          double y1 = s * w / num_wind_speeds;
-          double y2 = (s + 1) * w / num_wind_speeds;
+          double y1 = int(s * w / num_wind_speeds);
+          double y2 = int((s + 1) * w / num_wind_speeds);
 
           px = x2 - x1 ? (y2 - y1) * (x - x1) / (x2 - x1) + y1 : y1;
         }
@@ -784,8 +784,8 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
           if (wind_speeds[s] > windspeed) break;
         {  // interpolate into non-linear windspeed space
           double x = windspeed, x1 = wind_speeds[s], x2 = wind_speeds[s + 1];
-          double y1 = s * w / num_wind_speeds;
-          double y2 = (s + 1) * w / num_wind_speeds;
+          double y1 = int(s * w / num_wind_speeds);
+          double y2 = int((s + 1) * w / num_wind_speeds);
 
           p.x = x2 - x1 ? (y2 - y1) * (x - x1) / (x2 - x1) + y1 : y1;
         }
@@ -910,7 +910,7 @@ void BoatDialog::OnPaintCrossOverChart(wxPaintEvent& event) {
   for (unsigned VW = 0; VW < 40; VW += 10) {
     if (polar) {
       dc.DrawCircle(xc, h / 2, VW * scale);
-      dc.DrawText(wxString::Format(_T("%u"), VW), xc, h / 2 + VW * scale);
+      dc.DrawText(wxString::Format(_T("%u"), VW), xc, int(h / 2) + VW * scale);
     } else {
       int y = h - VW * h / 40;
       dc.DrawLine(0, y, w, y);
@@ -922,12 +922,12 @@ void BoatDialog::OnPaintCrossOverChart(wxPaintEvent& event) {
     if (polar) {
       double x = scale * sin(deg2rad(H));
       double y = scale * cos(deg2rad(H));
-      if (H < 180) dc.DrawLine(xc - x, h / 2 + y, xc + x, h / 2 - y);
+      if (H < 180) dc.DrawLine(xc - x, int(h / 2) + y, xc + x, int(h / 2) - y);
 
       wxString str = wxString::Format(_T("%u"), H);
       int sw, sh;
       dc.GetTextExtent(str, &sw, &sh);
-      dc.DrawText(str, xc + .9 * x - sw / 2, h / 2 - .9 * y - sh / 2);
+      dc.DrawText(str, xc + .9 * x - int(sw / 2), int(h / 2) - .9 * y - int(sh / 2));
     } else {
       int x = H * w / 180;
       dc.DrawLine(x, 0, x, h);
@@ -1001,7 +1001,7 @@ void BoatDialog::OnPaintCrossOverChart(wxPaintEvent& event) {
                 double VW = (h - py) / h * 40;
 
                 wxPoint polarPoint(xc + scale * VW * sin(deg2rad(H)),
-                                   h / 2 - scale * VW * cos(deg2rad(H)));
+                                   int(h / 2) - scale * VW * cos(deg2rad(H)));
 
                 if (!first) {
                   dc.DrawLine(lastPolarPoint, polarPoint);
@@ -1022,7 +1022,7 @@ void BoatDialog::OnPaintCrossOverChart(wxPaintEvent& event) {
 
                   wxPoint polarPoint(
                       2 * xc - (xc + scale * VW * sin(deg2rad(H))),
-                      h / 2 - scale * VW * cos(deg2rad(H)));
+                      int(h / 2) - scale * VW * cos(deg2rad(H)));
 
                   if (!first) {
                     dc.DrawLine(lastPolarPoint, polarPoint);
@@ -1105,7 +1105,7 @@ void BoatDialog::OnPaintCrossOverChart(wxPaintEvent& event) {
               double H = px / w * 180;
               double VW = (h - py) / h * 40;
               pts[c_pts++] = wxPoint(xc + scale * VW * sin(deg2rad(H)),
-                                     h / 2 - scale * VW * cos(deg2rad(H)));
+                                     int(h / 2) - scale * VW * cos(deg2rad(H)));
             }
           }
 #if wxUSE_GRAPHICS_CONTEXT
@@ -1140,7 +1140,7 @@ void BoatDialog::OnPaintCrossOverChart(wxPaintEvent& event) {
           wxPoint p0;
           if (polar)
             p0 = wxPoint(xc + scale * VW * sin(deg2rad(H)),
-                         h / 2 - scale * VW * cos(deg2rad(H)));
+                         int(h / 2) - scale * VW * cos(deg2rad(H)));
           else
             p0 = wxPoint(H * w / 180, h - VW * h / 40);
 
