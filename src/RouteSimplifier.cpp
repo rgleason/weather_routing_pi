@@ -1155,7 +1155,7 @@ RouteSimplifier::FindAlternateRoutesWithFewerManeuvers(
 
   // For each penalty factor, revisit isochrones to find an alternate route.
   for (double maneuverDuration : maneuverDurations) {
-    if (alternateRoutes.size() >= maxRoutes) break;
+    if (alternateRoutes.size() >= static_cast<std::size_t>(maxRoutes)) break;
 
     // Create a modified configuration with increased maneuver penalties
     RouteMapConfiguration routeConfig = m_configuration;
