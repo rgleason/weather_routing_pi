@@ -302,6 +302,12 @@ bool WeatherDataProvider::ReadWindAndCurrents(
     double& twsOverWater, double& currentDir, double& currentSpeed,
 
     climatology_wind_atlas& atlas, DataMask& data_mask) {
+
+    //int cv = _CrtCheckMemory();
+    //if (!cv) {
+    //    int yyp = 4;
+    //  }
+
   /* read current data */
   if (!configuration.Currents ||
       !GetCurrent(configuration, position->lat, position->lon, currentDir,

@@ -51,6 +51,52 @@ static double interp_angle(double a0, double a1, double d, double p) {
 }
 
 //-------------------------------------------------------------------------------
+GribRecord::GribRecord()
+{
+  // sensible zero/empty initialization for all members used elsewhere
+  id = 0;
+  ok = false;
+  knownData = false;
+  waveData = false;
+  IsDuplicated = false;
+  eof = false;
+  dataKey.clear();
+  strRefDate[0] = '\0';
+  strCurDate[0] = '\0';
+  dataCenterModel = 0;
+  m_bfilled = false;
+  editionNumber = 0;
+  idCenter = 0;
+  idModel = 0;
+  idGrid = 0;
+  dataType = 0;
+  levelType = 0;
+  levelValue = 0;
+  hasBMS = false;
+  refyear = refmonth = refday = refhour = refminute = 0;
+  periodP1 = periodP2 = 0;
+  timeRange = 0;
+  periodsec = 0;
+  refDate = curDate = 0;
+  NV = PV = gridType = 0;
+  Ni = Nj = 0;
+  La1 = Lo1 = La2 = Lo2 = 0.0;
+  latMin = lonMin = latMax = lonMax = 0.0;
+  Di = Dj = 0.0;
+  resolFlags = scanFlags = 0;
+  hasDiDj = false;
+  isEarthSpheric = false;
+  isUeastVnorth = false;
+  isScanIpositive = false;
+  isScanJpositive = false;
+  isAdjacentI = false;
+  BMSsize = 0;
+  data = nullptr;
+  BMSbits = nullptr;
+}
+
+
+//-------------------------------------------------------------------------------
 void GribRecord::print() {
   printf(
       "%d: idCenter=%d idModel=%d idGrid=%d dataType=%d levelType=%d "
@@ -119,6 +165,37 @@ GribRecord::GribRecord(const GribRecord& rec)
   isScanJpositive = rec.isScanJpositive;
   isAdjacentI = rec.isAdjacentI;
   BMSsize = rec.BMSsize;
+
+  // Insert diagnostic here: log the allocation size we are about to request.
+  // This must be non-allocating and platform-safe.
+#if defined(_WIN32) || defined(_WIN64)
+  {
+    // compute bytes (guard against crazy Ni/Nj values)
+    size_t elems =
+        (rec.Ni > 0 && rec.Nj > 0) ? static_cast<size_t>(rec.Ni) * rec.Nj : 0;
+    size_t allocBytes = elems * sizeof(double);
+    char dbgmsg[192];
+    _snprintf_s(
+        dbgmsg, sizeof(dbgmsg), _TRUNCATE,
+        "GribRecord copy ctor: Ni=%u Nj=%u BMSsize=%u elems=%zu bytes=%zu\n",
+        static_cast<unsigned int>(rec.Ni), static_cast<unsigned int>(rec.Nj),
+        static_cast<unsigned int>(rec.BMSsize), elems, allocBytes);
+    OutputDebugStringA(dbgmsg);
+  }
+#else
+  {
+    size_t elems =
+        (rec.Ni > 0 && rec.Nj > 0) ? static_cast<size_t>(rec.Ni) * rec.Nj : 0;
+    size_t allocBytes = elems * sizeof(double);
+    char dbgmsg[192];
+    snprintf(
+        dbgmsg, sizeof(dbgmsg),
+        "GribRecord copy ctor: Ni=%u Nj=%u BMSsize=%u elems=%zu bytes=%zu\n",
+        static_cast<unsigned int>(rec.Ni), static_cast<unsigned int>(rec.Nj),
+        static_cast<unsigned int>(rec.BMSsize), elems, allocBytes);
+    fprintf(stderr, "%s", dbgmsg);
+  }
+#endif
 
   // Deep-copy data array if present
   if (rec.data != nullptr && rec.Ni > 0 && rec.Nj > 0) {
