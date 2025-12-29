@@ -961,7 +961,7 @@ SettingsDialogBase::SettingsDialogBase(wxWindow* parent, wxWindowID id,
       wxVERTICAL);
 
   m_staticText166 = new wxStaticText(sbSizer30->GetStaticBox(), wxID_ANY,
-                                     _("Alert Threshold (% of address space):"),
+                                     _("Alert Threshold Percent:"),
                                      wxDefaultPosition, wxDefaultSize, 0);
   m_staticText166->Wrap(-1);
   sbSizer30->Add(m_staticText166, 0, wxALL, 5);
@@ -973,7 +973,7 @@ SettingsDialogBase::SettingsDialogBase(wxWindow* parent, wxWindowID id,
   sbSizer30->Add(m_spinThreshold, 0, wxALL, 5);
 
   m_checkSuppressAlert = new wxCheckBox(sbSizer30->GetStaticBox(), wxID_ANY,
-                                        _("Do not show address space alert popup"),
+                                        _("Do not show address space alert"),
                                         wxDefaultPosition, wxDefaultSize, 0);
   sbSizer30->Add(m_checkSuppressAlert, 0, wxALL, 5);
 
@@ -983,7 +983,7 @@ SettingsDialogBase::SettingsDialogBase(wxWindow* parent, wxWindowID id,
   sbSizer30->Add(m_checkLogUsage, 0, wxALL, 5);
 
   m_staticText167 = new wxStaticText(sbSizer30->GetStaticBox(), wxID_ANY,
-                                     _("Live Address Space Usage:"), wxDefaultPosition,
+                                     _("Usage:"), wxDefaultPosition,
                                      wxDefaultSize, 0);
   m_staticText167->Wrap(-1);
   sbSizer30->Add(m_staticText167, 0, wxALL, 5);

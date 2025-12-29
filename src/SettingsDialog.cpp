@@ -75,7 +75,8 @@ SettingsDialog::SettingsDialog(wxWindow* parent)
 #ifdef __WXMSW__
       ,
       m_memoryUpdateTimer(this),
-      m_staticTextMemoryStats(nullptr)
+      m_staticTextMemoryStats(nullptr),
+      m_usageSizer(nullptr)
 #endif
 #else
     : SettingsDialogBase(
@@ -94,9 +95,139 @@ SettingsDialog::SettingsDialog(wxWindow* parent)
     // SET GAUGE RANGE TO 100
     m_gaugeMemoryUsage->SetRange(100);
 
+    // FIX: Reorganize the AddressSpaceMonitor groupbox layout dynamically
+    wxWindow* gaugeParent = m_gaugeMemoryUsage->GetParent();
+    if (gaugeParent) {
+      wxSizer* groupSizer = gaugeParent->GetSizer();
+      if (groupSizer) {
+        wxLogMessage(
+            "SettingsDialog::Constructor - Starting dynamic layout "
+            "reorganization");
+
+        // PART 1: Find and reorganize threshold label + spin control
+        // Search for the threshold label by looking for the parent of
+        // m_spinThreshold
+        wxStaticText* thresholdLabel = nullptr;
+        wxSizerItemList& children = groupSizer->GetChildren();
+
+        // Find the label that's immediately before the spin control
+        for (wxSizerItemList::iterator it = children.begin();
+             it != children.end(); ++it) {
+          wxSizerItem* item = *it;
+          if (item && item->GetWindow() == m_spinThreshold) {
+            // Found spin control, check if previous item is a label
+            if (it != children.begin()) {
+              wxSizerItemList::iterator prevIt = it;
+              --prevIt;
+              wxSizerItem* prevItem = *prevIt;
+              if (prevItem && prevItem->GetWindow()) {
+                thresholdLabel =
+                    dynamic_cast<wxStaticText*>(prevItem->GetWindow());
+              }
+            }
+            break;
+          }
+        }
+
+        if (thresholdLabel && m_spinThreshold) {
+          wxLogMessage("    - Found threshold label: '%s'",
+                       thresholdLabel->GetLabel());
+
+          // Create horizontal sizer for threshold label + spin
+          wxBoxSizer* thresholdSizer = new wxBoxSizer(wxHORIZONTAL);
+
+          // Remove from parent sizer
+          groupSizer->Detach(thresholdLabel);
+          groupSizer->Detach(m_spinThreshold);
+
+          // Add to horizontal sizer
+          thresholdSizer->Add(thresholdLabel, 1,
+                              wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(10));
+          thresholdSizer->Add(m_spinThreshold, 0, wxALIGN_CENTER_VERTICAL);
+
+          // Find where to insert (look for first checkbox)
+          size_t insertPos = 0;
+          children = groupSizer->GetChildren();
+          for (wxSizerItemList::iterator it = children.begin();
+               it != children.end(); ++it, ++insertPos) {
+            wxWindow* win = (*it)->GetWindow();
+            if (win == m_checkSuppressAlert) {
+              break;
+            }
+          }
+
+          // Insert the horizontal sizer
+          groupSizer->Insert(insertPos, thresholdSizer, 0, wxEXPAND | wxALL,
+                             FromDIP(5));
+          wxLogMessage(
+              "    - Created horizontal threshold sizer at position %zu",
+              insertPos);
+        }
+
+        // PART 2: Find and reorganize "Live address space usage:" label
+        wxStaticText* usageLabel = nullptr;
+        children = groupSizer->GetChildren();
+
+        // Search for label that contains "usage" (case insensitive)
+        for (wxSizerItemList::iterator it = children.begin();
+             it != children.end(); ++it) {
+          wxSizerItem* item = *it;
+          wxWindow* win = item ? item->GetWindow() : nullptr;
+          wxStaticText* textCtrl = dynamic_cast<wxStaticText*>(win);
+          if (textCtrl) {
+            wxString label = textCtrl->GetLabel().Lower();
+            if (label.Contains("usage") || label.Contains("live")) {
+              usageLabel = textCtrl;
+              wxLogMessage("    - Found usage label: '%s'",
+                           textCtrl->GetLabel());
+              break;
+            }
+          }
+        }
+
+        if (usageLabel) {
+          // Change the label text
+          usageLabel->SetLabel("Usage:");
+
+          // Create horizontal sizer for usage label + dynamic text
+          m_usageSizer = new wxBoxSizer(wxHORIZONTAL);
+
+          // Remove label from parent sizer
+          groupSizer->Detach(usageLabel);
+
+          // Add to horizontal sizer with spacer
+          m_usageSizer->Add(usageLabel, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT,
+                            FromDIP(10));
+          m_usageSizer->AddStretchSpacer(1);
+          // The dynamic text label will be added here later by
+          // UpdateMemoryGauge()
+
+          // Find where to insert (look for gauge)
+          size_t insertPos = 0;
+          children = groupSizer->GetChildren();
+          for (wxSizerItemList::iterator it = children.begin();
+               it != children.end(); ++it, ++insertPos) {
+            wxWindow* win = (*it)->GetWindow();
+            if (win == m_gaugeMemoryUsage) {
+              break;
+            }
+          }
+
+          // Insert the horizontal sizer BEFORE the gauge
+          groupSizer->Insert(insertPos, m_usageSizer, 0, wxEXPAND | wxALL,
+                             FromDIP(5));
+          wxLogMessage("    - Created horizontal usage sizer at position %zu",
+                       insertPos);
+        }
+
+        groupSizer->Layout();
+        gaugeParent->Layout();
+        wxLogMessage("SettingsDialog::Constructor - Dynamic layout complete");
+      }
+    }
+
     // NOTE: Text label will be created dynamically by UpdateMemoryGauge()
-    // when the dialog is first shown, because the sizer is not available
-    // during construction.
+    // and added to m_usageSizer
 
     // Connect memory monitor event handlers
     m_spinThreshold->Connect(
@@ -677,10 +808,32 @@ void SettingsDialog::UpdateMemoryGauge() {
               wxFont font = subSizerParent->GetFont();
               m_staticTextMemoryStats->SetFont(font);
 
-              // Insert BEFORE the gauge in the sub-sizer
-              subSizer->Insert(subIndex, m_staticTextMemoryStats, 0,
-                               wxALL | wxEXPAND, FromDIP(8));
-              inserted = true;
+              // Check if we have a usage sizer to add to
+              if (m_usageSizer) {
+                // Add to the usage horizontal sizer (inline with "Usage:"
+                // label)
+                m_usageSizer->Add(m_staticTextMemoryStats, 0,
+                                  wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(5));
+                inserted = true;
+                wxLogMessage(
+                    "    - Added text label to usage sizer (inline with "
+                    "label)");
+              } else {
+                // Fallback: insert before gauge
+                subSizer->Insert(subIndex, m_staticTextMemoryStats, 0,
+                                 wxALL | wxEXPAND, FromDIP(8));
+                inserted = true;
+                wxLogMessage(
+                    "    - Inserted text label BEFORE gauge at sub-sizer index "
+                    "%zu",
+                    subIndex);
+              }
+
+              wxLogMessage(
+                  "    - Inserted text label BEFORE gauge at sub-sizer index "
+                  "%zu "
+                  "(parent='%s')",
+                  subIndex, subSizerParent->GetName());
 
               wxLogMessage(
                   "    - Inserted text label BEFORE gauge at sub-sizer index "
@@ -725,23 +878,22 @@ void SettingsDialog::UpdateMemoryGauge() {
 
     m_staticTextMemoryStats->SetLabel(stats);
 
-    // Force visibility settings
-    m_staticTextMemoryStats->SetBackgroundColour(*wxWHITE);
-    m_staticTextMemoryStats->SetForegroundColour(*wxBLACK);
+    // Set colors based on threshold (not forced to white/black)
+    m_staticTextMemoryStats->SetForegroundColour(
+        textColor);  // Use the color-coded textColor variable
+    m_staticTextMemoryStats->SetBackgroundColour(
+        m_staticTextMemoryStats->GetParent()
+            ->GetBackgroundColour());  // Inherit parent background
 
+    // Keep font normal weight (not bold) but slightly larger for readability
     wxFont currentFont = m_staticTextMemoryStats->GetFont();
-    currentFont.MakeBold();
-    currentFont.SetPointSize(12);  // Large font
+    currentFont.SetWeight(wxFONTWEIGHT_NORMAL);  // NOT BOLD
+    currentFont.SetPointSize(10);  // Slightly larger than default (not 12)
     m_staticTextMemoryStats->SetFont(currentFont);
 
     m_staticTextMemoryStats->Raise();
     m_staticTextMemoryStats->Show(true);
     m_staticTextMemoryStats->Enable(true);
-
-    // Get absolute screen position
-    wxPoint screenPos = m_staticTextMemoryStats->GetScreenPosition();
-    wxRect rect = m_staticTextMemoryStats->GetRect();
-    wxSize clientSize = m_staticTextMemoryStats->GetClientSize();
 
     m_staticTextMemoryStats->Refresh();
     m_staticTextMemoryStats->Update();
@@ -760,27 +912,9 @@ void SettingsDialog::UpdateMemoryGauge() {
 
     if (callCount <= 3) {
       wxLogMessage(
-          "SettingsDialog::UpdateMemoryGauge() - Call #%d: Text='%s'\n"
-          "  IsShown=%d, IsShownOnScreen=%d, IsEnabled=%d\n"
-          "  Size=%dx%d, ClientSize=%dx%d\n"
-          "  LocalPos=(%d,%d), ScreenPos=(%d,%d)\n"
-          "  Parent='%s', Grandparent='%s'\n"
-          "  FG=RGB(%d,%d,%d), BG=RGB(%d,%d,%d)",
-          callCount, stats, m_staticTextMemoryStats->IsShown(),
-          m_staticTextMemoryStats->IsShownOnScreen(),
-          m_staticTextMemoryStats->IsEnabled(),
-          m_staticTextMemoryStats->GetSize().GetWidth(),
-          m_staticTextMemoryStats->GetSize().GetHeight(), clientSize.GetWidth(),
-          clientSize.GetHeight(), rect.x, rect.y, screenPos.x, screenPos.y,
-          parent ? parent->GetName() : "NULL",
-          (parent && parent->GetParent()) ? parent->GetParent()->GetName()
-                                          : "NULL",
-          m_staticTextMemoryStats->GetForegroundColour().Red(),
-          m_staticTextMemoryStats->GetForegroundColour().Green(),
-          m_staticTextMemoryStats->GetForegroundColour().Blue(),
-          m_staticTextMemoryStats->GetBackgroundColour().Red(),
-          m_staticTextMemoryStats->GetBackgroundColour().Green(),
-          m_staticTextMemoryStats->GetBackgroundColour().Blue());
+          "SettingsDialog::UpdateMemoryGauge() - Call #%d: Text='%s' "
+          "(IsShown=%d)",
+          callCount, stats, m_staticTextMemoryStats->IsShown());
     }
 
     if (!firstSuccessfulRun) {

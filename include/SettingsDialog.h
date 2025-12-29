@@ -54,6 +54,7 @@ private:
   // Memory monitor UI components
   wxTimer m_memoryUpdateTimer;
   wxStaticText* m_staticTextMemoryStats;
+  wxBoxSizer* m_usageSizer;
 
   // Memory monitor event handlers
   void OnMemoryUpdateTimer(wxTimerEvent& event);
