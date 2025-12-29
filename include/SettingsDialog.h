@@ -22,12 +22,20 @@
 
 #include <wx/treectrl.h>
 #include <wx/fileconf.h>
+#include <wx/timer.h>
 
 #include "WeatherRoutingUI.h"
+
+// Forward declaration for Windows-only class
+#ifdef __WXMSW__
+class AddressSpaceMonitor;
+#endif
+
 
 class SettingsDialog : public SettingsDialogBase {
 public:
   SettingsDialog(wxWindow* parent);
+  ~SettingsDialog();  // ADD THIS DESTRUCTOR DECLARATION
 
   void LoadSettings();
   void SaveSettings();
@@ -38,7 +46,29 @@ public:
   void OnUpdate();
   void OnUpdateColumns(wxCommandEvent& event);
   void OnHelp(wxCommandEvent& event);
+
   static const wxString column_names[];
+
+private:
+#ifdef __WXMSW__
+  // Memory monitor UI components
+  wxTimer m_memoryUpdateTimer;
+  wxStaticText* m_staticTextMemoryStats;
+
+  // Memory monitor event handlers
+  void OnMemoryUpdateTimer(wxTimerEvent& event);
+  void OnThresholdChanged(wxSpinDoubleEvent& event);
+  void OnSuppressAlertChanged(wxCommandEvent& event);
+  void OnLogUsageChanged(wxCommandEvent& event);
+
+  // Helper methods
+  void UpdateMemoryGauge();
+  void LoadMemorySettings();
+  void SaveMemorySettings();
+
+  // Helper to get monitor from plugin
+  AddressSpaceMonitor* GetMonitor();
+#endif
 };
 
 #endif

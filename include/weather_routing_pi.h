@@ -71,6 +71,8 @@
 #define GetTimeCtrlValue GetValue
 // #endif
 
+
+
 #include "version.h"
 
 #define ABOUT_AUTHOR_URL "http://seandepagnier.users.sourceforge.net"
@@ -89,6 +91,10 @@
 #endif
 
 #include <json/json.h>
+
+#ifdef __WXMSW__
+#include "AddressSpaceMonitor.h"
+#endif
 
 //----------------------------------------------------------------------------------------------------------
 //    The PlugIn Class Definition
@@ -183,6 +189,13 @@ public:
   double m_cursor_lat;  //!< Latitude of the cursor position, in degrees.
   double m_cursor_lon;  //!< Longitude of the cursor position, in degrees.
 
+  #ifdef __WXMSW__
+    // Make monitor accessible to SettingsDialog
+    AddressSpaceMonitor& GetAddressSpaceMonitor() {  // Return REFERENCE, not copy
+        return m_addressSpaceMonitor; 
+    } 
+  #endif
+
 private:
   void OnCursorLatLonTimer(wxTimerEvent&);
   void RequestOcpnDrawSetting();
@@ -233,6 +246,12 @@ private:
   int m_route_menu_id;
 
   wxTimer m_tCursorLatLon;
+
+  #ifdef __WXMSW__
+    AddressSpaceMonitor m_addressSpaceMonitor;  // Member variable to track address space
+    wxTimer m_addressSpaceTimer;  // Timer for monitoring address space
+    void OnAddressSpaceTimer(wxTimerEvent& event);
+  #endif
 };
 
 #endif

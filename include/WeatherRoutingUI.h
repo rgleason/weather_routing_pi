@@ -49,6 +49,8 @@
 #include <wx/listbox.h>
 #include <wx/valgen.h>
 #include <wx/grid.h>
+#include <wx/spinctrl.h>
+#include <wx/gauge.h>
 
 #include "wxWTranslateCatalog.h"
 
@@ -329,6 +331,14 @@ public:
   wxSpinCtrl* m_sConcurrentThreads;
   wxCheckListBox* m_cblFields;
   wxCheckBox* m_cbUseLocalTime;
+
+  // Memory Monitor controls
+  wxStaticText* m_staticText166;
+  wxSpinCtrlDouble* m_spinThreshold;
+  wxCheckBox* m_checkSuppressAlert;
+  wxCheckBox* m_checkLogUsage;
+  wxStaticText* m_staticText167;
+  wxGauge* m_gaugeMemoryUsage;
 
   SettingsDialogBase(wxWindow* parent, wxWindowID id = wxID_ANY,
                      const wxString& title = _("Weather Routing Settings"),

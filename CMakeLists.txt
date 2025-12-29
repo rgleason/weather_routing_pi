@@ -148,6 +148,11 @@ project(${PACKAGE})
 
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
+if(WIN32) 
+	add_definitions(-D__WXMSW__) 
+endif()
+
+
 ##========================================================
 
 include("PluginSetup")
@@ -210,6 +215,7 @@ SET(SRCS
             src/RoutePoint.cpp
             src/Position.cpp
             src/IsoRoute.cpp
+			src/AddressSpaceMonitor.cpp  
 )
 
 SET (HDRS
@@ -247,6 +253,7 @@ SET (HDRS
             include/RoutePoint.h
             include/Position.h
             include/IsoRoute.h
+			include/AddressSpaceMonitor.h
 )
 
 add_definitions(-DPLUGIN_USE_SVG)

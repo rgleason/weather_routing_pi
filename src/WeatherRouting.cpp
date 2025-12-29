@@ -2065,6 +2065,7 @@ void WeatherRouting::OnAbout(wxCommandEvent& event) {
 }
 
 void WeatherRouting::OnComputationTimer(wxTimerEvent&) {
+
   for (std::list<RouteMapOverlay*>::iterator it = m_RunningRouteMaps.begin();
        it != m_RunningRouteMaps.end();) {
     RouteMapOverlay* routemapoverlay = *it;

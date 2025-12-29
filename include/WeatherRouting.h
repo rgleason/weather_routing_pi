@@ -420,6 +420,12 @@ public:
    */
   void ScheduleAutoSave() { m_tAutoSaveXML.Start(5000, true); }
 
+  /**
+   * Get reference to the plugin instance.
+   * @return Reference to the weather_routing_pi plugin
+   */
+  weather_routing_pi& GetPlugin() { return m_weather_routing_pi; }
+
   SettingsDialog m_SettingsDialog;
 
 private:
