@@ -333,12 +333,14 @@ public:
   wxCheckBox* m_cbUseLocalTime;
 
   // Memory Monitor controls
-  wxStaticText* m_staticText166;
-  wxSpinCtrlDouble* m_spinThreshold;
-  wxCheckBox* m_checkSuppressAlert;
-  wxCheckBox* m_checkLogUsage;
-  wxStaticText* m_staticText167;
-  wxGauge* m_gaugeMemoryUsage;
+  wxStaticText* m_staticText166;      // "Alert Threshold Percent:" label
+  wxSpinCtrlDouble* m_spinThreshold;  // Threshold spinner
+  wxCheckBox* m_checkSuppressAlert;   // Suppress checkbox
+  wxCheckBox* m_checkLogUsage;        // Log checkbox
+  wxStaticText* m_staticText167;      // "Usage:" label
+  wxGauge* m_gaugeMemoryUsage;        // Gauge bar
+  // m_staticTextMemoryStats - Created dynamically in UpdateMemoryGauge()
+  // NOT a wxFormBuilder control - see SettingsDialog.h
 
   SettingsDialogBase(wxWindow* parent, wxWindowID id = wxID_ANY,
                      const wxString& title = _("Weather Routing Settings"),

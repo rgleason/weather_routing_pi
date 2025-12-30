@@ -182,7 +182,13 @@ public:
   static wxString StandardPath();
   void ShowMenuItems(bool show);
 
+   /**
+   * @brief Gets the parent window for plugin dialogs.
+   * @return Pointer to the OpenCPN canvas window.
+   */
   wxWindow* GetParentWindow() { return m_parent_window; }
+
+  // ========== Position Tracking ==========
 
   double m_boat_lat;    //!< Latitude of the boat position, in degrees.
   double m_boat_lon;    //!< Longitude of the boat position, in degrees.
@@ -190,7 +196,18 @@ public:
   double m_cursor_lon;  //!< Longitude of the cursor position, in degrees.
 
   #ifdef __WXMSW__
-    // Make monitor accessible to SettingsDialog
+  /**
+   * @brief Gets reference to the address space monitor (Windows only).
+   *
+   * @return Reference to the AddressSpaceMonitor instance.
+   *
+   * @details Provides access to the plugin's AddressSpaceMonitor for use by
+   * SettingsDialog. Returns a reference (not a copy) to allow direct access
+   * to the monitor's state and methods.
+   *
+   * @note This method is only available on Windows where 32-bit address space
+   * monitoring is necessary.
+   */
     AddressSpaceMonitor& GetAddressSpaceMonitor() {  // Return REFERENCE, not copy
         return m_addressSpaceMonitor; 
     } 
@@ -248,10 +265,30 @@ private:
   wxTimer m_tCursorLatLon;
 
   #ifdef __WXMSW__
-    AddressSpaceMonitor m_addressSpaceMonitor;  // Member variable to track address space
-    wxTimer m_addressSpaceTimer;  // Timer for monitoring address space
-    void OnAddressSpaceTimer(wxTimerEvent& event);
-  #endif
+  // ========== Windows-Only: Address Space Monitoring ==========
+
+  /**
+   * @name Address Space Monitoring (Windows Only)
+   * @{
+   */
+
+  AddressSpaceMonitor
+      m_addressSpaceMonitor;    ///< Tracks 32-bit address space usage
+  wxTimer m_addressSpaceTimer;  ///< 5-second timer for continuous monitoring
+
+  /**
+   * @brief Timer callback for address space monitoring.
+   *
+   * @param event Timer event (unused).
+   *
+   * @details Called every 5 seconds to check memory usage and display alerts
+   * if the threshold is exceeded. Validates monitor state before accessing
+   * to prevent use-after-destruction.
+   */
+  void OnAddressSpaceTimer(wxTimerEvent& event);
+
+  /** @} */
+#endif
 };
 
 #endif

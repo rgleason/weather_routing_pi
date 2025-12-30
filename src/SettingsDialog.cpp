@@ -229,13 +229,7 @@ SettingsDialog::SettingsDialog(wxWindow* parent)
     // NOTE: Text label will be created dynamically by UpdateMemoryGauge()
     // and added to m_usageSizer
 
-    // Connect memory monitor event handlers
-    m_spinThreshold->Connect(
-        wxEVT_SPINCTRLDOUBLE,
-        wxSpinDoubleEventHandler(SettingsDialog::OnThresholdChanged), NULL,
-        this);
-
- // Connect memory monitor event handlers
+  // Connect memory monitor event handlers
   m_spinThreshold->Connect(
       wxEVT_SPINCTRLDOUBLE,
       wxSpinDoubleEventHandler(SettingsDialog::OnThresholdChanged), NULL, this);
@@ -462,8 +456,7 @@ void SettingsDialog::SaveSettings() {
   pConf->Write(_T("UseLocalTime"), m_cbUseLocalTime->GetValue());
 
 #ifdef __WXMSW__
-  // Save memory settings
-  SaveMemorySettings();
+   SaveMemorySettings();  // Persist setting immediately
 #endif
 
   wxPoint p = GetPosition();
@@ -610,27 +603,38 @@ void SettingsDialog::OnMemoryUpdateTimer(wxTimerEvent& event) {
   UpdateMemoryGauge();
 }
 
+/**
+ * @brief Updates the memory usage gauge and dynamic text label.
+ *
+ * @details This method is called every 2 seconds by m_memoryUpdateTimer to:
+ * - Query current address space usage from AddressSpaceMonitor
+ * - Update the gauge visual (0-100% with color coding)
+ * - Update the text label with percentage and GB values
+ * - Create the text label on first run if it doesn't exist
+ *
+ * The text label must be created dynamically because the sizer hierarchy
+ * isn't fully initialized at construction time. We search recursively to
+ * find the sub-sizer containing the gauge, then insert the label inline
+ * with the "Usage:" label using m_usageSizer.
+ *
+ * @note The timer stops automatically when the dialog is hidden to avoid
+ * unnecessary background processing.
+ */
+
 void SettingsDialog::UpdateMemoryGauge() {
   static int callCount = 0;
   callCount++;
 
-  // FIX: Only check IsShown() after the first successful run
-  // This allows initial setup to happen
   static bool firstSuccessfulRun = false;
 
+  // Only check IsShown() after first successful run to allow initial setup
   if (firstSuccessfulRun && !IsShown()) {
-    // Dialog was shown before but now is hidden
-    wxLogMessage(
-        "SettingsDialog::UpdateMemoryGauge() - Dialog hidden, stopping timer "
-        "(call #%d)",
-        callCount);
-    if (m_memoryUpdateTimer.IsRunning()) {
-      m_memoryUpdateTimer.Stop();
-    }
+    m_memoryUpdateTimer.Stop();
     return;
   }
 
-  if (!m_gaugeMemoryUsage) {
+  // Validate gauge and monitor (with error logging)
+    if (!m_gaugeMemoryUsage) {
     wxLogError("SettingsDialog::UpdateMemoryGauge() - Gauge is NULL (call #%d)",
                callCount);
     if (m_memoryUpdateTimer.IsRunning()) {
@@ -679,6 +683,7 @@ void SettingsDialog::UpdateMemoryGauge() {
   size_t total = monitor->GetTotalAddressSpace();
   double percent = monitor->GetUsagePercent();
 
+  // Convert to GB for display
   double usedGB = used / (1024.0 * 1024.0 * 1024.0);
   double totalGB = total / (1024.0 * 1024.0 * 1024.0);
 
@@ -690,10 +695,10 @@ void SettingsDialog::UpdateMemoryGauge() {
         callCount, percent, usedGB, totalGB, IsShown());
   }
 
-  // Update the alert dialog if it's shown
+  // ========== Update the alert dialog if it's shown =========
   monitor->UpdateAlertIfShown(usedGB, totalGB, percent);
 
-  // Determine colors
+  // ========== Determine colors based on threshold =========
   double threshold = m_spinThreshold->GetValue();
   wxColour gaugeColor;
   wxColour textColor;
@@ -709,14 +714,21 @@ void SettingsDialog::UpdateMemoryGauge() {
     textColor = wxColour(0, 128, 0);   // Dark green
   }
 
-  // Update gauge
+  // ========== UPDATE GAUGE (0-100 range) ==========
   m_gaugeMemoryUsage->SetForegroundColour(gaugeColor);
-  m_gaugeMemoryUsage->SetValue(static_cast<int>(percent));
+  m_gaugeMemoryUsage->SetValue(static_cast<int>(percent));  
   m_gaugeMemoryUsage->Refresh();
   m_gaugeMemoryUsage->Update();
 
-  // Try to create text label if it doesn't exist
+  // Create text label on first run
   if (!m_staticTextMemoryStats) {
+    /**
+     * The gauge is nested inside a sub-sizer (not directly in the parent),
+     * so we must search recursively through the sizer hierarchy to find
+     * the correct sub-sizer containing m_gaugeMemoryUsage. Once found,
+     * we insert the text label into m_usageSizer (created in constructor)
+     * to display it inline with the "Usage:" label.
+     */
     if (callCount <= 5) {
       wxLogMessage(
           "SettingsDialog::UpdateMemoryGauge() - Call #%d: Text label is NULL, "
@@ -829,18 +841,6 @@ void SettingsDialog::UpdateMemoryGauge() {
                     subIndex);
               }
 
-              wxLogMessage(
-                  "    - Inserted text label BEFORE gauge at sub-sizer index "
-                  "%zu "
-                  "(parent='%s')",
-                  subIndex, subSizerParent->GetName());
-
-              wxLogMessage(
-                  "    - Inserted text label BEFORE gauge at sub-sizer index "
-                  "%zu "
-                  "(parent='%s')",
-                  subIndex, subSizerParent->GetName());
-
               // Update layouts
               subSizer->Layout();
               subSizerParent->Layout();
@@ -870,7 +870,7 @@ void SettingsDialog::UpdateMemoryGauge() {
     }
   }  // Closes the if (!m_staticTextMemoryStats) block
 
-  // Update text label if it exists
+ // Update text label if it exists
   if (m_staticTextMemoryStats) {
     // Format: percentage first, then GB values (match log format)
     wxString stats = wxString::Format("%.1f%% (%.2f GB / %.1f GB)", percent,
@@ -878,17 +878,15 @@ void SettingsDialog::UpdateMemoryGauge() {
 
     m_staticTextMemoryStats->SetLabel(stats);
 
-    // Set colors based on threshold (not forced to white/black)
-    m_staticTextMemoryStats->SetForegroundColour(
-        textColor);  // Use the color-coded textColor variable
+    // Set colors based on threshold
+    m_staticTextMemoryStats->SetForegroundColour(textColor);
     m_staticTextMemoryStats->SetBackgroundColour(
-        m_staticTextMemoryStats->GetParent()
-            ->GetBackgroundColour());  // Inherit parent background
+        m_staticTextMemoryStats->GetParent()->GetBackgroundColour());
 
-    // Keep font normal weight (not bold) but slightly larger for readability
+    // Keep font normal weight but slightly larger for readability
     wxFont currentFont = m_staticTextMemoryStats->GetFont();
-    currentFont.SetWeight(wxFONTWEIGHT_NORMAL);  // NOT BOLD
-    currentFont.SetPointSize(10);  // Slightly larger than default (not 12)
+    currentFont.SetWeight(wxFONTWEIGHT_NORMAL);
+    currentFont.SetPointSize(10);
     m_staticTextMemoryStats->SetFont(currentFont);
 
     m_staticTextMemoryStats->Raise();
@@ -924,7 +922,7 @@ void SettingsDialog::UpdateMemoryGauge() {
           "complete");
     }
   }
-}
+}  // End of UpdateMemoryGauge()
 #endif
 
 void SettingsDialog::OnUpdate() {

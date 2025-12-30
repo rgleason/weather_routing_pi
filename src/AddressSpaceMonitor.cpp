@@ -55,10 +55,9 @@ void MemoryAlertDialog::UpdateMemoryInfo(double usedGB, double totalGB,
   }
 
   wxString message = wxString::Format(
-      _("WARNING: Current Usage: %.2f GB / %.1f GB (%.1f%%)\n\n"
-        "OpenCPN and plugins are using greater than %.0f%% of available address space.\n\n"
-        "In Weather_Routing select \"Routing -> Reset All\" to free address space \n"
-        "to prevent crashes and freeze ups requiring OpenCPN restart."),
+      _("WARNING: Current Usage: %.1f%% (%.2f GB / %.1f GB)\n\n"
+        "OCPN + Pi address usage is greater than: %.0f%%.\n\n"
+        "Prevent Freeze ups, in WR_Pi select \"Routing -> Reset\" to free address space."),
       usedGB, totalGB, percent, m_monitor->thresholdPercent);
 
   m_messageText->SetLabel(message);
@@ -234,7 +233,6 @@ void AddressSpaceMonitor::CheckAndAlert() {
     wxLogMessage("AddressSpaceMonitor: %.2f GB / %.1f GB (%.1f%%)", usedGB,
                  totalGB, percent);
   }
-
 
   UpdateAlertIfShown(usedGB, totalGB, percent);
 

@@ -83,6 +83,15 @@ extern "C" DECL_EXP void destroy_pi(opencpn_plugin* p) { delete p; }
 
 #include "icons.h"
 
+/**
+ * @brief Constructs the Weather Routing plugin instance.
+ *
+ * @param ppimgr Pointer to the plugin manager interface.
+ *
+ * @details On Windows, initializes a 5-second timer for continuous address
+ * space monitoring. The monitor runs independently of the Settings dialog and
+ * alerts users when memory usage exceeds the configured threshold.
+ */
 weather_routing_pi::weather_routing_pi(void* ppimgr)
     : opencpn_plugin_118(ppimgr) {
   // Create the PlugIn icons
@@ -118,7 +127,9 @@ weather_routing_pi::weather_routing_pi(void* ppimgr)
   m_pWeather_Routing = NULL;
 
 #ifdef __WXMSW__
-  // Start continuous address space monitoring
+  // ========== Windows-Only: Address Space Monitoring Initialization ==========
+
+  // Start continuous address space monitoring (independent of Settings dialog)
   m_addressSpaceTimer.Bind(wxEVT_TIMER,
                            &weather_routing_pi::OnAddressSpaceTimer, this);
   m_addressSpaceTimer.Start(5000);  // Check every 5 seconds
@@ -127,10 +138,24 @@ weather_routing_pi::weather_routing_pi(void* ppimgr)
 #endif
 }
 
+/**
+ * @brief Destructor - ensures proper cleanup of all resources.
+ *
+ * @details Shutdown sequence (critical order):
+ * 1. Stop and unbind address space timer to prevent further events
+ * 2. Shutdown AddressSpaceMonitor (marks invalid, closes alert dialog)
+ * 3. Process pending events multiple times to clear event queue
+ * 4. Delete plugin resources
+ *
+ * @note Event processing loop (5 iterations with yields) ensures no orphaned
+ * timer events fire after destruction.
+ */
 weather_routing_pi::~weather_routing_pi() {
   wxLogMessage("weather_routing_pi: Destructor starting");
 
-#ifdef __WXMSW__
+ #ifdef __WXMSW__
+  // ========== Windows-Only: Address Space Monitor Cleanup ==========
+
   // CRITICAL STEP 1: Stop the timer FIRST
   if (m_addressSpaceTimer.IsRunning()) {
     m_addressSpaceTimer.Stop();
@@ -147,11 +172,12 @@ weather_routing_pi::~weather_routing_pi() {
   wxLogMessage("weather_routing_pi: Address space monitor shutdown complete");
 
   // CRITICAL STEP 4: Process pending events multiple times
+  // This prevents orphaned timer events from firing after monitor is destroyed
   if (wxTheApp) {
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 5; i++) {  // 5 iterations ensures all queued events processed
       wxTheApp->ProcessPendingEvents();
-      wxYield();
-      wxMilliSleep(10);
+      wxYield();  // Allow GUI to process events
+      wxMilliSleep(10); // Small delay to let events settle
     }
   }
   wxLogMessage("weather_routing_pi: Address space monitoring cleanup complete");
@@ -163,7 +189,20 @@ weather_routing_pi::~weather_routing_pi() {
 }
 
 #ifdef __WXMSW__
-void weather_routing_pi::OnAddressSpaceTimer(wxTimerEvent& event) {
+/**
+ * @brief Timer callback for continuous address space monitoring (Windows only).
+ *
+ * @param event Timer event (unused).
+ *
+ * @details Called every 5 seconds to check memory usage and show alerts if
+ * the threshold is exceeded. Validates monitor state before accessing to
+ * prevent use-after-destruction crashes.
+ *
+ * @note This timer runs independently of the Settings dialog and continues even
+ * when the dialog is closed.
+ */
+void weather_routing_pi::OnAddressSpaceTimer(
+    wxTimerEvent& event) {
   // Double-check monitor validity before accessing
   if (!m_addressSpaceMonitor.IsValid()) {
     wxLogWarning("OnAddressSpaceTimer: Monitor is invalid, stopping timer");
@@ -226,6 +265,22 @@ int weather_routing_pi::Init() {
           WANTS_NMEA_EVENTS | WANTS_PLUGIN_MESSAGING | USES_AUI_MANAGER);
 }
 
+/**
+ * @brief Deinitializes the plugin and cleans up all resources.
+ *
+ * @return true Always returns true to indicate successful cleanup.
+ *
+ * @details Shutdown sequence (critical order):
+ * 1. Stop cursor timer
+ * 2. Stop and shutdown AddressSpaceMonitor (Windows only)
+ * 3. Process events to clear queued timer events
+ * 4. Close WeatherRouting dialog (which includes SettingsDialog)
+ * 5. Delete WeatherRouting object
+ * 6. Final event processing to handle destruction events
+ *
+ * @note Monitor MUST be shutdown before closing WeatherRouting to allow
+ * SettingsDialog's timer to stop cleanly.
+ */
 bool weather_routing_pi::DeInit() {
   wxLogMessage("weather_routing_pi::DeInit() - Starting cleanup");
 

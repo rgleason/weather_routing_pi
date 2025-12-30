@@ -982,19 +982,37 @@ SettingsDialogBase::SettingsDialogBase(wxWindow* parent, wxWindowID id,
                                    wxDefaultPosition, wxDefaultSize, 0);
   sbSizer30->Add(m_checkLogUsage, 0, wxALL, 5);
 
-  m_staticText167 = new wxStaticText(sbSizer30->GetStaticBox(), wxID_ANY,
-                                     _("Usage:"), wxDefaultPosition,
-                                     wxDefaultSize, 0);
-  m_staticText167->Wrap(-1);
-  sbSizer30->Add(m_staticText167, 0, wxALL, 5);
+  // Usage section with label + percentage + gauge
+  wxBoxSizer* usageSizer = new wxBoxSizer(wxHORIZONTAL);
 
+  m_staticText167 =
+      new wxStaticText(sbSizer30->GetStaticBox(), wxID_ANY, _("Usage:"),
+                       wxDefaultPosition, wxDefaultSize, 0);
+  m_staticText167->Wrap(-1);
+  usageSizer->Add(m_staticText167, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
+
+  // NOTE: This code is DISABLED because m_staticTextMemoryStats is created
+  // dynamically in SettingsDialog::UpdateMemoryGauge() instead.
+  // See SettingsDialog.cpp line 733 for the actual creation code.
+
+  /*
+  m_stMemoryUsagePercent = new wxStaticText(sbSizer30->GetStaticBox(), wxID_ANY,
+      _("0.0%"), wxDefaultPosition, wxSize(60, -1), wxALIGN_RIGHT);
+  m_stMemoryUsagePercent->SetFont(m_stMemoryUsagePercent->GetFont().Bold());
+  sbSizer30->Add(m_stMemoryUsagePercent, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
+  */
+ 
+
+  sbSizer30->Add(usageSizer, 0, wxEXPAND, 5);
+
+  // Gauge below the text
   m_gaugeMemoryUsage =
       new wxGauge(sbSizer30->GetStaticBox(), wxID_ANY, 100, wxDefaultPosition,
                   wxDefaultSize, wxGA_HORIZONTAL);
   m_gaugeMemoryUsage->SetValue(0);
   sbSizer30->Add(m_gaugeMemoryUsage, 0, wxALL | wxEXPAND, 5);
 
-  // Add the memory monitor sizer to the parent (likely fgSizer18 or similar)
+  // Add the memory monitor sizer to the parent
   fgSizer18->Add(sbSizer30, 1, wxEXPAND | wxALL, 5);
 
 
