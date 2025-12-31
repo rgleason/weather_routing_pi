@@ -954,7 +954,7 @@ SettingsDialogBase::SettingsDialogBase(wxWindow* parent, wxWindowID id,
 
   fgSizer18->Add(fgSizer82, 1, wxEXPAND, 5);
 
-      // Memory Monitor section
+  // Memory Monitor section
   wxStaticBoxSizer* sbSizer30;
   sbSizer30 = new wxStaticBoxSizer(
       new wxStaticBox(m_scrolledWindow4, wxID_ANY, _("Address Space Monitor")),

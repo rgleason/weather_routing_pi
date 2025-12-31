@@ -34,56 +34,28 @@ class AddressSpaceMonitor;
 
 /**
  * @brief Popup dialog warning user about high address space usage.
- *
- * @details Displays current memory usage statistics and recommends actions
- * to free address space (e.g., "Reset All" in Weather Routing). The dialog
- * cannot be permanently dismissed while usage remains above threshold.
- *
- * User interactions:
- * - **Hide button**: Hides dialog temporarily (continues monitoring)
- * - **X button**: Same as Hide (dialog reappears if still over threshold)
- * - **Settings checkbox**: Dismisses until memory drops 5% below threshold
- *
- * @note Dialog updates in real-time as memory usage changes.
  */
 class MemoryAlertDialog : public wxDialog {
 public:
-  /**
-   * @brief Constructs the alert dialog.
-   *
-   * @param parent Parent window (usually nullptr for top-level).
-   * @param monitor Pointer to the AddressSpaceMonitor managing this dialog.
-   */
   MemoryAlertDialog(wxWindow* parent, AddressSpaceMonitor* monitor);
-
-  /**
-   * @brief Updates the displayed memory statistics.
-   *
-   * @param usedGB Gigabytes of address space currently used.
-   * @param totalGB Total gigabytes of address space available (typically 2 GB).
-   * @param percent Usage percentage (0-100).
-   */
   void UpdateMemoryInfo(double usedGB, double totalGB, double percent);
-
-  /**
-   * @brief Clears the monitor pointer during shutdown.
-   *
-   * @details Called by AddressSpaceMonitor::CloseAlert() to prevent dangling
-   * pointer access after monitor destruction.
-   */
   void ClearMonitor();
 
+  // Register a text label to update alongside the gauge
+
+
+
 private:
+  wxGauge* m_gauge;
+  wxStaticText* m_messageText;  ///< Label displaying warning message
+
   void OnHide(wxCommandEvent& event);   ///< Hide button clicked
   void OnClose(wxCommandEvent& event);  ///< Programmatic close from Settings
   void OnCloseWindow(wxCloseEvent& event);  ///< X button clicked
 
   AddressSpaceMonitor*
       m_monitor;  ///< Pointer to managing monitor (cleared on shutdown)
-  wxStaticText* m_messageText;  ///< Label displaying warning message
-
-  friend class AddressSpaceMonitor;  ///< Allow CloseAlert to access private
-                                     ///< members
+  friend class AddressSpaceMonitor;  ///< Allow CloseAlert to access private members
 };
 
 /**
@@ -108,21 +80,7 @@ private:
  */
 class AddressSpaceMonitor {
 public:
-  /**
-   * @brief Constructs the address space monitor.
-   *
-   * @details Initializes validity flag, instance tracking, and default
-   * settings. Does NOT start monitoring automatically - caller must configure
-   * settings and start timer.
-   */
   AddressSpaceMonitor();
-
-  /**
-   * @brief Destructor - ensures Shutdown() was called.
-   *
-   * @details If Shutdown() wasn't called explicitly, calls it now to prevent
-   * resource leaks. Logs instance destruction for debugging.
-   */
   ~AddressSpaceMonitor();
 
   // Delete copy constructor and assignment operator to prevent copying
@@ -133,74 +91,45 @@ public:
   AddressSpaceMonitor(AddressSpaceMonitor&&) = delete;
   AddressSpaceMonitor& operator=(AddressSpaceMonitor&&) = delete;
 
-  /**
-   * @brief Marks monitor as invalid and cleans up all resources.
-   *
-   * @details Shutdown sequence:
-   * 1. Marks m_isValid = false (prevents further operations)
-   * 2. Clears gauge reference (prevents dangling pointer)
-   * 3. Closes and destroys alert dialog
-   *
-   * @note Must be called before plugin destruction to allow SettingsDialog
-   * timer to stop cleanly.
-   */
-  void Shutdown();
-
+  void Shutdown();       ///< Cleans up resources and marks invalid
   void CheckAndAlert();  ///< Checks usage and shows/updates alert if needed
   void UpdateAlertIfShown(double usedGB, double totalGB,
                           double percent);  ///< Updates alert if visible
-  void
-  DismissAlert();  ///< Suppresses alerts until memory drops 5% below threshold
+  void DismissAlert();  ///< Suppresses alerts until memory drops 5% below threshold
 
   void SetThresholdPercent(double percent);  ///< Sets alert threshold (0-100)
   void SetLoggingEnabled(bool enabled);      ///< Enables periodic usage logging
   void SetAlertEnabled(bool enabled);        ///< Enables popup alerts
   void SetGauge(wxGauge* gauge);  ///< Connects gauge for visual feedback
+  void SetTextLabel(wxStaticText* label);  ///< SetTextLabel for percent usedGB totalGB
 
   size_t GetUsedAddressSpace() const;   ///< Queries current used space (bytes)
   size_t GetTotalAddressSpace() const;  ///< Returns 2 GB (0x80000000)
   double GetUsagePercent() const;       ///< Calculates percentage (0-100)
-
-  /**
-   * @brief Checks if monitor is valid and safe to use.
-   *
-   * @return true if not shut down, false if Shutdown() was called.
-   */
-  bool IsValid() const { return m_isValid; }
-
-  /**
-   * @name Public State Variables
-   * @{
-   */
+  bool IsValid() const { return m_isValid; }  ///< Valid state check
 
   bool alertDismissed;      ///< User suppressed alerts via Settings checkbox
   double thresholdPercent;  ///< Alert threshold percentage (default 80%)
 
-  /** @} */
-
 private:
-  void ShowOrUpdateAlert(double usedGB, double totalGB,
-                         double percent);  ///< Creates/updates alert dialog
+  void ShowOrUpdateAlert(double usedGB, double totalGB, double percent);  ///< Creates/updates alert dialog
   void CloseAlert();                       ///< Destroys alert dialog
 
-  // ========== State Flags ==========
-
+  // State Flags
   bool m_isValid;         ///< false after Shutdown()
   bool m_isShuttingDown;  ///< true during Shutdown()
   int m_instanceId;       ///< Unique ID for debugging
 
-  // ========== Configuration ==========
-
+  // Configuration
   bool logToFile;     ///< Log usage on every check
   bool alertEnabled;  ///< Show popup alerts
 
-  // ========== UI References ==========
-
+  // UI References
   wxGauge* usageGauge;                   ///< Gauge in SettingsDialog
+  wxStaticText* m_textLabel;
   bool alertShown;                       ///< Alert dialog exists
   MemoryAlertDialog* activeAlertDialog;  ///< Active dialog or nullptr
 };
 
 #endif  // ADDRESSSPACEMONITOR_H
-
 #endif  // __WXMSW__

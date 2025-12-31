@@ -195,7 +195,7 @@ public:
   double m_cursor_lat;  //!< Latitude of the cursor position, in degrees.
   double m_cursor_lon;  //!< Longitude of the cursor position, in degrees.
 
-  #ifdef __WXMSW__
+#ifdef __WXMSW__
   /**
    * @brief Gets reference to the address space monitor (Windows only).
    *
@@ -211,7 +211,7 @@ public:
     AddressSpaceMonitor& GetAddressSpaceMonitor() {  // Return REFERENCE, not copy
         return m_addressSpaceMonitor; 
     } 
-  #endif
+#endif
 
 private:
   void OnCursorLatLonTimer(wxTimerEvent&);

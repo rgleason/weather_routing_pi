@@ -72,26 +72,26 @@ public:
 
   static const wxString column_names[];
 
-private:
+
 #ifdef __WXMSW__
   // ========== Windows-Only: Address Space Monitoring ==========
 
-   /**
+private:
+  /**
    * @name Memory Monitor UI Components
    * @{
    */
-  wxTimer m_memoryUpdateTimer;  ///< 2-second timer for gauge updates
   wxStaticText*
       m_staticTextMemoryStats;  ///< Dynamic text: "XX% (X.XX GB / X.X GB)"
   wxBoxSizer*
       m_usageSizer;  ///< Horizontal sizer for "Usage:" label + stats text
   /** @} */
 
+public:
   /**
    * @name Memory Monitor Event Handlers
    * @{
    */
-  void OnMemoryUpdateTimer(wxTimerEvent& event);  ///< Called every 2 seconds
   void OnThresholdChanged(
       wxSpinDoubleEvent& event);  ///< User changed alert threshold
   void OnSuppressAlertChanged(
@@ -104,12 +104,11 @@ private:
    * @name Memory Monitor Helper Methods
    * @{
    */
-  void UpdateMemoryGauge();   ///< Updates gauge and text label with current
-                              ///< memory usage
-  void LoadMemorySettings();  ///< Loads threshold, alert, and logging
-                              ///< preferences from config
+  void
+  LoadMemorySettings();  ///< Loads threshold, alert, and logging preferences
   void SaveMemorySettings();  ///< Saves current settings to config file
-  AddressSpaceMonitor*  GetMonitor();  ///< Retrieves monitor instance from plugin
+  AddressSpaceMonitor*
+  GetMonitor();  ///< Retrieves monitor instance from plugin
   /** @} */
 #endif
 };

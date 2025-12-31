@@ -55,10 +55,12 @@ void MemoryAlertDialog::UpdateMemoryInfo(double usedGB, double totalGB,
   }
 
   wxString message = wxString::Format(
-      _("WARNING: Current Usage: %.1f%% (%.2f GB / %.1f GB)\n\n"
-        "OCPN + Pi address usage is greater than: %.0f%%.\n\n"
-        "Prevent Freeze ups, in WR_Pi select \"Routing -> Reset\" to free address space."),
-      usedGB, totalGB, percent, m_monitor->thresholdPercent);
+      _("WARNING: Current Usage: %.1f%% (%.2f GB / %.1f GB)\n"
+        "OpenCPN + Pi address threshold: %.0f%%\n\n"
+        "Prevent Crashes:\n"
+        "Select WR_Pi - Routing - Reset All\n"
+        "This will free address space."),
+      percent, usedGB, totalGB, m_monitor->thresholdPercent);
 
   m_messageText->SetLabel(message);
   m_messageText->Wrap(380);
@@ -109,6 +111,7 @@ AddressSpaceMonitor::AddressSpaceMonitor()
       logToFile(false),
       alertEnabled(true),
       usageGauge(nullptr),
+      m_textLabel(nullptr),
       alertShown(false),
       alertDismissed(false),
       activeAlertDialog(nullptr),
@@ -180,6 +183,7 @@ void AddressSpaceMonitor::Shutdown() {
 
   // Clear gauge reference first to prevent updates during shutdown
   usageGauge = nullptr;
+  m_textLabel = nullptr;
 
   // Close and destroy alert dialog
   CloseAlert();
@@ -228,6 +232,25 @@ void AddressSpaceMonitor::CheckAndAlert() {
 
   double usedGB = used / (1024.0 * 1024.0 * 1024.0);
   double totalGB = total / (1024.0 * 1024.0 * 1024.0);
+
+//  Update text label if connected
+  if (m_textLabel) {
+    wxString stats = wxString::Format("%.1f%% (%.2f GB / %.1f GB)", percent,
+                                      usedGB, totalGB);
+    m_textLabel->SetLabel(stats);
+
+    // Set color based on threshold
+    wxColour textColor;
+    if (percent >= thresholdPercent) {
+      textColor = *wxRED;
+    } else if (percent >= 70.0) {
+      textColor = wxColour(255, 140, 0);  // Dark orange
+    } else {
+      textColor = wxColour(0, 128, 0);  // Dark green
+    }
+    m_textLabel->SetForegroundColour(textColor);
+    m_textLabel->Refresh();
+  }
 
   if (logToFile) {
     wxLogMessage("AddressSpaceMonitor: %.2f GB / %.1f GB (%.1f%%)", usedGB,
@@ -435,6 +458,20 @@ double AddressSpaceMonitor::GetUsagePercent() const {
     return 0.0;
   }
   return 100.0 * GetUsedAddressSpace() / GetTotalAddressSpace();
+}
+
+void AddressSpaceMonitor::SetTextLabel(wxStaticText* label) {
+  if (!m_isValid) {
+    wxLogWarning(
+        "AddressSpaceMonitor::SetTextLabel() called on invalid object");
+    return;
+  }
+  m_textLabel = label;
+  if (label) {
+    wxLogMessage("AddressSpaceMonitor: Text label connected");
+  } else {
+    wxLogMessage("AddressSpaceMonitor: Text label disconnected");
+  }
 }
 
 #endif  // __WXMSW__

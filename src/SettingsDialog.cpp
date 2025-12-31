@@ -74,7 +74,6 @@ SettingsDialog::SettingsDialog(wxWindow* parent)
     : SettingsDialogBase(parent)
 #ifdef __WXMSW__
       ,
-      m_memoryUpdateTimer(this),
       m_staticTextMemoryStats(nullptr),
       m_usageSizer(nullptr)
 #endif
@@ -85,124 +84,232 @@ SettingsDialog::SettingsDialog(wxWindow* parent)
           wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER | wxSTAY_ON_TOP)
 #ifdef __WXMSW__
       ,
-      m_memoryUpdateTimer(this),
-      m_staticTextMemoryStats(nullptr)
+      m_staticTextMemoryStats(nullptr),
+      m_usageSizer(nullptr)
 #endif
 #endif
 {
 #ifdef __WXMSW__
 
-    // SET GAUGE RANGE TO 100
-    m_gaugeMemoryUsage->SetRange(100);
+  wxLogMessage("SettingsDialog::Constructor - Windows-specific code starting");
 
-    // FIX: Reorganize the AddressSpaceMonitor groupbox layout dynamically
-    wxWindow* gaugeParent = m_gaugeMemoryUsage->GetParent();
-    if (gaugeParent) {
-      wxSizer* groupSizer = gaugeParent->GetSizer();
-      if (groupSizer) {
+  // SET GAUGE RANGE TO 100
+  m_gaugeMemoryUsage->SetRange(100);
+  wxLogMessage("SettingsDialog::Constructor - Gauge range set to 100");
+
+  // FIX: Reorganize the AddressSpaceMonitor groupbox layout dynamically
+  wxWindow* gaugeParent = m_gaugeMemoryUsage->GetParent();
+  wxLogMessage("SettingsDialog::Constructor - gaugeParent = %p", gaugeParent);
+
+  if (gaugeParent) {
+    wxSizer* groupSizer = gaugeParent->GetSizer();
+    wxLogMessage("SettingsDialog::Constructor - groupSizer = %p (BEFORE fix)",
+                 groupSizer);
+
+    // FIX: If groupSizer is NULL, try to get it from the parent's containing
+    // sizer
+    if (!groupSizer && gaugeParent->GetParent()) {
+      wxWindow* grandParent = gaugeParent->GetParent();
+      wxSizer* grandParentSizer = grandParent->GetSizer();
+
+      if (grandParentSizer) {
         wxLogMessage(
-            "SettingsDialog::Constructor - Starting dynamic layout "
-            "reorganization");
+            "SettingsDialog::Constructor - Searching grandParent sizer for "
+            "wxStaticBox sizer");
 
-        // PART 1: Find and reorganize threshold label + spin control
-        // Search for the threshold label by looking for the parent of
-        // m_spinThreshold
-        wxStaticText* thresholdLabel = nullptr;
-        wxSizerItemList& children = groupSizer->GetChildren();
-
-        // Find the label that's immediately before the spin control
-        for (wxSizerItemList::iterator it = children.begin();
-             it != children.end(); ++it) {
-          wxSizerItem* item = *it;
-          if (item && item->GetWindow() == m_spinThreshold) {
-            // Found spin control, check if previous item is a label
-            if (it != children.begin()) {
-              wxSizerItemList::iterator prevIt = it;
-              --prevIt;
-              wxSizerItem* prevItem = *prevIt;
-              if (prevItem && prevItem->GetWindow()) {
-                thresholdLabel =
-                    dynamic_cast<wxStaticText*>(prevItem->GetWindow());
-              }
+        // Look for a wxStaticBoxSizer that contains our wxStaticBox
+        wxSizerItemList& items = grandParentSizer->GetChildren();
+        for (wxSizerItemList::iterator it = items.begin(); it != items.end();
+             ++it) {
+          wxSizer* subSizer = (*it)->GetSizer();
+          if (subSizer) {
+            wxStaticBoxSizer* staticBoxSizer =
+                dynamic_cast<wxStaticBoxSizer*>(subSizer);
+            if (staticBoxSizer &&
+                staticBoxSizer->GetStaticBox() == gaugeParent) {
+              groupSizer = staticBoxSizer;
+              wxLogMessage(
+                  "SettingsDialog::Constructor - Found wxStaticBoxSizer: %p",
+                  groupSizer);
+              break;
             }
+          }
+        }
+      }
+    }
+
+    wxLogMessage("SettingsDialog::Constructor - groupSizer = %p (AFTER fix)",
+                 groupSizer);
+
+    if (groupSizer) {
+      wxLogMessage(
+          "SettingsDialog::Constructor - Starting dynamic layout "
+          "reorganization");
+
+      // PART 1: Find and reorganize threshold label + spin control
+      wxStaticText* thresholdLabel = nullptr;
+      wxSizerItemList& children = groupSizer->GetChildren();
+
+      // Find the label that's immediately before the spin control
+      for (wxSizerItemList::iterator it = children.begin();
+           it != children.end(); ++it) {
+        wxSizerItem* item = *it;
+        if (item && item->GetWindow() == m_spinThreshold) {
+          if (it != children.begin()) {
+            wxSizerItemList::iterator prevIt = it;
+            --prevIt;
+            wxSizerItem* prevItem = *prevIt;
+            if (prevItem && prevItem->GetWindow()) {
+              thresholdLabel =
+                  dynamic_cast<wxStaticText*>(prevItem->GetWindow());
+            }
+          }
+          break;
+        }
+      }
+
+      if (thresholdLabel && m_spinThreshold) {
+        wxLogMessage("    - Found threshold label: '%s'",
+                     thresholdLabel->GetLabel());
+
+        // Create horizontal sizer for threshold label + spin
+        wxBoxSizer* thresholdSizer = new wxBoxSizer(wxHORIZONTAL);
+
+        // Remove from parent sizer
+        groupSizer->Detach(thresholdLabel);
+        groupSizer->Detach(m_spinThreshold);
+
+        thresholdSizer->Add(thresholdLabel, 0,
+                            wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(5));
+        thresholdSizer->Add(m_spinThreshold, 0, wxALIGN_CENTER_VERTICAL);
+        thresholdSizer->AddStretchSpacer(1);
+
+        // Find where to insert (look for first checkbox)
+        size_t insertPos = 0;
+        children = groupSizer->GetChildren();
+        for (wxSizerItemList::iterator it = children.begin();
+             it != children.end(); ++it, ++insertPos) {
+          wxWindow* win = (*it)->GetWindow();
+          if (win == m_checkSuppressAlert) {
             break;
           }
         }
 
-        if (thresholdLabel && m_spinThreshold) {
-          wxLogMessage("    - Found threshold label: '%s'",
-                       thresholdLabel->GetLabel());
+        // Insert the horizontal sizer
+        groupSizer->Insert(insertPos, thresholdSizer, 0, wxEXPAND | wxALL,
+                           FromDIP(5));
+        wxLogMessage("    - Created horizontal threshold sizer at position %zu",
+                     insertPos);
+      }
 
-          // Create horizontal sizer for threshold label + spin
-          wxBoxSizer* thresholdSizer = new wxBoxSizer(wxHORIZONTAL);
+      // PART 2: Find and reorganize "Usage:" label
+      wxStaticText* usageLabel = nullptr;
+      children = groupSizer->GetChildren();
 
-          // Remove from parent sizer
-          groupSizer->Detach(thresholdLabel);
-          groupSizer->Detach(m_spinThreshold);
+      wxLogMessage(
+          "    - PART 2: Searching for usage label... (children count: %zu)",
+          children.size());
 
-          // Add to horizontal sizer
-          thresholdSizer->Add(thresholdLabel, 1,
-                              wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(10));
-          thresholdSizer->Add(m_spinThreshold, 0, wxALIGN_CENTER_VERTICAL);
+      // Search for usage label (may be in sub-sizer)
+      for (wxSizerItemList::iterator it = children.begin();
+           it != children.end(); ++it) {
+        wxSizerItem* item = *it;
+        if (!item) continue;
 
-          // Find where to insert (look for first checkbox)
-          size_t insertPos = 0;
-          children = groupSizer->GetChildren();
-          for (wxSizerItemList::iterator it = children.begin();
-               it != children.end(); ++it, ++insertPos) {
-            wxWindow* win = (*it)->GetWindow();
-            if (win == m_checkSuppressAlert) {
+        wxWindow* win = item->GetWindow();
+        wxSizer* sizer = item->GetSizer();
+
+        if (win) {
+          wxStaticText* txt = dynamic_cast<wxStaticText*>(win);
+          if (txt) {
+            wxString label = txt->GetLabel().Lower();
+            if (label.Contains("usage") || label.Contains("live") ||
+                label.Contains("address") || label.Contains("space")) {
+              usageLabel = txt;
               break;
             }
           }
-
-          // Insert the horizontal sizer
-          groupSizer->Insert(insertPos, thresholdSizer, 0, wxEXPAND | wxALL,
-                             FromDIP(5));
-          wxLogMessage(
-              "    - Created horizontal threshold sizer at position %zu",
-              insertPos);
+        } else if (sizer) {
+          // Check sub-sizer children
+          wxSizerItemList& subChildren = sizer->GetChildren();
+          for (wxSizerItemList::iterator subIt = subChildren.begin();
+               subIt != subChildren.end(); ++subIt) {
+            wxWindow* subWin = (*subIt)->GetWindow();
+            if (subWin) {
+              wxStaticText* subTxt = dynamic_cast<wxStaticText*>(subWin);
+              if (subTxt) {
+                wxString label = subTxt->GetLabel().Lower();
+                if (label.Contains("usage") || label.Contains("live") ||
+                    label.Contains("address") || label.Contains("space")) {
+                  usageLabel = subTxt;
+                  break;
+                }
+              }
+            }
+          }
+          if (usageLabel) break;
         }
+      }
 
-        // PART 2: Find and reorganize "Live address space usage:" label
-        wxStaticText* usageLabel = nullptr;
+      wxLogMessage("    - Search complete. usageLabel = %p", usageLabel);
+
+      if (usageLabel) {
+        wxLogMessage(
+            "    - Found usage label: '%s', detaching from parent sizer",
+            usageLabel->GetLabel());
+
+        // Find the actual parent sizer
+        wxSizer* labelParentSizer = nullptr;
         children = groupSizer->GetChildren();
 
-        // Search for label that contains "usage" (case insensitive)
         for (wxSizerItemList::iterator it = children.begin();
              it != children.end(); ++it) {
-          wxSizerItem* item = *it;
-          wxWindow* win = item ? item->GetWindow() : nullptr;
-          wxStaticText* textCtrl = dynamic_cast<wxStaticText*>(win);
-          if (textCtrl) {
-            wxString label = textCtrl->GetLabel().Lower();
-            if (label.Contains("usage") || label.Contains("live")) {
-              usageLabel = textCtrl;
-              wxLogMessage("    - Found usage label: '%s'",
-                           textCtrl->GetLabel());
-              break;
+          wxWindow* win = (*it)->GetWindow();
+          if (win == usageLabel) {
+            labelParentSizer = groupSizer;
+            break;
+          }
+
+          wxSizer* subSizer = (*it)->GetSizer();
+          if (subSizer) {
+            wxSizerItemList& subChildren = subSizer->GetChildren();
+            for (wxSizerItemList::iterator subIt = subChildren.begin();
+                 subIt != subChildren.end(); ++subIt) {
+              wxWindow* subWin = (*subIt)->GetWindow();
+              if (subWin == usageLabel) {
+                labelParentSizer = subSizer;
+                break;
+              }
             }
+            if (labelParentSizer) break;
           }
         }
 
-        if (usageLabel) {
+        if (!labelParentSizer) {
+          wxLogError("    - Could not find parent sizer for usage label!");
+        } else {
           // Change the label text
           usageLabel->SetLabel("Usage:");
 
+          // Ensure label uses normal font weight
+          wxFont labelFont = usageLabel->GetFont();
+          labelFont.SetWeight(wxFONTWEIGHT_NORMAL);
+          usageLabel->SetFont(labelFont);
+
           // Create horizontal sizer for usage label + dynamic text
           m_usageSizer = new wxBoxSizer(wxHORIZONTAL);
+          wxLogMessage("    - Created m_usageSizer: %p", m_usageSizer);
 
-          // Remove label from parent sizer
-          groupSizer->Detach(usageLabel);
+          // Remove label from its parent sizer
+          bool detached = labelParentSizer->Detach(usageLabel);
+          wxLogMessage("    - Detached label from parent sizer: %s",
+                       detached ? "SUCCESS" : "FAILED");
 
-          // Add to horizontal sizer with spacer
+          // Add label to new horizontal sizer
           m_usageSizer->Add(usageLabel, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT,
-                            FromDIP(10));
-          m_usageSizer->AddStretchSpacer(1);
-          // The dynamic text label will be added here later by
-          // UpdateMemoryGauge()
+                            FromDIP(5));
 
-          // Find where to insert (look for gauge)
+          // Find where to insert (before gauge)
           size_t insertPos = 0;
           children = groupSizer->GetChildren();
           for (wxSizerItemList::iterator it = children.begin();
@@ -216,18 +323,23 @@ SettingsDialog::SettingsDialog(wxWindow* parent)
           // Insert the horizontal sizer BEFORE the gauge
           groupSizer->Insert(insertPos, m_usageSizer, 0, wxEXPAND | wxALL,
                              FromDIP(5));
-          wxLogMessage("    - Created horizontal usage sizer at position %zu",
-                       insertPos);
+          wxLogMessage(
+              "    - Inserted m_usageSizer at position %zu (m_usageSizer=%p)",
+              insertPos, m_usageSizer);
         }
-
-        groupSizer->Layout();
-        gaugeParent->Layout();
-        wxLogMessage("SettingsDialog::Constructor - Dynamic layout complete");
+      } else {
+        wxLogError(
+            "    - FAILED to find usage label! m_usageSizer will be NULL!");
       }
-    }
 
-    // NOTE: Text label will be created dynamically by UpdateMemoryGauge()
-    // and added to m_usageSizer
+      groupSizer->Layout();
+      gaugeParent->Layout();
+      wxLogMessage(
+          "SettingsDialog::Constructor - Dynamic layout complete "
+          "(m_usageSizer=%p)",
+          m_usageSizer);
+    }
+  }
 
   // Connect memory monitor event handlers
   m_spinThreshold->Connect(
@@ -243,40 +355,17 @@ SettingsDialog::SettingsDialog(wxWindow* parent)
       wxEVT_CHECKBOX, wxCommandEventHandler(SettingsDialog::OnLogUsageChanged),
       NULL, this);
 
-  // Connect timer
-  m_memoryUpdateTimer.Connect(
-      wxEVT_TIMER, wxTimerEventHandler(SettingsDialog::OnMemoryUpdateTimer),
-      NULL, this);
+  // Final layout
+  Layout();
+  Fit();
 
-   // IMPORTANT: Do NOT start timer or update gauge here
-   // Wait until LoadSettings() is called, which happens after full
-   // initialization
-
-   // Final layout to accommodate new control
-   Layout();
-   Fit();
-
-   wxLogMessage(
-       "SettingsDialog::Constructor - Initialization complete (timer NOT "
-       "started yet)");
+  wxLogMessage("SettingsDialog::Constructor - Initialization complete");
 #endif
 }
 
-// Add this destructor implementation after the constructor
 SettingsDialog::~SettingsDialog() {
 #ifdef __WXMSW__
   wxLogMessage("SettingsDialog: Destructor starting");
-
-  // STEP 1: Stop the timer IMMEDIATELY
-  if (m_memoryUpdateTimer.IsRunning()) {
-    m_memoryUpdateTimer.Stop();
-    wxLogMessage("SettingsDialog: Destructor - Stopped memory update timer");
-  }
-
-  // STEP 2: Disconnect event handlers BEFORE processing events
-  m_memoryUpdateTimer.Disconnect(
-      wxEVT_TIMER, wxTimerEventHandler(SettingsDialog::OnMemoryUpdateTimer),
-      NULL, this);
 
   if (m_spinThreshold) {
     m_spinThreshold->Disconnect(
@@ -298,22 +387,14 @@ SettingsDialog::~SettingsDialog() {
         wxCommandEventHandler(SettingsDialog::OnLogUsageChanged), NULL, this);
   }
 
-  // STEP 3: Process any pending events that were already queued
-  // This prevents them from firing after the dialog is destroyed
-  if (wxTheApp) {
-    wxTheApp->ProcessPendingEvents();
-  }
-
-  // STEP 4: Clear the gauge reference in the monitor
+  // Clear the gauge and text label references in the monitor
   AddressSpaceMonitor* monitor = GetMonitor();
   if (monitor && monitor->IsValid()) {
     monitor->SetGauge(nullptr);
-    wxLogMessage(
-        "SettingsDialog: Destructor - Cleared gauge reference from monitor");
+    monitor->SetTextLabel(nullptr);
+    wxLogMessage("SettingsDialog: Destructor - Cleared monitor UI references");
   }
 
-  // STEP 5: Clear our pointer to the text label (it will be destroyed by
-  // wxWidgets)
   m_staticTextMemoryStats = nullptr;
 
   wxLogMessage("SettingsDialog: Destructor complete");
@@ -347,7 +428,6 @@ void SettingsDialog::LoadSettings() {
               AlternateRouteThickness);
   m_sAlternateRouteThickness->SetValue(AlternateRouteThickness);
 
-  // Cursor Route optional
   bool DisplayCursorRoute = m_cbDisplayCursorRoute->GetValue();
   pConf->Read(_T("CursorRoute"), &DisplayCursorRoute, DisplayCursorRoute);
   m_cbDisplayCursorRoute->SetValue(DisplayCursorRoute);
@@ -364,17 +444,16 @@ void SettingsDialog::LoadSettings() {
   pConf->Read(_T("DisplayWindBarbs"), &DisplayWindBarbs, DisplayWindBarbs);
   m_cbDisplayWindBarbs->SetValue(DisplayWindBarbs);
 
-  // WindBarbsOnRoute Customization
   int WindBarbsOnRouteThickness = m_sWindBarbsOnRouteThickness->GetValue();
   pConf->Read(_T("WindBarbsOnRouteThickness"), &WindBarbsOnRouteThickness,
               WindBarbsOnRouteThickness);
   m_sWindBarbsOnRouteThickness->SetValue(WindBarbsOnRouteThickness);
+
   bool WindBarbsOnRouteApparent = m_cbDisplayApparentWindBarbs->GetValue();
   pConf->Read(_T("WindBarbsOnRouteApparent"), &WindBarbsOnRouteApparent,
               WindBarbsOnRouteApparent);
   m_cbDisplayApparentWindBarbs->SetValue(WindBarbsOnRouteApparent);
 
-  // ComfortOnRoute Customization
   bool DisplayComfortOnRoute = m_cbDisplayComfort->GetValue();
   pConf->Read(_T("DisplayComfortOnRoute"), &DisplayComfortOnRoute,
               DisplayComfortOnRoute);
@@ -388,7 +467,7 @@ void SettingsDialog::LoadSettings() {
   pConf->Read(_T("ConcurrentThreads"), &ConcurrentThreads, ConcurrentThreads);
   m_sConcurrentThreads->SetValue(ConcurrentThreads);
 
-  // set defaults
+  // Set defaults
   bool columns[WeatherRouting::NUM_COLS];
   for (int i = 0; i < WeatherRouting::NUM_COLS; i++)
     columns[i] = i != WeatherRouting::BOAT &&
@@ -407,7 +486,6 @@ void SettingsDialog::LoadSettings() {
   m_cbUseLocalTime->SetValue((bool)pConf->Read(_T("UseLocalTime"), 0L));
 
 #ifdef __WXMSW__
-  // Load memory settings
   LoadMemorySettings();
 #endif
 
@@ -435,18 +513,15 @@ void SettingsDialog::SaveSettings() {
   pConf->Write(_T("AlternateRouteThickness"),
                m_sAlternateRouteThickness->GetValue());
   pConf->Write(_T("AlternatesForAll"), m_cbAlternatesForAll->GetValue());
-  // CursorOnRoute Customization
   pConf->Write(_T("CursorRoute"), m_cbDisplayCursorRoute->GetValue());
   pConf->Write(_T("MarkAtPolarChange"), m_cbMarkAtPolarChange->GetValue());
   pConf->Write(_T("DisplayWindBarbs"), m_cbDisplayWindBarbs->GetValue());
-  // WindBarbsOnRoute Customization
   pConf->Write(_T("WindBarbsOnRouteThickness"),
                m_sWindBarbsOnRouteThickness->GetValue());
   pConf->Write(_T("WindBarbsOnRouteApparent"),
                m_cbDisplayApparentWindBarbs->GetValue());
   pConf->Write(_T("DisplayComfortOnRoute"), m_cbDisplayComfort->GetValue());
   pConf->Write(_T("DisplayCurrent"), m_cbDisplayCurrent->GetValue());
-
   pConf->Write(_T("ConcurrentThreads"), m_sConcurrentThreads->GetValue());
 
   for (int i = 0; i < WeatherRouting::NUM_COLS; i++)
@@ -456,7 +531,7 @@ void SettingsDialog::SaveSettings() {
   pConf->Write(_T("UseLocalTime"), m_cbUseLocalTime->GetValue());
 
 #ifdef __WXMSW__
-   SaveMemorySettings();  // Persist setting immediately
+  SaveMemorySettings();
 #endif
 
   wxPoint p = GetPosition();
@@ -466,7 +541,6 @@ void SettingsDialog::SaveSettings() {
 
 #ifdef __WXMSW__
 AddressSpaceMonitor* SettingsDialog::GetMonitor() {
-  // SettingsDialog's parent should be WeatherRouting
   WeatherRouting* weatherRouting = dynamic_cast<WeatherRouting*>(GetParent());
 
   if (!weatherRouting) {
@@ -475,9 +549,6 @@ AddressSpaceMonitor* SettingsDialog::GetMonitor() {
     return nullptr;
   }
 
-  // WeatherRouting has a reference to the plugin via m_WeatherRouting member
-  // Check WeatherRouting.h to see how to access the plugin
-  // Typically it's a reference, not a pointer
   weather_routing_pi* plugin = &weatherRouting->GetPlugin();
 
   if (!plugin) {
@@ -521,19 +592,19 @@ void SettingsDialog::LoadMemorySettings() {
     monitor->SetLoggingEnabled(logUsage);
     monitor->SetGauge(m_gaugeMemoryUsage);
 
-    // Start the timer
-    if (!m_memoryUpdateTimer.IsRunning()) {
-      m_memoryUpdateTimer.Start(2000);
-      wxLogMessage(
-          "SettingsDialog::LoadMemorySettings() - Started memory update timer");
+    // Create text label if it doesn't exist yet
+    if (!m_staticTextMemoryStats && m_usageSizer) {
+      wxWindow* parent = m_gaugeMemoryUsage->GetParent();
+      m_staticTextMemoryStats = new wxStaticText(
+          parent, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxALIGN_LEFT);
+      m_staticTextMemoryStats->SetMinSize(FromDIP(wxSize(300, 30)));
+      m_usageSizer->Add(m_staticTextMemoryStats, 0, wxALIGN_BOTTOM | wxLEFT,
+                        FromDIP(5));
+      m_usageSizer->Layout();
+      wxLogMessage("SettingsDialog: Created text label for monitor");
     }
 
-    // FIX: Force an immediate call to UpdateMemoryGauge to create the text
-    // label Use CallAfter to ensure dialog is fully shown first
-    wxLogMessage(
-        "SettingsDialog::LoadMemorySettings() - Scheduling immediate update "
-        "via CallAfter");
-    CallAfter(&SettingsDialog::UpdateMemoryGauge);
+    monitor->SetTextLabel(m_staticTextMemoryStats);
 
     wxLogMessage(
         "SettingsDialog::LoadMemorySettings() - Configuration complete");
@@ -575,20 +646,15 @@ void SettingsDialog::OnSuppressAlertChanged(wxCommandEvent& event) {
   }
 
   if (m_checkSuppressAlert->GetValue()) {
-    // User checked the box - suppress alerts
     monitor->DismissAlert();
     wxLogMessage("SettingsDialog: User suppressed alerts via checkbox");
   } else {
-    // User unchecked the box - re-enable alerts
     monitor->alertDismissed = false;
     wxLogMessage("SettingsDialog: User re-enabled alerts via checkbox");
-
-    // Immediately check if we should show an alert
     monitor->CheckAndAlert();
   }
 
-  // Save the setting immediately so it persists
-  SaveMemorySettings();  // ? OPTIONAL: Auto-save when user changes setting
+  SaveMemorySettings();
 }
 
 void SettingsDialog::OnLogUsageChanged(wxCommandEvent& event) {
@@ -599,331 +665,9 @@ void SettingsDialog::OnLogUsageChanged(wxCommandEvent& event) {
   SaveMemorySettings();
 }
 
-void SettingsDialog::OnMemoryUpdateTimer(wxTimerEvent& event) {
-  UpdateMemoryGauge();
-}
-
-/**
- * @brief Updates the memory usage gauge and dynamic text label.
- *
- * @details This method is called every 2 seconds by m_memoryUpdateTimer to:
- * - Query current address space usage from AddressSpaceMonitor
- * - Update the gauge visual (0-100% with color coding)
- * - Update the text label with percentage and GB values
- * - Create the text label on first run if it doesn't exist
- *
- * The text label must be created dynamically because the sizer hierarchy
- * isn't fully initialized at construction time. We search recursively to
- * find the sub-sizer containing the gauge, then insert the label inline
- * with the "Usage:" label using m_usageSizer.
- *
- * @note The timer stops automatically when the dialog is hidden to avoid
- * unnecessary background processing.
- */
-
-void SettingsDialog::UpdateMemoryGauge() {
-  static int callCount = 0;
-  callCount++;
-
-  static bool firstSuccessfulRun = false;
-
-  // Only check IsShown() after first successful run to allow initial setup
-  if (firstSuccessfulRun && !IsShown()) {
-    m_memoryUpdateTimer.Stop();
-    return;
-  }
-
-  // Validate gauge and monitor (with error logging)
-    if (!m_gaugeMemoryUsage) {
-    wxLogError("SettingsDialog::UpdateMemoryGauge() - Gauge is NULL (call #%d)",
-               callCount);
-    if (m_memoryUpdateTimer.IsRunning()) {
-      m_memoryUpdateTimer.Stop();
-    }
-    return;
-  }
-
-  AddressSpaceMonitor* monitor = GetMonitor();
-
-  // Check pointer validity FIRST, then object validity
-  if (!monitor) {
-    wxLogError(
-        "SettingsDialog::UpdateMemoryGauge() - Monitor is NULL (call #%d)",
-        callCount);
-    if (m_memoryUpdateTimer.IsRunning()) {
-      m_memoryUpdateTimer.Stop();
-    }
-    return;
-  }
-
-  // Catch exceptions from accessing destroyed objects
-  try {
-    if (!monitor->IsValid()) {
-      wxLogError(
-          "SettingsDialog::UpdateMemoryGauge() - Monitor is invalid (call #%d)",
-          callCount);
-      if (m_memoryUpdateTimer.IsRunning()) {
-        m_memoryUpdateTimer.Stop();
-      }
-      return;
-    }
-  } catch (...) {
-    wxLogError(
-        "SettingsDialog::UpdateMemoryGauge() - Exception accessing monitor "
-        "(call #%d)",
-        callCount);
-    if (m_memoryUpdateTimer.IsRunning()) {
-      m_memoryUpdateTimer.Stop();
-    }
-    return;
-  }
-
-  // Get memory stats
-  size_t used = monitor->GetUsedAddressSpace();
-  size_t total = monitor->GetTotalAddressSpace();
-  double percent = monitor->GetUsagePercent();
-
-  // Convert to GB for display
-  double usedGB = used / (1024.0 * 1024.0 * 1024.0);
-  double totalGB = total / (1024.0 * 1024.0 * 1024.0);
-
-  // Log periodically for debugging
-  if (callCount % 5 == 0 || callCount <= 5) {
-    wxLogMessage(
-        "SettingsDialog::UpdateMemoryGauge() - Call #%d: %.1f%% (%.2f GB / "
-        "%.1f GB) [Dialog shown=%d]",
-        callCount, percent, usedGB, totalGB, IsShown());
-  }
-
-  // ========== Update the alert dialog if it's shown =========
-  monitor->UpdateAlertIfShown(usedGB, totalGB, percent);
-
-  // ========== Determine colors based on threshold =========
-  double threshold = m_spinThreshold->GetValue();
-  wxColour gaugeColor;
-  wxColour textColor;
-
-  if (percent >= threshold) {
-    gaugeColor = *wxRED;
-    textColor = *wxRED;
-  } else if (percent >= 70.0) {
-    gaugeColor = wxColour(255, 165, 0);  // Orange
-    textColor = wxColour(255, 140, 0);   // Darker orange
-  } else {
-    gaugeColor = wxColour(0, 200, 0);  // Bright green
-    textColor = wxColour(0, 128, 0);   // Dark green
-  }
-
-  // ========== UPDATE GAUGE (0-100 range) ==========
-  m_gaugeMemoryUsage->SetForegroundColour(gaugeColor);
-  m_gaugeMemoryUsage->SetValue(static_cast<int>(percent));  
-  m_gaugeMemoryUsage->Refresh();
-  m_gaugeMemoryUsage->Update();
-
-  // Create text label on first run
-  if (!m_staticTextMemoryStats) {
-    /**
-     * The gauge is nested inside a sub-sizer (not directly in the parent),
-     * so we must search recursively through the sizer hierarchy to find
-     * the correct sub-sizer containing m_gaugeMemoryUsage. Once found,
-     * we insert the text label into m_usageSizer (created in constructor)
-     * to display it inline with the "Usage:" label.
-     */
-    if (callCount <= 5) {
-      wxLogMessage(
-          "SettingsDialog::UpdateMemoryGauge() - Call #%d: Text label is NULL, "
-          "attempting to create...",
-          callCount);
-    }
-
-    // Try to find the parent with a sizer
-    wxWindow* parent_of_gauge = m_gaugeMemoryUsage->GetParent();
-    if (!parent_of_gauge) {
-      wxLogError("    - Gauge has no parent!");
-      return;
-    }
-
-    wxSizer* sizer = parent_of_gauge->GetSizer();
-
-    // If parent doesn't have sizer, try grandparent
-    if (!sizer) {
-      wxLogMessage("    - Parent has no sizer, checking grandparent...");
-      wxWindow* grandparent = parent_of_gauge->GetParent();
-      if (grandparent) {
-        sizer = grandparent->GetSizer();
-        if (sizer) {
-          wxLogMessage("    - Using grandparent's sizer");
-          parent_of_gauge = grandparent;
-        }
-      }
-    }
-
-    if (sizer) {
-      // FIX: We need to find which sub-sizer actually contains the gauge
-      // and insert the text label into THAT sub-sizer, not the parent
-
-      bool inserted = false;
-      wxSizerItemList& children = sizer->GetChildren();
-
-      // Search through all sizer items to find the gauge
-      for (wxSizerItemList::iterator it = children.begin();
-           it != children.end(); ++it) {
-        wxSizerItem* item = *it;
-        if (!item) continue;
-
-        // Check if this item is a SIZER (not a window)
-        wxSizer* subSizer = item->GetSizer();
-        if (subSizer) {
-          // Search this sub-sizer for the gauge
-          wxSizerItemList& subChildren = subSizer->GetChildren();
-          size_t subIndex = 0;
-
-          for (wxSizerItemList::iterator subIt = subChildren.begin();
-               subIt != subChildren.end(); ++subIt, ++subIndex) {
-            wxSizerItem* subItem = *subIt;
-            if (subItem && subItem->GetWindow() == m_gaugeMemoryUsage) {
-              // FOUND IT! The gauge is in THIS sub-sizer at subIndex
-              wxLogMessage("    - Found gauge in sub-sizer at index %zu",
-                           subIndex);
-
-              // Get the parent window that owns this sub-sizer
-              // This should be the groupBox, not the panel
-              wxWindow* subSizerParent = nullptr;
-
-              // Find the parent by checking which window this sub-sizer belongs
-              // to
-              for (wxSizerItemList::iterator parentIt = children.begin();
-                   parentIt != children.end(); ++parentIt) {
-                wxSizerItem* parentItem = *parentIt;
-                if (parentItem && parentItem->GetSizer() == subSizer) {
-                  // This item contains our sub-sizer
-                  // The window we want is the one this sizer is managing
-                  break;
-                }
-              }
-
-              // If we can't find the exact parent, use the gauge's parent
-              if (!subSizerParent) {
-                subSizerParent = m_gaugeMemoryUsage->GetParent();
-              }
-
-              // Create the text label as a child of the SAME parent as the
-              // gauge
-              m_staticTextMemoryStats = new wxStaticText(
-                  subSizerParent, wxID_ANY, wxEmptyString, wxDefaultPosition,
-                  wxDefaultSize, wxALIGN_LEFT);
-
-              // Use FromDIP for proper DPI scaling
-              m_staticTextMemoryStats->SetMinSize(FromDIP(wxSize(300, 30)));
-
-              // Set font
-              wxFont font = subSizerParent->GetFont();
-              m_staticTextMemoryStats->SetFont(font);
-
-              // Check if we have a usage sizer to add to
-              if (m_usageSizer) {
-                // Add to the usage horizontal sizer (inline with "Usage:"
-                // label)
-                m_usageSizer->Add(m_staticTextMemoryStats, 0,
-                                  wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(5));
-                inserted = true;
-                wxLogMessage(
-                    "    - Added text label to usage sizer (inline with "
-                    "label)");
-              } else {
-                // Fallback: insert before gauge
-                subSizer->Insert(subIndex, m_staticTextMemoryStats, 0,
-                                 wxALL | wxEXPAND, FromDIP(8));
-                inserted = true;
-                wxLogMessage(
-                    "    - Inserted text label BEFORE gauge at sub-sizer index "
-                    "%zu",
-                    subIndex);
-              }
-
-              // Update layouts
-              subSizer->Layout();
-              subSizerParent->Layout();
-              if (subSizerParent->GetParent()) {
-                subSizerParent->GetParent()->Layout();
-              }
-
-              break;
-            }
-          }
-          if (inserted) break;
-        }
-      }
-
-      if (!inserted) {
-        wxLogError("    - Could not find gauge in any sub-sizer!");
-      } else {
-        Fit();
-        Layout();
-        Refresh();
-        wxLogMessage("    - Text label created successfully!");
-      }
-    } else {
-      if (callCount <= 2) {
-        wxLogError("    - No sizer found in parent or grandparent!");
-      }
-    }
-  }  // Closes the if (!m_staticTextMemoryStats) block
-
- // Update text label if it exists
-  if (m_staticTextMemoryStats) {
-    // Format: percentage first, then GB values (match log format)
-    wxString stats = wxString::Format("%.1f%% (%.2f GB / %.1f GB)", percent,
-                                      usedGB, totalGB);
-
-    m_staticTextMemoryStats->SetLabel(stats);
-
-    // Set colors based on threshold
-    m_staticTextMemoryStats->SetForegroundColour(textColor);
-    m_staticTextMemoryStats->SetBackgroundColour(
-        m_staticTextMemoryStats->GetParent()->GetBackgroundColour());
-
-    // Keep font normal weight but slightly larger for readability
-    wxFont currentFont = m_staticTextMemoryStats->GetFont();
-    currentFont.SetWeight(wxFONTWEIGHT_NORMAL);
-    currentFont.SetPointSize(10);
-    m_staticTextMemoryStats->SetFont(currentFont);
-
-    m_staticTextMemoryStats->Raise();
-    m_staticTextMemoryStats->Show(true);
-    m_staticTextMemoryStats->Enable(true);
-
-    m_staticTextMemoryStats->Refresh();
-    m_staticTextMemoryStats->Update();
-
-    wxWindow* parent = m_staticTextMemoryStats->GetParent();
-    if (parent) {
-      parent->Refresh();
-      parent->Update();
-
-      wxWindow* grandparent = parent->GetParent();
-      if (grandparent) {
-        grandparent->Layout();
-        grandparent->Refresh();
-      }
-    }
-
-    if (callCount <= 3) {
-      wxLogMessage(
-          "SettingsDialog::UpdateMemoryGauge() - Call #%d: Text='%s' "
-          "(IsShown=%d)",
-          callCount, stats, m_staticTextMemoryStats->IsShown());
-    }
-
-    if (!firstSuccessfulRun) {
-      firstSuccessfulRun = true;
-      wxLogMessage(
-          "SettingsDialog::UpdateMemoryGauge() - First successful update "
-          "complete");
-    }
-  }
-}  // End of UpdateMemoryGauge()
 #endif
+
+// Platform-independent methods
 
 void SettingsDialog::OnUpdate() {
   WeatherRouting* weather_routing = dynamic_cast<WeatherRouting*>(GetParent());
