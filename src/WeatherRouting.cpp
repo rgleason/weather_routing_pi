@@ -356,6 +356,14 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
 
   SetEnableConfigurationMenu();
 
+  // Add "Reset Selected" menu item to the Routings menu - may be moved to fix wxformbuilder
+  m_mResetSelected =
+      new wxMenuItem(m_mConfiguration, wxID_ANY, _("Reset Selected"));
+  m_mConfiguration->Append(m_mResetSelected);
+  m_mConfiguration->Bind(wxEVT_COMMAND_MENU_SELECTED,
+                         wxCommandEventHandler(WeatherRouting::OnResetSelected),
+                         this, m_mResetSelected->GetId());
+
   // Connect Events
   if (m_colpane)
     m_colpane->Connect(
@@ -1787,6 +1795,12 @@ void WeatherRouting::OnFilter(wxCommandEvent& event) {
 void WeatherRouting::OnResetAll(wxCommandEvent& event) {
   m_StatisticsDialog.SetRunTime(m_RunTime = wxTimeSpan(0));
   Reset();
+  UpdateStates();
+}
+
+void WeatherRouting::OnResetSelected(wxCommandEvent& event) {
+
+  ResetSelected();
   UpdateStates();
 }
 
@@ -3475,6 +3489,17 @@ void WeatherRouting::Reset() {
   UpdateDialogs();
 
   GetParent()->Refresh();
+}
+
+void WeatherRouting::ResetSelected() {
+  std::list<RouteMapOverlay*> selected = CurrentRouteMaps();
+  for (auto* routemapoverlay : selected) {
+    routemapoverlay->Stop();
+    routemapoverlay->Reset();
+  }
+  m_positionOnRoute = nullptr;
+  GetParent()->Refresh();
+  UpdateDialogs();
 }
 
 void WeatherRouting::DeleteRouteMaps(

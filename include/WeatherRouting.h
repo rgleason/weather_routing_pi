@@ -203,6 +203,9 @@ private:
   WeatherRoutingPanel* m_panel;
   /** Timer for auto-saving positions and routes. */
   wxTimer m_tAutoSaveXML;
+  /** Menu item for resetting selected routes - Move to UI */
+  wxMenuItem* m_mResetSelected = nullptr;
+  void OnResetSelected(wxCommandEvent& event);
 
 public:
   /**
@@ -266,6 +269,7 @@ public:
   void OnRightUp(wxMouseEvent& event);
 
   void Reset();
+  void ResetSelected();
 
   void Render(piDC& dc, PlugIn_ViewPort& vp);
   ConfigurationDialog m_ConfigurationDialog;
