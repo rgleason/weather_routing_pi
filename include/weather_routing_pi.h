@@ -71,6 +71,8 @@
 #define GetTimeCtrlValue GetValue
 // #endif
 
+
+
 #include "version.h"
 
 #define ABOUT_AUTHOR_URL "http://seandepagnier.users.sourceforge.net"
@@ -89,6 +91,10 @@
 #endif
 
 #include <json/json.h>
+
+#ifdef __WXMSW__
+#include "AddressSpaceMonitor.h"
+#endif
 
 //----------------------------------------------------------------------------------------------------------
 //    The PlugIn Class Definition
@@ -176,12 +182,36 @@ public:
   static wxString StandardPath();
   void ShowMenuItems(bool show);
 
+   /**
+   * @brief Gets the parent window for plugin dialogs.
+   * @return Pointer to the OpenCPN canvas window.
+   */
   wxWindow* GetParentWindow() { return m_parent_window; }
+
+  // ========== Position Tracking ==========
 
   double m_boat_lat;    //!< Latitude of the boat position, in degrees.
   double m_boat_lon;    //!< Longitude of the boat position, in degrees.
   double m_cursor_lat;  //!< Latitude of the cursor position, in degrees.
   double m_cursor_lon;  //!< Longitude of the cursor position, in degrees.
+
+#ifdef __WXMSW__
+  /**
+   * @brief Gets reference to the address space monitor (Windows only).
+   *
+   * @return Reference to the AddressSpaceMonitor instance.
+   *
+   * @details Provides access to the plugin's AddressSpaceMonitor for use by
+   * SettingsDialog. Returns a reference (not a copy) to allow direct access
+   * to the monitor's state and methods.
+   *
+   * @note This method is only available on Windows where 32-bit address space
+   * monitoring is necessary.
+   */
+    AddressSpaceMonitor& GetAddressSpaceMonitor() {  // Return REFERENCE, not copy
+        return m_addressSpaceMonitor; 
+    } 
+#endif
 
 private:
   void OnCursorLatLonTimer(wxTimerEvent&);
@@ -233,6 +263,32 @@ private:
   int m_route_menu_id;
 
   wxTimer m_tCursorLatLon;
+
+  #ifdef __WXMSW__
+  // ========== Windows-Only: Address Space Monitoring ==========
+
+  /**
+   * @name Address Space Monitoring (Windows Only)
+   * @{
+   */
+
+  AddressSpaceMonitor
+      m_addressSpaceMonitor;    ///< Tracks 32-bit address space usage
+  wxTimer m_addressSpaceTimer;  ///< 5-second timer for continuous monitoring
+
+  /**
+   * @brief Timer callback for address space monitoring.
+   *
+   * @param event Timer event (unused).
+   *
+   * @details Called every 5 seconds to check memory usage and display alerts
+   * if the threshold is exceeded. Validates monitor state before accessing
+   * to prevent use-after-destruction.
+   */
+  void OnAddressSpaceTimer(wxTimerEvent& event);
+
+  /** @} */
+#endif
 };
 
 #endif

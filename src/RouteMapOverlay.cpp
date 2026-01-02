@@ -22,6 +22,10 @@
 
 #include <functional>
 #include <list>
+// Add near other includes at top of file
+#include "heap_checker.h"
+#include <chrono>
+#include <string>
 
 #include "ocpn_plugin.h"
 #include "pidc.h"
@@ -55,6 +59,9 @@ void* RouteMapOverlayThread::Entry() {
 
     m_RouteMapOverlay.RouteAnalysis(proute);
   } else {
+    // start periodic heap-check timer (do this once per thread entry)
+    auto last_check = std::chrono::steady_clock::now();
+
     while (!TestDestroy() && !m_RouteMapOverlay.Finished()) {
       if (!m_RouteMapOverlay.Propagate())
         wxThread::Sleep(50);
@@ -63,6 +70,18 @@ void* RouteMapOverlayThread::Entry() {
         // m_RouteMapOverlay.UpdateCursorPosition();
         m_RouteMapOverlay.UpdateDestination();
         wxThread::Sleep(5);
+      }
+
+      // Periodic 1-minute heap integrity check
+      auto now = std::chrono::steady_clock::now();
+      if (now - last_check >= std::chrono::minutes(1)) {
+        std::string _hc_msg;
+        if (!HeapChecker::CheckHeapIntegrity(&_hc_msg)) {
+          HeapChecker::ReportHeapCorruptionAndBreak(
+              "Worker thread periodic check");
+          break;  // abort the loop after reporting
+        }
+        last_check = now;
       }
     }
   }
@@ -185,6 +204,21 @@ void RouteMapOverlay::RouteAnalysis(PlugIn_Route* proute) {
     if (configuration.wind_data_status == wxEmptyString) {
       data.GetPlotData(next, eta, configuration, data);
       plotdata.push_back(data);
+
+      // In RouteMapOverlay::RouteAnalysis, after pushing plotdata:
+      if (configuration.wind_data_status == wxEmptyString) {
+        data.GetPlotData(next, eta, configuration, data);
+        plotdata.push_back(data);
+
+        // Heap integrity quick-check to help isolate corruption early
+        std::string _hc_msg;
+        if (!HeapChecker::CheckHeapIntegrity(&_hc_msg)) {
+          HeapChecker::ReportHeapCorruptionAndBreak(
+              "After isochron in RouteAnalysis");
+          // Optionally: set ok = false; break; to stop processing
+        }
+      }
+
     }
     if (!ok) break;
     data.time = curtime;
@@ -692,7 +726,7 @@ int RouteMapOverlay::sailingConditionLevel(const PlotData& plot) const {
   // VW   - Velocity of wind over water
   // WVHT - Swell (if available)
   double MAX_WV = 27;   // Vigilant over 27knts == 7B
-  double MAX_AW = 35;   // Upwind start at 35Â° from wind
+  double MAX_AW = 35;   // Upwind start at 35° from wind
   double MAX_WVHT = 5;  // No more than 5m waves
 
   // Wind impact exponentially on sailing comfort
@@ -704,7 +738,7 @@ int RouteMapOverlay::sailingConditionLevel(const PlotData& plot) const {
   // Wind direction impact on sailing comfort.
   // Ex: if you decide to sail upwind with 30knts, it is not the same
   // conditions as if you sail downwind (impact of waves, heel, and more).
-  // Use a normal distribution to set the maximum difficulty at 35Â° upwind,
+  // Use a normal distribution to set the maximum difficulty at 35° upwind,
   // and reduce when we go downwind.
   double AW = heading_resolve(plot.ctw - plot.twdOverWater);
   double teta = 30;

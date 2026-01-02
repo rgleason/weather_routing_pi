@@ -80,9 +80,9 @@ set(LONG_DESCRIPTION "WR features include: optimal routing subject to various co
 set(VERSION_MAJOR "1")
 set(VERSION_MINOR "15")
 
-set(VERSION_PATCH "42")
+set(VERSION_PATCH "44")
 set(VERSION_TWEAK "0")
-set(VERSION_DATE "09/12/2025") # DD/MM/YYYY format
+set(VERSION_DATE "30/12/2025") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov58")
 
 set(OCPN_API_VERSION_MAJOR "1")
@@ -148,6 +148,11 @@ project(${PACKAGE})
 
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
+if(WIN32) 
+	add_definitions(-D__WXMSW__) 
+endif()
+
+
 ##========================================================
 
 include("PluginSetup")
@@ -210,6 +215,7 @@ SET(SRCS
             src/RoutePoint.cpp
             src/Position.cpp
             src/IsoRoute.cpp
+			src/AddressSpaceMonitor.cpp  
 )
 
 SET (HDRS
@@ -247,6 +253,7 @@ SET (HDRS
             include/RoutePoint.h
             include/Position.h
             include/IsoRoute.h
+			include/AddressSpaceMonitor.h
 )
 
 add_definitions(-DPLUGIN_USE_SVG)
