@@ -34,6 +34,21 @@ void DeleteSkipPoints(SkipPosition* skippoints) {
   } while (s != skippoints);
 }
 
+
+// Whenever an IsoRoute is deleted, remove all references to it from
+// every IsoRouteList
+// that may contain it. For example, after deleting route2 in Merge or
+// Normalize, scan all lists and erase the pointer
+void RemoveIsoRouteFromList(IsoRouteList& list, IsoRoute* route) {
+  for (auto it = list.begin(); it != list.end();) {
+    if (*it == route) {
+      it = list.erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
+
 /* find closest position in the routemap */
 Position* IsoRoute::ClosestPosition(double lat, double lon, double* dist) {
   double mindist = INFINITY;
@@ -133,13 +148,20 @@ void IsoRoute::ResetDrawnFlag() {
 }
 
 bool IsoRoute::Propagate(IsoRouteList& routelist,
-                         RouteMapConfiguration& configuration) {
+                         RouteMapConfiguration& configuration,
+                         bool& fatal_error) {
   Position* p = skippoints->point;
   bool ret = false;
+  fatal_error = false;  // initialize the output parameter
   if (p) {
     do {
-      if (p->Propagate(routelist, configuration)) {
+      bool local_fatal_error = false;
+      if (p->Propagate(routelist, configuration, local_fatal_error)) {
         ret = true;
+      }
+      if (local_fatal_error) {
+        fatal_error = true;  // propagate the error up
+        break;
       }
       p = p->next;
     } while (p != skippoints->point);
@@ -250,7 +272,10 @@ void IsoChron::PropagateIntoList(IsoRouteList& routelist,
 
     /* build up a list of iso regions for each point
        in the current iso */
-    if ((*it)->Propagate(routelist, configuration)) propagated = true;
+    bool fatal_error = false;
+    if ((*it)->Propagate(routelist, configuration, fatal_error))
+      propagated = true;
+    if (fatal_error) break;
 
     if (!configuration.Anchoring) x = new IsoRoute(*it);
 
@@ -261,12 +286,14 @@ void IsoChron::PropagateIntoList(IsoRouteList& routelist,
         y = new IsoRoute(*cit, x);
       else
         y = nullptr;
-      if ((*cit)->Propagate(routelist, configuration)) {
+      if ((*cit)->Propagate(routelist, configuration, fatal_error)) {
         if (!configuration.Anchoring) y = new IsoRoute(*cit, x);
         x->children.push_back(y); /* copy child */
         propagated = true;
-      } else
+      } else {
         delete y;
+      }
+      if (fatal_error) break;
     }
 
     /* if any propagation occurred even for children, then we clone this route
@@ -275,7 +302,7 @@ void IsoChron::PropagateIntoList(IsoRouteList& routelist,
     if (propagated)
       routelist.push_front(x);  // slightly faster
     else
-      delete x; /* didn't need it */
+      delete x; /* didn't need it */    
   }
 }
 
@@ -327,11 +354,12 @@ IsoRoute::IsoRoute(SkipPosition* s, int dir)
   MinimizeLat();
 }
 
-/* copy constructor */
+/* DeepCopy constructor */
 IsoRoute::IsoRoute(IsoRoute* r, IsoRoute* p)
-    : skippoints(r->skippoints->Copy()), direction(r->direction), parent(p) {}
+    : skippoints(r->skippoints->DeepCopy()), direction(r->direction), parent(p) {}
 
 IsoRoute::~IsoRoute() {
+
   for (IsoRouteList::iterator it = children.begin(); it != children.end(); ++it)
     delete *it;
 
@@ -982,6 +1010,9 @@ reset:
 
   if (!spend || spend->prev == spend->next) { /* less than 3 items */
     delete route1;
+    // Remove route1 from all lists that may contain it
+    RemoveIsoRouteFromList(rl, route1);
+    RemoveIsoRouteFromList(route1->children, route1);
     if (route1 != route2) rl.push_back(route2);
     return true;
   }
@@ -1239,7 +1270,7 @@ startnormalizing:
                           route1->children.push_back(child);
                         }
                       }
-                    } else { /* no inverted regions mode */
+                    } else { // no inverted regions mode
                       for (IsoRouteList::iterator it = sub.begin();
                            it != sub.end(); ++it) {
                         if (route1->direction == (*it)->direction) {
@@ -1278,6 +1309,9 @@ startnormalizing:
                                         route2->children);
                 route2->skippoints = nullptr; /* all points are now in route1 */
                 delete route2;
+                // Remove route1 from all lists that may contain it
+                RemoveIsoRouteFromList(rl, route2);
+                RemoveIsoRouteFromList(route1->children, route2);
                 route2 = route1;
                 ssend = spend;
                 spend = sr->next; /* after old sq we are done.. this is known */
@@ -1373,8 +1407,7 @@ bool Merge(IsoRouteList& rl, IsoRoute* route1, IsoRoute* route2, int level,
         for (IsoRouteList::iterator it2 = route2->children.begin();
              it2 != route2->children.end(); it2++)
           delete *it2;
-        route2->children.clear();
-
+          route2->children.clear();
         /* now determine if route2 affects any of route1's children,
            if there are any intersections, it should mask away that area.
            once completely merged, all the masks are removed and children
@@ -1411,19 +1444,31 @@ bool Merge(IsoRouteList& rl, IsoRoute* route1, IsoRoute* route2, int level,
         }
       } else if (route1->direction == -1 && route2->direction == -1) {
         delete route1; /* keep smaller region if both inverted */
+        // Remove route1 from all lists that may contain it
+        RemoveIsoRouteFromList(rl, route1);
+        RemoveIsoRouteFromList(route1->children, route1);
         route1 = route2;
       } else if (route1->direction == 1 && route2->direction == -1) {
         delete route2;
+        // Remove route1 from all lists that may contain it
+        RemoveIsoRouteFromList(rl, route2);
+        RemoveIsoRouteFromList(route1->children, route2);
       } else {
         /* this is a child route with a normal route completely inside..
            a contrived situation it is, should not get here often */
         //                printf("contrived delete: %d, %d\n", route1->Count(),
         //                route2->Count());
         delete route2;
+        // Remove route1 from all lists that may contain it
+        RemoveIsoRouteFromList(rl, route2);
+        RemoveIsoRouteFromList(route1->children, route2);
       }
-    } else           /* no inverted regions mode */
+    } else {         // no inverted regions mode
       delete route2; /* it covers a sub area, delete it */
-
+      // Remove route1 from all lists that may contain it
+      RemoveIsoRouteFromList(rl, route2);
+      RemoveIsoRouteFromList(route1->children, route2);
+    }
     rl.push_back(route1); /* no need to normalize */
     return true;
   }

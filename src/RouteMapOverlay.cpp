@@ -63,7 +63,7 @@ void* RouteMapOverlayThread::Entry() {
     auto last_check = std::chrono::steady_clock::now();
 
     while (!TestDestroy() && !m_RouteMapOverlay.Finished()) {
-      if (!m_RouteMapOverlay.Propagate())
+        if (!m_RouteMapOverlay.Propagate())
         wxThread::Sleep(50);
       else {
         // don't do it inside worker thread, race

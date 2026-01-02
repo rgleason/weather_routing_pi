@@ -403,7 +403,9 @@ bool RouteMap::Propagate() {
 double RouteMap::DetermineDeltaTime() {
   double deltaTime = m_Configuration.DeltaTime;
 
-  // Find the closest position to source and destination in the last isochrone.
+  // Find the closest IsoRoute::IsoRoute(IsoRoute* r, IsoRoute* p)
+  //    skippoints(r->skippoints->DeepCopy()), direction(r->direction), parent(p) {}
+  //    to source and destination in the last isochrone.
   double minDistToEnd = INFINITY;
   double maxDistFromStart = -INFINITY;
 

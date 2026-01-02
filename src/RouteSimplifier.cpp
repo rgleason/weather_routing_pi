@@ -595,7 +595,9 @@ bool RouteSimplifier::ValidateSegmentWithDetailedPropagation(
 
   // Try propagation
   IsoRouteList routelist;
-  if (start->Propagate(routelist, tempConfig) && !routelist.empty()) {
+  bool fatal_error = false;
+  if (start->Propagate(routelist, tempConfig, fatal_error) &&
+      !routelist.empty() && !fatal_error) {
     // Find closest position to target
     Position* bestPosition = nullptr;
     double minDistance = INFINITY;

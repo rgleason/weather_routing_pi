@@ -99,6 +99,32 @@ Position::Position(const Json::Value& json)
       propagation_error(static_cast<PropagationError>(json["propagation_error"].asInt())) {
 }
 
+Position* Position::DeepCopy() const {
+  // Map original nodes to their copies
+  std::map<const Position*, Position*> node_map;
+
+  // First pass: create all nodes
+  const Position* orig = this;
+  Position* first = new Position(*orig);
+  node_map[orig] = first;
+
+  const Position* curr = orig->next;
+  Position* prev_copy = first;
+  while (curr != orig) {
+    Position* copy = new Position(*curr);
+    node_map[curr] = copy;
+    prev_copy->next = copy;
+    copy->prev = prev_copy;
+    prev_copy = copy;
+    curr = curr->next;
+  }
+  // Close the ring
+  prev_copy->next = first;
+  first->prev = prev_copy;
+
+  return first;
+}
+
 SkipPosition* Position::BuildSkipList() {
   /* build skip list of positions, skipping over strings of positions in
      the same quadrant */
@@ -212,22 +238,23 @@ double Position::PropagateToEnd(RouteMapConfiguration& cf, double& H,
 }
 
 bool Position::Propagate(IsoRouteList& routelist,
-                         RouteMapConfiguration& configuration) {
-  /* already propagated from this position, don't need to again */
+                         RouteMapConfiguration& configuration,
+                         bool& fatal_error) {
   if (propagated) {
     propagation_error = PROPAGATION_ALREADY_PROPAGATED;
+    fatal_error = false;
     return false;
   }
 
   propagated = true;
 
   Position* points = nullptr;
-  /* through all angles relative to wind */
   int count = 0;
   DataMask data_mask = DataMask::NONE;
   WeatherData weather_data(this);
   if (!weather_data.ReadWeatherDataAndCheckConstraints(
           configuration, this, data_mask, propagation_error, false /*end*/)) {
+    fatal_error = true;
     return false;
   }
 
@@ -247,7 +274,7 @@ bool Position::Propagate(IsoRouteList& routelist,
     double ctw =
         weather_data.twdOverWater + twa; /* rotated relative to true wind */
 
-    // Do no waste time exploring directions outside the configured search
+    // Do not waste time exploring directions outside the configured search
     // angle.
     if (!std::isnan(bearing1)) {
       double bearing3 = heading_resolve(ctw);
@@ -488,45 +515,41 @@ void SkipPosition::Remove() {
 }
 
 /* copy a skip list along with it's position list to new lists */
-SkipPosition* SkipPosition::Copy() {
-  SkipPosition* s = this;
-  if (!s) return s;
+SkipPosition* SkipPosition::DeepCopy() const {
+  // Step 1: Deep copy the Position ring starting from this->point
+  Position* new_points = point->DeepCopy();
 
-  SkipPosition *fs, *ns = nullptr;
-  Position *fp, *np = nullptr;
-  Position* p = s->point;
+  // Step 2: Map original Position* to new Position*
+  std::map<const Position*, Position*> pos_map;
+  const Position* orig_p = point;
+  Position* new_p = new_points;
   do {
-    Position* nsp = nullptr;
-    do { /* copy all positions between skip positions */
-      Position* nnp = new Position(p);
-      if (!nsp) nsp = nnp;
-      if (np) {
-        np->next = nnp;
-        nnp->prev = np;
-        np = nnp;
-      } else {
-        fp = np = nnp;
-        np->prev = np->next = np;
-      }
-      p = p->next;
-    } while (p != s->next->point);
+    pos_map[orig_p] = new_p;
+    orig_p = orig_p->next;
+    new_p = new_p->next;
+  } while (orig_p != point);
 
-    SkipPosition* nns = new SkipPosition(nsp, s->quadrant);
-    if (ns) {
-      ns->next = nns;
-      nns->prev = ns;
-      ns = nns;
-    } else {
-      fs = ns = nns;
-      ns->prev = ns->next = nns;
+  // Step 3: Deep copy the SkipPosition ring
+  const SkipPosition* orig = this;
+  SkipPosition* first = nullptr;
+  SkipPosition* prev_copy = nullptr;
+  do {
+    SkipPosition* copy =
+        new SkipPosition(pos_map.at(orig->point), orig->quadrant);
+    if (!first) {
+      first = copy;
     }
-    s = s->next;
-  } while (s != this);
+    if (prev_copy) {
+      prev_copy->next = copy;
+      copy->prev = prev_copy;
+    }
+    prev_copy = copy;
+    orig = orig->next;
+  } while (orig != this);
 
-  fs->prev = ns;
-  ns->next = fs;
+  // Step 4: Close the ring
+  prev_copy->next = first;
+  first->prev = prev_copy;
 
-  fp->prev = np;
-  np->next = fp;
-  return fs;
+  return first;
 }

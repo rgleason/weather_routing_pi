@@ -41,6 +41,7 @@ public:
            int tack_count = 0, int jibe_count = 0,
            int sail_plan_change_count = 0, DataMask data_mask = DataMask::NONE,
            bool data_deficient = false);
+           Position* DeepCopy() const;
   Position(const Position* p);
   /**
    * Constructs a Position from a JSON object.
@@ -68,7 +69,8 @@ public:
    * @return true if at least 3 valid positions were generated,
    *         false if propagation failed.
    */
-  bool Propagate(IsoRouteList& routelist, RouteMapConfiguration& configuration);
+  bool Propagate(IsoRouteList& routelist, RouteMapConfiguration& configuration,
+                 bool& fatal_error);
 
   double Distance(const Position* p) const;
   // Return the number of times the sail configuration has changed.
@@ -220,7 +222,7 @@ public:
    *
    * @return Pointer to the first SkipPosition in the new copied list
    */
-  SkipPosition* Copy();
+  SkipPosition* DeepCopy() const;
 
   Position* point;
   SkipPosition *prev, *next;
