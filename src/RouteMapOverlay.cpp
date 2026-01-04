@@ -1472,7 +1472,9 @@ void RouteMapOverlay::RequestGrib(wxDateTime time) {
 
   SendPluginMessage("GRIB_TIMELINE_RECORD_REQUEST", w.write(v));
 
+  Lock(); 
   m_bNeedsGrib = false;
+  Unlock();
 }
 
 std::list<PlotData>& RouteMapOverlay::GetPlotData(bool cursor_route) {
