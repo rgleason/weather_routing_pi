@@ -66,21 +66,21 @@ class WR_GribRecordSet;
  * weather data.
  *
  * Variable name mapping from old to new:
- * - delta    → timeInterval   : Time from previous position (seconds)
- * - VBG      → sog            : Speed Over Ground (knots)
- * - BG       → cog            : Course Over Ground (degrees)
- * - VB       → stw            : Speed Through Water (knots)
- * - B        → ctw            : Course Through Water (degrees)
- * - VW       → twsWater       : True wind speed over water (knots)
- * - W        → twdWater       : True wind direction over water (degrees)
- * - VWG      → tws            : True wind speed over ground (knots)
- * - WG       → twd            : True wind direction over ground (degrees)
- * - VC       → currentSpeed   : Current speed (knots)
- * - C        → currentDir     : Current direction (degrees)
- * - WVHT     → swellHeight    : Significant wave height (meters)
- * - VW_GUST  → gustSpeed      : Gust wind speed (knots)
- * - VA       → aws            : Apparent wind speed (knots)
- * - A        → awa            : Apparent wind angle (degrees)
+ * - delta    ? timeInterval   : Time from previous position (seconds)
+ * - VBG      ? sog            : Speed Over Ground (knots)
+ * - BG       ? cog            : Course Over Ground (degrees)
+ * - VB       ? stw            : Speed Through Water (knots)
+ * - B        ? ctw            : Course Through Water (degrees)
+ * - VW       ? twsWater       : True wind speed over water (knots)
+ * - W        ? twdWater       : True wind direction over water (degrees)
+ * - VWG      ? tws            : True wind speed over ground (knots)
+ * - WG       ? twd            : True wind direction over ground (degrees)
+ * - VC       ? currentSpeed   : Current speed (knots)
+ * - C        ? currentDir     : Current direction (degrees)
+ * - WVHT     ? swellHeight    : Significant wave height (meters)
+ * - VW_GUST  ? gustSpeed      : Gust wind speed (knots)
+ * - VA       ? aws            : Apparent wind speed (knots)
+ * - A        ? awa            : Apparent wind angle (degrees)
  */
 class PlotData : public RoutePoint {
 public:
@@ -111,7 +111,7 @@ public:
    * predicted by the forecast.
    *
    * The direction FROM which the true wind is coming, measured
-   * in degrees clockwise from true north (0-359°).
+   * in degrees clockwise from true north (0-359�).
    * This is relative to water, affected by water current.
    *
    * @note If the estimate is accurate, this should match the TWD value
@@ -135,7 +135,7 @@ public:
    * forecast.
    *
    * The direction FROM which the true wind is coming, measured
-   * in degrees clockwise from true north (0-359°).
+   * in degrees clockwise from true north (0-359�).
    * This is relative to ground, not affected by water current.
    *
    * @note This corresponds to the wind direction values provided in weather

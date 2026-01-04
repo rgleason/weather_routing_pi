@@ -26,11 +26,12 @@
 #include "RouteMap.h"
 
 void DeleteSkipPoints(SkipPosition* skippoints) {
+  if (!skippoints) return;
   SkipPosition* s = skippoints;
   do {
-    SkipPosition* ds = s;
-    s = s->next;
-    delete ds;
+    SkipPosition* next = s->next;
+    delete s;
+    s = next;
   } while (s != skippoints);
 }
 
@@ -254,55 +255,58 @@ void IsoRoute::UpdateStatistics(int& routes, int& invroutes, int& skippositions,
 }
 
 IsoChron::~IsoChron() {
+  // Delete all IsoRoute objects in the routes list to prevent memory leaks.
+  // Assumes IsoChron is the sole owner of these pointers.
   for (IsoRouteList::iterator it = routes.begin(); it != routes.end(); ++it)
     delete *it;
 }
 
 void IsoChron::PropagateIntoList(IsoRouteList& routelist,
                                  RouteMapConfiguration& configuration) {
+  // Iterate over all IsoRoute pointers in the current IsoChron's route list
   for (IsoRouteList::iterator it = routes.begin(); it != routes.end(); ++it) {
-    bool propagated = false;
+    bool propagated =
+        false;  // Tracks if any propagation occurred for this route
 
-    IsoRoute* x = nullptr;
-    /* if anchoring is allowed, then we can propagate a second time,
-       so copy the list before clearing the propagate flag,
-       when depth data is implemented we will need to flag positions as
-       propagated if they are too deep to anchor here. */
+    IsoRoute* x = nullptr;  // Will hold a copy of the route if needed
+
+    // If anchoring is enabled, create a copy of the route before propagation
     if (configuration.Anchoring) x = new IsoRoute(*it);
 
-    /* build up a list of iso regions for each point
-       in the current iso */
+    // Propagate the route; if successful, set propagated to true
     bool fatal_error = false;
     if ((*it)->Propagate(routelist, configuration, fatal_error))
       propagated = true;
-    if (fatal_error) break;
+    if (fatal_error) break;  // Abort if a fatal error occurred
 
+    // If anchoring is not enabled, create a copy of the route after propagation
     if (!configuration.Anchoring) x = new IsoRoute(*it);
 
+    // For each child route, attempt propagation and copy if needed
     for (IsoRouteList::iterator cit = (*it)->children.begin();
          cit != (*it)->children.end(); cit++) {
       IsoRoute* y;
       if (configuration.Anchoring)
-        y = new IsoRoute(*cit, x);
+        y = new IsoRoute(*cit, x);  // Copy child with parent x
       else
         y = nullptr;
       if ((*cit)->Propagate(routelist, configuration, fatal_error)) {
-        if (!configuration.Anchoring) y = new IsoRoute(*cit, x);
-        x->children.push_back(y); /* copy child */
+        if (!configuration.Anchoring)
+          y = new IsoRoute(*cit, x);  // Copy child if propagation succeeded
+        x->children.push_back(y);     // Add child copy to parent
         propagated = true;
       } else {
-        delete y;
+        delete y;  // Clean up if propagation failed
       }
-      if (fatal_error) break;
+      if (fatal_error) break;  // Abort if a fatal error occurred
     }
 
-    /* if any propagation occurred even for children, then we clone this route
-       this prevents backtracking, otherwise, we don't need this route
-       (it's a dead end) */
+    // If any propagation occurred, add the route copy to the output list
+    // Otherwise, clean up the unused copy
     if (propagated)
-      routelist.push_front(x);  // slightly faster
+      routelist.push_front(x);  // Add to front for performance
     else
-      delete x; /* didn't need it */    
+      delete x;  // No propagation, delete unused copy
   }
 }
 
@@ -359,13 +363,18 @@ IsoRoute::IsoRoute(IsoRoute* r, IsoRoute* p)
     : skippoints(r->skippoints->DeepCopy()), direction(r->direction), parent(p) {}
 
 IsoRoute::~IsoRoute() {
-
+  // Delete all child IsoRoute objects to prevent memory leaks.
+  // Assumes this IsoRoute is the sole owner of its children.
   for (IsoRouteList::iterator it = children.begin(); it != children.end(); ++it)
     delete *it;
 
+  // If there are no skip points, nothing more to clean up.
   if (!skippoints) return;
 
+  // Delete all Position objects in the route.
   DeletePoints(skippoints->point);
+
+  // Delete all SkipPosition objects in the skip list.
   DeleteSkipPoints(skippoints);
 }
 
@@ -604,61 +613,74 @@ bool IsoRoute::ContainsRoute(IsoRoute* r) {
   return true; /* probably good to say it is contained in this unlikely case */
 }
 
-/* remove points which are right next to eachother on the graph to speed
-computation time */
+/* Remove points which are right next to each other on the graph to speed
+   computation time. This reduces the number of points in the route by
+   eliminating those that are within 2 meters of their neighbor. */
 void IsoRoute::ReduceClosePoints() {
-  const double eps = 2e-5; /* resolution of 2 meters should be sufficient */
+  const double eps = 2e-5;  // Resolution of 2 meters should be sufficient
   Position* p = skippoints->point;
+  // Iterate through the position list, removing close neighbors
   while (p != skippoints->point->prev) {
     Position* n = p->next;
     double dlat = p->lat - n->lat, dlon = p->lon - n->lon;
     if (fabs(dlat) < eps && fabs(dlon) < eps) {
+      // Remove n from the list
       p->next = n->next;
       n->next->prev = p;
       delete n;
-    } else
+    } else {
+      // Move to the next position
       p = n;
+    }
   }
 
+  // Rebuild the skip list after modifying the positions
   DeleteSkipPoints(skippoints);
   skippoints = p->BuildSkipList();
 
+  // Recursively reduce close points in all child routes
   for (IsoRouteList::iterator it = children.begin(); it != children.end(); it++)
     (*it)->ReduceClosePoints();
 }
 
-/* apply current to given route, and return if it changed at all */
+/* Apply current to the given route, and return true if any position changed.
+   This function updates each position in the route based on current data.
+   If any position is moved, the skip list is rebuilt. */
 #if 0
 bool IsoRoute::ApplyCurrents(GribRecordSet *grib, wxDateTime time, RouteMapConfiguration &configuration)
 {
-if(!skippoints)
-    return false;
+    // If there are no skip points, nothing to do
+    if(!skippoints)
+        return false;
 
-bool ret = false;
-Position *p = skippoints->point;
-double timeseconds = configuration.UsedDeltaTime;
-do {
-    double currentDir, currentSpeed;
-    if(configuration.Currents && Current(grib, configuration.ClimatologyType,
-                                         time, p->lat, p->lon, currentDir, currentSpeed)) {
-        /* drift distance over ground */
-        double dist = currentSpeed * timeseconds / 3600.0;
-        if(dist)
-            ret = true;
-        ll_gc_ll(p->lat, p->lon, currentDir, dist, &p->lat, &p->lon);
+    bool ret = false;
+    Position *p = skippoints->point;
+    double timeseconds = configuration.UsedDeltaTime;
+    // Iterate through all positions in the route
+    do {
+        double currentDir, currentSpeed;
+        // If currents are enabled and data is available, update position
+        if(configuration.Currents && Current(grib, configuration.ClimatologyType,
+                                             time, p->lat, p->lon, currentDir, currentSpeed)) {
+            // Calculate drift distance over ground
+            double dist = currentSpeed * timeseconds / 3600.0;
+            if(dist)
+                ret = true;
+            // Move the position according to the current
+            ll_gc_ll(p->lat, p->lon, currentDir, dist, &p->lat, &p->lon);
+        }
+
+        p = p->next;
+    } while(p != skippoints->point);
+
+    // If any position was moved, rebuild the skip list
+    if(ret) {
+        Position *points = skippoints->point;
+        DeleteSkipPoints(skippoints);
+        skippoints = points->BuildSkipList();
     }
 
-    p = p->next;
-} while(p != skippoints->point);
-
-/* if we moved we need to rebuild the skip list */
-if(ret) {
-    Position *points = skippoints->point;
-    DeleteSkipPoints(skippoints);
-    skippoints = points->BuildSkipList();
-}
-
-return ret;
+    return ret;
 }
 #endif
 
@@ -705,27 +727,31 @@ bool checkskiplist(SkipPosition* s) {
 }
 #endif
 
-/* remove and delete a position given it's last skip position,
-we need to update the skip list if this point falls on a skip position*/
+/* Remove and delete a position given its last skip position.
+   If the removed position is a skip point, update the skip list.
+   Ensures the skip list starts at the minimum latitude for correct routing. */
 void IsoRoute::RemovePosition(SkipPosition* s, Position* p) {
+  // Unlink the position from the doubly-linked list
   p->next->prev = p->prev;
   p->prev->next = p->next;
 
+  // If the position is a skip point, update the skip list
   if (s->point == p) {
     if (s == s->next) {
+      // Only one skip point left; delete and clear
       delete s;
       skippoints = nullptr;
     } else {
-      /* rebuild skip list */
+      // Rebuild skip list after removal
       Position* points = skippoints->point;
       if (p == points) points = points->next;
       DeleteSkipPoints(skippoints);
       skippoints = points->BuildSkipList();
-      /* make sure the skip points start at the minimum
-         latitude so we know we are on the outside */
+      // Ensure skip points start at minimum latitude
       MinimizeLat();
     }
   }
+  // Delete the position
   delete p;
 }
 
@@ -1009,10 +1035,10 @@ reset:
   SkipPosition *spend = route1->skippoints, *ssend = route2->skippoints;
 
   if (!spend || spend->prev == spend->next) { /* less than 3 items */
-    delete route1;
-    // Remove route1 from all lists that may contain it
+    // Remove route1 from all lists that may contain it BEFORE deleting
     RemoveIsoRouteFromList(rl, route1);
     RemoveIsoRouteFromList(route1->children, route1);
+    delete route1;
     if (route1 != route2) rl.push_back(route2);
     return true;
   }
@@ -1021,6 +1047,9 @@ reset:
     normalizing = true;
   } else {
     if (!ssend || ssend->prev == ssend->next) { /* less than 3 items */
+      // Remove route2 from all lists that may contain it BEFORE deleting
+      RemoveIsoRouteFromList(rl, route2);
+      RemoveIsoRouteFromList(route2->children, route2);
       delete route2;
       if (spend) rl.push_back(route1);
       return true;
@@ -1308,13 +1337,15 @@ startnormalizing:
                 route1->children.splice(route1->children.end(),
                                         route2->children);
                 route2->skippoints = nullptr; /* all points are now in route1 */
-                delete route2;
-                // Remove route1 from all lists that may contain it
+                // Remove route2 from all lists that may contain it BEFORE
+                // deleting
                 RemoveIsoRouteFromList(rl, route2);
                 RemoveIsoRouteFromList(route1->children, route2);
+                delete route2;
                 route2 = route1;
                 ssend = spend;
-                spend = sr->next; /* after old sq we are done.. this is known */
+                spend = sr->next;
+                /* after old sq we are done.. this is known */
                 /* continue from here and begin to normalize */
 #if 0 /* these only needed if we could jump back in too a more optimal spot \
      than startnormalizing */
@@ -1394,24 +1425,11 @@ bool Merge(IsoRouteList& rl, IsoRoute* route1, IsoRoute* route2, int level,
   if (route1->ContainsRoute(route2)) {
     if (inverted_regions) {
       if (route1->direction == 1 && route2->direction == 1) {
-        /* if both region have children, they should get merged
-           correctly here instead of this */
-        // int sc1 = route1->children.size();
-        // int sc2 = route2->children.size();
-        // if(sc1 && sc2)
-        // printf("both have children contains: %d %d\n", sc1, sc2);
-
-        /* remove all of route2's children, route1 clears them
-           (unless they interected with route1 children which we don't handle
-           yet */
+        // ... (childrenmask logic unchanged)
         for (IsoRouteList::iterator it2 = route2->children.begin();
              it2 != route2->children.end(); it2++)
           delete *it2;
-          route2->children.clear();
-        /* now determine if route2 affects any of route1's children,
-           if there are any intersections, it should mask away that area.
-           once completely merged, all the masks are removed and children
-           remain */
+        route2->children.clear();
         IsoRouteList childrenmask;   /* non-inverted */
         IsoRouteList mergedchildren; /* inverted */
         childrenmask.push_back(route2);
@@ -1443,31 +1461,23 @@ bool Merge(IsoRouteList& rl, IsoRoute* route1, IsoRoute* route2, int level,
           route1->children.splice(route1->children.end(), mergedchildren);
         }
       } else if (route1->direction == -1 && route2->direction == -1) {
-        delete route1; /* keep smaller region if both inverted */
-        // Remove route1 from all lists that may contain it
         RemoveIsoRouteFromList(rl, route1);
         RemoveIsoRouteFromList(route1->children, route1);
+        delete route1;
         route1 = route2;
       } else if (route1->direction == 1 && route2->direction == -1) {
-        delete route2;
-        // Remove route1 from all lists that may contain it
         RemoveIsoRouteFromList(rl, route2);
         RemoveIsoRouteFromList(route1->children, route2);
+        delete route2;
       } else {
-        /* this is a child route with a normal route completely inside..
-           a contrived situation it is, should not get here often */
-        //                printf("contrived delete: %d, %d\n", route1->Count(),
-        //                route2->Count());
-        delete route2;
-        // Remove route1 from all lists that may contain it
         RemoveIsoRouteFromList(rl, route2);
         RemoveIsoRouteFromList(route1->children, route2);
+        delete route2;
       }
-    } else {         // no inverted regions mode
-      delete route2; /* it covers a sub area, delete it */
-      // Remove route1 from all lists that may contain it
+    } else {  // no inverted regions mode
       RemoveIsoRouteFromList(rl, route2);
       RemoveIsoRouteFromList(route1->children, route2);
+      delete route2;
     }
     rl.push_back(route1); /* no need to normalize */
     return true;
@@ -1482,13 +1492,17 @@ typedef wxWeakRef<Shared_GribRecordSet> Shared_GribRecordSetRef;
 extern std::map<time_t, Shared_GribRecordSetRef> grib_key;
 extern wxMutex s_key_mutex;
 
+typedef wxWeakRef<Shared_GribRecordSet> Shared_GribRecordSetRef;
+extern std::map<time_t, Shared_GribRecordSetRef> grib_key;
+extern wxMutex s_key_mutex;
+
 IsoChron::IsoChron(IsoRouteList r, wxDateTime t, double d,
                    Shared_GribRecordSet& g, bool grib_is_data_deficient)
-    : routes(r),
+    : routes(std::move(r)),
       time(t),
       delta(d),
       m_SharedGrib(g),
-      m_Grib(0),
+      m_Grib(nullptr),
       m_Grib_is_data_deficient(grib_is_data_deficient) {
   m_Grib = m_SharedGrib.GetGribRecordSet();
   if (m_Grib) {
