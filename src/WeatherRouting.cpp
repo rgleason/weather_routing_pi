@@ -1804,11 +1804,13 @@ void WeatherRouting::OnResetAll(wxCommandEvent& event) {
   UpdateStates();
 }
 
-void WeatherRouting::OnResetSelected(wxCommandEvent& event) {
-
-  ResetSelected();
-  UpdateStates();
-}
+//Removed for now not used, Route deletion must be individually done.
+//
+// void WeatherRouting::OnResetSelected(wxCommandEvent& event) {
+//
+//  ResetSelected();
+//  UpdateStates();
+//}
 
 void WeatherRouting::OnSaveAsTrack(wxCommandEvent& event) {
   std::list<RouteMapOverlay*> routemapoverlays = CurrentRouteMaps(true);
@@ -3497,16 +3499,17 @@ void WeatherRouting::Reset() {
   GetParent()->Refresh();
 }
 
-void WeatherRouting::ResetSelected() {
-  std::list<RouteMapOverlay*> selected = CurrentRouteMaps();
-  for (auto* routemapoverlay : selected) {
-    routemapoverlay->Stop();
-    routemapoverlay->Reset();
-  }
-  m_positionOnRoute = nullptr;
-  GetParent()->Refresh();
-  UpdateDialogs();
-}
+
+// void WeatherRouting::ResetSelected() {
+//  std::list<RouteMapOverlay*> selected = CurrentRouteMaps();
+//  for (auto* routemapoverlay : selected) {
+//    routemapoverlay->Stop();
+//    routemapoverlay->Reset();
+//  }
+//  m_positionOnRoute = nullptr;
+//  GetParent()->Refresh();
+//  UpdateDialogs();
+//}
 
 void WeatherRouting::DeleteRouteMaps(
     std::list<RouteMapOverlay*> routemapoverlays) {

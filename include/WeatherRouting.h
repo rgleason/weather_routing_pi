@@ -402,7 +402,7 @@ public:
    *
    * This method refreshes the CursorPositionDialog with information about the
    * route position closest to where the user's cursor is hovering on the chart.
-   *
+   
    * This method is called:
    * 1. When cursor movements trigger position changes
    * 2. Whenever the dialog is shown

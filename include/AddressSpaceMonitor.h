@@ -41,21 +41,13 @@ public:
   void UpdateMemoryInfo(double usedGB, double totalGB, double percent);
   void ClearMonitor();
 
-  // Register a text label to update alongside the gauge
-
-
-
 private:
-  wxGauge* m_gauge;
+  AddressSpaceMonitor*   m_monitor;  ///< Pointer to managing monitor (cleared on shutdown)
   wxStaticText* m_messageText;  ///< Label displaying warning message
 
   void OnHide(wxCommandEvent& event);   ///< Hide button clicked
   void OnClose(wxCommandEvent& event);  ///< Programmatic close from Settings
   void OnCloseWindow(wxCloseEvent& event);  ///< X button clicked
-
-  AddressSpaceMonitor*
-      m_monitor;  ///< Pointer to managing monitor (cleared on shutdown)
-  friend class AddressSpaceMonitor;  ///< Allow CloseAlert to access private members
 };
 
 /**
@@ -112,8 +104,8 @@ public:
   double thresholdPercent;  ///< Alert threshold percentage (default 80%)
 
 private:
-  void ShowOrUpdateAlert(double usedGB, double totalGB, double percent);  ///< Creates/updates alert dialog
-  void CloseAlert();                       ///< Destroys alert dialog
+  void ShowOrUpdateAlert(double usedGB, double totalGB, double percent);
+  void CloseAlert();  ///< Destroys alert dialog
 
   // State Flags
   bool m_isValid;         ///< false after Shutdown()
@@ -129,6 +121,9 @@ private:
   wxStaticText* m_textLabel;
   bool alertShown;                       ///< Alert dialog exists
   MemoryAlertDialog* activeAlertDialog;  ///< Active dialog or nullptr
+  double m_lastPercent;     ///< Last percent value for change detection
+  bool m_wasOverThreshold;  ///< Tracks last threshold crossing for alert
+                            ///< debouncing
 };
 
 #endif  // ADDRESSSPACEMONITOR_H

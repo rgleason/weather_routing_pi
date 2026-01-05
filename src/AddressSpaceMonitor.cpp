@@ -115,8 +115,12 @@ AddressSpaceMonitor::AddressSpaceMonitor()
       alertShown(false),
       alertDismissed(false),
       activeAlertDialog(nullptr),
-      m_instanceId(++s_instanceId) {  // ADD: Unique ID for each instance
-
+      m_instanceId(++s_instanceId),
+      m_lastPercent(-1.0),       // Correctly initialize here stores last recorded percent.
+      m_wasOverThreshold(false)  // Correctly initialize here
+      updatePercentThreshold(1.0)  // <-- Perform refresh/updates/logging at this interval.
+{
+  ++s_instanceCount;
   ++s_instanceCount;
 
   // ADD: Force logging initialization check
@@ -211,14 +215,12 @@ void AddressSpaceMonitor::DismissAlert() {
 }
 
 void AddressSpaceMonitor::CheckAndAlert() {
-  // Guard against use after destruction
   if (!m_isValid) {
     wxLogWarning(
         "AddressSpaceMonitor::CheckAndAlert() called on invalid object");
     return;
   }
 
-  // Prevent re-entrant calls
   static bool isExecuting = false;
   if (isExecuting) {
     wxLogMessage("AddressSpaceMonitor: Skipping re-entrant call");
@@ -228,45 +230,49 @@ void AddressSpaceMonitor::CheckAndAlert() {
 
   size_t used = GetUsedAddressSpace();
   size_t total = GetTotalAddressSpace();
-  double percent = GetUsagePercent();
+  double percent = 100.0 * used / total;
 
-  double usedGB = used / (1024.0 * 1024.0 * 1024.0);
-  double totalGB = total / (1024.0 * 1024.0 * 1024.0);
+   // Only update if percent changed by >updatePercentThreshold%
+  if (fabs(percent - m_lastPercent) > updatePercentThreshold) {
+    m_lastPercent = percent;
 
-//  Update text label if connected
-  if (m_textLabel) {
-    wxString stats = wxString::Format("%.1f%% (%.2f GB / %.1f GB)", percent,
-                                      usedGB, totalGB);
-    m_textLabel->SetLabel(stats);
+    double usedGB = used / (1024.0 * 1024.0 * 1024.0);
+    double totalGB = total / (1024.0 * 1024.0 * 1024.0);
 
-    // Set color based on threshold
-    wxColour textColor;
-    if (percent >= thresholdPercent) {
-      textColor = *wxRED;
-    } else if (percent >= 70.0) {
-      textColor = wxColour(255, 140, 0);  // Dark orange
-    } else {
-      textColor = wxColour(0, 128, 0);  // Dark green
+    // Update text label if connected
+    if (m_textLabel) {
+      wxString stats = wxString::Format("%.1f%% (%.2f GB / %.1f GB)", percent,
+                                        usedGB, totalGB);
+      m_textLabel->SetLabel(stats);
+
+      wxColour textColor;
+      if (percent >= thresholdPercent) {
+        textColor = *wxRED;
+      } else if (percent >= 70.0) {
+        textColor = wxColour(255, 140, 0);
+      } else {
+        textColor = wxColour(0, 128, 0);
+      }
+      m_textLabel->SetForegroundColour(textColor);
+      m_textLabel->Refresh();
     }
-    m_textLabel->SetForegroundColour(textColor);
-    m_textLabel->Refresh();
-  }
 
-  if (logToFile) {
-    wxLogMessage("AddressSpaceMonitor: %.2f GB / %.1f GB (%.1f%%)", usedGB,
-                 totalGB, percent);
-  }
+    if (logToFile) {
+      wxLogMessage("AddressSpaceMonitor: %.2f GB / %.1f GB (%.1f%%)", usedGB,
+                   totalGB, percent);
+    }
 
-  UpdateAlertIfShown(usedGB, totalGB, percent);
+    UpdateAlertIfShown(usedGB, totalGB, percent);
 
-  // Update gauge if it exists and is valid
-  if (usageGauge) {
-    try {
-      usageGauge->SetValue(static_cast<int>(percent));
-    } catch (...) {
-      wxLogWarning(
-          "AddressSpaceMonitor: Exception accessing gauge, clearing reference");
-      usageGauge = nullptr;
+    if (usageGauge) {
+      try {
+        usageGauge->SetValue(static_cast<int>(percent));
+      } catch (...) {
+        wxLogWarning(
+            "AddressSpaceMonitor: Exception accessing gauge, clearing "
+            "reference");
+        usageGauge = nullptr;
+      }
     }
   }
 
