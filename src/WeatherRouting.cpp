@@ -357,12 +357,18 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
   SetEnableConfigurationMenu();
 
   // Add "Reset Selected" menu item to the Routings menu - may be moved to fix wxformbuilder
-  m_mResetSelected =
-      new wxMenuItem(m_mConfiguration, wxID_ANY, _("Reset Selected"));
-  m_mConfiguration->Append(m_mResetSelected);
-  m_mConfiguration->Bind(wxEVT_COMMAND_MENU_SELECTED,
-                         wxCommandEventHandler(WeatherRouting::OnResetSelected),
-                         this, m_mResetSelected->GetId());
+ // Verify at least 1 route is selected.
+ // This feature requires better management of threads and data consistancy,
+ // such that individual routes can be reset without interfering with others.
+ // The current implementation resets all routes, which is simpler to manage.
+ // The plugin should be refactored to allow per-route threading and data handling
+ //
+ // m_mResetSelected =
+ //     new wxMenuItem(m_mConfiguration, wxID_ANY, _("Reset Selected"));
+ // m_mConfiguration->Append(m_mResetSelected);
+ // m_mConfiguration->Bind(wxEVT_COMMAND_MENU_SELECTED,
+ //                        wxCommandEventHandler(WeatherRouting::OnResetSelected),
+ //                        this, m_mResetSelected->GetId());
 
   // Connect Events
   if (m_colpane)
