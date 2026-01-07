@@ -262,19 +262,31 @@ bool BoatData::GetBoatSpeedForPolar(RouteMapConfiguration& configuration,
     else if (std::fabs(parent_heading - twa) > 1E-6 && performance >= 0.93)
       // Performance loss through course change
       newperformance = performance * (1.0 - std::fabs(parent_heading - twa) /
-                                                180.0 * PI / 25.0);
+                                                180.0 * M_PI / 25.0);
 
     // Performance recovery, probably happens in every server jump even when
-    // there is a loss Calculation assumes that loss is calculated right at the
+    // there is a loss. Calculation assumes that loss is calculated right at the
     // beginning of the jump, but it may be at any time during the jump
-    double current_stw =
-        this->stw * newperformance;  // TODO Average of old and new performance?
-    double integral_performance = std::min(
-        1.0, newperformance + timeseconds * 3.0 / (20.0 * current_stw) /
-                                  100.0);  // For comparison
-    this->stw = current_stw;
-    newperformance = integral_performance;
+    int jump = 30; // seconds
+    double current_stw = this->stw * newperformance;
+    double current_dist = 0.0;
+    for (int j = 0; j < timeseconds; j += jump) {
+        if (newperformance > 0.9999) {
+            newperformance = 1.0;
+            current_stw = this->stw;
+            current_dist += current_stw * (timeseconds - j) / 3600.0;
+            break;
+        }
+        newperformance = std::min(1.0, newperformance + jump * 3.0 / (20.0 *
+            current_stw) / 100.0);
+        current_stw = this->stw * newperformance;
+        // TODO It is not clear whether dist is calculated with old or new stw
+        current_dist += current_stw * jump / 3600.0;
+    }
+
+    this->stw = current_dist / (timeseconds / 3600.0);
   // Calculate boat movement over ground by combining boat speed with current.
+  // Note: Output is cog and sog
   WeatherDataProvider::TransformToGroundFrame(
       ctw, stw, weather_data.currentDir, weather_data.currentSpeed, cog, sog);
 
