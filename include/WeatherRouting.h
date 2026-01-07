@@ -78,6 +78,7 @@ public:
    * @param stateonly If true, only update the State field, not configuration
    * data.
    */
+
   void Update(WeatherRouting* wr, bool stateonly = false);
 
   /** Flag indicating if this route is filtered out in the UI display. */
@@ -196,6 +197,8 @@ public:
  * @see RouteMapConfiguration For the routing parameters
  */
 class WeatherRouting : public WeatherRoutingBase {
+  friend class AddressSpaceMonitor;  // Allow AddressSpaceMonitor to access to
+                                     // private members // private members
 private:
   bool m_disable_colpane;
   wxCollapsiblePane* m_colpane;
@@ -212,6 +215,9 @@ public:
   /**
    * Structure to store route saving options selected by the user
    */
+
+  void StopAll();  /// Stop all route calculations AutoStop
+
   struct SaveRouteOptions {
     bool dialogAccepted;        //!< Whether the user confirmed the dialog
     bool simplifyRoute;         //!< Whether to simplify the route
@@ -632,7 +638,8 @@ private:
   /* Stop the computation of the specified route. */
   void Stop(RouteMapOverlay* routemapoverlay);
   /* Stop the computation of all routes. */
-  void StopAll();
+  /* Moved to Public for AddressSpaceMonitor use */
+  // void StopAll();
 
   void DeleteRouteMaps(std::list<RouteMapOverlay*> routemapoverlays);
   RouteMapConfiguration DefaultConfiguration();

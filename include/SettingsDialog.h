@@ -77,39 +77,31 @@ public:
   // ========== Windows-Only: Address Space Monitoring ==========
 
 private:
-  /**
-   * @name Memory Monitor UI Components
-   * @{
-   */
-  wxStaticText*
-      m_staticTextMemoryStats;  ///< Dynamic text: "XX% (X.XX GB / X.X GB)"
-  wxBoxSizer*
-      m_usageSizer;  ///< Horizontal sizer for "Usage:" label + stats text
-  /** @} */
+  // @name Memory Monitor UI Components
+  wxStaticText*  m_staticTextMemoryStats;  ///< Dynamic text: "XX% (X.XX GB / X.X GB)"
+  wxBoxSizer*    m_usageSizer;  ///< Horizontal sizer for "Usage:" label + stats text
+  wxSpinCtrlDouble* m_spinAutoStopThreshold;
+  wxCheckBox* m_checkEnableAutoStop;
+
+  void OnAutoStopThresholdChanged(wxSpinDoubleEvent& event);
+  void OnAutoStopEnabledChanged(wxCommandEvent& event);
 
 public:
-  /**
-   * @name Memory Monitor Event Handlers
-   * @{
-   */
-  void OnThresholdChanged(
+  // @name Memory Monitor Event Handlers
+   void OnThresholdChanged(
       wxSpinDoubleEvent& event);  ///< User changed alert threshold
   void OnSuppressAlertChanged(
       wxCommandEvent& event);  ///< User toggled alert suppression
   void OnLogUsageChanged(
       wxCommandEvent& event);  ///< User toggled usage logging
-  /** @} */
-
-  /**
-   * @name Memory Monitor Helper Methods
-   * @{
-   */
+  
+  // @name Memory Monitor Helper Methods
   void
   LoadMemorySettings();  ///< Loads threshold, alert, and logging preferences
   void SaveMemorySettings();  ///< Saves current settings to config file
   AddressSpaceMonitor*
   GetMonitor();  ///< Retrieves monitor instance from plugin
-  /** @} */
+ 
 #endif
 };
 

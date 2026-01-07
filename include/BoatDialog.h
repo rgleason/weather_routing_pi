@@ -23,6 +23,7 @@
 #include <wx/fileconf.h>
 
 #include "EditPolarDialog.h"
+#include "Boat.h"
 
 class WeatherRouting;
 class CrossOverGenerationThread;

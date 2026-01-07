@@ -157,14 +157,15 @@ weather_routing_pi::~weather_routing_pi() {
   // ========== Windows-Only: Address Space Monitor Cleanup ==========
 
   // CRITICAL STEP 1: Stop the timer FIRST
+  // Stop and Unbind Timers Before Shutdown
   if (m_addressSpaceTimer.IsRunning()) {
     m_addressSpaceTimer.Stop();
     wxLogMessage("weather_routing_pi: Stopped address space timer");
   }
-
+  
   // CRITICAL STEP 2: Unbind the event handler to prevent queued events
-  m_addressSpaceTimer.Unbind(wxEVT_TIMER,
-                             &weather_routing_pi::OnAddressSpaceTimer, this);
+  m_addressSpaceTimer.Unbind(wxEVT_TIMER, &weather_routing_pi::OnAddressSpaceTimer, this);
+  
 
   // CRITICAL STEP 3: Shutdown the monitor (marks invalid, clears gauge, closes
   // alert)
@@ -289,11 +290,12 @@ bool weather_routing_pi::DeInit() {
 #ifdef __WXMSW__
   // CRITICAL: Shutdown monitor BEFORE closing WeatherRouting
   // This ensures the SettingsDialog's timer can safely stop
+  // Stop the address space monitoring timer
   if (m_addressSpaceTimer.IsRunning()) {
     m_addressSpaceTimer.Stop();
     wxLogMessage("weather_routing_pi::DeInit() - Stopped address space timer");
   }
-
+  // Now shutdown the monitor
   m_addressSpaceMonitor.Shutdown();
   wxLogMessage("weather_routing_pi::DeInit() - Monitor shutdown complete");
 
@@ -598,6 +600,11 @@ void weather_routing_pi::NewWR() {
   if (m_pWeather_Routing) return;
 
   m_pWeather_Routing = new WeatherRouting(m_parent_window, *this);
+
+#ifdef __WXMSW__
+  m_addressSpaceMonitor.SetWeatherRouting(m_pWeather_Routing);
+#endif
+
   wxPoint p = m_pWeather_Routing->GetPosition();
   m_pWeather_Routing->Move(0,
                            0);  // workaround for gtk autocentre dialog behavior

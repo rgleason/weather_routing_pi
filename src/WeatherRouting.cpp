@@ -3450,6 +3450,13 @@ void WeatherRouting::Stop(RouteMapOverlay* routemapoverlay) {
   routemapoverlay->DeleteThread();
 }
 
+// Made public in weatherrouting.h for AddressSpaceMonitor
+// So that it can be called from outside the class
+// when memory usage is high to stop all routing calculations
+// and free up memory immediately by stopping all threads
+// rather than waiting for user to do so manually
+// This is AddressSpaceMonitor AutoStop
+
 void WeatherRouting::StopAll() {
   /* stop all the threads at once, rather than waiting for each one before
      telling the next to stop */

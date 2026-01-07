@@ -5,6 +5,9 @@
 #include <wx/button.h>
 #include <wx/log.h>
 #include <windows.h>
+#include "WeatherRouting.h"
+#include <mutex>
+#include <atomic> // Add this include at the top of your file
 
 // ADD: Static counter at file scope (for tracking multiple instances)
 static int s_instanceCount = 0;
@@ -38,6 +41,13 @@ MemoryAlertDialog::MemoryAlertDialog(wxWindow* parent,
   Layout();
   Fit();
   Centre();
+}
+
+MemoryAlertDialog::~MemoryAlertDialog() {
+  // Disconnect all event handlers
+  Unbind(wxEVT_BUTTON, &MemoryAlertDialog::OnHide, this);
+  Unbind(wxEVT_CLOSE_WINDOW, &MemoryAlertDialog::OnCloseWindow, this);
+  // Add other Unbind/Disconnect calls if you have more event handlers
 }
 
 void MemoryAlertDialog::UpdateMemoryInfo(double usedGB, double totalGB,
@@ -105,7 +115,7 @@ void MemoryAlertDialog::ClearMonitor() {
 }
 
 AddressSpaceMonitor::AddressSpaceMonitor()
-    : m_isValid(true),
+    : m_isValidState(true),
       m_isShuttingDown(false),
       thresholdPercent(80.0),
       logToFile(false),
@@ -117,27 +127,30 @@ AddressSpaceMonitor::AddressSpaceMonitor()
       activeAlertDialog(nullptr),
       m_instanceId(++s_instanceId),
       m_lastPercent(-1.0),       // Correctly initialize here stores last recorded percent.
-      m_wasOverThreshold(false)  // Correctly initialize here
-      updatePercentThreshold(1.0)  // <-- Perform refresh/updates/logging at this interval.
+      m_wasOverThreshold(false),  // Correctly initialize here
+      updatePercentThreshold(1.0),  // <-- Perform refresh/updates/logging at this interval.
+      m_autoStopThreshold(85.0),
+      m_autoStopEnabled(true),
+      m_autoStopTriggered(false),
+      m_weatherRouting(nullptr)
 {
   ++s_instanceCount;
   ++s_instanceCount;
 
-  // ADD: Force logging initialization check
+  // Force logging initialization check
   if (!s_loggingInitialized) {
     s_loggingInitialized = true;
-    wxLogMessage(
-        "=== AddressSpaceMonitor: FIRST INSTANCE LOGGING INITIALIZED ===");
+    wxLogMessage( "=== AddressSpaceMonitor: FIRST INSTANCE LOGGING INITIALIZED ===");
   }
 
-  // FIX: Cast thread ID to unsigned long for consistent formatting
+  // Cast thread ID to unsigned long for consistent formatting
   wxThreadIdType threadId = wxThread::GetCurrentId();
   wxLogMessage(
       "AddressSpaceMonitor: Constructor - Instance #%d created (total active: "
       "%d) - Thread ID: %lu",
       m_instanceId, s_instanceCount, (unsigned long)threadId);
 
-  // ADD THIS: Log if this is being called during static initialization
+  // Log if this is being called during static initialization
   // Check wxApp and thread
   if (!wxTheApp) {
     wxLogWarning(
@@ -150,6 +163,11 @@ AddressSpaceMonitor::AddressSpaceMonitor()
   }
 }
 
+void AddressSpaceMonitor::SetWeatherRouting(WeatherRouting* wr) {
+   std::lock_guard<std::mutex> lock(m_mutex);
+   m_weatherRouting = wr;
+}
+
 AddressSpaceMonitor::~AddressSpaceMonitor() {
   --s_instanceCount;
   wxLogMessage(
@@ -158,7 +176,7 @@ AddressSpaceMonitor::~AddressSpaceMonitor() {
       m_instanceId, s_instanceCount);
 
   // Ensure shutdown has been called
-  if (m_isValid && !m_isShuttingDown) {
+  if (m_isValidState.load() && !m_isShuttingDown) {
     Shutdown();
   }
 
@@ -166,38 +184,8 @@ AddressSpaceMonitor::~AddressSpaceMonitor() {
                m_instanceId);
 }
 
-void AddressSpaceMonitor::Shutdown() {
-  // ADD: Prevent multiple shutdown calls
-  if (m_isShuttingDown) {
-    wxLogMessage(
-        "AddressSpaceMonitor: Shutdown already in progress for Instance #%d",
-        m_instanceId);
-    return;
-  }
-
-  m_isShuttingDown = true;
-
-  wxLogMessage(
-      "AddressSpaceMonitor: Shutdown called - Instance #%d cleaning up "
-      "resources",
-      m_instanceId);
-
-  // Mark as invalid immediately to prevent any new operations
-  m_isValid = false;
-
-  // Clear gauge reference first to prevent updates during shutdown
-  usageGauge = nullptr;
-  m_textLabel = nullptr;
-
-  // Close and destroy alert dialog
-  CloseAlert();
-
-  wxLogMessage("AddressSpaceMonitor: Shutdown complete - Instance #%d",
-               m_instanceId);
-}
-
 void AddressSpaceMonitor::DismissAlert() {
-  if (!m_isValid) {
+  if (!m_isValidState.load()) {
     wxLogWarning(
         "AddressSpaceMonitor::DismissAlert() called on invalid object");
     return;
@@ -214,23 +202,140 @@ void AddressSpaceMonitor::DismissAlert() {
   }
 }
 
+// Start the Auto-Stop process
+// Safely calling a method on m_weatherRouting
+void AddressSpaceMonitor::SafeStopWeatherRouting() {
+  if (!m_isValidState.load()) {
+    wxLogWarning("SafeStopWeatherRouting() called on invalid object");
+    return;
+  }
+  if (m_weatherRouting) {
+    m_weatherRouting->StopAll();
+  }
+}
+
+// Shutdown the Alert Dialog and clean up resources
+void AddressSpaceMonitor::Shutdown() {
+  std::lock_guard<std::mutex> lock(m_mutex);
+
+  // Prevent multiple shutdown calls
+  if (m_isShuttingDown) {
+    wxLogMessage(
+        "AddressSpaceMonitor: Shutdown already in progress for Instance #%d",
+        m_instanceId);
+    return;
+  }
+
+  m_isShuttingDown = true;
+
+  wxLogMessage(
+      "AddressSpaceMonitor: Shutdown called - Instance #%d cleaning up "
+      "resources",
+      m_instanceId);
+
+  // Mark as invalid immediately to prevent any new operations
+  m_isValidState.store(false);
+
+  // Clear gauge reference first to prevent updates during shutdown
+  usageGauge = nullptr;
+  m_textLabel = nullptr;
+  m_weatherRouting = nullptr;
+
+  // Close and destroy alert dialog
+  CloseAlert();
+
+  wxLogMessage("AddressSpaceMonitor: Shutdown complete - Instance #%d",
+               m_instanceId);
+}
+
+
+void AddressSpaceMonitor::CloseAlert() {
+  std::lock_guard<std::mutex> lock(m_mutex);
+  if (activeAlertDialog) {
+    wxLogMessage("AddressSpaceMonitor: Closing alert dialog");
+
+    // Clear the monitor reference in the dialog first
+    activeAlertDialog->ClearMonitor();
+
+    // Hide before destroying to prevent visual glitches
+    if (activeAlertDialog->IsShown()) {
+      activeAlertDialog->Hide();
+    }
+
+    // Destroy the dialog
+    activeAlertDialog->Destroy();
+    activeAlertDialog = nullptr;
+
+    wxLogMessage("AddressSpaceMonitor: Alert dialog destroyed");
+  }
+
+  alertShown = false;
+  alertDismissed = false;
+}
+
 void AddressSpaceMonitor::CheckAndAlert() {
-  if (!m_isValid) {
+
+  if (m_isExecuting) {
+    wxLogMessage("AddressSpaceMonitor: Skipping re-entrant call");
+    return;
+  }
+  m_isExecuting = true;
+  auto resetFlag = [&]() { m_isExecuting = false; };
+  struct ScopeGuard {
+    std::function<void()> onExit;
+    ~ScopeGuard() { onExit(); }
+  } guard{resetFlag};
+
+  std::lock_guard<std::mutex> lock(m_mutex);
+  if (!m_isValidState.load()) {
     wxLogWarning(
         "AddressSpaceMonitor::CheckAndAlert() called on invalid object");
     return;
   }
 
-  static bool isExecuting = false;
-  if (isExecuting) {
-    wxLogMessage("AddressSpaceMonitor: Skipping re-entrant call");
-    return;
-  }
-  isExecuting = true;
-
   size_t used = GetUsedAddressSpace();
   size_t total = GetTotalAddressSpace();
   double percent = 100.0 * used / total;
+
+  // --- Auto-stop logic ---
+  if (m_autoStopEnabled && m_weatherRouting && !m_autoStopTriggered) {
+    wxLogMessage(
+        "AutoStop: percent=%.1f, threshold=%.1f, enabled=%d, triggered=%d, "
+        "weatherRouting=%p",
+        percent, m_autoStopThreshold, m_autoStopEnabled, m_autoStopTriggered,
+        m_weatherRouting);
+    }
+
+    if (percent >= m_autoStopThreshold) {
+      wxLogMessage(
+          "AddressSpaceMonitor: Auto-stop threshold (%.1f%%) reached at %.1f%% "
+          "usage",
+          m_autoStopThreshold, percent);
+      SafeStopWeatherRouting();// Use the thread-safe method here
+      m_autoStopTriggered = true;
+
+      if (alertEnabled && !alertDismissed) {
+        wxString message = wxString::Format(
+            _("Memory usage reached %.0f%% (threshold: %.0f%%).\n\n"
+              "All route computations have been automatically stopped\n"
+              "to prevent memory exhaustion."),
+            percent, m_autoStopThreshold);
+        wxMessageBox(message, _("Weather Routing - Auto-Stop"),
+                     wxOK | wxICON_WARNING);
+      }
+    }
+  if (m_autoStopTriggered && percent < m_autoStopThreshold - 5.0) {
+    m_autoStopTriggered = false;
+    wxLogMessage(
+        "AddressSpaceMonitor: Usage dropped below %.1f%%, auto-stop reset",
+        m_autoStopThreshold - 5.0);
+    //Logging
+    wxLogMessage(
+        "AutoStop: percent=%.1f, threshold=%.1f, enabled=%d, triggered=%d, "
+        "weatherRouting=%p",
+        percent, m_autoStopThreshold, m_autoStopEnabled, m_autoStopTriggered,
+        m_weatherRouting);
+  }
 
    // Only update if percent changed by >updatePercentThreshold%
   if (fabs(percent - m_lastPercent) > updatePercentThreshold) {
@@ -275,14 +380,13 @@ void AddressSpaceMonitor::CheckAndAlert() {
       }
     }
   }
-
-  isExecuting = false;
+  m_isExecuting = false;
 }
 
-void AddressSpaceMonitor::UpdateAlertIfShown(double usedGB, double totalGB,
+ void AddressSpaceMonitor::UpdateAlertIfShown(double usedGB, double totalGB,
                                              double percent) {
   // Guard against use after destruction
-  if (!m_isValid) {
+  if (!m_isValidState.load()) {
     wxLogWarning(
         "AddressSpaceMonitor::UpdateAlertIfShown() called on invalid object");
     return;
@@ -341,31 +445,8 @@ void AddressSpaceMonitor::ShowOrUpdateAlert(double usedGB, double totalGB,
   }
 }
 
-void AddressSpaceMonitor::CloseAlert() {
-  if (activeAlertDialog) {
-    wxLogMessage("AddressSpaceMonitor: Closing alert dialog");
-
-    // Clear the monitor reference in the dialog first
-    activeAlertDialog->ClearMonitor();
-
-    // Hide before destroying to prevent visual glitches
-    if (activeAlertDialog->IsShown()) {
-      activeAlertDialog->Hide();
-    }
-
-    // Destroy the dialog
-    activeAlertDialog->Destroy();
-    activeAlertDialog = nullptr;
-
-    wxLogMessage("AddressSpaceMonitor: Alert dialog destroyed");
-  }
-
-  alertShown = false;
-  alertDismissed = false;
-}
-
 void AddressSpaceMonitor::SetThresholdPercent(double percent) {
-  if (!m_isValid) {
+  if (!m_isValidState.load()) { 
     wxLogWarning(
         "AddressSpaceMonitor::SetThresholdPercent() called on invalid object");
     return;
@@ -395,7 +476,7 @@ void AddressSpaceMonitor::SetThresholdPercent(double percent) {
 }
 
 void AddressSpaceMonitor::SetLoggingEnabled(bool enabled) {
-  if (!m_isValid) {
+  if (!m_isValidState.load()) {  
     wxLogWarning(
         "AddressSpaceMonitor::SetLoggingEnabled() called on invalid object");
     return;
@@ -406,7 +487,7 @@ void AddressSpaceMonitor::SetLoggingEnabled(bool enabled) {
 }
 
 void AddressSpaceMonitor::SetAlertEnabled(bool enabled) {
-  if (!m_isValid) {
+  if (!m_isValidState.load()) {
     wxLogWarning(
         "AddressSpaceMonitor::SetAlertEnabled() called on invalid object");
     return;
@@ -420,7 +501,7 @@ void AddressSpaceMonitor::SetAlertEnabled(bool enabled) {
 }
 
 void AddressSpaceMonitor::SetGauge(wxGauge* gauge) {
-  if (!m_isValid) {
+  if (!m_isValidState.load()) {  
     wxLogWarning("AddressSpaceMonitor::SetGauge() called on invalid object");
     return;
   }
@@ -435,7 +516,7 @@ void AddressSpaceMonitor::SetGauge(wxGauge* gauge) {
 }
 
 size_t AddressSpaceMonitor::GetUsedAddressSpace() const {
-  if (!m_isValid) {
+  if (!m_isValidState.load()) {  
     return 0;
   }
 
@@ -453,21 +534,21 @@ size_t AddressSpaceMonitor::GetUsedAddressSpace() const {
 }
 
 size_t AddressSpaceMonitor::GetTotalAddressSpace() const {
-  if (!m_isValid) {
+  if (!m_isValidState.load()) {
     return 0x80000000ULL;  // Return default even if invalid
   }
   return 0x80000000ULL;  // 2 GB for 32-bit process
 }
 
 double AddressSpaceMonitor::GetUsagePercent() const {
-  if (!m_isValid) {
+  if (!m_isValidState.load()) {
     return 0.0;
   }
   return 100.0 * GetUsedAddressSpace() / GetTotalAddressSpace();
 }
 
 void AddressSpaceMonitor::SetTextLabel(wxStaticText* label) {
-  if (!m_isValid) {
+  if (!m_isValidState.load()) {
     wxLogWarning(
         "AddressSpaceMonitor::SetTextLabel() called on invalid object");
     return;
@@ -480,4 +561,11 @@ void AddressSpaceMonitor::SetTextLabel(wxStaticText* label) {
   }
 }
 
+void AddressSpaceMonitor::SetAutoStopThreshold(double percent) {
+  m_autoStopThreshold = percent;
+}
+
+void AddressSpaceMonitor::SetAutoStopEnabled(bool enabled) {
+  m_autoStopEnabled = enabled;
+}
 #endif  // __WXMSW__

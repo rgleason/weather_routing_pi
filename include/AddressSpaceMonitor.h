@@ -28,9 +28,11 @@
 #include <wx/wx.h>
 #include <wx/gauge.h>
 #include <wx/dialog.h>
+#include <mutex>
 
 // Forward declaration
 class AddressSpaceMonitor;
+class WeatherRouting;
 
 /**
  * @brief Popup dialog warning user about high address space usage.
@@ -38,13 +40,13 @@ class AddressSpaceMonitor;
 class MemoryAlertDialog : public wxDialog {
 public:
   MemoryAlertDialog(wxWindow* parent, AddressSpaceMonitor* monitor);
+  ~MemoryAlertDialog();  // Add this destructor
   void UpdateMemoryInfo(double usedGB, double totalGB, double percent);
   void ClearMonitor();
 
 private:
   AddressSpaceMonitor*   m_monitor;  ///< Pointer to managing monitor (cleared on shutdown)
   wxStaticText* m_messageText;  ///< Label displaying warning message
-
   void OnHide(wxCommandEvent& event);   ///< Hide button clicked
   void OnClose(wxCommandEvent& event);  ///< Programmatic close from Settings
   void OnCloseWindow(wxCloseEvent& event);  ///< X button clicked
@@ -83,7 +85,11 @@ public:
   AddressSpaceMonitor(AddressSpaceMonitor&&) = delete;
   AddressSpaceMonitor& operator=(AddressSpaceMonitor&&) = delete;
 
+  std::mutex m_mutex;
+  std::atomic<bool> m_isValidState;
+
   void Shutdown();       ///< Cleans up resources and marks invalid
+  void SafeStopWeatherRouting();
   void CheckAndAlert();  ///< Checks usage and shows/updates alert if needed
   void UpdateAlertIfShown(double usedGB, double totalGB,
                           double percent);  ///< Updates alert if visible
@@ -94,27 +100,35 @@ public:
   void SetAlertEnabled(bool enabled);        ///< Enables popup alerts
   void SetGauge(wxGauge* gauge);  ///< Connects gauge for visual feedback
   void SetTextLabel(wxStaticText* label);  ///< SetTextLabel for percent usedGB totalGB
+  void SetAutoStopThreshold(double percent); /// Set Auto Stop at 5% above threshold percent
+  void SetAutoStopEnabled(bool enabled);  ///  Enable Auto Stop
 
   size_t GetUsedAddressSpace() const;   ///< Queries current used space (bytes)
   size_t GetTotalAddressSpace() const;  ///< Returns 2 GB (0x80000000)
   double GetUsagePercent() const;       ///< Calculates percentage (0-100)
-  bool IsValid() const { return m_isValid; }  ///< Valid state check
 
   bool alertDismissed;      ///< User suppressed alerts via Settings checkbox
   double thresholdPercent;  ///< Alert threshold percentage (default 80%)
+  void SetWeatherRouting(WeatherRouting* wr);  ///< Setter Pointer to WeatherRouting plugin for AutoStop
+  bool IsValid() const {return m_isValidState.load(); }  ///< Valid state check         ///< false after Shutdown()
 
 private:
   void ShowOrUpdateAlert(double usedGB, double totalGB, double percent);
   void CloseAlert();  ///< Destroys alert dialog
 
   // State Flags
-  bool m_isValid;         ///< false after Shutdown()
+  bool m_isExecuting = false;  ///< true during CheckAndAlert()
   bool m_isShuttingDown;  ///< true during Shutdown()
   int m_instanceId;       ///< Unique ID for debugging
 
   // Configuration
   bool logToFile;     ///< Log usage on every check
   bool alertEnabled;  ///< Show popup alerts
+  double m_autoStopThreshold;  ///< Auto-stop threshold percentage
+  bool m_autoStopEnabled;      ///< Auto-stop enabled flag
+  bool m_autoStopTriggered;    ///< Auto-stop already triggered flag
+  double updatePercentThreshold;  // percent change required to trigger update
+  WeatherRouting* m_weatherRouting;  ///< Pointer to WeatherRouting plugin
 
   // UI References
   wxGauge* usageGauge;                   ///< Gauge in SettingsDialog

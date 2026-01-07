@@ -90,6 +90,7 @@ SettingsDialog::SettingsDialog(wxWindow* parent)
 #endif
 {
 #ifdef __WXMSW__
+  wxSizer* groupSizer = nullptr;  // <-- Declare here
 
   wxLogMessage("SettingsDialog::Constructor - Windows-specific code starting");
 
@@ -102,7 +103,7 @@ SettingsDialog::SettingsDialog(wxWindow* parent)
   wxLogMessage("SettingsDialog::Constructor - gaugeParent = %p", gaugeParent);
 
   if (gaugeParent) {
-    wxSizer* groupSizer = gaugeParent->GetSizer();
+   groupSizer = gaugeParent->GetSizer();
     wxLogMessage("SettingsDialog::Constructor - groupSizer = %p (BEFORE fix)",
                  groupSizer);
 
@@ -355,6 +356,41 @@ SettingsDialog::SettingsDialog(wxWindow* parent)
       wxEVT_CHECKBOX, wxCommandEventHandler(SettingsDialog::OnLogUsageChanged),
       NULL, this);
 
+  if (groupSizer) {
+    groupSizer->Add(new wxStaticLine(gaugeParent), 0, wxEXPAND | wxALL,
+                    FromDIP(5));
+    wxStaticText* autoStopLabel =
+        new wxStaticText(gaugeParent, wxID_ANY, _("Auto-stop routes at:"),
+                         wxDefaultPosition, wxDefaultSize);
+    m_spinAutoStopThreshold = new wxSpinCtrlDouble(
+        gaugeParent, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize,
+        wxSP_ARROW_KEYS, 70.0, 95.0, 85.0, 1.0);
+    m_spinAutoStopThreshold->SetDigits(0);
+    wxStaticText* percentLabel2 =
+        new wxStaticText(gaugeParent, wxID_ANY, _("%"));
+    wxBoxSizer* autoStopSizer = new wxBoxSizer(wxHORIZONTAL);
+    autoStopSizer->Add(autoStopLabel, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT,
+                       FromDIP(5));
+    autoStopSizer->Add(m_spinAutoStopThreshold, 0,
+                       wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(3));
+    autoStopSizer->Add(percentLabel2, 0, wxALIGN_CENTER_VERTICAL);
+    autoStopSizer->AddStretchSpacer(1);
+    groupSizer->Add(autoStopSizer, 0, wxEXPAND | wxALL, FromDIP(5));
+    m_checkEnableAutoStop =
+        new wxCheckBox(gaugeParent, wxID_ANY, _("Enable automatic route stop"));
+    m_checkEnableAutoStop->SetValue(true);
+    groupSizer->Add(m_checkEnableAutoStop, 0, wxALL, FromDIP(5));
+    m_spinAutoStopThreshold->Connect(
+        wxEVT_SPINCTRLDOUBLE,
+        wxSpinDoubleEventHandler(SettingsDialog::OnAutoStopThresholdChanged),
+        NULL, this);
+    m_checkEnableAutoStop->Connect(
+        wxEVT_CHECKBOX,
+        wxCommandEventHandler(SettingsDialog::OnAutoStopEnabledChanged), NULL,
+        this);
+    groupSizer->Layout();
+  }
+
   // Final layout
   Layout();
   Fit();
@@ -388,19 +424,24 @@ SettingsDialog::~SettingsDialog() {
   }
 
   // Clear the gauge and text label references in the monitor
+  // Clear UI References in SettingsDialog Destructor
   AddressSpaceMonitor* monitor = GetMonitor();
   if (monitor && monitor->IsValid()) {
     monitor->SetGauge(nullptr);
     monitor->SetTextLabel(nullptr);
     wxLogMessage("SettingsDialog: Destructor - Cleared monitor UI references");
   }
-
+  if (monitor && monitor->IsValid()) {
+    monitor->SetGauge(nullptr);
+    monitor->SetTextLabel(nullptr);
+  }
   m_staticTextMemoryStats = nullptr;
 
   wxLogMessage("SettingsDialog: Destructor complete");
 #endif
 }
 
+// Event handlers
 void SettingsDialog::LoadSettings() {
   wxFileConfig* pConf = GetOCPNConfigObject();
   pConf->SetPath(_T( "/PlugIns/WeatherRouting" ));
@@ -539,6 +580,7 @@ void SettingsDialog::SaveSettings() {
   pConf->Write(_T ( "SettingsDialogY" ), p.y);
 }
 
+
 #ifdef __WXMSW__
 AddressSpaceMonitor* SettingsDialog::GetMonitor() {
   WeatherRouting* weatherRouting = dynamic_cast<WeatherRouting*>(GetParent());
@@ -661,6 +703,28 @@ void SettingsDialog::OnLogUsageChanged(wxCommandEvent& event) {
   AddressSpaceMonitor* monitor = GetMonitor();
   if (monitor) {
     monitor->SetLoggingEnabled(m_checkLogUsage->GetValue());
+  }
+  SaveMemorySettings();
+}
+
+void SettingsDialog::OnAutoStopThresholdChanged(wxSpinDoubleEvent& event) {
+  AddressSpaceMonitor* monitor = GetMonitor();
+  if (monitor) {
+    double newThreshold = m_spinAutoStopThreshold->GetValue();
+    monitor->SetAutoStopThreshold(newThreshold);
+    wxLogMessage("SettingsDialog: Auto-stop threshold changed to %.0f%%",
+                 newThreshold);
+  }
+  SaveMemorySettings();
+}
+
+void SettingsDialog::OnAutoStopEnabledChanged(wxCommandEvent& event) {
+  AddressSpaceMonitor* monitor = GetMonitor();
+  if (monitor) {
+    bool enabled = m_checkEnableAutoStop->GetValue();
+    monitor->SetAutoStopEnabled(enabled);
+    wxLogMessage("SettingsDialog: Auto-stop %s",
+                 enabled ? "enabled" : "disabled");
   }
   SaveMemorySettings();
 }

@@ -24,8 +24,10 @@
 #include <wx/fileconf.h>
 
 #include "WeatherRoutingUI.h"
+#include "RouteMapOverlay.h"
 
 #include <vector>
+
 
 class WeatherRouting;
 class weather_routing_pi;

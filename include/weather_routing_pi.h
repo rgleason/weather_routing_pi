@@ -112,6 +112,7 @@ class WeatherRouting;
  * weather routing capabilities to OpenCPN. It handles initialization,
  * UI management, and interactions with the OpenCPN application.
  */
+
 class weather_routing_pi : public wxEvtHandler, public opencpn_plugin_118 {
 public:
   weather_routing_pi(void* ppimgr);
@@ -264,33 +265,18 @@ private:
 
   wxTimer m_tCursorLatLon;
 
-  #ifdef __WXMSW__
-  // ========== Windows-Only: Address Space Monitoring ==========
-
-  /**
-   * @name Address Space Monitoring (Windows Only)
-   * @{
-   */
-
+#ifdef __WXMSW__
+  // Windows-only: Address space monitoring
   AddressSpaceMonitor
-      m_addressSpaceMonitor;    ///< Tracks 32-bit address space usage
-  wxTimer m_addressSpaceTimer;  ///< 5-second timer for continuous monitoring
+      m_addressSpaceMonitor;    // Tracks 32-bit address space usage
+  wxTimer m_addressSpaceTimer;  // 5-second timer for monitoring
 
   /**
-   * @brief Timer callback for address space monitoring.
-   *
-   * @param event Timer event (unused).
-   *
-   * @details Called every 5 seconds to check memory usage and display alerts
-   * if the threshold is exceeded. Validates monitor state before accessing
-   * to prevent use-after-destruction.
+   * Timer callback for address space monitoring.
+   * Called every 5 seconds to check memory usage and display alerts if needed.
    */
   void OnAddressSpaceTimer(wxTimerEvent& event);
-
-  /** @} */
 #endif
 };
-
-#endif
-
-#endif
+#endif // _WEATHER_ROUTING_PI_H_
+#endif // _WEATHER_ROUTING_PI_H_
