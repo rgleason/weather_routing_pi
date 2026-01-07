@@ -30,6 +30,9 @@
 
 #include <sstream>
 
+#include "Polar.h"
+#include "Utilities.h"
+#include "Boat.h"
 #include "RoutePoint.h"
 #include "RouteMap.h"
 #include "RouteMapOverlay.h"
@@ -545,6 +548,74 @@ void weather_routing_pi::SetPluginMessage(wxString& message_id,
         }
       }
     }
+  } else if (message_id == "WR_BOATDATA_REQUEST") {
+    Json::FastWriter writer;
+    Json::Reader reader;
+    Json::Value root;
+    reader.parse(static_cast<std::string>(message_body), root);
+    if (m_pWeather_Routing == nullptr ||
+        (!root.isMember("Racenumber") && !root.isMember("Data") &&
+         !root.isMember("tws"))) {
+      root["Type"] = "Reply";
+      root["Error"] = "Weather routing plugin not loaded?";
+      SendPluginMessage("WR_BOATDATA", writer.write(root));
+      return;
+    }
+
+    WeatherRoute* p_weather_route = nullptr;
+    for (const auto& wr : m_pWeather_Routing->m_WeatherRoutes) {
+      if (wr->Start.Contains(root["Racenumber"].asString()) ||
+          wr->End.Contains(root["Racenumber"].asString())) {
+        p_weather_route = wr;
+        break;
+      }
+    }
+
+    if (p_weather_route == nullptr) {
+      root["Type"] = "Reply";
+      root["Error"] = "No matching weather route found";
+      SendPluginMessage("WR_BOATDATA", writer.write(root));
+      return;
+    }
+
+    Boat boat = p_weather_route->routemapoverlay->GetConfiguration().boat;
+    PolarSpeedStatus status;
+    double tws = root["tws"].asDouble();
+    double twa = root.isMember("twa") ? root["twa"].asDouble() : 90.0;
+    int polar_idx =
+        boat.FindBestPolarForCondition(-1, tws, twa, 0.0, false, &status);
+
+    if (status == PolarSpeedStatus::POLAR_SPEED_SUCCESS) {
+      Polar polar = boat.Polars[polar_idx];
+
+      if (root["Data"].asString() == "Speed") {
+        // Note: non-existent tws are extrapolated
+        double speed = polar.Speed(twa, tws, &status, false, false);
+
+        if (speed != NAN) {
+          root["Type"] = "Reply";
+          root["BOAT SPEED"] = speed;
+        }
+      } else if (root["Data"].asString() == "Angles") {
+        // Note: A symmetric polar is assumed
+        SailingVMG vmg = polar.GetVMGTrueWind(tws);
+        if (vmg.values[SailingVMG::PORT_UPWIND] != NAN &&
+            vmg.values[SailingVMG::PORT_DOWNWIND] != NAN) {
+          root["Type"] = "Reply";
+          root["OPT UP"] = vmg.values[SailingVMG::PORT_UPWIND];
+          root["OPT DOWN"] = vmg.values[SailingVMG::PORT_DOWNWIND];
+        }
+      }
+    }
+
+    if (status != PolarSpeedStatus::POLAR_SPEED_SUCCESS) {
+      root["Type"] = "Reply";
+      root["Error"] = status;
+      SendPluginMessage("WR_BOATDATA", writer.write(root));
+      return;
+    }
+
+    SendPluginMessage("WR_BOATDATA", writer.write(root));
   }
 }
 
