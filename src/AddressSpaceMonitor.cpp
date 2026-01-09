@@ -4,6 +4,7 @@
 #include <wx/sizer.h>
 #include <wx/button.h>
 #include <wx/log.h>
+#include <wx/event.h>
 #include <windows.h>
 #include "WeatherRouting.h"
 #include <mutex>
@@ -241,8 +242,8 @@ void AddressSpaceMonitor::Shutdown() {
   m_textLabel = nullptr;
   m_weatherRouting = nullptr;
 
-  // Close and destroy alert dialog
-  CloseAlert();
+ // Call the unlocked version, since we already hold the lock
+  CloseAlertUnlocked();
 
   wxLogMessage("AddressSpaceMonitor: Shutdown complete - Instance #%d",
                m_instanceId);
@@ -251,47 +252,91 @@ void AddressSpaceMonitor::Shutdown() {
 
 void AddressSpaceMonitor::CloseAlert() {
   std::lock_guard<std::mutex> lock(m_mutex);
+  CloseAlertUnlocked();
+}
+
+void AddressSpaceMonitor::CloseAlertUnlocked() {
   if (activeAlertDialog) {
     wxLogMessage("AddressSpaceMonitor: Closing alert dialog");
-
-    // Clear the monitor reference in the dialog first
     activeAlertDialog->ClearMonitor();
-
-    // Hide before destroying to prevent visual glitches
     if (activeAlertDialog->IsShown()) {
       activeAlertDialog->Hide();
     }
-
-    // Destroy the dialog
     activeAlertDialog->Destroy();
     activeAlertDialog = nullptr;
-
     wxLogMessage("AddressSpaceMonitor: Alert dialog destroyed");
   }
-
   alertShown = false;
   alertDismissed = false;
 }
 
+
 void AddressSpaceMonitor::CheckAndAlert() {
 
+/*
   if (m_isExecuting) {
     wxLogMessage("AddressSpaceMonitor: Skipping re-entrant call");
     return;
-  }
+ }
+*/ 
+// First line of defense: Check re-entrancy WITHOUT locking
+// Use atomic exchange to ensure thread-safe check-and-set
+bool expected = false;
+if (!m_isExecuting.compare_exchange_strong(expected, true)) {
+  wxLogMessage(
+      "AddressSpaceMonitor: Skipping re-entrant call (already executing)");
+  return;
+}
+
+/*
   m_isExecuting = true;
   auto resetFlag = [&]() { m_isExecuting = false; };
   struct ScopeGuard {
     std::function<void()> onExit;
     ~ScopeGuard() { onExit(); }
   } guard{resetFlag};
+*/
 
-  std::lock_guard<std::mutex> lock(m_mutex);
+// RAII guard to always reset the flag, even on exceptions
+struct ExecutionGuard {
+  std::atomic<bool>& flag;
+  ExecutionGuard(std::atomic<bool>& f) : flag(f) {}
+  ~ExecutionGuard() { flag.store(false); }
+} guard(m_isExecuting);
+
+auto now = std::chrono::steady_clock::now();
+if (now - m_lastCheckTime < std::chrono::milliseconds(500)) return;
+m_lastCheckTime = now;
+
+// Replacement moved down one.
+//  std::lock_guard<std::mutex> lock(m_mutex);
+/*
   if (!m_isValidState.load()) {
     wxLogWarning(
         "AddressSpaceMonitor::CheckAndAlert() called on invalid object");
     return;
   }
+*/
+// Second line of defense: Check validity before locking
+if (!m_isValidState.load()) {
+  wxLogWarning("AddressSpaceMonitor::CheckAndAlert() called on invalid object");
+  return;
+}
+
+// Third line of defense: Use try_lock to avoid blocking
+std::unique_lock<std::mutex> lock(m_mutex, std::try_to_lock);
+if (!lock.owns_lock()) {
+  wxLogWarning(
+      "AddressSpaceMonitor: Mutex already locked, skipping this check");
+  return;
+}
+
+// Fourth line of defense: Verify state again after acquiring lock
+if (!m_isValidState.load() || m_isShuttingDown) {
+  wxLogWarning(
+      "AddressSpaceMonitor: Object became invalid while waiting for lock");
+  return;
+}
 
   size_t used = GetUsedAddressSpace();
   size_t total = GetTotalAddressSpace();
@@ -311,19 +356,38 @@ void AddressSpaceMonitor::CheckAndAlert() {
           "AddressSpaceMonitor: Auto-stop threshold (%.1f%%) reached at %.1f%% "
           "usage",
           m_autoStopThreshold, percent);
-      SafeStopWeatherRouting();// Use the thread-safe method here
+      SafeStopWeatherRouting();  // Use the thread-safe method here
       m_autoStopTriggered = true;
 
+      /*
+            if (alertEnabled && !alertDismissed) {
+              wxString message = wxString::Format(
+                  _("Memory usage reached %.0f%% (threshold: %.0f%%).\n\n"
+                    "All route computations have been automatically stopped\n"
+                    "to prevent memory exhaustion."),
+                  percent, m_autoStopThreshold);
+              wxMessageBox(message, _("Weather Routing - Auto-Stop"),
+                           wxOK | wxICON_WARNING);
+            }
+      */
       if (alertEnabled && !alertDismissed) {
+        // CRITICAL: Release the lock before showing modal dialog
+        // Modal dialogs pump messages which can trigger re-entrant calls
+        lock.unlock();
+
         wxString message = wxString::Format(
             _("Memory usage reached %.0f%% (threshold: %.0f%%).\n\n"
               "All route computations have been automatically stopped\n"
               "to prevent memory exhaustion."),
             percent, m_autoStopThreshold);
-        wxMessageBox(message, _("Weather Routing - Auto-Stop"),
-                     wxOK | wxICON_WARNING);
+        wxTheApp->CallAfter([message]() {
+          wxMessageBox(message, _("Weather Routing - Auto-Stop"),
+                       wxOK | wxICON_WARNING);
+        });      // <-- This closes the lambda and the CallAfter call
+        return;  // This should be the last statement in the block for this
+                 // condition
       }
-    }
+    }  // Now the next code block starts as normal
   if (m_autoStopTriggered && percent < m_autoStopThreshold - 5.0) {
     m_autoStopTriggered = false;
     wxLogMessage(
@@ -380,7 +444,7 @@ void AddressSpaceMonitor::CheckAndAlert() {
       }
     }
   }
-  m_isExecuting = false;
+//  m_isExecuting = false;
 }
 
  void AddressSpaceMonitor::UpdateAlertIfShown(double usedGB, double totalGB,

@@ -29,6 +29,8 @@
 #include <wx/gauge.h>
 #include <wx/dialog.h>
 #include <mutex>
+#include <atomic>
+#include <chrono>
 
 // Forward declaration
 class AddressSpaceMonitor;
@@ -80,21 +82,18 @@ public:
   // Delete copy constructor and assignment operator to prevent copying
   AddressSpaceMonitor(const AddressSpaceMonitor&) = delete;
   AddressSpaceMonitor& operator=(const AddressSpaceMonitor&) = delete;
-
   // Delete move constructor and assignment operator
   AddressSpaceMonitor(AddressSpaceMonitor&&) = delete;
   AddressSpaceMonitor& operator=(AddressSpaceMonitor&&) = delete;
 
-  std::mutex m_mutex;
-  std::atomic<bool> m_isValidState;
-
-  void Shutdown();       ///< Cleans up resources and marks invalid
-  void SafeStopWeatherRouting();
-  void CheckAndAlert();  ///< Checks usage and shows/updates alert if needed
-  void UpdateAlertIfShown(double usedGB, double totalGB,
-                          double percent);  ///< Updates alert if visible
+  void SetWeatherRouting(WeatherRouting* wr);  ///< Setter Pointer to WeatherRouting plugin for AutoStop
   void DismissAlert();  ///< Suppresses alerts until memory drops 5% below threshold
-
+  void SafeStopWeatherRouting();
+  void Shutdown();  ///< Cleans up resources and marks invalid Only call this from outside, not from Shutdown
+  void CloseAlert();  ///< Destroys alert dialog
+  void CheckAndAlert();  ///< Checks usage and shows/updates alert if needed
+  void UpdateAlertIfShown(double usedGB, double totalGB, double percent);  ///< Updates alert if visible
+  void ShowOrUpdateAlert(double usedGB, double totalGB, double percent);
   void SetThresholdPercent(double percent);  ///< Sets alert threshold (0-100)
   void SetLoggingEnabled(bool enabled);      ///< Enables periodic usage logging
   void SetAlertEnabled(bool enabled);        ///< Enables popup alerts
@@ -109,19 +108,21 @@ public:
 
   bool alertDismissed;      ///< User suppressed alerts via Settings checkbox
   double thresholdPercent;  ///< Alert threshold percentage (default 80%)
-  void SetWeatherRouting(WeatherRouting* wr);  ///< Setter Pointer to WeatherRouting plugin for AutoStop
   bool IsValid() const {return m_isValidState.load(); }  ///< Valid state check         ///< false after Shutdown()
 
 private:
-  void ShowOrUpdateAlert(double usedGB, double totalGB, double percent);
-  void CloseAlert();  ///< Destroys alert dialog
 
-  // State Flags
-  bool m_isExecuting = false;  ///< true during CheckAndAlert()
-  bool m_isShuttingDown;  ///< true during Shutdown()
-  int m_instanceId;       ///< Unique ID for debugging
+ // --- Re-entrancy and concurrency guards ---
+  std::atomic<bool> m_isExecuting{false};  // For re-entrancy protection
+  std::mutex m_mutex;
+  void CloseAlertUnlocked();  // Helper, assumes mutex is already locked
 
-  // Configuration
+ // --- Throttle check frequency ---
+  std::chrono::steady_clock::time_point m_lastCheckTime{};  // For minimum interval
+
+ // ---State and Configuration---
+  std::atomic<bool> m_isValidState{true};  // Changed from bool to atomic<bool>
+  bool m_isShuttingDown;                   ///< true during Shutdown()
   bool logToFile;     ///< Log usage on every check
   bool alertEnabled;  ///< Show popup alerts
   double m_autoStopThreshold;  ///< Auto-stop threshold percentage
@@ -130,14 +131,14 @@ private:
   double updatePercentThreshold;  // percent change required to trigger update
   WeatherRouting* m_weatherRouting;  ///< Pointer to WeatherRouting plugin
 
-  // UI References
+ // UI References
   wxGauge* usageGauge;                   ///< Gauge in SettingsDialog
   wxStaticText* m_textLabel;
   bool alertShown;                       ///< Alert dialog exists
   MemoryAlertDialog* activeAlertDialog;  ///< Active dialog or nullptr
+  int m_instanceId;                      ///< Unique ID for debugging
   double m_lastPercent;     ///< Last percent value for change detection
-  bool m_wasOverThreshold;  ///< Tracks last threshold crossing for alert
-                            ///< debouncing
+  bool m_wasOverThreshold;  ///< Tracks last threshold crossing for alert debouncing
 };
 
 #endif  // ADDRESSSPACEMONITOR_H
