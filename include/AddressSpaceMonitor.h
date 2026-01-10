@@ -101,6 +101,7 @@ public:
   void SetGauge(wxGauge* gauge);  ///< Connects gauge for visual feedback
   void SetTextLabel(wxStaticText* label);  ///< SetTextLabel for percent usedGB totalGB
   void SetAutoStopThreshold(double percent); /// Set Auto Stop at 5% above threshold percent
+  void SetMemoryCheckInterval(int ms);  ///< Set Memory Check Interval in milliseconds
   void SetAutoStopEnabled(bool enabled);  ///  Enable Auto Stop
 
   size_t GetUsedAddressSpace() const;   ///< Queries current used space (bytes)
@@ -140,6 +141,8 @@ private:
   int m_instanceId;                      ///< Unique ID for debugging
   double m_lastPercent;     ///< Last percent value for change detection
   bool m_wasOverThreshold;  ///< Tracks last threshold crossing for alert debouncing
+  int m_memoryCheckIntervalMs = 500;  ///< Default 500 ms memory check interval
+
 
 // Persistence of Settings
   void SaveSettings();

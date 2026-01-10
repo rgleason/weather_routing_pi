@@ -68,10 +68,8 @@ void MemoryAlertDialog::UpdateMemoryInfo(double usedGB, double totalGB,
 
   wxString message = wxString::Format(
       _("WARNING: Current Usage: %.1f%% (%.2f GB / %.1f GB)\n"
-        "OpenCPN + Pi address threshold: %.0f%%\n\n"
-        "Prevent Crashes:\n"
-        "Select WR_Pi - Routing - Reset All\n"
-        "This will free address space."),
+        "Alert threshold: %.0f%%\n\n"
+        "Prevent Crashes: Reset All"),
       percent, usedGB, totalGB, m_monitor->thresholdPercent);
 
   m_messageText->SetLabel(message);
@@ -521,6 +519,8 @@ void AddressSpaceMonitor::SetThresholdPercent(double percent) {
   }
 }
 
+
+
 void AddressSpaceMonitor::SetLoggingEnabled(bool enabled) {
   if (!m_isValidState.load()) {  
     wxLogWarning(
@@ -614,6 +614,12 @@ void AddressSpaceMonitor::SetAutoStopThreshold(double percent) {
 void AddressSpaceMonitor::SetAutoStopEnabled(bool enabled) {
   m_autoStopEnabled = enabled;
 }
+
+void AddressSpaceMonitor::SetMemoryCheckInterval(int ms) {
+  // Store and use this value in your timer logic
+  m_memoryCheckIntervalMs = ms;
+}
+
 void AddressSpaceMonitor::SaveSettings() {
   wxConfig config("WeatherRouting");
   config.Write("AlertThresholdPercent", thresholdPercent);

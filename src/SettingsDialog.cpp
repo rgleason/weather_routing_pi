@@ -70,30 +70,31 @@ const wxString SettingsDialog::column_names[] = {"",  // "Visible" column
                                                  "State"};
 
 SettingsDialog::SettingsDialog(wxWindow* parent)
-#ifndef __WXOSX__
-    : SettingsDialogBase(parent)
-#ifdef __WXMSW__
-      ,
-      m_staticTextMemoryStats(nullptr),
-      m_usageSizer(nullptr)
-#endif
-#else
     : SettingsDialogBase(
+#ifdef __WXOSX__
           parent, wxID_ANY, _("Weather Routing Settings"), wxDefaultPosition,
           wxDefaultSize,
-          wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER | wxSTAY_ON_TOP)
+          wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER | wxSTAY_ON_TOP
+#else
+          parent
+#endif
+          )
 #ifdef __WXMSW__
       ,
       m_staticTextMemoryStats(nullptr),
-      m_usageSizer(nullptr)
-#endif
+      m_usageSizer(nullptr),
+      m_spinAutoStopThreshold(nullptr),
+      m_checkEnableAutoStop(nullptr),
+      m_spinMemoryCheckInterval(nullptr)
 #endif
 {
+
 #ifdef __WXMSW__
   wxSizer* groupSizer = nullptr;  // <-- Declare here
 
   wxLogMessage("SettingsDialog::Constructor - Windows-specific code starting");
 
+  
   // SET GAUGE RANGE TO 100
   m_gaugeMemoryUsage->SetRange(100);
   wxLogMessage("SettingsDialog::Constructor - Gauge range set to 100");
@@ -103,7 +104,7 @@ SettingsDialog::SettingsDialog(wxWindow* parent)
   wxLogMessage("SettingsDialog::Constructor - gaugeParent = %p", gaugeParent);
 
   if (gaugeParent) {
-   groupSizer = gaugeParent->GetSizer();
+    groupSizer = gaugeParent->GetSizer();
     wxLogMessage("SettingsDialog::Constructor - groupSizer = %p (BEFORE fix)",
                  groupSizer);
 
@@ -117,8 +118,6 @@ SettingsDialog::SettingsDialog(wxWindow* parent)
         wxLogMessage(
             "SettingsDialog::Constructor - Searching grandParent sizer for "
             "wxStaticBox sizer");
-
-        // Look for a wxStaticBoxSizer that contains our wxStaticBox
         wxSizerItemList& items = grandParentSizer->GetChildren();
         for (wxSizerItemList::iterator it = items.begin(); it != items.end();
              ++it) {
@@ -138,6 +137,7 @@ SettingsDialog::SettingsDialog(wxWindow* parent)
         }
       }
     }
+  
 
     wxLogMessage("SettingsDialog::Constructor - groupSizer = %p (AFTER fix)",
                  groupSizer);
@@ -147,248 +147,97 @@ SettingsDialog::SettingsDialog(wxWindow* parent)
           "SettingsDialog::Constructor - Starting dynamic layout "
           "reorganization");
 
-      // PART 1: Find and reorganize threshold label + spin control
-      wxStaticText* thresholdLabel = nullptr;
-      wxSizerItemList& children = groupSizer->GetChildren();
+      // --- Begin custom order for AddressSpaceMonitor settings ---
 
-      // Find the label that's immediately before the spin control
-      for (wxSizerItemList::iterator it = children.begin();
-           it != children.end(); ++it) {
-        wxSizerItem* item = *it;
-        if (item && item->GetWindow() == m_spinThreshold) {
-          if (it != children.begin()) {
-            wxSizerItemList::iterator prevIt = it;
-            --prevIt;
-            wxSizerItem* prevItem = *prevIt;
-            if (prevItem && prevItem->GetWindow()) {
-              thresholdLabel =
-                  dynamic_cast<wxStaticText*>(prevItem->GetWindow());
-            }
-          }
-          break;
-        }
-      }
+      // 1. Checkbox "Alert Threshold"
+      m_checkSuppressAlert =
+          new wxCheckBox(gaugeParent, wxID_ANY, _("Enable Alert Threshold"));
+      groupSizer->Add(m_checkSuppressAlert, 0, wxALL | wxEXPAND, FromDIP(5));
 
-      if (thresholdLabel && m_spinThreshold) {
-        wxLogMessage("    - Found threshold label: '%s'",
-                     thresholdLabel->GetLabel());
+      // 2. Checkbox "AutoStop Threshold"
+      m_checkEnableAutoStop =
+          new wxCheckBox(gaugeParent, wxID_ANY, _("Enable AutoStop Threshold"));
+      groupSizer->Add(m_checkEnableAutoStop, 0, wxALL | wxEXPAND, FromDIP(5));
 
-        // Create horizontal sizer for threshold label + spin
-        wxBoxSizer* thresholdSizer = new wxBoxSizer(wxHORIZONTAL);
+      // 3. Checkbox "Log messages"
+      m_checkLogUsage =
+          new wxCheckBox(gaugeParent, wxID_ANY, _("Log messages"));
+      groupSizer->Add(m_checkLogUsage, 0, wxALL | wxEXPAND, FromDIP(5));
 
-        // Remove from parent sizer
-        groupSizer->Detach(thresholdLabel);
-        groupSizer->Detach(m_spinThreshold);
+      // 4. "Alert Threshold" adjustable value
+      wxBoxSizer* alertThresholdSizer = new wxBoxSizer(wxHORIZONTAL);
+      wxStaticText* alertLabel =
+          new wxStaticText(gaugeParent, wxID_ANY, _("Alert Threshold (%)"));
+      m_spinThreshold = new wxSpinCtrlDouble(
+          gaugeParent, wxID_ANY, wxEmptyString, wxDefaultPosition,
+          wxDefaultSize, wxSP_ARROW_KEYS, 0.0, 100.0, 80.0, 1.0);
+      m_spinThreshold->SetDigits(0);
+      alertThresholdSizer->Add(alertLabel, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT,
+                               FromDIP(5));
+      alertThresholdSizer->Add(m_spinThreshold, 0, wxALIGN_CENTER_VERTICAL);
+      alertThresholdSizer->AddStretchSpacer(1);
+      groupSizer->Add(alertThresholdSizer, 0, wxEXPAND | wxALL, FromDIP(5));
 
-        thresholdSizer->Add(thresholdLabel, 0,
-                            wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(5));
-        thresholdSizer->Add(m_spinThreshold, 0, wxALIGN_CENTER_VERTICAL);
-        thresholdSizer->AddStretchSpacer(1);
+      // 5. "AutoStop Threshold" adjustable value
+      wxBoxSizer* autoStopThresholdSizer = new wxBoxSizer(wxHORIZONTAL);
+      wxStaticText* autoStopLabel =
+          new wxStaticText(gaugeParent, wxID_ANY, _("AutoStop Threshold (%)"));
+      m_spinAutoStopThreshold = new wxSpinCtrlDouble(
+          gaugeParent, wxID_ANY, wxEmptyString, wxDefaultPosition,
+          wxDefaultSize, wxSP_ARROW_KEYS, 0.0, 100.0, 85.0, 1.0);
+      m_spinAutoStopThreshold->SetDigits(0);
+      autoStopThresholdSizer->Add(
+          autoStopLabel, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(5));
+      autoStopThresholdSizer->Add(m_spinAutoStopThreshold, 0,
+                                  wxALIGN_CENTER_VERTICAL);
+      autoStopThresholdSizer->AddStretchSpacer(1);
+      groupSizer->Add(autoStopThresholdSizer, 0, wxEXPAND | wxALL, FromDIP(5));
 
-        // Find where to insert (look for first checkbox)
-        size_t insertPos = 0;
-        children = groupSizer->GetChildren();
-        for (wxSizerItemList::iterator it = children.begin();
-             it != children.end(); ++it, ++insertPos) {
-          wxWindow* win = (*it)->GetWindow();
-          if (win == m_checkSuppressAlert) {
-            break;
-          }
-        }
+      // 6. "Memory Check Interval" adjustable value
+      wxBoxSizer* intervalSizer = new wxBoxSizer(wxHORIZONTAL);
+      wxStaticText* intervalLabel = new wxStaticText(
+          gaugeParent, wxID_ANY, _("Memory Check Interval (ms)"));
+      m_spinMemoryCheckInterval = new wxSpinCtrl(
+          gaugeParent, wxID_ANY, wxEmptyString, wxDefaultPosition,
+          wxDefaultSize, wxSP_ARROW_KEYS, 100, 10000, 500);
+      intervalSizer->Add(intervalLabel, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT,
+                         FromDIP(5));
+      intervalSizer->Add(m_spinMemoryCheckInterval, 0, wxALIGN_CENTER_VERTICAL);
+      intervalSizer->AddStretchSpacer(1);
+      groupSizer->Add(intervalSizer, 0, wxEXPAND | wxALL, FromDIP(5));
 
-        // Insert the horizontal sizer
-        groupSizer->Insert(insertPos, thresholdSizer, 0, wxEXPAND | wxALL,
-                           FromDIP(5));
-        wxLogMessage("    - Created horizontal threshold sizer at position %zu",
-                     insertPos);
-      }
+      // Connect event handlers
+      m_spinThreshold->Connect(
+          wxEVT_SPINCTRLDOUBLE,
+          wxSpinDoubleEventHandler(SettingsDialog::OnThresholdChanged), NULL,
+          this);
+      m_checkSuppressAlert->Connect(
+          wxEVT_CHECKBOX,
+          wxCommandEventHandler(SettingsDialog::OnSuppressAlertChanged), NULL,
+          this);
+      m_checkLogUsage->Connect(
+          wxEVT_CHECKBOX,
+          wxCommandEventHandler(SettingsDialog::OnLogUsageChanged), NULL, this);
+      m_spinAutoStopThreshold->Connect(
+          wxEVT_SPINCTRLDOUBLE,
+          wxSpinDoubleEventHandler(SettingsDialog::OnAutoStopThresholdChanged),
+          NULL, this);
+      m_checkEnableAutoStop->Connect(
+          wxEVT_CHECKBOX,
+          wxCommandEventHandler(SettingsDialog::OnAutoStopEnabledChanged), NULL,
+          this);
+      m_spinMemoryCheckInterval->Connect(
+          wxEVT_SPINCTRL,
+          wxSpinEventHandler(SettingsDialog::OnMemoryCheckIntervalChanged),
+          NULL, this);
 
-      // PART 2: Find and reorganize "Usage:" label
-      wxStaticText* usageLabel = nullptr;
-      children = groupSizer->GetChildren();
-
-      wxLogMessage(
-          "    - PART 2: Searching for usage label... (children count: %zu)",
-          children.size());
-
-      // Search for usage label (may be in sub-sizer)
-      for (wxSizerItemList::iterator it = children.begin();
-           it != children.end(); ++it) {
-        wxSizerItem* item = *it;
-        if (!item) continue;
-
-        wxWindow* win = item->GetWindow();
-        wxSizer* sizer = item->GetSizer();
-
-        if (win) {
-          wxStaticText* txt = dynamic_cast<wxStaticText*>(win);
-          if (txt) {
-            wxString label = txt->GetLabel().Lower();
-            if (label.Contains("usage") || label.Contains("live") ||
-                label.Contains("address") || label.Contains("space")) {
-              usageLabel = txt;
-              break;
-            }
-          }
-        } else if (sizer) {
-          // Check sub-sizer children
-          wxSizerItemList& subChildren = sizer->GetChildren();
-          for (wxSizerItemList::iterator subIt = subChildren.begin();
-               subIt != subChildren.end(); ++subIt) {
-            wxWindow* subWin = (*subIt)->GetWindow();
-            if (subWin) {
-              wxStaticText* subTxt = dynamic_cast<wxStaticText*>(subWin);
-              if (subTxt) {
-                wxString label = subTxt->GetLabel().Lower();
-                if (label.Contains("usage") || label.Contains("live") ||
-                    label.Contains("address") || label.Contains("space")) {
-                  usageLabel = subTxt;
-                  break;
-                }
-              }
-            }
-          }
-          if (usageLabel) break;
-        }
-      }
-
-      wxLogMessage("    - Search complete. usageLabel = %p", usageLabel);
-
-      if (usageLabel) {
-        wxLogMessage(
-            "    - Found usage label: '%s', detaching from parent sizer",
-            usageLabel->GetLabel());
-
-        // Find the actual parent sizer
-        wxSizer* labelParentSizer = nullptr;
-        children = groupSizer->GetChildren();
-
-        for (wxSizerItemList::iterator it = children.begin();
-             it != children.end(); ++it) {
-          wxWindow* win = (*it)->GetWindow();
-          if (win == usageLabel) {
-            labelParentSizer = groupSizer;
-            break;
-          }
-
-          wxSizer* subSizer = (*it)->GetSizer();
-          if (subSizer) {
-            wxSizerItemList& subChildren = subSizer->GetChildren();
-            for (wxSizerItemList::iterator subIt = subChildren.begin();
-                 subIt != subChildren.end(); ++subIt) {
-              wxWindow* subWin = (*subIt)->GetWindow();
-              if (subWin == usageLabel) {
-                labelParentSizer = subSizer;
-                break;
-              }
-            }
-            if (labelParentSizer) break;
-          }
-        }
-
-        if (!labelParentSizer) {
-          wxLogError("    - Could not find parent sizer for usage label!");
-        } else {
-          // Change the label text
-          usageLabel->SetLabel("Usage:");
-
-          // Ensure label uses normal font weight
-          wxFont labelFont = usageLabel->GetFont();
-          labelFont.SetWeight(wxFONTWEIGHT_NORMAL);
-          usageLabel->SetFont(labelFont);
-
-          // Create horizontal sizer for usage label + dynamic text
-          m_usageSizer = new wxBoxSizer(wxHORIZONTAL);
-          wxLogMessage("    - Created m_usageSizer: %p", m_usageSizer);
-
-          // Remove label from its parent sizer
-          bool detached = labelParentSizer->Detach(usageLabel);
-          wxLogMessage("    - Detached label from parent sizer: %s",
-                       detached ? "SUCCESS" : "FAILED");
-
-          // Add label to new horizontal sizer
-          m_usageSizer->Add(usageLabel, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT,
-                            FromDIP(5));
-
-          // Find where to insert (before gauge)
-          size_t insertPos = 0;
-          children = groupSizer->GetChildren();
-          for (wxSizerItemList::iterator it = children.begin();
-               it != children.end(); ++it, ++insertPos) {
-            wxWindow* win = (*it)->GetWindow();
-            if (win == m_gaugeMemoryUsage) {
-              break;
-            }
-          }
-
-          // Insert the horizontal sizer BEFORE the gauge
-          groupSizer->Insert(insertPos, m_usageSizer, 0, wxEXPAND | wxALL,
-                             FromDIP(5));
-          wxLogMessage(
-              "    - Inserted m_usageSizer at position %zu (m_usageSizer=%p)",
-              insertPos, m_usageSizer);
-        }
-      } else {
-        wxLogError(
-            "    - FAILED to find usage label! m_usageSizer will be NULL!");
-      }
-
+      // Layout after adding controls
       groupSizer->Layout();
       gaugeParent->Layout();
       wxLogMessage(
-          "SettingsDialog::Constructor - Dynamic layout complete "
-          "(m_usageSizer=%p)",
-          m_usageSizer);
+          "SettingsDialog::Constructor - Dynamic layout complete (custom order "
+          "applied)");
     }
-  }
-
-  // Connect memory monitor event handlers
-  m_spinThreshold->Connect(
-      wxEVT_SPINCTRLDOUBLE,
-      wxSpinDoubleEventHandler(SettingsDialog::OnThresholdChanged), NULL, this);
-
-  m_checkSuppressAlert->Connect(
-      wxEVT_CHECKBOX,
-      wxCommandEventHandler(SettingsDialog::OnSuppressAlertChanged), NULL,
-      this);
-
-  m_checkLogUsage->Connect(
-      wxEVT_CHECKBOX, wxCommandEventHandler(SettingsDialog::OnLogUsageChanged),
-      NULL, this);
-
-  if (groupSizer) {
-    groupSizer->Add(new wxStaticLine(gaugeParent), 0, wxEXPAND | wxALL,
-                    FromDIP(5));
-    wxStaticText* autoStopLabel =
-        new wxStaticText(gaugeParent, wxID_ANY, _("Auto-stop routes at:"),
-                         wxDefaultPosition, wxDefaultSize);
-    m_spinAutoStopThreshold = new wxSpinCtrlDouble(
-        gaugeParent, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize,
-        wxSP_ARROW_KEYS, 70.0, 95.0, 85.0, 1.0);
-    m_spinAutoStopThreshold->SetDigits(0);
-    wxStaticText* percentLabel2 =
-        new wxStaticText(gaugeParent, wxID_ANY, _("%"));
-    wxBoxSizer* autoStopSizer = new wxBoxSizer(wxHORIZONTAL);
-    autoStopSizer->Add(autoStopLabel, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT,
-                       FromDIP(5));
-    autoStopSizer->Add(m_spinAutoStopThreshold, 0,
-                       wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(3));
-    autoStopSizer->Add(percentLabel2, 0, wxALIGN_CENTER_VERTICAL);
-    autoStopSizer->AddStretchSpacer(1);
-    groupSizer->Add(autoStopSizer, 0, wxEXPAND | wxALL, FromDIP(5));
-    m_checkEnableAutoStop =
-        new wxCheckBox(gaugeParent, wxID_ANY, _("Enable automatic route stop"));
-    m_checkEnableAutoStop->SetValue(true);
-    groupSizer->Add(m_checkEnableAutoStop, 0, wxALL, FromDIP(5));
-    m_spinAutoStopThreshold->Connect(
-        wxEVT_SPINCTRLDOUBLE,
-        wxSpinDoubleEventHandler(SettingsDialog::OnAutoStopThresholdChanged),
-        NULL, this);
-    m_checkEnableAutoStop->Connect(
-        wxEVT_CHECKBOX,
-        wxCommandEventHandler(SettingsDialog::OnAutoStopEnabledChanged), NULL,
-        this);
-    groupSizer->Layout();
   }
 
   // Final layout
@@ -396,8 +245,10 @@ SettingsDialog::SettingsDialog(wxWindow* parent)
   Fit();
 
   wxLogMessage("SettingsDialog::Constructor - Initialization complete");
+
 #endif
 }
+
 
 SettingsDialog::~SettingsDialog() {
 #ifdef __WXMSW__
@@ -409,33 +260,48 @@ SettingsDialog::~SettingsDialog() {
         wxSpinDoubleEventHandler(SettingsDialog::OnThresholdChanged), NULL,
         this);
   }
-
   if (m_checkSuppressAlert) {
     m_checkSuppressAlert->Disconnect(
         wxEVT_CHECKBOX,
         wxCommandEventHandler(SettingsDialog::OnSuppressAlertChanged), NULL,
         this);
   }
-
   if (m_checkLogUsage) {
     m_checkLogUsage->Disconnect(
         wxEVT_CHECKBOX,
         wxCommandEventHandler(SettingsDialog::OnLogUsageChanged), NULL, this);
   }
+  if (m_spinAutoStopThreshold) {
+    m_spinAutoStopThreshold->Disconnect(
+        wxEVT_SPINCTRLDOUBLE,
+        wxSpinDoubleEventHandler(SettingsDialog::OnAutoStopThresholdChanged),
+        NULL, this);
+  }
+  if (m_checkEnableAutoStop) {
+    m_checkEnableAutoStop->Disconnect(
+        wxEVT_CHECKBOX,
+        wxCommandEventHandler(SettingsDialog::OnAutoStopEnabledChanged), NULL,
+        this);
+  }
+  if (m_spinMemoryCheckInterval) {
+    m_spinMemoryCheckInterval->Disconnect(
+        wxEVT_SPINCTRL,
+        wxSpinEventHandler(SettingsDialog::OnMemoryCheckIntervalChanged), NULL,
+        this);
+  }
 
   // Clear the gauge and text label references in the monitor
-  // Clear UI References in SettingsDialog Destructor
   AddressSpaceMonitor* monitor = GetMonitor();
   if (monitor && monitor->IsValid()) {
     monitor->SetGauge(nullptr);
     monitor->SetTextLabel(nullptr);
     wxLogMessage("SettingsDialog: Destructor - Cleared monitor UI references");
   }
-  if (monitor && monitor->IsValid()) {
-    monitor->SetGauge(nullptr);
-    monitor->SetTextLabel(nullptr);
-  }
   m_staticTextMemoryStats = nullptr;
+  m_usageSizer = nullptr;
+  m_spinAutoStopThreshold = nullptr;
+  m_checkEnableAutoStop = nullptr;
+  m_spinMemoryCheckInterval = nullptr;
 
   wxLogMessage("SettingsDialog: Destructor complete");
 #endif
@@ -605,78 +471,71 @@ AddressSpaceMonitor* SettingsDialog::GetMonitor() {
   return &plugin->GetAddressSpaceMonitor();
 }
 
+
 void SettingsDialog::LoadMemorySettings() {
   wxFileConfig* pConf = GetOCPNConfigObject();
-  pConf->SetPath(_T( "/PlugIns/WeatherRouting" ));
+  pConf->SetPath(_T("/PlugIns/WeatherRouting"));
 
-  double threshold = 80.0;
-  pConf->Read(_T("MemoryThreshold"), &threshold, 80.0);
+  // Load values in the new order
+  bool enableAlert = true;  // Default: alerts enabled
+  pConf->Read(_T("MemoryEnableAlert"), &enableAlert, true);
+  m_checkSuppressAlert->SetValue(enableAlert);
 
-  bool suppressAlert = false;
-  pConf->Read(_T("MemorySuppressAlert"), &suppressAlert, false);
+  bool enableAutoStop = true;  // Default: enabled
+  pConf->Read(_T("MemoryEnableAutoStop"), &enableAutoStop, true);
+  m_checkEnableAutoStop->SetValue(enableAutoStop);
 
   bool logUsage = false;
   pConf->Read(_T("MemoryLogUsage"), &logUsage, false);
-
-  m_spinThreshold->SetValue(threshold);
-  m_checkSuppressAlert->SetValue(suppressAlert);
   m_checkLogUsage->SetValue(logUsage);
 
-  // Apply to the global monitor
+  double threshold = 80.0;
+  pConf->Read(_T("MemoryThreshold"), &threshold, 80.0);
+  m_spinThreshold->SetValue(threshold);
+
+  double autoStopThreshold = 85.0;
+  pConf->Read(_T("MemoryAutoStopThreshold"), &autoStopThreshold, 85.0);
+  m_spinAutoStopThreshold->SetValue(autoStopThreshold);
+
+  int memoryCheckInterval = 500;
+  pConf->Read(_T("MemoryCheckInterval"), &memoryCheckInterval, 500);
+  m_spinMemoryCheckInterval->SetValue(memoryCheckInterval);
+
+  // Apply to the monitor
   AddressSpaceMonitor* monitor = GetMonitor();
   if (monitor && monitor->IsValid()) {
-    wxLogMessage(
-        "SettingsDialog::LoadMemorySettings() - Configuring monitor: "
-        "threshold=%.1f, suppressAlert=%d, logUsage=%d",
-        threshold, suppressAlert, logUsage);
-    monitor->SetThresholdPercent(threshold);
-    monitor->SetAlertEnabled(!suppressAlert);
+    monitor->SetAlertEnabled(enableAlert);
+    monitor->SetAutoStopEnabled(enableAutoStop);
     monitor->SetLoggingEnabled(logUsage);
+    monitor->SetThresholdPercent(threshold);
+    monitor->SetAutoStopThreshold(autoStopThreshold);
+    monitor->SetMemoryCheckInterval(memoryCheckInterval); 
     monitor->SetGauge(m_gaugeMemoryUsage);
-
-    // Create text label if it doesn't exist yet
-    if (!m_staticTextMemoryStats && m_usageSizer) {
-      wxWindow* parent = m_gaugeMemoryUsage->GetParent();
-      m_staticTextMemoryStats = new wxStaticText(
-          parent, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxALIGN_LEFT);
-      m_staticTextMemoryStats->SetMinSize(FromDIP(wxSize(300, 30)));
-      m_usageSizer->Add(m_staticTextMemoryStats, 0, wxALIGN_BOTTOM | wxLEFT,
-                        FromDIP(5));
-      m_usageSizer->Layout();
-      wxLogMessage("SettingsDialog: Created text label for monitor");
-    }
-
     monitor->SetTextLabel(m_staticTextMemoryStats);
-
-    wxLogMessage(
-        "SettingsDialog::LoadMemorySettings() - Configuration complete");
-  } else {
-    wxLogError(
-        "SettingsDialog::LoadMemorySettings() - GetMonitor() returned NULL or "
-        "invalid!");
   }
 }
 
+
 void SettingsDialog::SaveMemorySettings() {
   wxFileConfig* pConf = GetOCPNConfigObject();
-  pConf->SetPath(_T( "/PlugIns/WeatherRouting" ));
+  pConf->SetPath(_T("/PlugIns/WeatherRouting"));
 
-  pConf->Write(_T("MemoryThreshold"), m_spinThreshold->GetValue());
-  pConf->Write(_T("MemorySuppressAlert"), m_checkSuppressAlert->GetValue());
+  // Save values in the new order
+  pConf->Write(_T("MemoryEnableAlert"), m_checkSuppressAlert->GetValue());
+  pConf->Write(_T("MemoryEnableAutoStop"), m_checkEnableAutoStop->GetValue());
   pConf->Write(_T("MemoryLogUsage"), m_checkLogUsage->GetValue());
+  pConf->Write(_T("MemoryThreshold"), m_spinThreshold->GetValue());
+  pConf->Write(_T("MemoryAutoStopThreshold"), m_spinAutoStopThreshold->GetValue());
+  pConf->Write(_T("MemoryCheckInterval"), m_spinMemoryCheckInterval->GetValue());
 }
 
 void SettingsDialog::OnThresholdChanged(wxSpinDoubleEvent& event) {
   AddressSpaceMonitor* monitor = GetMonitor();
-  if (!monitor) {
-    return;
-  }
-
+  if (!monitor) return;
   double newThreshold = m_spinThreshold->GetValue();
   monitor->SetThresholdPercent(newThreshold);
-
-  // Immediately check with new threshold
   monitor->CheckAndAlert();
+  SaveMemorySettings();
 }
 
 void SettingsDialog::OnSuppressAlertChanged(wxCommandEvent& event) {
@@ -687,14 +546,10 @@ void SettingsDialog::OnSuppressAlertChanged(wxCommandEvent& event) {
     return;
   }
 
-  if (m_checkSuppressAlert->GetValue()) {
-    monitor->DismissAlert();
-    wxLogMessage("SettingsDialog: User suppressed alerts via checkbox");
-  } else {
-    monitor->alertDismissed = false;
-    wxLogMessage("SettingsDialog: User re-enabled alerts via checkbox");
-    monitor->CheckAndAlert();
-  }
+  bool enableAlert = m_checkSuppressAlert->GetValue();
+  monitor->SetAlertEnabled(enableAlert);
+  wxLogMessage("SettingsDialog: Alert threshold message %s",
+               enableAlert ? "enabled" : "disabled");
 
   SaveMemorySettings();
 }
@@ -729,6 +584,14 @@ void SettingsDialog::OnAutoStopEnabledChanged(wxCommandEvent& event) {
   SaveMemorySettings();
 }
 
+void SettingsDialog::OnMemoryCheckIntervalChanged(wxSpinEvent & event) {
+  AddressSpaceMonitor* monitor = GetMonitor();
+  if (monitor) {
+    int interval = m_spinMemoryCheckInterval->GetValue();
+    monitor->SetMemoryCheckInterval(interval);
+  }
+  SaveMemorySettings();
+}
 #endif
 
 // Platform-independent methods

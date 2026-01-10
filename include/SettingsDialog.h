@@ -82,9 +82,11 @@ private:
   wxBoxSizer*    m_usageSizer;  ///< Horizontal sizer for "Usage:" label + stats text
   wxSpinCtrlDouble* m_spinAutoStopThreshold;
   wxCheckBox* m_checkEnableAutoStop;
+  wxSpinCtrl* m_spinMemoryCheckInterval;
 
   void OnAutoStopThresholdChanged(wxSpinDoubleEvent& event);
   void OnAutoStopEnabledChanged(wxCommandEvent& event);
+  void OnMemoryCheckIntervalChanged(wxSpinEvent& event);
 
 public:
   // @name Memory Monitor Event Handlers
