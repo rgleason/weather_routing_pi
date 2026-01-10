@@ -31,6 +31,7 @@
 #include <mutex>
 #include <atomic>
 #include <chrono>
+#include <wx/config.h>
 
 // Forward declaration
 class AddressSpaceMonitor;
@@ -139,6 +140,11 @@ private:
   int m_instanceId;                      ///< Unique ID for debugging
   double m_lastPercent;     ///< Last percent value for change detection
   bool m_wasOverThreshold;  ///< Tracks last threshold crossing for alert debouncing
+
+// Persistence of Settings
+  void SaveSettings();
+  void LoadSettings();
+
 };
 
 #endif  // ADDRESSSPACEMONITOR_H
