@@ -553,9 +553,9 @@ void weather_routing_pi::SetPluginMessage(wxString& message_id,
     Json::Reader reader;
     Json::Value root;
     reader.parse(static_cast<std::string>(message_body), root);
-    if (m_pWeather_Routing == nullptr ||
-        (!root.isMember("Racenumber") && !root.isMember("Data") &&
-         !root.isMember("tws"))) {
+    if (m_pWeather_Routing == nullptr) OnToolbarToolCallback(-1);
+    if (!root.isMember("Racenumber") && !root.isMember("Data") &&
+         !root.isMember("tws")) {
       root["Type"] = "Reply";
       root["Error"] = "Weather routing plugin not loaded?";
       SendPluginMessage("WR_BOATDATA", writer.write(root));
@@ -682,7 +682,7 @@ void weather_routing_pi::NewWR() {
 void weather_routing_pi::OnToolbarToolCallback(int id) {
   if (!m_pWeather_Routing) NewWR();
 
-  m_pWeather_Routing->Show(!m_pWeather_Routing->IsShown());
+  if (id >= 0) m_pWeather_Routing->Show(!m_pWeather_Routing->IsShown());
 }
 
 void weather_routing_pi::OnContextMenuItemCallback(int id) {
