@@ -265,20 +265,33 @@ void AddressSpaceMonitor::CloseAlert() {
 }
 
 void AddressSpaceMonitor::CloseAlertUnlocked() {
+  wxLogMessage("AddressSpaceMonitor: CloseAlertUnlocked() called");
   if (activeAlertDialog) {
-    wxLogMessage("AddressSpaceMonitor: Closing alert dialog");
+    wxLogMessage(
+        "AddressSpaceMonitor: Closing alert dialog (activeAlertDialog=%p, "
+        "IsShown=%d)",
+        static_cast<void*>(activeAlertDialog), activeAlertDialog->IsShown());
     activeAlertDialog->ClearMonitor();
+    // Always destroy, even if hidden
     if (activeAlertDialog->IsShown()) {
+      wxLogMessage(
+          "AddressSpaceMonitor: Hiding alert dialog (activeAlertDialog=%p)",
+          static_cast<void*>(activeAlertDialog));
       activeAlertDialog->Hide();
     }
+    wxLogMessage(
+        "AddressSpaceMonitor: Destroying alert dialog (activeAlertDialog=%p)",
+        static_cast<void*>(activeAlertDialog));
     activeAlertDialog->Destroy();
     activeAlertDialog = nullptr;
-    wxLogMessage("AddressSpaceMonitor: Alert dialog destroyed");
+    wxLogMessage(
+        "AddressSpaceMonitor: Alert dialog destroyed and pointer cleared");
+  } else {
+    wxLogMessage("AddressSpaceMonitor: No active alert dialog to close");
   }
   alertShown = false;
   alertDismissed = false;
 }
-
 
 void AddressSpaceMonitor::CheckAndAlert() {
   // First line of defense: Check re-entrancy WITHOUT locking
@@ -342,8 +355,8 @@ void AddressSpaceMonitor::CheckAndAlert() {
       SafeStopWeatherRouting();  // Now calls ResetAll() safely
       m_autoStopTriggered = true;
 
-      // Close the alert if it is open
-      if (activeAlertDialog && activeAlertDialog->IsShown()) {
+      /// Always close (destroy) the alert dialog if it exists, regardless of visibility
+      if (activeAlertDialog) {
         CloseAlert();
         wxLogMessage(
             "AddressSpaceMonitor: Alert closed due to auto-stop trigger");
@@ -464,7 +477,12 @@ void AddressSpaceMonitor::CheckAndAlert() {
 
 void AddressSpaceMonitor::ShowOrUpdateAlert(double usedGB, double totalGB,
                                             double percent) {
+  wxLogMessage(
+      "AddressSpaceMonitor: ShowOrUpdateAlert() called (activeAlertDialog=%p, "
+      "percent=%.1f)",
+      static_cast<void*>(activeAlertDialog), percent);
   if (!activeAlertDialog) {
+    wxLogMessage("AddressSpaceMonitor: Creating new MemoryAlertDialog");
     // Create new dialog
     activeAlertDialog = new MemoryAlertDialog(nullptr, this);
     if (!activeAlertDialog) {
@@ -474,17 +492,28 @@ void AddressSpaceMonitor::ShowOrUpdateAlert(double usedGB, double totalGB,
     activeAlertDialog->UpdateMemoryInfo(usedGB, totalGB, percent);
     activeAlertDialog->Show();
     alertShown = true;
-
-    wxLogMessage("AddressSpaceMonitor: Showing new alert dialog");
+    wxLogMessage(
+        "AddressSpaceMonitor: Showing new alert dialog (activeAlertDialog=%p)",
+        static_cast<void*>(activeAlertDialog));
   } else if (activeAlertDialog->IsShown()) {
+    wxLogMessage(
+        "AddressSpaceMonitor: Updating existing visible alert dialog "
+        "(activeAlertDialog=%p)",
+        static_cast<void*>(activeAlertDialog));
     // Update existing visible dialog
     activeAlertDialog->UpdateMemoryInfo(usedGB, totalGB, percent);
   } else {
+    wxLogMessage(
+        "AddressSpaceMonitor: Re-showing hidden alert dialog "
+        "(activeAlertDialog=%p)",
+        static_cast<void*>(activeAlertDialog));
     // Dialog exists but is hidden - show it again since we're over threshold
     activeAlertDialog->UpdateMemoryInfo(usedGB, totalGB, percent);
     activeAlertDialog->Show();
-    wxLogMessage("AddressSpaceMonitor: Re-showing alert dialog (usage: %.1f%%)",
-                 percent);
+    wxLogMessage(
+        "AddressSpaceMonitor: Alert dialog re-shown (usage: %.1f%%, "
+        "activeAlertDialog=%p)",
+        percent, static_cast<void*>(activeAlertDialog));
   }
 }
 
@@ -610,6 +639,28 @@ void AddressSpaceMonitor::SetTextLabel(wxStaticText* label) {
 
 void AddressSpaceMonitor::SetAutoStopThreshold(double percent) {
   m_autoStopThreshold = percent;
+  // Immediate check if usage is already above new threshold and not triggered
+  if (m_autoStopEnabled && !m_autoStopTriggered &&
+      GetUsagePercent() >= m_autoStopThreshold) {
+    // Call the same logic as in CheckAndAlert
+    SafeStopWeatherRouting();
+    m_autoStopTriggered = true;
+    if (activeAlertDialog) {
+      CloseAlert();
+      wxLogMessage(
+          "AddressSpaceMonitor: Alert closed due to auto-stop trigger "
+          "(threshold changed)");
+    }
+    wxString message = wxString::Format(
+        _("Memory usage reached %.0f%% (threshold: %.0f%%).\n\n"
+          "All route computations have been automatically stopped\n"
+          "to prevent memory exhaustion."),
+        GetUsagePercent(), m_autoStopThreshold);
+    wxTheApp->CallAfter([message]() {
+      wxMessageBox(message, _("Weather Routing - Auto-Stop"),
+                   wxOK | wxICON_WARNING);
+    });
+  }
 }
 
 void AddressSpaceMonitor::SetAutoStopEnabled(bool enabled) {
