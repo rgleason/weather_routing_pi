@@ -81,12 +81,16 @@ private:
   wxStaticText*  m_staticTextMemoryStats;  ///< Dynamic text: "XX% (X.XX GB / X.X GB)"
   wxBoxSizer*    m_usageSizer;  ///< Horizontal sizer for "Usage:" label + stats text
   wxSpinCtrlDouble* m_spinAutoStopThreshold;
-  wxCheckBox* m_checkEnableAutoStop;
+  wxSpinCtrlDouble* m_spinThreshold;
   wxSpinCtrl* m_spinMemoryCheckInterval;
+  wxCheckBox* m_checkEnableAutoStop;
+  wxCheckBox* m_checkSuppressAlert;
+  wxCheckBox* m_checkLogUsage;
 
   void OnAutoStopThresholdChanged(wxSpinDoubleEvent& event);
   void OnAutoStopEnabledChanged(wxCommandEvent& event);
   void OnMemoryCheckIntervalChanged(wxSpinEvent& event);
+  void UpdateThresholdRanges();
 
 public:
   // @name Memory Monitor Event Handlers

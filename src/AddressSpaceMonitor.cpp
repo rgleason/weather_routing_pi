@@ -351,7 +351,8 @@ void AddressSpaceMonitor::CheckAndAlert() {
 
       // CRITICAL: Release the lock before showing modal dialog
       // Modal dialogs pump messages which can trigger re-entrant calls
-      if (alertEnabled && !alertDismissed) {
+      // Always show the AutoStop message if AutoStop is enabled
+      if (m_autoStopEnabled) {
         lock.unlock();
         wxString message = wxString::Format(
             _("Memory usage reached %.0f%% (threshold: %.0f%%).\n\n"

@@ -93,24 +93,23 @@ SettingsDialog::SettingsDialog(wxWindow* parent)
   wxSizer* groupSizer = nullptr;  // <-- Declare here
 
   wxLogMessage("SettingsDialog::Constructor - Windows-specific code starting");
-
   
-  // SET GAUGE RANGE TO 100
+  // Set Gauge Range to 100
   m_gaugeMemoryUsage->SetRange(100);
   wxLogMessage("SettingsDialog::Constructor - Gauge range set to 100");
 
-  // FIX: Reorganize the AddressSpaceMonitor groupbox layout dynamically
+  // Reorganize the AddressSpaceMonitor groupbox layout dynamically
   wxWindow* gaugeParent = m_gaugeMemoryUsage->GetParent();
   wxLogMessage("SettingsDialog::Constructor - gaugeParent = %p", gaugeParent);
 
+  // Get gaugeParent
   if (gaugeParent) {
-    groupSizer = gaugeParent->GetSizer();
+    groupSizer = gaugeParent->GetSizer();   // Find groupSizer if null
     wxLogMessage("SettingsDialog::Constructor - groupSizer = %p (BEFORE fix)",
-                 groupSizer);
+                 groupSizer);  
 
-    // FIX: If groupSizer is NULL, try to get it from the parent's containing
-    // sizer
-    if (!groupSizer && gaugeParent->GetParent()) {
+    // If groupSizer is NULL, try to get it from the parent's containing
+      if (!groupSizer && gaugeParent->GetParent()) {
       wxWindow* grandParent = gaugeParent->GetParent();
       wxSizer* grandParentSizer = grandParent->GetSizer();
 
@@ -532,11 +531,48 @@ void SettingsDialog::SaveMemorySettings() {
 void SettingsDialog::OnThresholdChanged(wxSpinDoubleEvent& event) {
   AddressSpaceMonitor* monitor = GetMonitor();
   if (!monitor) return;
-  double newThreshold = m_spinThreshold->GetValue();
-  monitor->SetThresholdPercent(newThreshold);
+  double newAlert = m_spinThreshold->GetValue();
+  double autoStop = m_spinAutoStopThreshold->GetValue();
+
+  // Enforce: Alert must be at least 3% less than AutoStop
+  if (newAlert >= autoStop - 2.99) {
+    double fixedAlert = autoStop - 3.0;
+    m_spinThreshold->SetValue(fixedAlert);
+    monitor->SetThresholdPercent(fixedAlert);
+
+    wxMessageBox(
+        _("Alert threshold must be at least 3% less than AutoStop threshold."),
+        _("Threshold Conflict"), wxOK | wxICON_WARNING, this);
+  } else {
+    monitor->SetThresholdPercent(newAlert);
+    wxLogMessage("SettingsDialog: Alert threshold changed to %.0f%%", newAlert);
+  }
+
+  UpdateThresholdRanges();
   monitor->CheckAndAlert();
   SaveMemorySettings();
 }
+
+void SettingsDialog::UpdateThresholdRanges() {
+  double autoStop = m_spinAutoStopThreshold->GetValue();
+  double alert = m_spinThreshold->GetValue();
+
+  // Set Alert's max to AutoStop - 3
+  double alertMin = m_spinThreshold->GetMin();  // or your intended min
+  double alertMax = autoStop - 3.0;
+  if (alertMax < alertMin) alertMax = alertMin;
+
+  m_spinThreshold->SetRange(alertMin, alertMax);
+
+  // Set AutoStop's min to Alert + 3
+  double autoStopMax =
+      m_spinAutoStopThreshold->GetMax();  // or your intended max
+  double autoStopMin = alert + 3.0;
+  if (autoStopMin > autoStopMax) autoStopMin = autoStopMax;
+
+  m_spinAutoStopThreshold->SetRange(autoStopMin, autoStopMax);
+}
+
 
 void SettingsDialog::OnSuppressAlertChanged(wxCommandEvent& event) {
   AddressSpaceMonitor* monitor = GetMonitor();
@@ -565,13 +601,28 @@ void SettingsDialog::OnLogUsageChanged(wxCommandEvent& event) {
 void SettingsDialog::OnAutoStopThresholdChanged(wxSpinDoubleEvent& event) {
   AddressSpaceMonitor* monitor = GetMonitor();
   if (monitor) {
-    double newThreshold = m_spinAutoStopThreshold->GetValue();
-    monitor->SetAutoStopThreshold(newThreshold);
-    wxLogMessage("SettingsDialog: Auto-stop threshold changed to %.0f%%",
-                 newThreshold);
+    double newAutoStop = m_spinAutoStopThreshold->GetValue();
+    double alert = m_spinThreshold->GetValue();
+
+    // Enforce: AutoStop must be at least 3% greater than Alert
+    if (newAutoStop <= alert + 2.99) {
+      double fixedAutoStop = alert + 3.0;
+      m_spinAutoStopThreshold->SetValue(fixedAutoStop);
+      monitor->SetAutoStopThreshold(fixedAutoStop);
+
+      wxMessageBox(_("AutoStop threshold must be at least 3% greater than "
+                     "Alert threshold."),
+                   _("Threshold Conflict"), wxOK | wxICON_WARNING, this);
+    } else {
+      monitor->SetAutoStopThreshold(newAutoStop);
+      wxLogMessage("SettingsDialog: Auto-stop threshold changed to %.0f%%",
+                   newAutoStop);
+    }
   }
+  UpdateThresholdRanges();
   SaveMemorySettings();
 }
+
 
 void SettingsDialog::OnAutoStopEnabledChanged(wxCommandEvent& event) {
   AddressSpaceMonitor* monitor = GetMonitor();

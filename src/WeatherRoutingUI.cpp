@@ -959,13 +959,15 @@ SettingsDialogBase::SettingsDialogBase(wxWindow* parent, wxWindowID id,
   sbSizer30 = new wxStaticBoxSizer(
       new wxStaticBox(m_scrolledWindow4, wxID_ANY, _("Address Space Monitor")),
       wxVERTICAL);
-
+  /*
   m_staticText166 = new wxStaticText(sbSizer30->GetStaticBox(), wxID_ANY,
                                      _("Alert Threshold Percent:"),
                                      wxDefaultPosition, wxDefaultSize, 0);
+  
   m_staticText166->Wrap(-1);
   sbSizer30->Add(m_staticText166, 0, wxALL, 5);
 
+  
   m_spinThreshold = new wxSpinCtrlDouble(
       sbSizer30->GetStaticBox(), wxID_ANY, wxEmptyString, wxDefaultPosition,
       wxDefaultSize, wxSP_ARROW_KEYS, 50, 95, 80, 1);
@@ -981,6 +983,7 @@ SettingsDialogBase::SettingsDialogBase(wxWindow* parent, wxWindowID id,
                                    _("Log address space usage to opencpn.log"),
                                    wxDefaultPosition, wxDefaultSize, 0);
   sbSizer30->Add(m_checkLogUsage, 0, wxALL, 5);
+  */
 
   // Usage section with label + percentage + gauge
   wxBoxSizer* usageSizer = new wxBoxSizer(wxHORIZONTAL);
