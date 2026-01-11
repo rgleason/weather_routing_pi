@@ -6,6 +6,7 @@
 #include <wx/log.h>
 #include <wx/event.h>
 #include <wx/config.h>
+#include <wx/app.h> // Ensure this is included for wxTheApp
 #include <windows.h>
 #include "WeatherRouting.h"
 #include <mutex>
@@ -265,35 +266,40 @@ void AddressSpaceMonitor::CloseAlert() {
 }
 
 void AddressSpaceMonitor::CloseAlertUnlocked() {
-  wxLogMessage("AddressSpaceMonitor: CloseAlertUnlocked() called");
-  if (activeAlertDialog) {
-    wxLogMessage(
-        "AddressSpaceMonitor: Closing alert dialog (activeAlertDialog=%p, "
-        "IsShown=%d)",
-        static_cast<void*>(activeAlertDialog), activeAlertDialog->IsShown());
-    activeAlertDialog->ClearMonitor();
-    // Always destroy, even if hidden
-    if (activeAlertDialog->IsShown()) {
+  wxTheApp->CallAfter([this]() {
+    wxLogMessage("AddressSpaceMonitor: CloseAlertUnlocked() called");
+    if (activeAlertDialog) {
       wxLogMessage(
-          "AddressSpaceMonitor: Hiding alert dialog (activeAlertDialog=%p)",
+          "AddressSpaceMonitor: Closing alert dialog (activeAlertDialog=%p, "
+          "IsShown=%d)",
+          static_cast<void*>(activeAlertDialog), activeAlertDialog->IsShown());
+      activeAlertDialog->ClearMonitor();
+      if (activeAlertDialog->IsShown()) {
+        wxLogMessage(
+            "AddressSpaceMonitor: Hiding alert dialog (activeAlertDialog=%p)",
+            static_cast<void*>(activeAlertDialog));
+        activeAlertDialog->Hide();
+      }
+      wxLogMessage(
+          "AddressSpaceMonitor: Destroying alert dialog (activeAlertDialog=%p)",
           static_cast<void*>(activeAlertDialog));
-      activeAlertDialog->Hide();
+      activeAlertDialog->Destroy();
+      activeAlertDialog = nullptr;
+      wxLogMessage(
+          "AddressSpaceMonitor: Alert dialog destroyed and pointer cleared");
+    } else {
+      wxLogMessage("AddressSpaceMonitor: No active alert dialog to close");
     }
-    wxLogMessage(
-        "AddressSpaceMonitor: Destroying alert dialog (activeAlertDialog=%p)",
-        static_cast<void*>(activeAlertDialog));
-    activeAlertDialog->Destroy();
-    activeAlertDialog = nullptr;
-    wxLogMessage(
-        "AddressSpaceMonitor: Alert dialog destroyed and pointer cleared");
-  } else {
-    wxLogMessage("AddressSpaceMonitor: No active alert dialog to close");
-  }
-  alertShown = false;
-  alertDismissed = false;
+    alertShown = false;
+    alertDismissed = false;
+  });
 }
 
 void AddressSpaceMonitor::CheckAndAlert() {
+  // Check if memory monitoring is degraded.    
+  if (m_degraded) {
+    return;
+  }
   // First line of defense: Check re-entrancy WITHOUT locking
   bool expected = false;
   if (!m_isExecuting.compare_exchange_strong(expected, true)) {
@@ -355,7 +361,8 @@ void AddressSpaceMonitor::CheckAndAlert() {
       SafeStopWeatherRouting();  // Now calls ResetAll() safely
       m_autoStopTriggered = true;
 
-      /// Always close (destroy) the alert dialog if it exists, regardless of visibility
+      /// Always close (destroy) the alert dialog if it exists, regardless of
+      /// visibility
       if (activeAlertDialog) {
         CloseAlert();
         wxLogMessage(
@@ -404,20 +411,21 @@ void AddressSpaceMonitor::CheckAndAlert() {
 
     // Update text label if connected
     if (m_textLabel) {
-      wxString stats = wxString::Format("%.1f%% (%.2f GB / %.1f GB)", percent,
-                                        usedGB, totalGB);
-      m_textLabel->SetLabel(stats);
-
-      wxColour textColor;
-      if (percent >= thresholdPercent) {
-        textColor = *wxRED;
-      } else if (percent >= 70.0) {
-        textColor = wxColour(255, 140, 0);
-      } else {
-        textColor = wxColour(0, 128, 0);
-      }
-      m_textLabel->SetForegroundColour(textColor);
-      m_textLabel->Refresh();
+      wxTheApp->CallAfter([=, this]() {
+        wxString stats = wxString::Format("%.1f%% (%.2f GB / %.1f GB)", percent,
+                                          usedGB, totalGB);
+        m_textLabel->SetLabel(stats);
+        wxColour textColor;
+        if (percent >= thresholdPercent) {
+          textColor = *wxRED;
+        } else if (percent >= 70.0) {
+          textColor = wxColour(255, 140, 0);
+        } else {
+          textColor = wxColour(0, 128, 0);
+        }
+        m_textLabel->SetForegroundColour(textColor);
+        m_textLabel->Refresh();
+      });
     }
 
     if (logToFile) {
@@ -428,18 +436,21 @@ void AddressSpaceMonitor::CheckAndAlert() {
     UpdateAlertIfShown(usedGB, totalGB, percent);
 
     if (usageGauge) {
-      try {
-        usageGauge->SetValue(static_cast<int>(percent));
-      } catch (...) {
-        wxLogWarning(
-            "AddressSpaceMonitor: Exception accessing gauge, clearing "
-            "reference");
-        usageGauge = nullptr;
-      }
+      wxTheApp->CallAfter([=, this]() {
+        try {
+          usageGauge->SetValue(static_cast<int>(percent));
+        } catch (...) {
+          wxLogWarning(
+              "AddressSpaceMonitor: Exception accessing gauge, clearing "
+              "reference");
+          usageGauge = nullptr;
+        }
+      });
     }
   }
 }
- void AddressSpaceMonitor::UpdateAlertIfShown(double usedGB, double totalGB,
+
+void AddressSpaceMonitor::UpdateAlertIfShown(double usedGB, double totalGB,
                                              double percent) {
   // Guard against use after destruction
   if (!m_isValidState.load()) {
@@ -477,44 +488,44 @@ void AddressSpaceMonitor::CheckAndAlert() {
 
 void AddressSpaceMonitor::ShowOrUpdateAlert(double usedGB, double totalGB,
                                             double percent) {
-  wxLogMessage(
-      "AddressSpaceMonitor: ShowOrUpdateAlert() called (activeAlertDialog=%p, "
-      "percent=%.1f)",
-      static_cast<void*>(activeAlertDialog), percent);
-  if (!activeAlertDialog) {
-    wxLogMessage("AddressSpaceMonitor: Creating new MemoryAlertDialog");
-    // Create new dialog
-    activeAlertDialog = new MemoryAlertDialog(nullptr, this);
+  wxTheApp->CallAfter([=, this]() {
+    wxLogMessage(
+        "AddressSpaceMonitor: ShowOrUpdateAlert() called "
+        "(activeAlertDialog=%p, percent=%.1f)",
+        static_cast<void*>(activeAlertDialog), percent);
     if (!activeAlertDialog) {
-      wxLogError("AddressSpaceMonitor: Failed to create alert dialog");
-      return;
+      wxLogMessage("AddressSpaceMonitor: Creating new MemoryAlertDialog");
+      activeAlertDialog = new MemoryAlertDialog(nullptr, this);
+      if (!activeAlertDialog) {
+        wxLogError("AddressSpaceMonitor: Failed to create alert dialog");
+        return;
+      }
+      activeAlertDialog->UpdateMemoryInfo(usedGB, totalGB, percent);
+      activeAlertDialog->Show();
+      alertShown = true;
+      wxLogMessage(
+          "AddressSpaceMonitor: Showing new alert dialog "
+          "(activeAlertDialog=%p)",
+          static_cast<void*>(activeAlertDialog));
+    } else if (activeAlertDialog->IsShown()) {
+      wxLogMessage(
+          "AddressSpaceMonitor: Updating existing visible alert dialog "
+          "(activeAlertDialog=%p)",
+          static_cast<void*>(activeAlertDialog));
+      activeAlertDialog->UpdateMemoryInfo(usedGB, totalGB, percent);
+    } else {
+      wxLogMessage(
+          "AddressSpaceMonitor: Re-showing hidden alert dialog "
+          "(activeAlertDialog=%p)",
+          static_cast<void*>(activeAlertDialog));
+      activeAlertDialog->UpdateMemoryInfo(usedGB, totalGB, percent);
+      activeAlertDialog->Show();
+      wxLogMessage(
+          "AddressSpaceMonitor: Alert dialog re-shown (usage: %.1f%%, "
+          "activeAlertDialog=%p)",
+          percent, static_cast<void*>(activeAlertDialog));
     }
-    activeAlertDialog->UpdateMemoryInfo(usedGB, totalGB, percent);
-    activeAlertDialog->Show();
-    alertShown = true;
-    wxLogMessage(
-        "AddressSpaceMonitor: Showing new alert dialog (activeAlertDialog=%p)",
-        static_cast<void*>(activeAlertDialog));
-  } else if (activeAlertDialog->IsShown()) {
-    wxLogMessage(
-        "AddressSpaceMonitor: Updating existing visible alert dialog "
-        "(activeAlertDialog=%p)",
-        static_cast<void*>(activeAlertDialog));
-    // Update existing visible dialog
-    activeAlertDialog->UpdateMemoryInfo(usedGB, totalGB, percent);
-  } else {
-    wxLogMessage(
-        "AddressSpaceMonitor: Re-showing hidden alert dialog "
-        "(activeAlertDialog=%p)",
-        static_cast<void*>(activeAlertDialog));
-    // Dialog exists but is hidden - show it again since we're over threshold
-    activeAlertDialog->UpdateMemoryInfo(usedGB, totalGB, percent);
-    activeAlertDialog->Show();
-    wxLogMessage(
-        "AddressSpaceMonitor: Alert dialog re-shown (usage: %.1f%%, "
-        "activeAlertDialog=%p)",
-        percent, static_cast<void*>(activeAlertDialog));
-  }
+  });
 }
 
 void AddressSpaceMonitor::SetThresholdPercent(double percent) {
@@ -577,64 +588,96 @@ void AddressSpaceMonitor::SetAlertEnabled(bool enabled) {
 }
 
 void AddressSpaceMonitor::SetGauge(wxGauge* gauge) {
-  if (!m_isValidState.load()) {  
-    wxLogWarning("AddressSpaceMonitor::SetGauge() called on invalid object");
-    return;
-  }
-  usageGauge = gauge;
-  if (gauge) {
-    wxLogMessage("AddressSpaceMonitor: Gauge connected");
-  } else {
-    wxLogMessage(
-        "AddressSpaceMonitor: Gauge disconnected (cleared to prevent dangling "
-        "pointer)");
-  }
+  wxTheApp->CallAfter([=, this]() {
+    if (!m_isValidState.load()) {
+      wxLogWarning("AddressSpaceMonitor::SetGauge() called on invalid object");
+      return;
+    }
+    usageGauge = gauge;
+    if (gauge) {
+      wxLogMessage("AddressSpaceMonitor: Gauge connected");
+    } else {
+      wxLogMessage(
+          "AddressSpaceMonitor: Gauge disconnected (cleared to prevent "
+          "dangling pointer)");
+    }
+  });
 }
 
 size_t AddressSpaceMonitor::GetUsedAddressSpace() const {
-  if (!m_isValidState.load()) {  
+  if (!m_isValidState.load()) {
     return 0;
   }
 
   MEMORY_BASIC_INFORMATION mbi;
   unsigned char* addr = nullptr;
   size_t used = 0;
+  bool failed = false;
 
-  while (VirtualQuery(addr, &mbi, sizeof(mbi)) == sizeof(mbi)) {
+  while (true) {
+    SIZE_T result = VirtualQuery(addr, &mbi, sizeof(mbi));
+    if (result != sizeof(mbi)) {
+      if (addr == nullptr) {  // failed on first call
+        failed = true;
+      }
+      break;
+    }
     if (mbi.State == MEM_COMMIT) {
       used += mbi.RegionSize;
     }
     addr += mbi.RegionSize;
   }
+
+  if (failed) {
+    // Only warn once per session
+    if (!m_degraded) {
+      m_degraded = true;
+      wxLogWarning(
+          "AddressSpaceMonitor: Unable to query address space usage. "
+          "Monitoring will be disabled.");
+      wxTheApp->CallAfter([]() {
+        wxMessageBox(_("Address space monitoring is not available on this "
+                       "system. Memory alerts and auto-stop are disabled."),
+                     _("Weather Routing - Address Space Monitor"),
+                     wxOK | wxICON_WARNING);
+      });
+    }
+    return 0;
+  }
+
   return used;
 }
 
 size_t AddressSpaceMonitor::GetTotalAddressSpace() const {
-  if (!m_isValidState.load()) {
-    return 0x80000000ULL;  // Return default even if invalid
+  if (!m_isValidState.load() || m_degraded) {
+    return 0;
   }
   return 0x80000000ULL;  // 2 GB for 32-bit process
 }
 
 double AddressSpaceMonitor::GetUsagePercent() const {
-  if (!m_isValidState.load()) {
+  if (!m_isValidState.load() || m_degraded) {
     return 0.0;
   }
-  return 100.0 * GetUsedAddressSpace() / GetTotalAddressSpace();
+  size_t total = GetTotalAddressSpace();
+  if (total == 0) return 0.0;
+  return 100.0 * GetUsedAddressSpace() / total;
 }
 
 void AddressSpaceMonitor::SetTextLabel(wxStaticText* label) {
-  if (!m_isValidState.load()) {
-    wxLogWarning(
-        "AddressSpaceMonitor::SetTextLabel() called on invalid object");
-    return;
-  }
-  m_textLabel = label;
-  if (label) {
-    wxLogMessage("AddressSpaceMonitor: Text label connected");
-  } else {
-    wxLogMessage("AddressSpaceMonitor: Text label disconnected");
-  }
+  wxTheApp->CallAfter([=, this]() {
+    if (!m_isValidState.load()) {
+      wxLogWarning(
+          "AddressSpaceMonitor::SetTextLabel() called on invalid object");
+      return;
+    }
+    m_textLabel = label;
+    if (label) {
+      wxLogMessage("AddressSpaceMonitor: Text label connected");
+    } else {
+      wxLogMessage("AddressSpaceMonitor: Text label disconnected");
+    }
+  });
 }
 
 void AddressSpaceMonitor::SetAutoStopThreshold(double percent) {

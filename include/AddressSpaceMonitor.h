@@ -62,18 +62,7 @@ private:
  * alerts users when usage exceeds a configurable threshold. Prevents crashes
  * due to address space exhaustion by recommending memory cleanup actions.
  *
- * Architecture:
- * - **Plugin timer**: Checks every 5 seconds (continuous monitoring)
- * - **Settings timer**: Updates gauge every 2 seconds (visual feedback)
- * - **Alert dialog**: Shows when threshold exceeded, hides when below
- *
- * Lifecycle:
- * 1. Constructed by weather_routing_pi on plugin initialization
- * 2. Configured by SettingsDialog::LoadMemorySettings()
- * 3. Monitored by plugin timer (OnAddressSpaceTimer)
- * 4. Shutdown explicitly before plugin destruction
- *
- * @note Non-copyable, non-movable (RAII pattern).
+  * @note Non-copyable, non-movable (RAII pattern).
  */
 class AddressSpaceMonitor {
 public:
@@ -83,6 +72,7 @@ public:
   // Delete copy constructor and assignment operator to prevent copying
   AddressSpaceMonitor(const AddressSpaceMonitor&) = delete;
   AddressSpaceMonitor& operator=(const AddressSpaceMonitor&) = delete;
+
   // Delete move constructor and assignment operator
   AddressSpaceMonitor(AddressSpaceMonitor&&) = delete;
   AddressSpaceMonitor& operator=(AddressSpaceMonitor&&) = delete;
@@ -109,45 +99,45 @@ public:
   double GetUsagePercent() const;       ///< Calculates percentage (0-100)
 
   bool alertDismissed;      ///< User suppressed alerts via Settings checkbox
-  double thresholdPercent;  ///< Alert threshold percentage (default 80%)
+  double thresholdPercent = 80.0;  ///< Alert threshold percentage (default 80%)
   bool IsValid() const {return m_isValidState.load(); }  ///< Valid state check         ///< false after Shutdown()
 
 private:
-
- // --- Re-entrancy and concurrency guards ---
+  // Concurrency and state
   std::atomic<bool> m_isExecuting{false};  // For re-entrancy protection
   std::mutex m_mutex;
-  void CloseAlertUnlocked();  // Helper, assumes mutex is already locked
-
- // --- Throttle check frequency ---
-  std::chrono::steady_clock::time_point m_lastCheckTime{};  // For minimum interval
-
- // ---State and Configuration---
   std::atomic<bool> m_isValidState{true};  // Changed from bool to atomic<bool>
-  bool m_isShuttingDown;                   ///< true during Shutdown()
-  bool logToFile;     ///< Log usage on every check
-  bool alertEnabled;  ///< Show popup alerts
-  double m_autoStopThreshold;  ///< Auto-stop threshold percentage
-  bool m_autoStopEnabled;      ///< Auto-stop enabled flag
-  bool m_autoStopTriggered;    ///< Auto-stop already triggered flag
-  double updatePercentThreshold;  // percent change required to trigger update
-  WeatherRouting* m_weatherRouting;  ///< Pointer to WeatherRouting plugin
+  bool m_isShuttingDown = false;           ///< true during Shutdown()
+  bool m_degraded = false;                 ///< true if unable to get memory info
+  
+  // Timing and thresholds
+  std::chrono::steady_clock::time_point m_lastCheckTime{};  // For minimum interval
+  double m_autoStopThreshold=85.0;  ///< Auto-stop threshold percentage
+  bool m_autoStopEnabled = true;      ///< Auto-stop enabled flag
+  bool m_autoStopTriggered = false;  ///< Auto-stop already triggered flag
+  double updatePercentThreshold = 1.0;  // percent change required to trigger update
+   
+  // Logging and alerting
+  bool logToFile = false;    ///< Log usage on every check
+  bool alertEnabled = true;  ///< Show popup alerts
+  
+  // UI and plugin references
+  WeatherRouting* m_weatherRouting = nullptr;  ///< Pointer to WeatherRouting plugin
+  wxGauge* usageGauge = nullptr;               ///< Gauge in SettingsDialog
+  wxStaticText* m_textLabel = nullptr;
+  MemoryAlertDialog* activeAlertDialog = nullptr;  ///< Active dialog or nullptr
 
- // UI References
-  wxGauge* usageGauge;                   ///< Gauge in SettingsDialog
-  wxStaticText* m_textLabel;
-  bool alertShown;                       ///< Alert dialog exists
-  MemoryAlertDialog* activeAlertDialog;  ///< Active dialog or nullptr
-  int m_instanceId;                      ///< Unique ID for debugging
-  double m_lastPercent;     ///< Last percent value for change detection
-  bool m_wasOverThreshold;  ///< Tracks last threshold crossing for alert debouncing
+  // State tracking
+  bool alertShown = false;            ///< Alert dialog exists
+  int m_instanceId = 0;               ///< Unique ID for debugging
+  double m_lastPercent = 0.0;         ///< Last percent value for change detection
+  bool m_wasOverThreshold = false;    ///< Tracks last threshold crossing for alert debouncing
   int m_memoryCheckIntervalMs = 500;  ///< Default 500 ms memory check interval
 
-
 // Persistence of Settings
+  void CloseAlertUnlocked();  // Helper, assumes mutex is already locked
   void SaveSettings();
   void LoadSettings();
-
 };
 
 #endif  // ADDRESSSPACEMONITOR_H
