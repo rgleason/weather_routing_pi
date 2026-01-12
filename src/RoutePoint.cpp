@@ -259,32 +259,46 @@ bool BoatData::GetBoatSpeedForPolar(RouteMapConfiguration& configuration,
       // Performance loss through tacking or jibing
       newperformance =
           performance * (1.0 - this->stw * performance / 2.0 / 100.0);
-    else if (std::fabs(parent_heading - twa) > 1E-6 && performance >= 0.93)
+    else if (!isnan(parent_heading) && std::fabs(parent_heading - twa) > 1E-6 && performance >= 0.93)
       // Performance loss through course change
       newperformance = performance * (1.0 - std::fabs(parent_heading - twa) /
                                                 180.0 * M_PI / 25.0);
 
-    // Performance recovery, probably happens in every server jump even when
-    // there is a loss. Calculation assumes that loss is calculated right at the
-    // beginning of the jump, but it may be at any time during the jump
-    int jump = 30; // seconds
-    double current_stw = this->stw * newperformance;
-    double current_dist = 0.0;
-    for (int j = 0; j < timeseconds; j += jump) {
-        if (newperformance > 0.9999) {
-            newperformance = 1.0;
-            current_stw = this->stw;
-            current_dist += current_stw * (timeseconds - j) / 3600.0;
-            break;
+
+    if (newperformance < 1.0) {
+        // Performance recovery, probably happens in every server jump even when
+        // there is a loss. Calculation assumes that loss is calculated right at the
+        // beginning of the jump, but it may be at any time during the jump
+        double jump = std::min(timeseconds, 30.0); // TODO Find correct value for jump
+        double current_stw = this->stw * newperformance;
+        double current_time;
+        double current_dist = 0.0;
+
+        for (current_time = jump; current_time <= timeseconds; current_time += jump) {
+            // The loop always calculates the performance and distance at current_time
+            newperformance = std::min(
+                1.0, newperformance + jump * 3.0 / (20.0 * current_stw) / 100.0);
+
+            current_stw = this->stw * newperformance;
+            current_dist += current_stw * jump / 3600.0;
+
+            if (newperformance >= 1.0)
+                break;
         }
-        newperformance = std::min(1.0, newperformance + jump * 3.0 / (20.0 *
-            current_stw) / 100.0);
-        current_stw = this->stw * newperformance;
-        // TODO It is not clear whether dist is calculated with old or new stw
-        current_dist += current_stw * jump / 3600.0;
+
+        // Remaining fractional jump
+        double remainder = timeseconds - current_time;
+        if (remainder > 0.0) {
+            newperformance = std::min(
+                1.0, newperformance + remainder * 3.0 / (20.0 * current_stw) / 100.0);
+            current_stw = this->stw * newperformance;
+            current_dist += current_stw * remainder / 3600.0;
+        }
+
+        // Average speed over whole interval (timeseconds)
+        this->stw = current_dist / (timeseconds / 3600.0);
     }
 
-    this->stw = current_dist / (timeseconds / 3600.0);
   // Calculate boat movement over ground by combining boat speed with current.
   // Note: Output is cog and sog
   WeatherDataProvider::TransformToGroundFrame(
