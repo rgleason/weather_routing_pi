@@ -291,8 +291,8 @@ SettingsDialog::~SettingsDialog() {
 
   // Clear the gauge and text label references in the monitor
   AddressSpaceMonitor* monitor = GetMonitor();
-  if (monitor && monitor->IsValid()) {
-    monitor->SetGauge(nullptr);
+  if (monitor && monitor->m_IsValidState()) {
+    monitor->SetUsageGauge(nullptr);
     monitor->SetTextLabel(nullptr);
     wxLogMessage("SettingsDialog: Destructor - Cleared monitor UI references");
   }
@@ -502,14 +502,14 @@ void SettingsDialog::LoadMemorySettings() {
 
   // Apply to the monitor
   AddressSpaceMonitor* monitor = GetMonitor();
-  if (monitor && monitor->IsValid()) {
+  if (monitor && monitor->m_IsValidState()) {
     monitor->SetAlertEnabled(enableAlert);
     monitor->SetAutoStopEnabled(enableAutoStop);
     monitor->SetLoggingEnabled(logUsage);
-    monitor->SetThresholdPercent(threshold);
+    monitor->SetAlertThreshold(threshold);
     monitor->SetAutoStopThreshold(autoStopThreshold);
     monitor->SetMemoryCheckInterval(memoryCheckInterval); 
-    monitor->SetGauge(m_gaugeMemoryUsage);
+    monitor->SetUsageGauge(m_gaugeMemoryUsage);
     monitor->SetTextLabel(m_staticTextMemoryStats);
   }
 }
@@ -538,13 +538,13 @@ void SettingsDialog::OnThresholdChanged(wxSpinDoubleEvent& event) {
   if (newAlert >= autoStop - 2.99) {
     double fixedAlert = autoStop - 3.0;
     m_spinThreshold->SetValue(fixedAlert);
-    monitor->SetThresholdPercent(fixedAlert);
+    monitor->SetAlertThreshold(fixedAlert);
 
     wxMessageBox(
         _("Alert threshold must be at least 3% less than AutoStop threshold."),
         _("Threshold Conflict"), wxOK | wxICON_WARNING, this);
   } else {
-    monitor->SetThresholdPercent(newAlert);
+    monitor->SetAlertThreshold(newAlert);
     wxLogMessage("SettingsDialog: Alert threshold changed to %.0f%%", newAlert);
   }
 

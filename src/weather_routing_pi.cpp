@@ -205,7 +205,7 @@ weather_routing_pi::~weather_routing_pi() {
 void weather_routing_pi::OnAddressSpaceTimer(
     wxTimerEvent& event) {
   // Double-check monitor validity before accessing
-  if (!m_addressSpaceMonitor.IsValid()) {
+  if (!m_addressSpaceMonitor.m_IsValidState()) {
     wxLogWarning("OnAddressSpaceTimer: Monitor is invalid, stopping timer");
     if (m_addressSpaceTimer.IsRunning()) {
       m_addressSpaceTimer.Stop();

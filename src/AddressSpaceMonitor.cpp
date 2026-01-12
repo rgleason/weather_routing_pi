@@ -71,7 +71,7 @@ void MemoryAlertDialog::UpdateMemoryInfo(double usedGB, double totalGB,
       _("WARNING: Current Usage: %.1f%% (%.2f GB / %.1f GB)\n"
         "Alert threshold: %.0f%%\n\n"
         "Prevent Crashes: Reset All"),
-      percent, usedGB, totalGB, m_monitor->thresholdPercent);
+      percent, usedGB, totalGB, m_monitor->GetAlertThreshold());
 
   m_messageText->SetLabel(message);
   m_messageText->Wrap(380);
@@ -80,11 +80,13 @@ void MemoryAlertDialog::UpdateMemoryInfo(double usedGB, double totalGB,
 }
 
 void MemoryAlertDialog::OnHide(wxCommandEvent& event) {
-  // User clicked Hide button - just hide, don't dismiss
-  // Monitoring continues and alert will reappear if threshold exceeded
+  // User clicked Hide button
+  // Monitoring continues and alert will reappear if threshold drops below percent
+  // and then goes above alertthreshold again
   if (m_monitor) {
     wxLogMessage(
         "MemoryAlertDialog: User clicked Hide - continuing to monitor");
+    m_monitor->SetAlertHiddenByUser(true);
   }
   Hide();  // Don't destroy, just hide
 }
@@ -93,7 +95,7 @@ void MemoryAlertDialog::OnClose(wxCommandEvent& event) {
   // This is for programmatic close (e.g., from Settings checkbox)
   // Set alertDismissed to prevent re-showing until memory drops
   if (m_monitor) {
-    m_monitor->alertDismissed = true;
+    m_monitor->SetAlertDismissed(true);
     wxLogMessage("MemoryAlertDialog: Alert dismissed via Settings");
   }
   Hide();  // Don't destroy, just hide
@@ -116,28 +118,26 @@ void MemoryAlertDialog::ClearMonitor() {
 }
 
 AddressSpaceMonitor::AddressSpaceMonitor()
-    : m_isValidState(true),
-      m_isShuttingDown(false),
-      thresholdPercent(80.0),
-      logToFile(false),
-      alertEnabled(true),
-      usageGauge(nullptr),
+    : m_isValidState(true), m_isShuttingDown(false),
+      m_weatherRouting(nullptr),
+      m_usageGauge(nullptr),
       m_textLabel(nullptr),
-      alertShown(false),
-      alertDismissed(false),
       activeAlertDialog(nullptr),
-      m_instanceId(++s_instanceId),
-      m_lastPercent(-1.0),       // Correctly initialize here stores last recorded percent.
+      m_alertEnabled(true),
+      m_alertShown(false),
+      m_alertDismissed(false),  // is this still needed?
+      m_alertThreshold(80.0),
+      m_alertLastPercent(-1.0),  // Correctly initialize here stores last recorded percent.
+      m_alertUpdateThreshold(1.0),  // <-- Perform refresh/updates/logging at this interval.
       m_wasOverThreshold(false),  // Correctly initialize here
-      updatePercentThreshold(1.0),  // <-- Perform refresh/updates/logging at this interval.
-      m_autoStopThreshold(85.0),
       m_autoStopEnabled(true),
+      m_autoStopThreshold(85.0),
       m_autoStopTriggered(false),
-      m_weatherRouting(nullptr)
+      m_instanceId(++s_instanceId),
+      m_logToFile(false)
 {
   ++s_instanceCount;
-  ++s_instanceCount;
-
+  
   // Force logging initialization check
   {
     LoadSettings();
@@ -196,7 +196,7 @@ void AddressSpaceMonitor::DismissAlert() {
     return;
   }
 
-  alertDismissed = true;
+  m_alertDismissed = true;
 
   // Hide any active dialog
   if (activeAlertDialog && activeAlertDialog->IsShown()) {
@@ -242,7 +242,7 @@ void AddressSpaceMonitor::Shutdown() {
   m_isValidState.store(false);
 
   // Clear gauge reference first to prevent updates during shutdown
-  usageGauge = nullptr;
+  m_usageGauge = nullptr;
   m_textLabel = nullptr;
   m_weatherRouting = nullptr;
 
@@ -290,8 +290,8 @@ void AddressSpaceMonitor::CloseAlertUnlocked() {
     } else {
       wxLogMessage("AddressSpaceMonitor: No active alert dialog to close");
     }
-    alertShown = false;
-    alertDismissed = false;
+    m_alertShown = false;
+    m_alertDismissed = false;
   });
 }
 
@@ -345,6 +345,36 @@ void AddressSpaceMonitor::CheckAndAlert() {
   size_t total = GetTotalAddressSpace();
   double percent = 100.0 * used / total;
 
+  // Debounce logic for alert
+  bool wasOverThreshold = m_wasOverThreshold;
+  bool isOverThreshold = percent > m_alertThreshold;
+
+  // Reset hidden flag if we drop below threshold
+  if (!isOverThreshold) {
+    m_alertHiddenByUser = false;
+  }
+
+  // Only show alert if we just crossed from below to above the threshold
+  if (!wasOverThreshold && isOverThreshold && m_alertEnabled &&
+      !m_alertDismissed && !m_alertHiddenByUser) {
+    double usedGB = used / (1024.0 * 1024.0 * 1024.0);
+    double totalGB = total / (1024.0 * 1024.0 * 1024.0);
+    ShowOrUpdateAlert(usedGB, totalGB, percent);
+    wxLogMessage(
+        "AddressSpaceMonitor: Alert shown (debounced threshold crossing)");
+  }
+  
+  // Hide alert if we just crossed from above to below
+  if (wasOverThreshold && !isOverThreshold && activeAlertDialog &&
+       activeAlertDialog->IsShown()) {
+    CloseAlert();
+    wxLogMessage(
+        "AddressSpaceMonitor: Alert closed (debounced threshold crossing)");
+  }
+
+  // Update the state for next scan
+  m_wasOverThreshold = isOverThreshold;
+
   // --- Auto-stop logic ---
   if (m_autoStopEnabled && m_weatherRouting && !m_autoStopTriggered) {
     wxLogMessage(
@@ -389,7 +419,6 @@ void AddressSpaceMonitor::CheckAndAlert() {
     }
   }
 
-  // Now the next code block starts as normal
   if (m_autoStopTriggered && percent < m_autoStopThreshold - 5.0) {
     m_autoStopTriggered = false;
     wxLogMessage(
@@ -402,21 +431,21 @@ void AddressSpaceMonitor::CheckAndAlert() {
         m_weatherRouting);
   }
 
-  // Only update if percent changed by >updatePercentThreshold%
-  if (fabs(percent - m_lastPercent) > updatePercentThreshold) {
-    m_lastPercent = percent;
+  // Only update if percent changed by >AlertUpdateThreshold%
+  if (fabs(percent - m_alertLastPercent) > m_alertUpdateThreshold) {
+    m_alertLastPercent = percent;
 
     double usedGB = used / (1024.0 * 1024.0 * 1024.0);
     double totalGB = total / (1024.0 * 1024.0 * 1024.0);
 
     // Update text label if connected
     if (m_textLabel) {
-      wxTheApp->CallAfter([=, this]() {
+      wxTheApp->CallAfter([this, percent, usedGB, totalGB]() {
         wxString stats = wxString::Format("%.1f%% (%.2f GB / %.1f GB)", percent,
                                           usedGB, totalGB);
         m_textLabel->SetLabel(stats);
         wxColour textColor;
-        if (percent >= thresholdPercent) {
+        if (percent >= m_alertThreshold) {
           textColor = *wxRED;
         } else if (percent >= 70.0) {
           textColor = wxColour(255, 140, 0);
@@ -428,22 +457,22 @@ void AddressSpaceMonitor::CheckAndAlert() {
       });
     }
 
-    if (logToFile) {
+    if (m_logToFile) {
       wxLogMessage("AddressSpaceMonitor: %.2f GB / %.1f GB (%.1f%%)", usedGB,
                    totalGB, percent);
     }
 
     UpdateAlertIfShown(usedGB, totalGB, percent);
 
-    if (usageGauge) {
-      wxTheApp->CallAfter([=, this]() {
+    if (m_usageGauge) {
+      wxTheApp->CallAfter([this, percent]() {
         try {
-          usageGauge->SetValue(static_cast<int>(percent));
+          m_usageGauge->SetValue(static_cast<int>(percent));
         } catch (...) {
           wxLogWarning(
               "AddressSpaceMonitor: Exception accessing gauge, clearing "
               "reference");
-          usageGauge = nullptr;
+          m_usageGauge = nullptr;
         }
       });
     }
@@ -460,10 +489,10 @@ void AddressSpaceMonitor::UpdateAlertIfShown(double usedGB, double totalGB,
   }
 
   // Check if user dismissed alerts via Settings checkbox
-  if (alertDismissed) {
+  if (m_alertDismissed) {
     // Only re-enable if memory drops significantly below threshold
-    if (percent < thresholdPercent - 5.0) {
-      alertDismissed = false;
+    if (percent < m_alertThreshold - 5.0) {
+      m_alertDismissed = false;
       wxLogMessage(
           "AddressSpaceMonitor: Memory dropped below threshold (%.1f%%), "
           "re-enabling alerts",
@@ -472,10 +501,10 @@ void AddressSpaceMonitor::UpdateAlertIfShown(double usedGB, double totalGB,
     return;  // Don't show alerts while dismissed
   }
 
-  // Show/update alert if above threshold
-  if (percent >= thresholdPercent && alertEnabled) {
+// Show/update alert if above threshold and not hidden by user
+  if (percent >= m_alertThreshold && m_alertEnabled && !m_alertHiddenByUser) {
     ShowOrUpdateAlert(usedGB, totalGB, percent);
-  } else if (percent < thresholdPercent && activeAlertDialog &&
+  } else if (percent < m_alertThreshold && activeAlertDialog &&
              activeAlertDialog->IsShown()) {
     // Memory dropped below threshold - hide the dialog
     CloseAlert();  // <-- Use this instead of just Hide()
@@ -488,7 +517,7 @@ void AddressSpaceMonitor::UpdateAlertIfShown(double usedGB, double totalGB,
 
 void AddressSpaceMonitor::ShowOrUpdateAlert(double usedGB, double totalGB,
                                             double percent) {
-  wxTheApp->CallAfter([=, this]() {
+  wxTheApp->CallAfter([this, usedGB, totalGB, percent]() {
     wxLogMessage(
         "AddressSpaceMonitor: ShowOrUpdateAlert() called "
         "(activeAlertDialog=%p, percent=%.1f)",
@@ -502,7 +531,7 @@ void AddressSpaceMonitor::ShowOrUpdateAlert(double usedGB, double totalGB,
       }
       activeAlertDialog->UpdateMemoryInfo(usedGB, totalGB, percent);
       activeAlertDialog->Show();
-      alertShown = true;
+      m_alertShown = true;
       wxLogMessage(
           "AddressSpaceMonitor: Showing new alert dialog "
           "(activeAlertDialog=%p)",
@@ -514,29 +543,38 @@ void AddressSpaceMonitor::ShowOrUpdateAlert(double usedGB, double totalGB,
           static_cast<void*>(activeAlertDialog));
       activeAlertDialog->UpdateMemoryInfo(usedGB, totalGB, percent);
     } else {
-      wxLogMessage(
-          "AddressSpaceMonitor: Re-showing hidden alert dialog "
-          "(activeAlertDialog=%p)",
-          static_cast<void*>(activeAlertDialog));
-      activeAlertDialog->UpdateMemoryInfo(usedGB, totalGB, percent);
-      activeAlertDialog->Show();
-      wxLogMessage(
-          "AddressSpaceMonitor: Alert dialog re-shown (usage: %.1f%%, "
-          "activeAlertDialog=%p)",
-          percent, static_cast<void*>(activeAlertDialog));
+      // Only re-show if NOT hidden by user
+      if (!m_alertHiddenByUser) {
+        wxLogMessage(
+            "AddressSpaceMonitor: Re-showing hidden alert dialog "
+            "(activeAlertDialog=%p)",
+            static_cast<void*>(activeAlertDialog));
+        activeAlertDialog->UpdateMemoryInfo(usedGB, totalGB, percent);
+        activeAlertDialog->Show();
+        wxLogMessage(
+            "AddressSpaceMonitor: Alert dialog re-shown (usage: %.1f%%, "
+            "activeAlertDialog=%p)",
+            percent, static_cast<void*>(activeAlertDialog));
+      } else {
+        wxLogMessage(
+            "AddressSpaceMonitor: Alert dialog remains hidden by user (usage: "
+            "%.1f%%, "
+            "activeAlertDialog=%p)",
+            percent, static_cast<void*>(activeAlertDialog));
+      }
     }
   });
 }
 
-void AddressSpaceMonitor::SetThresholdPercent(double percent) {
+void AddressSpaceMonitor::SetAlertThreshold(double percent) {
   if (!m_isValidState.load()) { 
     wxLogWarning(
-        "AddressSpaceMonitor::SetThresholdPercent() called on invalid object");
+        "AddressSpaceMonitor::SetAlertThreshold() called on invalid object");
     return;
   }
 
-  double oldThreshold = thresholdPercent;
-  thresholdPercent = percent;
+  double oldThreshold = m_alertThreshold;
+  m_alertThreshold = percent;
   SaveSettings();  // <-- Save immediately after change
 
   wxLogMessage("AddressSpaceMonitor: Threshold changed from %.1f%% to %.1f%%",
@@ -545,12 +583,12 @@ void AddressSpaceMonitor::SetThresholdPercent(double percent) {
   // If dialog is shown and we're now below the new threshold, hide it
   if (activeAlertDialog && activeAlertDialog->IsShown()) {
     double currentPercent = GetUsagePercent();
-    if (currentPercent < thresholdPercent) {
+    if (currentPercent < m_alertThreshold) {
       activeAlertDialog->Hide();
       wxLogMessage(
           "AddressSpaceMonitor: Hiding alert - usage (%.1f%%) below new "
           "threshold (%.1f%%)",
-          currentPercent, thresholdPercent);
+          currentPercent, m_alertThreshold);
     } else {
       // Update the dialog to show the new threshold
       double usedGB = GetUsedAddressSpace() / (1024.0 * 1024.0 * 1024.0);
@@ -568,7 +606,7 @@ void AddressSpaceMonitor::SetLoggingEnabled(bool enabled) {
         "AddressSpaceMonitor::SetLoggingEnabled() called on invalid object");
     return;
   }
-  logToFile = enabled;
+  m_logToFile = enabled;
   wxLogMessage("AddressSpaceMonitor: Logging %s",
                enabled ? "enabled" : "disabled");
 }
@@ -579,7 +617,7 @@ void AddressSpaceMonitor::SetAlertEnabled(bool enabled) {
         "AddressSpaceMonitor::SetAlertEnabled() called on invalid object");
     return;
   }
-  alertEnabled = enabled;
+  m_alertEnabled = enabled;
   if (!enabled) {
     CloseAlert();
   }
@@ -587,13 +625,14 @@ void AddressSpaceMonitor::SetAlertEnabled(bool enabled) {
                enabled ? "enabled" : "disabled");
 }
 
-void AddressSpaceMonitor::SetGauge(wxGauge* gauge) {
-  wxTheApp->CallAfter([=, this]() {
+void AddressSpaceMonitor::SetUsageGauge(wxGauge* gauge) {
+  wxTheApp->CallAfter([this, gauge]() {
     if (!m_isValidState.load()) {
-      wxLogWarning("AddressSpaceMonitor::SetGauge() called on invalid object");
+      wxLogWarning(
+          "AddressSpaceMonitor::SetUsageGauge() called on invalid object");
       return;
     }
-    usageGauge = gauge;
+    m_usageGauge = gauge;
     if (gauge) {
       wxLogMessage("AddressSpaceMonitor: Gauge connected");
     } else {
@@ -665,7 +704,7 @@ double AddressSpaceMonitor::GetUsagePercent() const {
 }
 
 void AddressSpaceMonitor::SetTextLabel(wxStaticText* label) {
-  wxTheApp->CallAfter([=, this]() {
+  wxTheApp->CallAfter([this, label]() {
     if (!m_isValidState.load()) {
       wxLogWarning(
           "AddressSpaceMonitor::SetTextLabel() called on invalid object");
@@ -717,13 +756,13 @@ void AddressSpaceMonitor::SetMemoryCheckInterval(int ms) {
 
 void AddressSpaceMonitor::SaveSettings() {
   wxConfig config("WeatherRouting");
-  config.Write("AlertThresholdPercent", thresholdPercent);
+  config.Write("AlertThreshold", m_alertThreshold);
   config.Flush();
 }
 
 void AddressSpaceMonitor::LoadSettings() {
   wxConfig config("WeatherRouting");
   double defaultThreshold = 80.0;
-  config.Read("AlertThresholdPercent", &thresholdPercent, defaultThreshold);
+  config.Read("AlertThreshold", &m_alertThreshold, defaultThreshold);
 }
 #endif  // __WXMSW__

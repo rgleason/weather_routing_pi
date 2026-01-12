@@ -77,16 +77,16 @@ public:
   // ========== Windows-Only: Address Space Monitoring ==========
 
 private:
-  // @name Memory Monitor UI Components
-  wxStaticText*  m_staticTextMemoryStats;  ///< Dynamic text: "XX% (X.XX GB / X.X GB)"
-  wxBoxSizer*    m_usageSizer;  ///< Horizontal sizer for "Usage:" label + stats text
-  wxSpinCtrlDouble* m_spinAutoStopThreshold;
-  wxSpinCtrlDouble* m_spinThreshold;
-  wxSpinCtrl* m_spinMemoryCheckInterval;
-  wxCheckBox* m_checkEnableAutoStop;
-  wxCheckBox* m_checkSuppressAlert;
-  wxCheckBox* m_checkLogUsage;
-
+ // @name Memory Monitor UI Componen ts
+  wxStaticText* m_staticTextMemoryStats = nullptr;  ///< Dynamic text: "XX% (X.XX GB / X.X GB)"
+  wxBoxSizer* m_usageSizer =  nullptr;  ///< Horizontal sizer for "Usage:" label + stats text
+  wxSpinCtrlDouble* m_spinAutoStopThreshold = nullptr;
+  wxSpinCtrlDouble* m_spinThreshold = nullptr;
+  wxSpinCtrl* m_spinMemoryCheckInterval = nullptr;
+  wxCheckBox* m_checkEnableAutoStop = nullptr;
+  wxCheckBox* m_checkSuppressAlert = nullptr;
+  wxCheckBox* m_checkLogUsage = nullptr;
+  
   void OnAutoStopThresholdChanged(wxSpinDoubleEvent& event);
   void OnAutoStopEnabledChanged(wxCommandEvent& event);
   void OnMemoryCheckIntervalChanged(wxSpinEvent& event);
