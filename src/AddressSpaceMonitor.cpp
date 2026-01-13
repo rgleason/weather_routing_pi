@@ -221,7 +221,7 @@ void AddressSpaceMonitor::SafeStopWeatherRouting() {
 
 // Shutdown the Alert Dialog and clean up resources
 void AddressSpaceMonitor::Shutdown() {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  //std::lock_guard<std::mutex> lock(m_mutex);
 
   // Prevent multiple shutdown calls
   if (m_isShuttingDown) {
@@ -296,6 +296,8 @@ void AddressSpaceMonitor::CloseAlertUnlocked() {
 }
 
 void AddressSpaceMonitor::CheckAndAlert() {
+  if (!m_weatherRouting) return;
+
   // Check if memory monitoring is degraded.    
   if (m_degraded) {
     return;
