@@ -466,23 +466,20 @@ void AddressSpaceMonitor::CheckAndAlert() {
             "to prevent memory exhaustion."),
           percent, m_autoStopThreshold);
 
-      // Begin critical section for state update
+       // Where we set the triggered flag inside the mutex-protected block
+       // Mutex lock scope
+        // wxMutexLocker lock(m_mutex);
 
-      {
-        wxMutexLocker lock(m_mutex);
-        if (!lock.IsOk()) {
-          wxLogWarning(
-              "AddressSpaceMonitor: Mutex already locked, skipping this check");
-          return;
-        }
-        // Set the triggered flag inside the mutex-protected block
+      
+      // Set the triggered flag inside the mutex-protected block
         m_autoStopTriggered = true;
-      }  // Mutex is released here
+       // Mutex is released here
 
       // Chain: close alert, show message, then reset (all on main thread)
       // Close the alert dialog(asynchronously, using `wxTheApp->CallAfter`)
       // Always close (destroy) the alert dialog if it exists, regardless of
       // visibility (hidden or visible)
+
       wxTheApp->CallAfter([this, message]() {
         // 1. Close the alert dialog if it exists
         if (activeAlertDialog) {

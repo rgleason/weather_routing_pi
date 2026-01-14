@@ -3493,16 +3493,23 @@ void WeatherRouting::StopAll() {
 }
 
 void WeatherRouting::Reset() {
-  if (m_bRunning) StopAll();
+  // 1. Stop all running and waiting computations
+   StopAll(); // This should block until all threads are stopped
+  // if (m_bRunning) StopAll(); 
 
+  // 2. Reset all overlays (clears computation state)
   for (int i = 0; i < m_panel->m_lWeatherRoutes->GetItemCount(); i++) {
     WeatherRoute* weatherroute = reinterpret_cast<WeatherRoute*>(
         wxUIntToPtr(m_panel->m_lWeatherRoutes->GetItemData(i)));
+    if (weatherroute && weatherroute->routemapoverlay)
+        weatherroute->routemapoverlay->Reset();
     weatherroute->routemapoverlay->Reset();
   }
-  m_positionOnRoute = nullptr;
-  UpdateDialogs();
 
+  // 3. Clear any selected/cursor positions
+  m_positionOnRoute = nullptr;
+  // 4. Update UI dialogs and refresh
+  UpdateDialogs();
   GetParent()->Refresh();
 }
 
