@@ -38,7 +38,7 @@ class AddressSpaceMonitor;
 class WeatherRouting;
 
 /**
- * @brief ALERT Popup dialog warning user about high address space usage.
+ * @brief Popup dialog warning user about high address space usage.
  */
 class MemoryAlertDialog : public wxDialog {
 public:
@@ -48,8 +48,8 @@ public:
   void ClearMonitor();
 
 private:
-  AddressSpaceMonitor*   m_monitor= nullptr;  ///< Pointer to managing monitor (cleared on shutdown)
-  wxStaticText* m_messageText = nullptr;  ///< Label displaying warning message
+  AddressSpaceMonitor*   m_monitor;  ///< Pointer to managing monitor (cleared on shutdown)
+  wxStaticText* m_messageText;  ///< Label displaying warning message
   void OnHide(wxCommandEvent& event);   ///< Hide button clicked
   void OnClose(wxCommandEvent& event);  ///< Programmatic close from Settings
   void OnCloseWindow(wxCloseEvent& event);  ///< X button clicked
@@ -108,11 +108,9 @@ public:
 
 
 private:
-  uint32_t m_magic = 0;
   // Concurrency and state
   std::atomic<bool> m_isExecuting{false};  ///< For re-entrancy protection
-  
-  wxMutex m_mutex;
+  std::mutex m_mutex;
   std::atomic<bool> m_isValidState{true};
   bool m_alertDismissed = false;  ///< User suppressed alerts via Settings checkbox
   bool m_isShuttingDown = false;           ///< true during Shutdown()

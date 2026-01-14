@@ -171,7 +171,7 @@ public:
    * Creates and returns the path where the Weather Routing plugin should store
    * its private configuration and data files. The path is constructed as:
    * [OpenCPN private data location]/plugins/weather_routing/
-   *
+   *AddressSpaceMonitor& GetAddressSpaceMonitor
    * Key behaviors:
    * - Creates the directory structure if it doesn't exist
    * - Always returns a path ending with a path separator
@@ -198,26 +198,35 @@ public:
 
 #ifdef __WXMSW__
   /**
-   * @brief Gets reference to the address space monitor (Windows only).
+   * @brief Gets pointer to the address space monitor (Windows only).
    *
-   * @return Reference to the AddressSpaceMonitor instance.
+   * @return Pointer to the AddressSpaceMonitor instance, or nullptr if not
+   * available.
    *
    * @details Provides access to the plugin's AddressSpaceMonitor for use by
-   * SettingsDialog. Returns a reference (not a copy) to allow direct access
-   * to the monitor's state and methods.
-   *
-   * @note This method is only available on Windows where 32-bit address space
-   * monitoring is necessary.
+   * SettingsDialog. Callers must check for nullptr before use.
    */
-    AddressSpaceMonitor& GetAddressSpaceMonitor() {  // Return REFERENCE, not copy
-        return m_addressSpaceMonitor; 
-    } 
+  AddressSpaceMonitor* GetAddressSpaceMonitor() {
+    return m_addressSpaceMonitor.get();
+  }
 #endif
 
 private:
   void OnCursorLatLonTimer(wxTimerEvent&);
   void RequestOcpnDrawSetting();
   void NewWR();
+
+#ifdef __WXMSW__
+  #include <memory>
+  std::unique_ptr<AddressSpaceMonitor> m_addressSpaceMonitor;  // Windows-only: Address space monitoring
+  wxTimer m_addressSpaceTimer;                                 // 5-second timer for monitoring
+  /**
+   * Timer callback for address space monitoring.
+   * Called every 5 seconds to check memory usage and display alerts if needed.
+   */
+  void OnAddressSpaceTimer(wxTimerEvent& event);  // <-- Only declare ONCE here!
+  void ReassignAddressSpaceMonitor();
+#endif
 
   /**
    * Warns the user if a plugin version is outside the supported range.
@@ -265,18 +274,6 @@ private:
 
   wxTimer m_tCursorLatLon;
 
-#ifdef __WXMSW__
-  // Windows-only: Address space monitoring
-  AddressSpaceMonitor
-      m_addressSpaceMonitor;    // Tracks 32-bit address space usage
-  wxTimer m_addressSpaceTimer;  // 5-second timer for monitoring
-
-  /**
-   * Timer callback for address space monitoring.
-   * Called every 5 seconds to check memory usage and display alerts if needed.
-   */
-  void OnAddressSpaceTimer(wxTimerEvent& event);
-#endif
 };
 #endif // _WEATHER_ROUTING_PI_H_
 #endif // _WEATHER_ROUTING_PI_H_

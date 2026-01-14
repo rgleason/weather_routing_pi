@@ -94,6 +94,11 @@ extern "C" DECL_EXP void destroy_pi(opencpn_plugin* p) { delete p; }
  */
 weather_routing_pi::weather_routing_pi(void* ppimgr)
     : opencpn_plugin_118(ppimgr) {
+
+#ifdef __WXMSW__
+  m_addressSpaceMonitor = std::make_unique<AddressSpaceMonitor>();
+#endif
+
   // Create the PlugIn icons
   initialize_images();
 
@@ -169,8 +174,16 @@ weather_routing_pi::~weather_routing_pi() {
 
   // CRITICAL STEP 3: Shutdown the monitor (marks invalid, clears gauge, closes
   // alert)
-  m_addressSpaceMonitor.Shutdown();
-  wxLogMessage("weather_routing_pi: Address space monitor shutdown complete");
+//    m_addressSpaceMonitor->Shutdown();
+  wxLogMessage("Before: m_addressSpaceMonitor=%p",
+               static_cast<void*>(m_addressSpaceMonitor.get()));
+  if (m_addressSpaceMonitor) {
+    m_addressSpaceMonitor->Shutdown();
+    // No need to delete or set to nullptr; unique_ptr handles it.
+    wxLogMessage("After: m_addressSpaceMonitor shutdown (unique_ptr will clean up)");
+  } else {
+    wxLogWarning("m_addressSpaceMonitor is nullptr in destructor");
+  }
 
   // CRITICAL STEP 4: Process pending events multiple times
   // This prevents orphaned timer events from firing after monitor is destroyed
@@ -202,11 +215,12 @@ weather_routing_pi::~weather_routing_pi() {
  * @note This timer runs independently of the Settings dialog and continues even
  * when the dialog is closed.
  */
-void weather_routing_pi::OnAddressSpaceTimer(
-    wxTimerEvent& event) {
+
+void weather_routing_pi::OnAddressSpaceTimer(wxTimerEvent& event) {
   // Double-check monitor validity before accessing
-  if (!m_addressSpaceMonitor.m_IsValidState()) {
-    wxLogWarning("OnAddressSpaceTimer: Monitor is invalid, stopping timer");
+  if (!m_addressSpaceMonitor || !m_addressSpaceMonitor->m_IsValidState()) {
+    wxLogWarning(
+        "OnAddressSpaceTimer: Monitor is invalid or null, stopping timer");
     if (m_addressSpaceTimer.IsRunning()) {
       m_addressSpaceTimer.Stop();
     }
@@ -214,7 +228,7 @@ void weather_routing_pi::OnAddressSpaceTimer(
   }
 
   // This will run continuously, even when Settings dialog is closed
-  m_addressSpaceMonitor.CheckAndAlert();
+  m_addressSpaceMonitor->CheckAndAlert();
 }
 #endif
 
@@ -296,8 +310,10 @@ bool weather_routing_pi::DeInit() {
     wxLogMessage("weather_routing_pi::DeInit() - Stopped address space timer");
   }
   // Now shutdown the monitor
-  m_addressSpaceMonitor.Shutdown();
-  wxLogMessage("weather_routing_pi::DeInit() - Monitor shutdown complete");
+  if (m_addressSpaceMonitor) {
+    m_addressSpaceMonitor->Shutdown();
+    wxLogMessage("weather_routing_pi::DeInit() - Monitor shutdown complete");
+  }
 
   // Process events to clear any queued timer events
   if (wxTheApp) {
@@ -308,7 +324,8 @@ bool weather_routing_pi::DeInit() {
 
   // CRITICAL: Close and destroy WeatherRouting (which includes SettingsDialog)
   if (m_pWeather_Routing) {
-    wxLogMessage("weather_routing_pi::DeInit() - Closing WeatherRouting");
+    wxLogMessage(
+        "weather_routing_pi::DeInit() - About to close WeatherRouting");
     m_pWeather_Routing->Close();
 
     // Force event processing to handle close events
@@ -316,6 +333,9 @@ bool weather_routing_pi::DeInit() {
       wxTheApp->ProcessPendingEvents();
       wxYield();
     }
+    wxLogMessage(
+        "weather_routing_pi::DeInit() - WeatherRouting closed and events "
+        "processed");
   }
 
   WeatherRouting* wr = m_pWeather_Routing;
@@ -602,7 +622,15 @@ void weather_routing_pi::NewWR() {
   m_pWeather_Routing = new WeatherRouting(m_parent_window, *this);
 
 #ifdef __WXMSW__
-  m_addressSpaceMonitor.SetWeatherRouting(m_pWeather_Routing);
+  wxLogMessage("Before: m_addressSpaceMonitor=%p",
+               static_cast<void*>(m_addressSpaceMonitor.get()));
+  if (m_addressSpaceMonitor) {
+    m_addressSpaceMonitor->SetWeatherRouting(m_pWeather_Routing);
+    wxLogMessage("After: m_addressSpaceMonitor=%p (SetWeatherRouting called)",
+                 static_cast<void*>(m_addressSpaceMonitor.get()));
+  } else {
+    wxLogWarning("m_addressSpaceMonitor is nullptr before SetWeatherRouting");
+  }
 #endif
 
   wxPoint p = m_pWeather_Routing->GetPosition();
@@ -662,6 +690,28 @@ bool weather_routing_pi::RenderGLOverlay(wxGLContext* pcontext,
   }
   return false;
 }
+
+#ifdef __WXMSW__
+void weather_routing_pi::ReassignAddressSpaceMonitor() {
+  if (m_addressSpaceTimer.IsRunning()) {
+    m_addressSpaceTimer.Stop();
+    m_addressSpaceTimer.Unbind(wxEVT_TIMER,
+                               &weather_routing_pi::OnAddressSpaceTimer, this);
+  }
+
+  if (m_addressSpaceMonitor) {
+    m_addressSpaceMonitor->Shutdown();
+    m_addressSpaceMonitor.reset();
+  }
+
+  m_addressSpaceMonitor = std::make_unique<AddressSpaceMonitor>();
+
+  m_addressSpaceTimer.Bind(wxEVT_TIMER,
+                           &weather_routing_pi::OnAddressSpaceTimer, this);
+  m_addressSpaceTimer.Start(5000);
+}
+#endif
+
 
 void weather_routing_pi::OnCursorLatLonTimer(wxTimerEvent&) {
   if (m_pWeather_Routing == 0) return;

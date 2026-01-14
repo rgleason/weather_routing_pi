@@ -137,11 +137,6 @@ AddressSpaceMonitor::AddressSpaceMonitor()
       m_logToFile(false)
 {
   ++s_instanceCount;
-  m_magic = 0xA5A5A5A5;
-  wxThreadIdType threadIdx = wxThread::GetCurrentId();
-  wxLogMessage("ASM ctor: this=%p, &m_mutex=%p, instance=%d, thread=%lu",
-               static_cast<void*>(this), static_cast<void*>(&m_mutex),
-               m_instanceId, (unsigned long)threadIdx);
   
   // Force logging initialization check
   {
@@ -174,19 +169,7 @@ AddressSpaceMonitor::AddressSpaceMonitor()
 }
 
 void AddressSpaceMonitor::SetWeatherRouting(WeatherRouting* wr) {
-  wxLogMessage(
-      "ASM::SetWeatherRouting this=%p, &m_mutex=%p, instance=%d, magic=%08x",
-      static_cast<void*>(this), static_cast<void*>(&m_mutex), m_instanceId,
-      m_magic);
-  if (!m_isValidState.load() || m_isShuttingDown) {
-    wxLogWarning(
-        "AddressSpaceMonitor::Set... called in invalid/shutdown state");
-    return;
-  }
-   //std::lock_guard<std::mutex> lock(m_mutex);
-   wxMutexLocker lock(m_mutex);
-
-
+   std::lock_guard<std::mutex> lock(m_mutex);
    m_weatherRouting = wr;
 }
 
@@ -224,27 +207,21 @@ void AddressSpaceMonitor::DismissAlert() {
   }
 }
 
-// Begin Auto-Stop process by Safely calling a method on m_weatherRouting
+// Start the Auto-Stop process
+// Safely calling a method on m_weatherRouting
 void AddressSpaceMonitor::SafeStopWeatherRouting() {
   if (!m_isValidState.load()) {
     wxLogWarning("SafeStopWeatherRouting() called on invalid object");
     return;
   }
   if (m_weatherRouting) {
-    wxLogMessage(
-        "AddressSpaceMonitor: Calling WeatherRouting::Reset() from "
-        "SafeStopWeatherRouting()");
     m_weatherRouting->Reset();
-  } else {
-    wxLogWarning(
-        "AddressSpaceMonitor: m_weatherRouting is nullptr in "
-        "SafeStopWeatherRouting()");
   }
 }
 
 // Shutdown the Alert Dialog and clean up resources
 void AddressSpaceMonitor::Shutdown() {
-  //std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::mutex> lock(m_mutex);
 
   // Prevent multiple shutdown calls
   if (m_isShuttingDown) {
@@ -279,20 +256,12 @@ void AddressSpaceMonitor::Shutdown() {
 
 void AddressSpaceMonitor::CloseAlert() {
 //  std::lock_guard<std::mutex> lock(m_mutex)
-//    std::unique_lock<std::mutex> lock(m_mutex, std::defer_lock);
-//    if (!lock.try_lock()) {
+    std::unique_lock<std::mutex> lock(m_mutex, std::defer_lock);
+    if (!lock.try_lock()) {
       // Already locked by this thread or another; handle gracefully
       // For example, log and return, or skip closing
-//      return;
-//    }
-wxMutexLocker lock(m_mutex);
-if (!lock.IsOk()) {
-  wxLogWarning(
-      "AddressSpaceMonitor: Mutex already locked, skipping this check");
-  return;
-}
-// ... critical section ...
-// Mutex is automatically unlocked when 'lock' goes out of scope
+      return;
+    }
   CloseAlertUnlocked();
 }
 
@@ -327,8 +296,6 @@ void AddressSpaceMonitor::CloseAlertUnlocked() {
 }
 
 void AddressSpaceMonitor::CheckAndAlert() {
-  if (!m_weatherRouting) return;        // This is the only real change I made.
-
   // Check if memory monitoring is degraded.    
   if (m_degraded) {
     return;
@@ -342,23 +309,12 @@ void AddressSpaceMonitor::CheckAndAlert() {
   }
 
   // RAII guard to always reset the flag, even on exceptions
-  // RAII guard for m_isExecuting  - Suggested to keep the flag reset even if
-  // exceptions occur. Keep if if you still need to reset the flag on scope exit.
   struct ExecutionGuard {
-     std::atomic<bool>& flag;
-     ExecutionGuard(std::atomic<bool>& f) : flag(f) {}
-     ~ExecutionGuard() { flag.store(false); }
+    std::atomic<bool>& flag;
+    ExecutionGuard(std::atomic<bool>& f) : flag(f) {}
+    ~ExecutionGuard() { flag.store(false); }
   } guard(m_isExecuting);
 
-  // RAII guard for mutex
-  wxMutexLocker lock(m_mutex);
-  if (!lock.IsOk()) {
-    wxLogWarning(
-        "AddressSpaceMonitor: Mutex already locked, skipping this check");
-    return;
-  }
-
-  // ... critical section code ...
   auto now = std::chrono::steady_clock::now();
   if (now - m_lastCheckTime < std::chrono::milliseconds(500)) return;
   m_lastCheckTime = now;
@@ -371,28 +327,12 @@ void AddressSpaceMonitor::CheckAndAlert() {
   }
 
   // Third line of defense: Use try_lock to avoid blocking
-  //std::unique_lock<std::mutex> lock(m_mutex, std::try_to_lock);
-  // if (!lock.owns_lock()) {
-//  if (m_mutex.TryLock() == wxMUTEX_NO_ERROR) {
-    // successfully acquired lock
-
-  // It just cycles with if degradeed. So I commented this out.
-  //    m_mutex.Unlock();
-//  } else {
-//    wxLogWarning(
-//        "AddressSpaceMonitor: Mutex already locked, skipping this check");
-//    return;
-//  }
-
-  // Or, if you want to use RAII and don't need try-lock:
-  // wxMutexLocker lock(m_mutex);
-  //if (!lock.IsOk()) {
-  //  wxLogWarning(
-  //      "AddressSpaceMonitor: Mutex already locked, skipping this check");
-  //  return;
-  //}
-  // ... critical section ...
-
+  std::unique_lock<std::mutex> lock(m_mutex, std::try_to_lock);
+  if (!lock.owns_lock()) {
+    wxLogWarning(
+        "AddressSpaceMonitor: Mutex already locked, skipping this check");
+    return;
+  }
 
   // Fourth line of defense: Verify state again after acquiring lock
   if (!m_isValidState.load() || m_isShuttingDown) {
@@ -435,18 +375,7 @@ void AddressSpaceMonitor::CheckAndAlert() {
   // Update the state for next scan
   m_wasOverThreshold = isOverThreshold;
 
-// --- Auto-stop logic ---
-  //  1. If autostopenabled, weatherrouting and autostoptrigged show the values.
-  //  2. If percent >= m_autoStopThreshold
-  //       a. issue a log message
-  //       b. Prepare memory data string
-  //       c. wxMutex  lock turned on.
-  //       d. Set autoStopTriggered flag inside mutex block
-  //       e. mutex is then released.
-  //  3. Close the alert dialog(asynchronously, using `wxTheApp->CallAfter`)
-  //  4. Show the AutoStop message box
-  //  5. Then call `SafeStopWeatherRouting()` (which calls `Reset()`)
-
+  // --- Auto-stop logic ---
   if (m_autoStopEnabled && m_weatherRouting && !m_autoStopTriggered) {
     wxLogMessage(
         "AutoStop: percent=%.1f, threshold=%.1f, enabled=%d, triggered=%d, "
@@ -459,56 +388,34 @@ void AddressSpaceMonitor::CheckAndAlert() {
           "AddressSpaceMonitor: Auto-stop threshold (%.1f%%) reached at %.1f%% "
           "usage",
           m_autoStopThreshold, percent);
+      SafeStopWeatherRouting();  // Now calls ResetAll() safely
+      m_autoStopTriggered = true;
 
-      wxString message = wxString::Format(
-          _("Memory usage reached %.0f%% (threshold: %.0f%%).\n\n"
-            "All route computations have been automatically stopped\n"
-            "to prevent memory exhaustion."),
-          percent, m_autoStopThreshold);
-
-      // Begin critical section for state update
-
-      {
-        wxMutexLocker lock(m_mutex);
-        if (!lock.IsOk()) {
-          wxLogWarning(
-              "AddressSpaceMonitor: Mutex already locked, skipping this check");
-          return;
-        }
-        // Set the triggered flag inside the mutex-protected block
-        m_autoStopTriggered = true;
-      }  // Mutex is released here
-
-      // Chain: close alert, show message, then reset (all on main thread)
-      // Close the alert dialog(asynchronously, using `wxTheApp->CallAfter`)
-      // Always close (destroy) the alert dialog if it exists, regardless of
-      // visibility (hidden or visible)
-      wxTheApp->CallAfter([this, message]() {
-        // 1. Close the alert dialog if it exists
-        if (activeAlertDialog) {
-          wxLogMessage(
-              "AddressSpaceMonitor: Closing alert dialog before AutoStop "
-              "message");
-          activeAlertDialog->ClearMonitor();
-          if (activeAlertDialog->IsShown()) activeAlertDialog->Hide();
-          activeAlertDialog->Destroy();
-          activeAlertDialog = nullptr;
-          m_alertShown = false;
-          m_alertDismissed = false;
-        }
-        // 2. Show the AutoStop message box
-        wxLogMessage("AddressSpaceMonitor: Showing AutoStop message box");
-        wxMessageBox(message, _("Weather Routing - Auto-Stop"),
-                     wxOK | wxICON_WARNING);
-        // 3. Call SafeStopWeatherRouting() after message is dismissed. Now
-        // safely call ResetAll in WeatherRouting
+      /// Always close (destroy) the alert dialog if it exists, regardless of
+      /// visibility
+      if (activeAlertDialog) {
+        CloseAlert();
         wxLogMessage(
-            "AddressSpaceMonitor: Calling SafeStopWeatherRouting() after "
-            "AutoStop message");
-        SafeStopWeatherRouting();
-      });
+            "AddressSpaceMonitor: Alert closed due to auto-stop trigger");
+      }
 
-      return;  // No further action in this call
+      // CRITICAL: Release the lock before showing modal dialog
+      // Modal dialogs pump messages which can trigger re-entrant calls
+      // Always show the AutoStop message if AutoStop is enabled
+      if (m_autoStopEnabled) {
+        lock.unlock();
+        wxString message = wxString::Format(
+            _("Memory usage reached %.0f%% (threshold: %.0f%%).\n\n"
+              "All route computations have been automatically stopped\n"
+              "to prevent memory exhaustion."),
+            percent, m_autoStopThreshold);
+        wxTheApp->CallAfter([message]() {
+          wxMessageBox(message, _("Weather Routing - Auto-Stop"),
+                       wxOK | wxICON_WARNING);
+        });
+        return;  // This should be the last statement in the block for this
+                 // condition
+      }
     }
   }
 

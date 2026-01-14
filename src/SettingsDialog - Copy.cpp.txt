@@ -458,16 +458,16 @@ AddressSpaceMonitor* SettingsDialog::GetMonitor() {
 
   weather_routing_pi* plugin = &weatherRouting->GetPlugin();
 
-//  if (!plugin) {
-//    wxLogWarning(
-//        "SettingsDialog::GetMonitor() - Could not get plugin reference from "
-//        "WeatherRouting");
-//    return nullptr;
-//  }
+  if (!plugin) {
+    wxLogWarning(
+        "SettingsDialog::GetMonitor() - Could not get plugin reference from "
+        "WeatherRouting");
+    return nullptr;
+  }
 
   wxLogMessage(
       "SettingsDialog::GetMonitor() - Successfully got monitor reference");
-  return plugin->GetAddressSpaceMonitor();
+  return &plugin->GetAddressSpaceMonitor();
 }
 
 
