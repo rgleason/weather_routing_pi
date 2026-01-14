@@ -3490,9 +3490,12 @@ void WeatherRouting::StopAll() {
   SetEnableConfigurationMenu();
   if (m_StartTime.IsValid())
     m_StatisticsDialog.SetRunTime(m_RunTime += wxDateTime::Now() - m_StartTime);
+
+  wxLogMessage("WeatherRouting::StopAll() - END");
 }
 
 void WeatherRouting::Reset() {
+  wxLogMessage("WeatherRouting::Reset() - BEGIN");
   // 1. Stop all running and waiting computations
    StopAll(); // This should block until all threads are stopped
   // if (m_bRunning) StopAll(); 
@@ -3511,6 +3514,7 @@ void WeatherRouting::Reset() {
   // 4. Update UI dialogs and refresh
   UpdateDialogs();
   GetParent()->Refresh();
+  wxLogMessage("WeatherRouting::Reset() - END");
 }
 
 
