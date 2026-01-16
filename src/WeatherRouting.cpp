@@ -3497,23 +3497,30 @@ void WeatherRouting::StopAll() {
 void WeatherRouting::Reset() {
   wxLogMessage("WeatherRouting::Reset() - BEGIN");
   // 1. Stop all running and waiting computations
-   StopAll(); // This should block until all threads are stopped
-  // if (m_bRunning) StopAll(); 
+  StopAll();  // This should block until all threads are stopped
+  // if (m_bRunning) StopAll();
+  wxLogMessage("WeatherRouting::Reset() First Step - StopAll() completed, all threads stopped.");
 
   // 2. Reset all overlays (clears computation state)
   for (int i = 0; i < m_panel->m_lWeatherRoutes->GetItemCount(); i++) {
-    WeatherRoute* weatherroute = reinterpret_cast<WeatherRoute*>(
-        wxUIntToPtr(m_panel->m_lWeatherRoutes->GetItemData(i)));
-    if (weatherroute && weatherroute->routemapoverlay)
-        weatherroute->routemapoverlay->Reset();
-    weatherroute->routemapoverlay->Reset();
-  }
+     WeatherRoute* weatherroute = reinterpret_cast<WeatherRoute*>(
+         wxUIntToPtr(m_panel->m_lWeatherRoutes->GetItemData(i)));
 
+     if (weatherroute && weatherroute->routemapoverlay) {
+         wxLogMessage("WeatherRouting::Reset() - Resetting overlay for route index %d", i);
+         weatherroute->routemapoverlay->Reset();
+     } else {
+        wxLogWarning("WeatherRouting::Reset() - Null WeatherRoute or RouteMapOverlay at index %d", i);
+     }
+  }
   // 3. Clear any selected/cursor positions
   m_positionOnRoute = nullptr;
+  wxLogMessage("WeatherRouting::Reset() - Cleared m_positionOnRoute.");
+
   // 4. Update UI dialogs and refresh
   UpdateDialogs();
   GetParent()->Refresh();
+  wxLogMessage("WeatherRouting::Reset() - UpdateDialogs() and UI refresh called.");
   wxLogMessage("WeatherRouting::Reset() - END");
 }
 

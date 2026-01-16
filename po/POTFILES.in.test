@@ -33,6 +33,7 @@ src/RoutePoint.cpp
 src/Position.cpp
 src/IsoRoute.cpp
 src/AddressSpaceMonitor.cpp
+src/AutoStopDialog.cpp
 include/weather_routing_pi.h
 include/WeatherRouting.h
 include/SunCalculator.h
@@ -68,3 +69,4 @@ include/RoutePoint.h
 include/Position.h
 include/IsoRoute.h
 include/AddressSpaceMonitor.h
+include/AutoStopDialog.h

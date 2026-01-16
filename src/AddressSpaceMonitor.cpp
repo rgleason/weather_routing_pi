@@ -1,6 +1,7 @@
 #ifdef __WXMSW__
 
 #include "AddressSpaceMonitor.h"
+#include "AutoStopDialog.h"
 #include <wx/sizer.h>
 #include <wx/button.h>
 #include <wx/log.h>
@@ -278,13 +279,6 @@ void AddressSpaceMonitor::Shutdown() {
 
 
 void AddressSpaceMonitor::CloseAlert() {
-//  std::lock_guard<std::mutex> lock(m_mutex)
-//    std::unique_lock<std::mutex> lock(m_mutex, std::defer_lock);
-//    if (!lock.try_lock()) {
-      // Already locked by this thread or another; handle gracefully
-      // For example, log and return, or skip closing
-//      return;
-//    }
 wxMutexLocker lock(m_mutex);
 if (!lock.IsOk()) {
   wxLogWarning(
@@ -327,8 +321,8 @@ void AddressSpaceMonitor::CloseAlertUnlocked() {
 }
 
 void AddressSpaceMonitor::CheckAndAlert() {
-  if (!m_weatherRouting) return;        // This is the only real change I made.
-
+  if (!m_weatherRouting) return;  
+  
   // Check if memory monitoring is degraded.    
   if (m_degraded) {
     return;
@@ -370,30 +364,6 @@ void AddressSpaceMonitor::CheckAndAlert() {
     return;
   }
 
-  // Third line of defense: Use try_lock to avoid blocking
-  //std::unique_lock<std::mutex> lock(m_mutex, std::try_to_lock);
-  // if (!lock.owns_lock()) {
-//  if (m_mutex.TryLock() == wxMUTEX_NO_ERROR) {
-    // successfully acquired lock
-
-  // It just cycles with if degradeed. So I commented this out.
-  //    m_mutex.Unlock();
-//  } else {
-//    wxLogWarning(
-//        "AddressSpaceMonitor: Mutex already locked, skipping this check");
-//    return;
-//  }
-
-  // Or, if you want to use RAII and don't need try-lock:
-  // wxMutexLocker lock(m_mutex);
-  //if (!lock.IsOk()) {
-  //  wxLogWarning(
-  //      "AddressSpaceMonitor: Mutex already locked, skipping this check");
-  //  return;
-  //}
-  // ... critical section ...
-
-
   // Fourth line of defense: Verify state again after acquiring lock
   if (!m_isValidState.load() || m_isShuttingDown) {
     wxLogWarning(
@@ -432,10 +402,10 @@ void AddressSpaceMonitor::CheckAndAlert() {
         "AddressSpaceMonitor: Alert closed (debounced threshold crossing)");
   }
 
-  // Update the state for next scan
+  // Update the Alert State for next scan
   m_wasOverThreshold = isOverThreshold;
 
-// --- Auto-stop logic ---
+// =========== AUTOSTOP logic==============
   //  1. If autostopenabled, weatherrouting and autostoptrigged show the values.
   //  2. If percent >= m_autoStopThreshold
   //       a. issue a log message
@@ -461,31 +431,31 @@ void AddressSpaceMonitor::CheckAndAlert() {
           m_autoStopThreshold, percent);
 
       wxString message = wxString::Format(
-          _("Memory usage reached %.0f%% (threshold: %.0f%%).\n\n"
-            "All route computations have been automatically stopped\n"
-            "to prevent memory exhaustion."),
+          _("Memory use reached: %.0f%%  Threshold: %.0f%%\n\n"
+            "Running route computations have been automatically\n\n"
+            "stopped to prevent memory exhaustion."),
           percent, m_autoStopThreshold);
 
-       // Where we set the triggered flag inside the mutex-protected block
-       // Mutex lock scope
-        // wxMutexLocker lock(m_mutex);
+      // Where we set the triggered flag inside the mutex-protected block
+      // Mutex lock scope
+      // wxMutexLocker lock(m_mutex);
 
-      
       // Set the triggered flag inside the mutex-protected block
-        m_autoStopTriggered = true;
-       // Mutex is released here
+      m_autoStopTriggered = true;
+      // Mutex is released here
 
       // Chain: close alert, show message, then reset (all on main thread)
       // Close the alert dialog(asynchronously, using `wxTheApp->CallAfter`)
       // Always close (destroy) the alert dialog if it exists, regardless of
       // visibility (hidden or visible)
 
-      wxTheApp->CallAfter([this, message]() {
+      wxTheApp->CallAfter([this, message, percent]() {
         // 1. Close the alert dialog if it exists
         if (activeAlertDialog) {
           wxLogMessage(
-              "AddressSpaceMonitor: Closing alert dialog before AutoStop "
-              "message");
+              "AddressSpaceMonitor: Opening AutoStop message box "
+              "(percent=%.1f, threshold=%.1f)",
+              percent, m_autoStopThreshold);
           activeAlertDialog->ClearMonitor();
           if (activeAlertDialog->IsShown()) activeAlertDialog->Hide();
           activeAlertDialog->Destroy();
@@ -493,78 +463,88 @@ void AddressSpaceMonitor::CheckAndAlert() {
           m_alertShown = false;
           m_alertDismissed = false;
         }
-        // 2. Show the AutoStop message box
-        wxLogMessage("AddressSpaceMonitor: Showing AutoStop message box");
-        wxMessageBox(message, _("Weather Routing - Auto-Stop"),
-                     wxOK | wxICON_WARNING);
-        // 3. Call SafeStopWeatherRouting() after message is dismissed. Now
-        // safely call ResetAll in WeatherRouting
+        // 2. Show the AutoStop message box  (non-blocking)
+        wxLogMessage(
+            "AddressSpaceMonitor: Showing AutoStop dialog (non-blocking)");
+        AutoStopDialog* dlg = new AutoStopDialog(nullptr, message, 120);
+        dlg->Show();   // Non-modal, does not block
+             dlg->Raise();
+             dlg->SetFocus();
+             // 3. Immediately execute SafeStopWeatherRouting() Stop & Reset WR
         wxLogMessage(
             "AddressSpaceMonitor: Calling SafeStopWeatherRouting() after "
-            "AutoStop message");
+            "AutoStop dialog shown");
         SafeStopWeatherRouting();
-      });
+        // Optionally, connect to dialog destruction for logging:
+        dlg->Bind(wxEVT_CLOSE_WINDOW, [dlg](wxCloseEvent&) {
+          int result = dlg->GetResult();
+          wxLogMessage(
+              "AddressSpaceMonitor: AutoStop dialog closed by %s (result=%d)",
+              (result == 1 ? "user" : "timer"), result);
+          dlg->Destroy();
+        });  //<-- Bind close and destroy
+      });    // <-- This closes the lambda and CallAfter
+    }  // <-- this closes the function
 
-      return;  // No further action in this call
-    }
-  }
-
-  if (m_autoStopTriggered && percent < m_autoStopThreshold - 5.0) {
-    m_autoStopTriggered = false;
-    wxLogMessage(
-        "AddressSpaceMonitor: Usage dropped below %.1f%%, auto-stop reset",
-        m_autoStopThreshold - 5.0);
-    wxLogMessage(
-        "AutoStop: percent=%.1f, threshold=%.1f, enabled=%d, triggered=%d, "
-        "weatherRouting=%p",
-        percent, m_autoStopThreshold, m_autoStopEnabled, m_autoStopTriggered,
-        m_weatherRouting);
-  }
-
-  // Only update if percent changed by >AlertUpdateThreshold%
-  if (fabs(percent - m_alertLastPercent) > m_alertUpdateThreshold) {
-    m_alertLastPercent = percent;
+    if (m_autoStopTriggered && percent < m_autoStopThreshold - 5.0) {
+      m_autoStopTriggered = false;
+      wxLogMessage(
+          "AddressSpaceMonitor: Usage dropped below %.1f%%, auto-stop "
+          "reset",
+          m_autoStopThreshold - 5.0);
+      wxLogMessage(
+          "AutoStop: percent=%.1f, threshold=%.1f, enabled=%d, "
+          "triggered=%d, "
+          "weatherRouting=%p",
+          percent, m_autoStopThreshold, m_autoStopEnabled, m_autoStopTriggered,
+          m_weatherRouting);
+    }  //....reset Alert logic
 
     double usedGB = used / (1024.0 * 1024.0 * 1024.0);
     double totalGB = total / (1024.0 * 1024.0 * 1024.0);
 
-    // Update text label if connected
-    if (m_textLabel) {
-      wxTheApp->CallAfter([this, percent, usedGB, totalGB]() {
-        wxString stats = wxString::Format("%.1f%% (%.2f GB / %.1f GB)", percent,
-                                          usedGB, totalGB);
-        m_textLabel->SetLabel(stats);
-        wxColour textColor;
-        if (percent >= m_alertThreshold) {
-          textColor = *wxRED;
-        } else if (percent >= 70.0) {
-          textColor = wxColour(255, 140, 0);
-        } else {
-          textColor = wxColour(0, 128, 0);
-        }
-        m_textLabel->SetForegroundColour(textColor);
-        m_textLabel->Refresh();
-      });
-    }
+    // Only update if percent changed by >AlertUpdateThreshold%
+    if (fabs(percent - m_alertLastPercent) > m_alertUpdateThreshold) {
+      m_alertLastPercent = percent;
 
-    if (m_logToFile) {
-      wxLogMessage("AddressSpaceMonitor: %.2f GB / %.1f GB (%.1f%%)", usedGB,
-                   totalGB, percent);
-    }
+      // Update text label if connected
+      if (m_textLabel) {
+        wxTheApp->CallAfter([this, percent, usedGB, totalGB]() {
+          wxString stats = wxString::Format("%.1f%% (%.2f GB / %.1f GB)",
+                                            percent, usedGB, totalGB);
+          m_textLabel->SetLabel(stats);
+          wxColour textColor;
+          if (percent >= m_alertThreshold) {
+            textColor = *wxRED;
+          } else if (percent >= 70.0) {
+            textColor = wxColour(255, 140, 0);
+          } else {
+            textColor = wxColour(0, 128, 0);
+          }
+          m_textLabel->SetForegroundColour(textColor);
+          m_textLabel->Refresh();
+        });  // ...update logic
+      }  // closes if  m_autoStopEnabled && m_weatherRouting &&  !m_autoStopTriggered
+  
+      if (m_logToFile) {
+        wxLogMessage("AddressSpaceMonitor: %.2f GB / %.1f GB (%.1f%%)", usedGB,
+                     totalGB, percent);
+      }
 
-    UpdateAlertIfShown(usedGB, totalGB, percent);
+      UpdateAlertIfShown(usedGB, totalGB, percent);
 
-    if (m_usageGauge) {
-      wxTheApp->CallAfter([this, percent]() {
-        try {
-          m_usageGauge->SetValue(static_cast<int>(percent));
-        } catch (...) {
-          wxLogWarning(
-              "AddressSpaceMonitor: Exception accessing gauge, clearing "
-              "reference");
-          m_usageGauge = nullptr;
-        }
-      });
+      if (m_usageGauge) {
+        wxTheApp->CallAfter([this, percent]() {
+          try {
+            m_usageGauge->SetValue(static_cast<int>(percent));
+          } catch (...) {
+            wxLogWarning(
+                "AddressSpaceMonitor: Exception accessing gauge, clearing "
+                "reference");
+            m_usageGauge = nullptr;
+          }
+        });
+      }
     }
   }
 }
@@ -825,12 +805,28 @@ void AddressSpaceMonitor::SetAutoStopThreshold(double percent) {
     }
     wxString message = wxString::Format(
         _("Memory usage reached %.0f%% (threshold: %.0f%%).\n\n"
-          "All route computations have been automatically stopped\n"
-          "to prevent memory exhaustion."),
+          "All route computations stopped\n\n"
+          "to prevent memory corruption."),
         GetUsagePercent(), m_autoStopThreshold);
-    wxTheApp->CallAfter([message]() {
-      wxMessageBox(message, _("Weather Routing - Auto-Stop"),
-                   wxOK | wxICON_WARNING);
+    wxTheApp->CallAfter([this, percent, message]() {
+      wxLogMessage(
+          "AddressSpaceMonitor: Opening AutoStop message box (percent=%.1f, "
+          "threshold=%.1f)",
+          percent, m_autoStopThreshold);
+      AutoStopDialog* dlg = new AutoStopDialog(nullptr, message, 60);
+      dlg->Show();
+      dlg->Bind(wxEVT_CLOSE_WINDOW, [dlg](wxCloseEvent&) {
+        int result = dlg->GetResult();
+        wxLogMessage(
+            "AddressSpaceMonitor: AutoStop dialog closed by %s (result=%d)",
+            (result == 1 ? "user" : "timer"), result);
+        dlg->Destroy();
+        // You can log here if you want to know when the dialog is dismissed
+        wxLogMessage(
+            "AddressSpaceMonitor: AutoStop message box dismissed by user "
+            "(result=%d)",
+            result);
+      });
     });
   }
 }

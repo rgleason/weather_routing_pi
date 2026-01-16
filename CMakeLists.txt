@@ -81,8 +81,8 @@ set(VERSION_MAJOR "1")
 set(VERSION_MINOR "15")
 
 set(VERSION_PATCH "44")
-set(VERSION_TWEAK "12")
-set(VERSION_DATE "12/01/2025") # DD/MM/YYYY format
+set(VERSION_TWEAK "14")
+set(VERSION_DATE "16/01/2025") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov58")
 
 set(OCPN_API_VERSION_MAJOR "1")
@@ -215,7 +215,8 @@ SET(SRCS
             src/RoutePoint.cpp
             src/Position.cpp
             src/IsoRoute.cpp
-			src/AddressSpaceMonitor.cpp  
+			src/AddressSpaceMonitor.cpp
+            src/AutoStopDialog.cpp			
 )
 
 SET (HDRS
@@ -254,6 +255,7 @@ SET (HDRS
             include/Position.h
             include/IsoRoute.h
 			include/AddressSpaceMonitor.h
+			include/AutoStopDialog.h
 )
 
 add_definitions(-DPLUGIN_USE_SVG)
