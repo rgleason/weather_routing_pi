@@ -1529,6 +1529,15 @@ void WeatherRouting::UpdateComputeState() {
 }
 
 void WeatherRouting::OnCompute(wxCommandEvent& event) {
+#ifdef __WXMSW__
+  if (m_addressSpaceMonitor && m_addressSpaceMonitor->IsComputationDisabled()) {
+    wxMessageBox(
+        _("Route computation is currently disabled due to high memory usage.\n"
+          "Use Reset All or wait until memory is available."),
+        _("Weather Routing - Memory Alert"), wxOK | wxICON_WARNING);
+    return;
+  }
+#endif
   std::list<RouteMapOverlay*> currentroutemaps = CurrentRouteMaps();
   for (auto it = currentroutemaps.begin(); it != currentroutemaps.end(); it++) {
     Start(*it);
@@ -1537,6 +1546,15 @@ void WeatherRouting::OnCompute(wxCommandEvent& event) {
 }
 
 void WeatherRouting::OnComputeAll(wxCommandEvent& event) {
+#ifdef __WXMSW__
+  if (m_addressSpaceMonitor && m_addressSpaceMonitor->IsComputationDisabled()) {
+    wxMessageBox(
+        _("Route computation is currently disabled due to high memory usage.\n"
+          "Use Reset All or wait until memory is available."),
+        _("Weather Routing - Memory Alert"), wxOK | wxICON_WARNING);
+    return;
+  }
+#endif
   StartAll();
   UpdateComputeState();
 }

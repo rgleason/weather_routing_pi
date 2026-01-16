@@ -18,6 +18,7 @@ static int s_instanceCount = 0;
 static int s_instanceId = 0;
 static bool s_loggingInitialized = false;  // ADD THIS
 
+
 // MemoryAlertDialog implementation
 MemoryAlertDialog::MemoryAlertDialog(wxWindow* parent,
                                      AddressSpaceMonitor* monitor)
@@ -320,6 +321,7 @@ void AddressSpaceMonitor::CloseAlertUnlocked() {
   });
 }
 
+// ================ CORE MONITORING LOGIC ==================    
 void AddressSpaceMonitor::CheckAndAlert() {
   if (!m_weatherRouting) return;  
   
@@ -405,7 +407,7 @@ void AddressSpaceMonitor::CheckAndAlert() {
   // Update the Alert State for next scan
   m_wasOverThreshold = isOverThreshold;
 
-// =========== AUTOSTOP logic==============
+ // =========== AUTOSTOP LOGIC   ==============
   //  1. If autostopenabled, weatherrouting and autostoptrigged show the values.
   //  2. If percent >= m_autoStopThreshold
   //       a. issue a log message
@@ -546,6 +548,32 @@ void AddressSpaceMonitor::CheckAndAlert() {
         });
       }
     }
+  }
+ // =============== END AUTOSTOP LOGIC ==================
+ // ======= PROTECT MEMORY and ADDRESS SPACE ============
+ // When memory use is high. disable Route Computation, show dialog, and ResetAll button
+  // AddressSpaceMonitor.cpp (inside CheckAndAlert, after AutoStop logic)
+  if (m_autoStopTriggered && percent >= m_autoStopThreshold) {
+    if (!m_computationDisabled) {
+      m_computationDisabled = true;
+      wxString msg = wxString::Format(_("Route computation disabled \n\n"
+                                        "until memory is available.\n\n"
+                                        "use ResetAll. Memory use: %.1f%%"),
+                                      percent);
+      wxTheApp->CallAfter([msg]() {
+        wxMessageBox(msg, _("WR - Memory Alert"),
+                     wxOK | wxICON_WARNING);
+      });
+    }
+  }
+  if (m_computationDisabled && percent < m_autoStopThreshold - 5.0) {
+    m_computationDisabled = false;
+    wxTheApp->CallAfter([]() {
+      wxMessageBox(_("Route computation re-enabled. Memory usw:\n\n"
+                     "now below the critical threshold."),
+                   _("WR - Memory Alert"),
+                   wxOK | wxICON_INFORMATION);
+    });
   }
 }
 
@@ -804,8 +832,9 @@ void AddressSpaceMonitor::SetAutoStopThreshold(double percent) {
           "(threshold changed)");
     }
     wxString message = wxString::Format(
-        _("Memory usage reached %.0f%% (threshold: %.0f%%).\n\n"
-          "All route computations stopped\n\n"
+        _("Memory use reached; %.0f%% \n\n"
+          "AutoStop Threshold: %.0f%% \n\n"
+          "Route Computations stopped \n\n"
           "to prevent memory corruption."),
         GetUsagePercent(), m_autoStopThreshold);
     wxTheApp->CallAfter([this, percent, message]() {
@@ -838,6 +867,20 @@ void AddressSpaceMonitor::SetAutoStopEnabled(bool enabled) {
 void AddressSpaceMonitor::SetMemoryCheckInterval(int ms) {
   // Store and use this value in your timer logic
   m_memoryCheckIntervalMs = ms;
+}
+
+void AddressSpaceMonitor::ResetMemoryAlertSystem() {
+  wxLogMessage(
+      "AddressSpaceMonitor: ResetMemoryAlertSystem() called by user action");
+  m_autoStopTriggered = false;
+  m_computationDisabled = false;
+  m_alertDismissed = false;
+  m_alertHiddenByUser = false;
+  m_wasOverThreshold = false;
+  m_alertLastPercent = -1.0;
+  if (activeAlertDialog && activeAlertDialog->IsShown()) {
+    activeAlertDialog->Hide();
+  }
 }
 
 void AddressSpaceMonitor::SaveSettings() {

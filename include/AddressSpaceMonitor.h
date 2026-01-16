@@ -69,13 +69,16 @@ public:
   AddressSpaceMonitor();
   ~AddressSpaceMonitor();
 
-  // Delete copy constructor and assignment operator to prevent copying
+  // Delete copy/move constructors and assignment operators
   AddressSpaceMonitor(const AddressSpaceMonitor&) = delete;
   AddressSpaceMonitor& operator=(const AddressSpaceMonitor&) = delete;
-
-  // Delete move constructor and assignment operator
   AddressSpaceMonitor(AddressSpaceMonitor&&) = delete;
   AddressSpaceMonitor& operator=(AddressSpaceMonitor&&) = delete;
+
+  /// Computation disabled flag
+  bool IsComputationDisabled() const { return m_computationDisabled; }
+  void SetComputationDisabled(bool disabled) { m_computationDisabled = disabled; }
+  void ResetMemoryAlertSystem();
 
   void SetWeatherRouting(WeatherRouting* wr);  ///< Setter Pointer to WeatherRouting plugin for AutoStop
   void DismissAlert();                         ///< Suppress until memory drops 5% below threshold
@@ -106,9 +109,10 @@ public:
   bool m_IsValidState() const {return m_isValidState.load(); }  ///< Valid state check, false after Shutdown()
   bool IsAlertDismissed() const { return m_alertDismissed; }
 
-
 private:
   uint32_t m_magic = 0;
+  bool m_computationDisabled = false;
+;
   // Concurrency and state
   std::atomic<bool> m_isExecuting{false};  ///< For re-entrancy protection
   

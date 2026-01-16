@@ -729,6 +729,11 @@ private:
   RoutePoint m_savedPosition;
 
   RoutingTablePanel* m_RoutingTablePanel;
+
+#ifdef __WXMSW__
+  AddressSpaceMonitor* m_addressSpaceMonitor = nullptr;
+#endif  // __WXMSW__
+
 };
 
 #endif
