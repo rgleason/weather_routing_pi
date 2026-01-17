@@ -47,6 +47,7 @@ public:
   void UpdateMemoryInfo(double usedGB, double totalGB, double percent);
   void ClearMonitor();
 
+
 private:
   AddressSpaceMonitor*   m_monitor= nullptr;  ///< Pointer to managing monitor (cleared on shutdown)
   wxStaticText* m_messageText = nullptr;  ///< Label displaying warning message
@@ -75,7 +76,12 @@ public:
   AddressSpaceMonitor(AddressSpaceMonitor&&) = delete;
   AddressSpaceMonitor& operator=(AddressSpaceMonitor&&) = delete;
 
-  /// Computation disabled flag
+  /// Disable/Enable new route computations  (called from WR RouteMapOverlay)
+  void DisableNewComputations();
+  void EnableNewComputations();
+
+
+  /// Computation disabled flag  Maybe unused  (3)
   bool IsComputationDisabled() const { return m_computationDisabled; }
   void SetComputationDisabled(bool disabled) { m_computationDisabled = disabled; }
   void ResetMemoryAlertSystem();
@@ -127,6 +133,7 @@ private:
   wxGauge* m_usageGauge = nullptr;               ///< Gauge in SettingsDialog
   wxStaticText* m_textLabel = nullptr;
   MemoryAlertDialog* activeAlertDialog = nullptr;  ///< Active dialog or nullptr
+  AutoStopDialog* m_autoStopDialog = nullptr;
 
   // Timing and thresholds
   std::chrono::steady_clock::time_point m_lastCheckTime{};  ///< For minimum interval
@@ -147,8 +154,11 @@ private:
   // Logging and alerting
   bool m_logToFile = false;    ///< Log usage on every check
    int m_instanceId = 0;        ///< Unique ID for debugging
+  bool m_blockAlertDialogAfterAutoStop = false; ///< Suppress alert dialog after auto-stop
 
-// Persistence of Settings
+  bool m_memoryAvailableNoticeShown = false;
+
+  // Persistence of Settings
   void CloseAlertUnlocked();  ///< Helper, assumes mutex is already locked
   void SaveSettings();
   void LoadSettings();

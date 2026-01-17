@@ -24,6 +24,10 @@
 #include <wx/fileconf.h>
 #include <wx/collpane.h>
 
+#ifdef __WXMSW__
+    #include <atomic>
+#endif  
+
 #ifdef __OCPN__ANDROID__
 #include <wx/qt/private/wxQtGesture.h>
 #endif
@@ -731,9 +735,17 @@ private:
   RoutingTablePanel* m_RoutingTablePanel;
 
 #ifdef __WXMSW__
-  AddressSpaceMonitor* m_addressSpaceMonitor = nullptr;
-#endif  // __WXMSW__
 
+  AddressSpaceMonitor* m_addressSpaceMonitor = nullptr;
+
+private:
+    std::atomic<bool> m_disableNewComputations{false};
+
+public:
+    void DisableNewComputations() { m_disableNewComputations.store(true); }
+    void EnableNewComputations()  { m_disableNewComputations.store(false); }
+    bool AreNewComputationsDisabled() const { return m_disableNewComputations.load(); }
 };
+#endif  // __WXMSW__
 
 #endif

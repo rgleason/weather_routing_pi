@@ -161,27 +161,20 @@ weather_routing_pi::~weather_routing_pi() {
  #ifdef __WXMSW__
   // ========== Windows-Only: Address Space Monitor Cleanup ==========
 
-  // CRITICAL STEP 1: Stop the timer FIRST
-  // Stop and Unbind Timers Before Shutdown
+  // CRITICAL STEP 1: FIRST Stop and Unbind Timers Before Shutdown
   if (m_addressSpaceTimer.IsRunning()) {
     m_addressSpaceTimer.Stop();
-    wxLogMessage("weather_routing_pi: Stopped address space timer");
-  }
-  
-  // CRITICAL STEP 2: Unbind the event handler to prevent queued events
-  m_addressSpaceTimer.Unbind(wxEVT_TIMER, &weather_routing_pi::OnAddressSpaceTimer, this);
+    wxLogMessage("weather_routing_pi: Stopped address space timer");  }
+    // CRITICAL STEP 2: Unbind the event handler to prevent queued events
+    m_addressSpaceTimer.Unbind(wxEVT_TIMER, &weather_routing_pi::OnAddressSpaceTimer, this);
   
 
-  // CRITICAL STEP 3: Shutdown the monitor (marks invalid, clears gauge, closes
-  // alert)
-//    m_addressSpaceMonitor->Shutdown();
-  wxLogMessage("Before: m_addressSpaceMonitor=%p",
-               static_cast<void*>(m_addressSpaceMonitor.get()));
-  if (m_addressSpaceMonitor) {
-    m_addressSpaceMonitor->Shutdown();
+  // CRITICAL STEP 3: Shutdown the monitor (marks invalid, clears gauge, closes alert)
+    wxLogMessage("Before: m_addressSpaceMonitor=%p", static_cast<void*>(m_addressSpaceMonitor.get()));
+    if (m_addressSpaceMonitor) {m_addressSpaceMonitor->Shutdown();
     // No need to delete or set to nullptr; unique_ptr handles it.
     wxLogMessage("After: m_addressSpaceMonitor shutdown (unique_ptr will clean up)");
-  } else {
+    } else {
     wxLogWarning("m_addressSpaceMonitor is nullptr in destructor");
   }
 
@@ -194,8 +187,22 @@ weather_routing_pi::~weather_routing_pi() {
       wxMilliSleep(10); // Small delay to let events settle
     }
   }
-  wxLogMessage("weather_routing_pi: Address space monitoring cleanup complete");
+    wxLogMessage("weather_routing_pi: Address space monitoring cleanup complete");
+
 #endif
+
+    // 2. Close and destroy all dialogs/windows
+    if (m_pWeather_Routing) {
+      m_pWeather_Routing->Close();
+      delete m_pWeather_Routing;
+      m_pWeather_Routing = nullptr;
+    }
+
+    // 3. Flush the event queue
+    if (wxTheApp) {
+      wxTheApp->ProcessPendingEvents();
+      wxYield();
+    }
 
   delete _img_WeatherRouting;
 

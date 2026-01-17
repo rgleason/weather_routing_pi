@@ -3344,6 +3344,14 @@ void WeatherRouting::ExportRoute(RouteMapOverlay& routemapoverlay) {
 }
 
 void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
+
+  // For AddressSpaceMonitor to decide if we can start new computations  
+  if (AreNewComputationsDisabled()) {
+      wxLogMessage(
+          "WeatherRouting: New route computations are currently disabled due "
+          "to memory usage.");
+      return;
+    }
   if (!routemapoverlay) return;
 
   RouteMapConfiguration configuration = routemapoverlay->GetConfiguration();

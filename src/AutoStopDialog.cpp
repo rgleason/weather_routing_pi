@@ -21,8 +21,8 @@ AutoStopDialog::AutoStopDialog(wxWindow* parent, const wxString& message, int ti
     m_messageText = new wxStaticText(this, wxID_ANY, message, wxDefaultPosition, wxSize(400, -1));
     sizer->Add(m_messageText, 0, wxALL | wxEXPAND, 10);
 
-//    m_okButton = new wxButton(this, wxID_OK, wxString::Format(_("OK (%d)"), m_secondsLeft));
-//    sizer->Add(m_okButton, 0, wxALL | wxALIGN_CENTER, 10);
+    m_okButton = new wxButton(this, wxID_OK, wxString::Format(_("OK (%d)"), m_secondsLeft));
+    sizer->Add(m_okButton, 0, wxALL | wxALIGN_CENTER, 10);
 
     // Add the Reset Memory Alerts button
     wxButton* btnResetMemoryAlerts = new wxButton(this, wxID_ANY, _("Reset Routes"));
