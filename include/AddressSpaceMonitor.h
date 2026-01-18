@@ -36,7 +36,7 @@
 // Forward declaration
 class AddressSpaceMonitor;
 class WeatherRouting;
-class AutoStopDialog;
+class AutoStopDialog;  /// Forward declaration  try to remove if possible   
 
 /**
  * @brief ALERT Popup dialog warning user about high address space usage.
@@ -134,7 +134,7 @@ private:
   wxGauge* m_usageGauge = nullptr;               ///< Gauge in SettingsDialog
   wxStaticText* m_textLabel = nullptr;
   MemoryAlertDialog* activeAlertDialog = nullptr;  ///< Active dialog or nullptr
-  AutoStopDialog* m_autoStopDialog = nullptr;  ///  This is the Auto Stop Dialog, 
+  AutoStopDialog* m_autoStopDialog = nullptr;  /// TRY TO REMOVE This is the Auto Stop Dialog, 
 
   // Timing and thresholds
   std::chrono::steady_clock::time_point m_lastCheckTime{};  ///< For minimum interval

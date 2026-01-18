@@ -18,6 +18,8 @@ static int s_instanceCount = 0;
 static int s_instanceId = 0;
 static bool s_loggingInitialized = false;  // ADD THIS
 
+class AutoStopDialog;  /// Forward declaration  try to remove if possible   
+
 
 // MemoryAlertDialog implementation
 MemoryAlertDialog::MemoryAlertDialog(wxWindow* parent,
