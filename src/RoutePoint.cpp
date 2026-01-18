@@ -265,7 +265,7 @@ bool BoatData::GetBoatSpeedForPolar(RouteMapConfiguration& configuration,
                                                 180.0 * M_PI / 25.0);
 
 
-    if (newperformance < 1.0) {
+    if (newperformance < 1.0 && timeseconds > 0.0) {
         // Performance recovery, probably happens in every server jump even when
         // there is a loss. Calculation assumes that loss is calculated right at the
         // beginning of the jump, but it may be at any time during the jump
@@ -403,6 +403,15 @@ bool BoatData::GetBestPolarAndBoatSpeed(
       this->jibed = true;
     }
   }
+
+  /* Don't allow zero or negative timeseconds
+   * This would result in
+   * - Zero or negative this->sog
+   * - Zero or negative time returned by PropagateToPoint()
+   * - Perhaps mess up Position::rk_step()
+   */
+  static constexpr double min_timeseconds = 0.1;
+  timeseconds = std::max(timeseconds, min_timeseconds);
 
   // In light winds, we don't want to check the polar bounds, because
   // we already know the wind is too light for the polar.
