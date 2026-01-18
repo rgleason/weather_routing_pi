@@ -394,6 +394,7 @@ public:
    * @param dlon Target longitude in decimal degrees
    * @param configuration Route configuration with constraints and boat
    * parameters
+   * @param parent_heading Heading from previous leg, for performance loss calculation
    * @param heading [out] Heading required to reach target (degrees), accounting
    * for current
    * @param data_mask [out] Bit flags indicating data sources used
@@ -403,7 +404,7 @@ public:
    * @return Time in seconds to reach target, or NAN if unreachable.
    */
   double PropagateToPoint(double dlat, double dlon, RouteMapConfiguration& cf,
-                          double& heading, DataMask& data_mask,
+                          const double parent_heading, double& heading, DataMask& data_mask,
                           bool end = true);
 
   /**

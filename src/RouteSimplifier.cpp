@@ -528,7 +528,7 @@ bool RouteSimplifier::ValidateSegment(Position* start, Position* end,
   DataMask data_mask = DataMask::NONE;
   // Create non-const copy of configuration to pass to PropagateToPoint
   RouteMapConfiguration config = m_configuration;
-  double time = start->PropagateToPoint(end->lat, end->lon, config, heading,
+  double time = start->PropagateToPoint(end->lat, end->lon, config, NAN, heading,
                                         data_mask, false);
 
   if (!std::isnan(time) && !std::isinf(time) && time >= 0) {
@@ -1304,7 +1304,7 @@ bool RouteSimplifier::FindAlternatePathThroughIsochrones(
         DataMask data_mask = DataMask::NONE;
         double time = pos->PropagateToPoint(
             originalDestination->lat, originalDestination->lon, tempConfig,
-            heading, data_mask, true);
+            NAN, heading, data_mask, true);
 
         // Skip if we can't reach the destination
         if (std::isnan(time) || std::isinf(time)) {

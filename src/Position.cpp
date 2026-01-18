@@ -214,7 +214,7 @@ bool Position::rk_step(double timeseconds, double cog, double dist, double twa,
  * seconds it takes */
 double Position::PropagateToEnd(RouteMapConfiguration& cf, double& H,
                                 DataMask& data_mask) {
-  return PropagateToPoint(cf.EndLat, cf.EndLon, cf, H, data_mask, true);
+  return PropagateToPoint(cf.EndLat, cf.EndLon, cf, parent_heading, H, data_mask, true);
 }
 
 bool Position::Propagate(IsoRouteList& routelist,
@@ -282,7 +282,7 @@ bool Position::Propagate(IsoRouteList& routelist,
       BoatData boat_data;
       int newpolar = -1;
       // Note: newperformance is applied to the boat_data.stw, boat_data.cog and
-      // boat_data.dist Penalties for sail plan change, tacking and jibing are
+      // boat_data.dist. Penalties for sail plan change, tacking and jibing are
       // subtracted from timeseconds, which is used to calculated boat_data.dist
       double newperformance = performance;
       if (!boat_data.GetBestPolarAndBoatSpeed(
