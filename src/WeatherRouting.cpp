@@ -3520,6 +3520,7 @@ void WeatherRouting::StopAll() {
   wxLogMessage("WeatherRouting::StopAll() - END");
 }
 
+//Clears the isochrones, plot data, and internal state — but it does not update the UI.
 void WeatherRouting::Reset() {
   wxLogMessage("WeatherRouting::Reset() - BEGIN");
   // 1. Stop all running and waiting computations
@@ -3551,6 +3552,10 @@ void WeatherRouting::Reset() {
 }
 
 
+// Reset() Clears the RouteMapOverlay state
+// UpdateStates() walks all WeatherRoute objects, calls WeatherRoute::Update(stateonly=true), updates the list control row
+// RebuidList()  rebuilds the entire wxListCtrl that displays all routes. Heavier than UpdateStates() repopulates the whole table,refreshes the UI 
+
 // void WeatherRouting::ResetSelected() {
 //  std::list<RouteMapOverlay*> selected = CurrentRouteMaps();
 //  for (auto* routemapoverlay : selected) {
@@ -3561,6 +3566,9 @@ void WeatherRouting::Reset() {
 //  GetParent()->Refresh();
 //  UpdateDialogs();
 //}
+
+
+
 
 void WeatherRouting::DeleteRouteMaps(
     std::list<RouteMapOverlay*> routemapoverlays) {

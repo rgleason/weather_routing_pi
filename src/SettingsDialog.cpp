@@ -291,7 +291,7 @@ SettingsDialog::~SettingsDialog() {
 
   // Clear the gauge and text label references in the monitor
   AddressSpaceMonitor* monitor = GetMonitor();
-  if (monitor && monitor->m_IsValidState()) {
+ if (monitor && monitor->IsValidState()) {
     monitor->SetUsageGauge(nullptr);
     monitor->SetTextLabel(nullptr);
     wxLogMessage("SettingsDialog: Destructor - Cleared monitor UI references");
@@ -502,7 +502,7 @@ void SettingsDialog::LoadMemorySettings() {
 
   // Apply to the monitor
   AddressSpaceMonitor* monitor = GetMonitor();
-  if (monitor && monitor->m_IsValidState()) {
+  if (monitor && monitor->IsValidState()) {
     monitor->SetAlertEnabled(enableAlert);
     monitor->SetAutoStopEnabled(enableAutoStop);
     monitor->SetLoggingEnabled(logUsage);

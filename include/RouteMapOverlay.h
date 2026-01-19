@@ -34,6 +34,14 @@ class SettingsDialog;
  * Thread class for route map overlay calculations.
  * Handles the background processing for weather route generation.
  */
+ 
+// private: 
+//	bool m_dirty = false; // NEW: overlay needs UI refresh 
+// public: 
+//	bool IsDirty() const { return m_dirty; } 
+//	void ClearDirty() { m_dirty = false; }
+// not here, put in RouteMapOverlay.cpp
+ 
 class RouteMapOverlayThread : public wxThread {
 public:
   /**
@@ -582,6 +590,7 @@ private:
 
   /** Projection type for the current cache. */
   int current_cache_projection;
-};
+  
+};  
 
 #endif

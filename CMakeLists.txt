@@ -19,7 +19,7 @@
 # - xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx,                                       *
 # - xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx                                       *
 # -----------------------------------------------------------------------------
-# Frontend2 Author: Jon Gough Testplugin(TP) v1.0.357.0 16/01/2026 DD/MM/YYYY
+# Frontend2 Author: Jon Gough Testplugin(TP) v1.0.358.0 18/01/2026 DD/MM/YYYY
 # format buildCI:yes useODAPI:no validateJSON:no
 # ---------------------------------------------------------------------------
 ## -- When changing this file do NOT change the order of the sections.    -- ##
@@ -81,8 +81,8 @@ set(VERSION_MAJOR "1")
 set(VERSION_MINOR "15")
 
 set(VERSION_PATCH "46")
-set(VERSION_TWEAK "3")
-set(VERSION_DATE "17/01/2025") # DD/MM/YYYY format
+set(VERSION_TWEAK "4")
+set(VERSION_DATE "18/01/2025") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov58")
 
 set(OCPN_API_VERSION_MAJOR "1")
@@ -216,7 +216,7 @@ SET(SRCS
             src/Position.cpp
             src/IsoRoute.cpp
 			src/AddressSpaceMonitor.cpp
-            src/AutoStopDialog.cpp			
+            src/MemoryStatusDialog.cpp			
 )
 
 SET (HDRS
@@ -255,7 +255,7 @@ SET (HDRS
             include/Position.h
             include/IsoRoute.h
 			include/AddressSpaceMonitor.h
-			include/AutoStopDialog.h
+			include/MemoryStatusDialog.h
 )
 
 add_definitions(-DPLUGIN_USE_SVG)
