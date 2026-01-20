@@ -356,7 +356,7 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
 
   SetEnableConfigurationMenu();
 
-  // Add "Reset Selected" menu item to the Routings menu - may be moved to fix wxformbuilder
+ // Add "Reset Selected" menu item to the Routings menu - may be moved to fix wxformbuilder
  // Verify at least 1 route is selected.
  // This feature requires better management of threads and data consistancy,
  // such that individual routes can be reset without interfering with others.
@@ -1822,13 +1822,53 @@ void WeatherRouting::OnResetAll(wxCommandEvent& event) {
   UpdateStates();
 }
 
-//Removed for now not used, Route deletion must be individually done.
-//
-// void WeatherRouting::OnResetSelected(wxCommandEvent& event) {
-//
-//  ResetSelected();
-//  UpdateStates();
-//}
+// Notes about Reset, UpdateStates, RebuidList etc:
+//      Reset() Clears the RouteMapOverlay state
+//      ResetSelected() stops and clears only the selected RouteMapOverlay objects, then updates their states in the UI.
+//      OnResetSelected() is the event handler that calls ResetSelected().
+//      OnSaveAsTrack() is the event handler that saves the selected routes as tracks.
+//      ShowRouteSaveOptionsDialog() shows a dialog to get route saving options from the user.
+//      OnSaveAsRoute() is the event handler that saves the selected routes as routes.
+//      The original ResetSelected implementation is commented out below for reference.
+
+//      UI Related Functions:
+//      RefreshUI() refreshes the entire UI, including list controls and dialogs
+//      UpdateStates() walks all WeatherRoute objects, calls WeatherRoute::Update(stateonly=true), updates the list control row
+//      RebuidList()  rebuilds the entire wxListCtrl that displays all routes. Heavier than UpdateStates()
+//           Rebuild also repopulates the whole table,refreshes the UI
+
+// void WeatherRouting::ResetSelected() {
+//  std::list<RouteMapOverlay*> selected = CurrentRouteMaps();
+//  for (auto* routemapoverlay : selected) {
+//    routemapoverlay->Stop();
+//    routemapoverlay->Reset();
+//  }
+//  m_positionOnRoute = nullptr;
+//  GetParent()->Refresh();
+//  UpdateDialogs();
+//  }
+
+
+// ResetSelected stops and clears only the selected RouteMapOverlay objects, then updates their states in the UI.
+void WeatherRouting::ResetSelected() {
+  std::list<RouteMapOverlay*> overlays = CurrentRouteMaps(false);
+
+  for (auto* ov : overlays) {
+    if (!ov)
+      continue;
+
+    ov->Stop();   // stop any running computation
+    ov->Clear();  // sets m_dirty = true inside RouteMapOverlay
+  }
+
+  UpdateStates();  // consumes dirty flags and updates UI
+}
+
+void WeatherRouting::OnResetSelected(wxCommandEvent& event) {
+  ResetSelected();
+}
+// ResetSelected stops and clears only the selected RouteMapOverlay objects, then updates their states in the UI.
+
 
 void WeatherRouting::OnSaveAsTrack(wxCommandEvent& event) {
   std::list<RouteMapOverlay*> routemapoverlays = CurrentRouteMaps(true);
@@ -3051,11 +3091,29 @@ void WeatherRouting::UpdateCurrentConfigurations() {
 
 void WeatherRouting::UpdateStates() {
   for (std::list<WeatherRoute*>::iterator it = m_WeatherRoutes.begin();
-       it != m_WeatherRoutes.end(); it++)
+       it != m_WeatherRoutes.end(); it++) {
+
+         WeatherRoute* wr = *it;
+         RouteMapOverlay* ov = wr->routemapoverlay;
+
+        // NEW: detect overlays that were reset/cleared
+        if (ov && ov->IsDirty()) {
+          wr->State = _("Not Computed");
+          ov->ClearDirty();
+        }
+
     (*it)->Update(this, true);
+    }
   for (int i = 0; i < m_panel->m_lWeatherRoutes->GetItemCount(); i++)
     UpdateItem(i, true);
 }
+
+void WeatherRouting::RefreshUI() {
+  UpdateStates();   // consume dirty flags
+  RebuildList();    // ensure table is consistent
+  m_panel->Refresh();
+}
+
 
 std::list<RouteMapOverlay*> WeatherRouting::CurrentRouteMaps(
     bool messagedialog) {
@@ -3484,20 +3542,20 @@ void WeatherRouting::Stop(RouteMapOverlay* routemapoverlay) {
 // This is AddressSpaceMonitor AutoStop
 
 void WeatherRouting::StopAll() {
-  /* stop all the threads at once, rather than waiting for each one before
-     telling the next to stop */
-  for (auto it : m_RunningRouteMaps) it->Stop();
+  // Tell all threads to stop
+  for (auto it : m_RunningRouteMaps)
+    it->Stop();  // sets dirty flag, optional but harmless
 
   wxProgressDialog* progressdialog = NULL;
-
   int c = 0;
-  for (std::list<RouteMapOverlay*>::iterator it = m_RunningRouteMaps.begin();
-       it != m_RunningRouteMaps.end(); it++) {
-    // Wait for threads to finish
-    while ((*it)->Running()) wxThread::Sleep(100);
 
+  for (auto it = m_RunningRouteMaps.begin(); it != m_RunningRouteMaps.end();
+       it++) {
+    // NEW: actually stop the worker thread
+    (*it)->DeleteThread();  // calls Delete(), Wait(), delete
+
+    // Now the thread is guaranteed to be gone
     (*it)->ResetFinished();
-    (*it)->DeleteThread();
 
     if (progressdialog) progressdialog->Update(c++);
   }
@@ -3520,7 +3578,7 @@ void WeatherRouting::StopAll() {
   wxLogMessage("WeatherRouting::StopAll() - END");
 }
 
-//Clears the isochrones, plot data, and internal state — but it does not update the UI.
+//Clears the isochrones, plot data, and internal state ? but it does not update the UI.
 void WeatherRouting::Reset() {
   wxLogMessage("WeatherRouting::Reset() - BEGIN");
   // 1. Stop all running and waiting computations
@@ -3552,20 +3610,6 @@ void WeatherRouting::Reset() {
 }
 
 
-// Reset() Clears the RouteMapOverlay state
-// UpdateStates() walks all WeatherRoute objects, calls WeatherRoute::Update(stateonly=true), updates the list control row
-// RebuidList()  rebuilds the entire wxListCtrl that displays all routes. Heavier than UpdateStates() repopulates the whole table,refreshes the UI 
-
-// void WeatherRouting::ResetSelected() {
-//  std::list<RouteMapOverlay*> selected = CurrentRouteMaps();
-//  for (auto* routemapoverlay : selected) {
-//    routemapoverlay->Stop();
-//    routemapoverlay->Reset();
-//  }
-//  m_positionOnRoute = nullptr;
-//  GetParent()->Refresh();
-//  UpdateDialogs();
-//}
 
 
 

@@ -74,7 +74,8 @@ void AddressSpaceMonitor::SafeStopWeatherRouting()
 
     if (m_weatherRouting) {
         wxLogMessage("ASM: SafeStopWeatherRouting -> WR::Reset()");
-        m_weatherRouting->Reset();   // This should update the configuration table state.
+        m_weatherRouting->Reset();   // // Clears overlays and  RouteMapOverlay Clear() sets dirty flags.
+	    m_weatherRouting->RefreshUI();	 // NEW: ensure UI reflects the cleared state
     } else {
         wxLogWarning("ASM: SafeStopWeatherRouting but WR=nullptr");
     }

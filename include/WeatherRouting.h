@@ -213,14 +213,16 @@ private:
   /** Menu item for resetting selected routes - Move to UI */
 // Disable Reset Selected for now
 //  wxMenuItem* m_mResetSelected = nullptr;
-//  void OnResetSelected(wxCommandEvent& event);
+   void OnResetSelected(wxCommandEvent& event);
 
 public:
   /**
    * Structure to store route saving options selected by the user
    */
 
+    
   void StopAll();  /// Stop all route calculations AutoStop
+  void RefreshUI(); /// Refresh the UI display after route updates
 
   struct SaveRouteOptions {
     bool dialogAccepted;        //!< Whether the user confirmed the dialog

@@ -248,15 +248,27 @@ void RouteMapOverlay::RouteAnalysis(PlugIn_Route* proute) {
 }
 
 void RouteMapOverlay::DeleteThread() {
+  RouteMapOverlayThread* thread = nullptr;
 
-  wxMutexLocker lock(routemutex);  // Ensure thread safety
+  {
+    wxMutexLocker lock(routemutex);
 
-  if (!m_Thread) return;
+    if (!m_Thread) return;
 
-  m_Thread->Delete();
-  delete m_Thread;
-  m_Thread = nullptr;
+    thread = m_Thread;
+    m_Thread = nullptr;  // detach under lock
+  }  // mutex released
+
+  // Ask thread to terminate
+  thread->Delete();
+
+  // Wait for worker thread to exit cleanly
+  thread->Wait();
+
+  delete thread;
 }
+
+
 
 static void SetColor(piDC& dc, wxColour c, bool penifgl = false) {
 #ifndef __OCPN__ANDROID__
@@ -744,7 +756,7 @@ int RouteMapOverlay::sailingConditionLevel(const PlotData& plot) const {
   // VW   - Velocity of wind over water
   // WVHT - Swell (if available)
   double MAX_WV = 27;   // Vigilant over 27knts == 7B
-  double MAX_AW = 35;   // Upwind start at 35° from wind
+  double MAX_AW = 35;   // Upwind start at 35? from wind
   double MAX_WVHT = 5;  // No more than 5m waves
 
   // Wind impact exponentially on sailing comfort
@@ -756,7 +768,7 @@ int RouteMapOverlay::sailingConditionLevel(const PlotData& plot) const {
   // Wind direction impact on sailing comfort.
   // Ex: if you decide to sail upwind with 30knts, it is not the same
   // conditions as if you sail downwind (impact of waves, heel, and more).
-  // Use a normal distribution to set the maximum difficulty at 35° upwind,
+  // Use a normal distribution to set the maximum difficulty at 35? upwind,
   // and reduce when we go downwind.
   double AW = heading_resolve(plot.ctw - plot.twdOverWater);
   double teta = 30;
@@ -1675,18 +1687,31 @@ int RouteMapOverlay::Cyclones(int* months) {
 }
 
 void RouteMapOverlay::Clear() {
+  {
+    wxMutexLocker lock(routemutex);
 
-  wxMutexLocker lock(routemutex);  // Ensure thread safety
+    // Signal UI/worker that overlay state changed
+    MarkDirty();
 
+    last_cursor_position = nullptr;
+    last_destination_position = nullptr;
+    clear_destination_plotdata = false;
+    last_cursor_plotdata.clear();
+    last_destination_plotdata.clear();
+    m_UpdateOverlay = true;
+  }  // routemutex released here
+
+  // Do base-class clear outside the lock
   RouteMap::Clear();
-  last_cursor_position = nullptr;
-  last_destination_position = nullptr;
-  clear_destination_plotdata = false;
-  // clear_cursor_plotdata = false;
-  last_cursor_plotdata.clear();
-  last_destination_plotdata.clear();
-  m_UpdateOverlay = true;
 }
+
+
+void RouteMapOverlay::Stop() {
+  
+  // NEW: mark overlay as needing UI refresh
+  MarkDirty();
+}
+
 
 void RouteMapOverlay::UpdateCursorPosition() {
 

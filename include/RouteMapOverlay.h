@@ -20,6 +20,7 @@
 #ifndef _WEATHER_ROUTING_ROUTE_MAP_OVERLAY_H_
 #define _WEATHER_ROUTING_ROUTE_MAP_OVERLAY_H_
 
+#include <atomic>   
 #include "RouteMap.h"
 #include "LineBufferOverlay.h"
 
@@ -35,12 +36,6 @@ class SettingsDialog;
  * Handles the background processing for weather route generation.
  */
  
-// private: 
-//	bool m_dirty = false; // NEW: overlay needs UI refresh 
-// public: 
-//	bool IsDirty() const { return m_dirty; } 
-//	void ClearDirty() { m_dirty = false; }
-// not here, put in RouteMapOverlay.cpp
  
 class RouteMapOverlayThread : public wxThread {
 public:
@@ -150,6 +145,17 @@ public:
    * Cleans up resources and stops any running threads.
    */
   ~RouteMapOverlay();
+
+  /**
+   * Dirty flag indicating that this overlay's internal routing state
+   * has been cleared (via Clear() / Reset()) and the UI must refresh.
+   */
+  bool IsDirty() const { return m_dirty.load(std::memory_order_acquire); }
+  void ClearDirty() { m_dirty.store(false, std::memory_order_release); }
+  void MarkDirty() { m_dirty.store(true, std::memory_order_release); }
+  bool ConsumeDirty() {
+    return m_dirty.exchange(false, std::memory_order_acq_rel);
+  }
 
   /**
    * Updates the cursor position on the route map.
@@ -310,6 +316,8 @@ public:
    */
   bool Start(wxString& error);
 
+  void Stop(); // NEW  Stops
+
   /**
    * Deletes the calculation thread.
    * Waits for thread completion before deleting.
@@ -365,6 +373,9 @@ public:
   const IsoChronList& GetIsoChronList() const { return origin; }
 
 private:
+
+  std::atomic<bool> m_dirty{false};  
+
   /**
    * Renders an alternate route.
    * @param r Pointer to the route to render.
