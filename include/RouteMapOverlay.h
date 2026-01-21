@@ -157,6 +157,15 @@ public:
     return m_dirty.exchange(false, std::memory_order_acq_rel);
   }
 
+    /** Flag indicating the overlay was intentionally stopped */
+  bool m_Stopped = false;
+
+  /** Flag indicating the overlay needs to be redrawn */
+  bool m_UpdateOverlay = false;
+
+  /** Flag indicating if the end route should be visible */
+  bool m_bEndRouteVisible = true;
+
   /**
    * Updates the cursor position on the route map.
    * @param lat Latitude of the cursor position.
@@ -346,14 +355,7 @@ public:
   Position* getClosestRoutePositionFromCursor(double cursorLat,
                                               double cursorLon,
                                               PlotData& posData);
-
-  /** Flag indicating if the overlay needs to be updated. */
-  bool m_UpdateOverlay;
-
-  /** Flag indicating if the end route should be visible. */
-  bool m_bEndRouteVisible;
-
-  /**
+   /**
    * Performs route analysis on a predefined route.
    * @param proute Pointer to the route to analyze.
    */
@@ -372,7 +374,12 @@ public:
    */
   const IsoChronList& GetIsoChronList() const { return origin; }
 
+
 private:
+  
+  /** Flag indicating the overlay has new data for UI refresh */
+  bool m_bUpdated = false;
+
 
   std::atomic<bool> m_dirty{false};  
 
@@ -552,9 +559,6 @@ private:
 
   /** End time of the route. */
   wxDateTime m_EndTime;
-
-  /** Flag indicating if the route has been updated. */
-  bool m_bUpdated;
 
   /** Display list for OpenGL rendering. */
   int m_overlaylist;

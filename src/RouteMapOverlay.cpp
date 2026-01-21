@@ -118,6 +118,8 @@ RouteMapOverlay::~RouteMapOverlay() {
 bool RouteMapOverlay::Start(wxString& error) {
   wxMutexLocker lock(routemutex);  // Ensure thread safety
 
+  m_Stopped = false;
+
   if (m_Thread) {
     error = _("error, thread already created\n");
     return false;
@@ -233,16 +235,19 @@ void RouteMapOverlay::RouteAnalysis(PlugIn_Route* proute) {
 
   m_bUpdated = true;
   m_UpdateOverlay = true;
+
   last_destination_position =
       new Position(data.lat, data.lon, nullptr /* position */,
-                   NAN /* heading */, NAN /* bearing*/, data.polar,
+                   NAN /* heading */, NAN /* bearing */, data.polar,
                    0 /* tacks */, 0 /* jibes */, 0 /* sailplan changes */,
                    DataMask::NONE /* data_mask */, true /* data_deficient */);
 
   last_cursor_plotdata = last_destination_plotdata;
+
   if (ok) {
     m_EndTime = data.time;
   }
+
   SetFinished(ok);
   UpdateStatus(configuration);
 }
@@ -1688,7 +1693,10 @@ int RouteMapOverlay::Cyclones(int* months) {
 
 void RouteMapOverlay::Clear() {
   {
-    wxMutexLocker lock(routemutex);
+    wxMutexLocker lock(routemutex);  // Ensure thread safety
+
+    // Reset the stopped flag
+    m_Stopped = false;
 
     // Signal UI/worker that overlay state changed
     MarkDirty();
@@ -1707,8 +1715,15 @@ void RouteMapOverlay::Clear() {
 
 
 void RouteMapOverlay::Stop() {
-  
-  // NEW: mark overlay as needing UI refresh
+  wxMutexLocker lock(routemutex);
+
+  // Signal the worker loop to exit
+  SetFinished(true);
+
+  // Mark this route as intentionally stopped
+  m_Stopped = true;
+
+  // Mark overlay as needing UI refresh
   MarkDirty();
 }
 

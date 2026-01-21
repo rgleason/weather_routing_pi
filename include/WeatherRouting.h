@@ -83,6 +83,9 @@ public:
    * data.
    */
 
+
+
+
   void Update(WeatherRouting* wr, bool stateonly = false);
 
   /** Flag indicating if this route is filtered out in the UI display. */
@@ -204,8 +207,17 @@ class WeatherRouting : public WeatherRoutingBase {
   friend class AddressSpaceMonitor;  // Allow AddressSpaceMonitor to access to
                                      // private members // private members
 private:
+
+    // Memory alert event handlers
+    void OnMemoryAlertStop(wxCommandEvent& event);
+    void OnMemoryAutoReset(wxCommandEvent& event);
+    void WaitForAllRoutesToStop();
+    void WaitForRoutesToStop(const std::list<RouteMapOverlay*>& overlays);
+
+
   bool m_disable_colpane;
   wxCollapsiblePane* m_colpane;
+
   wxWindow* m_colpaneWindow;
   WeatherRoutingPanel* m_panel;
   /** Timer for auto-saving positions and routes. */

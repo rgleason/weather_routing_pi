@@ -1,7 +1,6 @@
 #ifdef __WXMSW__
 
 #include "AddressSpaceMonitor.h"
-#include "MemoryStatusDialog.h"
 #include "WeatherRouting.h"
 
 #include <wx/app.h>
@@ -9,6 +8,9 @@
 #include <wx/msgdlg.h>
 #include <windows.h>
 #include <cmath>
+
+wxDEFINE_EVENT(EVT_MEMORY_ALERT_STOP, wxCommandEvent);
+wxDEFINE_EVENT(EVT_MEMORY_AUTO_RESET, wxCommandEvent);
 
 // ------------------------------------------------------------
 //  Static instance tracking
@@ -68,18 +70,6 @@ void AddressSpaceMonitor::SetWeatherRouting(WeatherRouting* wr)
     m_weatherRouting = wr;
 }
 
-void AddressSpaceMonitor::SafeStopWeatherRouting()
-{
-    if (!m_isValidState.load()) return;
-
-    if (m_weatherRouting) {
-        wxLogMessage("ASM: SafeStopWeatherRouting -> WR::Reset()");
-        m_weatherRouting->Reset();   // // Clears overlays and  RouteMapOverlay Clear() sets dirty flags.
-	    m_weatherRouting->RefreshUI();	 // NEW: ensure UI reflects the cleared state
-    } else {
-        wxLogWarning("ASM: SafeStopWeatherRouting but WR=nullptr");
-    }
-}
 
 // ------------------------------------------------------------
 //  Computation Control
@@ -99,277 +89,137 @@ void AddressSpaceMonitor::EnableNewComputations()
 // ------------------------------------------------------------
 //  Shutdown
 // ------------------------------------------------------------
-void AddressSpaceMonitor::Shutdown()
-{
-    wxMutexLocker lock(m_mutex);
-    if (!lock.IsOk()) return;
+void AddressSpaceMonitor::Shutdown() {
+  wxMutexLocker lock(m_mutex);
+  if (!lock.IsOk()) return;
 
-    if (m_isShuttingDown) {
-        wxLogMessage("ASM: Shutdown already in progress");
-        return;
-    }
+  if (m_isShuttingDown) {
+    wxLogMessage("ASM: Shutdown already in progress");
+    return;
+  }
 
-    m_isShuttingDown = true;
-    m_isValidState.store(false);
+  m_isShuttingDown = true;
+  m_isValidState.store(false);
 
-    m_usageGauge = nullptr;
-    m_textLabel = nullptr;
-    m_weatherRouting = nullptr;
+  m_usageGauge = nullptr;
+  m_textLabel = nullptr;
+  m_weatherRouting = nullptr;
 
-    if (m_dialog) {
-        wxTheApp->CallAfter([dlg = m_dialog]() {
-            if (dlg->IsShown()) dlg->Hide();
-            dlg->Destroy();
-        });
-        m_dialog = nullptr;
-    }
-
-    wxLogMessage("ASM: Shutdown complete");
-}
-
-// ------------------------------------------------------------
-//  UI Helpers
-// ------------------------------------------------------------
-void AddressSpaceMonitor::CloseAlert()
-{
-    wxMutexLocker lock(m_mutex);
-    if (!lock.IsOk()) return;
-
-    if (!m_dialog) return;
-
-    wxTheApp->CallAfter([this]() {
-        if (m_dialog && m_dialog->IsShown())
-            m_dialog->Hide();
-    });
-}
-
-void AddressSpaceMonitor::DismissAlert()
-{
-    if (!m_isValidState.load()) return;
-
-    m_alertDismissed = true;
-    m_alertHiddenByUser = true;
-
-    if (m_dialog && m_dialog->IsShown())
-        m_dialog->Hide();
-}
-
-// ------------------------------------------------------------
-//  Unified AlertStop Dialog
-// ------------------------------------------------------------
-void AddressSpaceMonitor::ShowOrUpdateAlert(double usedGB, double totalGB, double percent)
-{
-    if (m_blockAlertDialogAfterAutoStop) {
-        wxLogMessage("ASM: AlertStop blocked due to AutoReset");
-        return;
-    }
-
-    wxTheApp->CallAfter([this, usedGB, totalGB, percent]() {
-
-        if (!m_dialog) {
-            m_dialog = new MemoryStatusDialog(nullptr);
-
-            m_dialog->onHide = [this]() { m_alertHiddenByUser = true; };
-            m_dialog->onResetRoutes = [this]() { SafeStopWeatherRouting(); };
-            m_dialog->onCountdownFinished = []() {};
-        }
-
-        wxString msg = wxString::Format(
-            _("WARNING:\n\n"
-              "Route Computing Stopped\n\n"
-              "Current Use: %.1f%% (%.2f GB / %.1f GB)\n\n"
-              "Alert threshold: %.0f%%"),
-            percent, usedGB, totalGB, m_alertThreshold);
-
-        MemoryDialogState state;
-        state.mode = MemoryDialogMode::AlertStop;
-        state.message = msg;
-        state.showHideButton = true;
-        state.showResetRoutesButton = true;   // AlertStop: Hide + Route Reset, no countdown
-        state.showCountdown = false;
-        state.countdownSeconds = 0;
-
-        m_dialog->ApplyState(state);
-        m_dialog->Show();
-        m_dialog->Raise();
-    });
-}
-
-// ------------------------------------------------------------
-//  Unified AutoReset Dialog
-// ------------------------------------------------------------
-void AddressSpaceMonitor::ShowAutoReset(double usedGB, double totalGB, double percent)
-{
-    wxTheApp->CallAfter([this, usedGB, totalGB, percent]() {
-
-        if (!m_dialog) {
-            m_dialog = new MemoryStatusDialog(nullptr);
-
-            m_dialog->onHide = [this]() { m_alertHiddenByUser = true; };
-            // AutoReset: routes are already being reset automatically.
-            m_dialog->onResetRoutes = nullptr;
-            m_dialog->onCountdownFinished = [this]() { SafeStopWeatherRouting(); };
-        }
-
-        wxString msg = wxString::Format(
-            _("Memory use reached %.0f%% (threshold %.0f%%)\n\n"
-              "Running route computations have been automatically reset\n"
-              "to protect memory.\n\n"
-              "Current Use: %.1f%% (%.2f GB / %.1f GB)"),
-            percent, m_autoStopThreshold, percent, usedGB, totalGB);
-
-        MemoryDialogState state;
-        state.mode = MemoryDialogMode::AutoReset;
-        state.message = msg;
-        state.showHideButton = false;          // No Hide button for AutoReset
-        state.showResetRoutesButton = false;   // No Route Reset button for AutoReset
-        state.showCountdown = true;            // OK with countdown
-        state.countdownSeconds = 15;
-
-        m_dialog->ApplyState(state);
-        m_dialog->Show();
-        m_dialog->Raise();
-    });
+  wxLogMessage("ASM: Shutdown complete");
 }
 
 // ------------------------------------------------------------
 //  Main Monitoring Logic
 // ------------------------------------------------------------
-void AddressSpaceMonitor::CheckAndAlert()
-{
-    if (!m_weatherRouting) return;
-    if (m_degraded) return;
+void AddressSpaceMonitor::CheckAndAlert() {
+  if (!m_weatherRouting) return;
+  if (m_degraded) return;
 
-    bool expected = false;
-    if (!m_isExecuting.compare_exchange_strong(expected, true))
-        return;
+  bool expected = false;
+  if (!m_isExecuting.compare_exchange_strong(expected, true)) return;
 
-    struct Guard {
-        std::atomic<bool>& f;
-        Guard(std::atomic<bool>& x) : f(x) {}
-        ~Guard() { f.store(false); }
-    } guard(m_isExecuting);
+  struct Guard {
+    std::atomic<bool>& f;
+    Guard(std::atomic<bool>& x) : f(x) {}
+    ~Guard() { f.store(false); }
+  } guard(m_isExecuting);
 
-    wxMutexLocker lock(m_mutex);
-    if (!lock.IsOk()) return;
+  wxMutexLocker lock(m_mutex);
+  if (!lock.IsOk()) return;
 
-    auto now = std::chrono::steady_clock::now();
-    if (now - m_lastCheckTime < std::chrono::milliseconds(m_memoryCheckIntervalMs))
-        return;
-    m_lastCheckTime = now;
+  auto now = std::chrono::steady_clock::now();
+  if (now - m_lastCheckTime <
+      std::chrono::milliseconds(m_memoryCheckIntervalMs))
+    return;
+  m_lastCheckTime = now;
 
-    if (!m_isValidState.load() || m_isShuttingDown)
-        return;
+  if (!m_isValidState.load() || m_isShuttingDown) return;
 
-    size_t used = GetUsedAddressSpace();
-    size_t total = GetTotalAddressSpace();
-    if (total == 0) return;
+  size_t used = GetUsedAddressSpace();
+  size_t total = GetTotalAddressSpace();
+  if (total == 0) return;
 
-    double percent = 100.0 * used / total;
-    double usedGB = used / (1024.0 * 1024.0 * 1024.0);
-    double totalGB = total / (1024.0 * 1024.0 * 1024.0);
+  double percent = 100.0 * used / total;
 
-    // --- Computation disable/enable ---
-    if (percent >= m_alertThreshold) {
-        if (!m_computationDisabled) {
-            m_computationDisabled = true;
-            DisableNewComputations();
-        }
-    } else if (percent <= m_alertThreshold - 15.0) {
-        if (m_computationDisabled) {
-            m_computationDisabled = false;
-            EnableNewComputations();
-        }
+  // ------------------------------------------------------------
+  // Computation disable/enable
+  // ------------------------------------------------------------
+  if (percent >= m_alertThreshold) {
+    if (!m_computationDisabled) {
+      m_computationDisabled = true;
+      DisableNewComputations();
     }
-
-    // --- AlertStop Debounce ---
-    bool wasOver = m_wasOverThreshold;
-    bool isOver = percent > m_alertThreshold;
-
-    if (!isOver) m_alertHiddenByUser = false;
-
-    if (!wasOver && isOver && m_alertEnabled &&
-        !m_alertDismissed && !m_alertHiddenByUser)
-    {
-        ShowOrUpdateAlert(usedGB, totalGB, percent);
+  } else if (percent <= m_alertThreshold - 15.0) {
+    if (m_computationDisabled) {
+      m_computationDisabled = false;
+      EnableNewComputations();
     }
+  }
 
-    if (wasOver && !isOver && m_dialog && m_dialog->IsShown())
-        CloseAlert();
+  // ------------------------------------------------------------
+  // AlertStop event
+  // ------------------------------------------------------------
+  bool wasOver = m_wasOverThreshold;
+  bool isOver = percent > m_alertThreshold;
 
-    m_wasOverThreshold = isOver;
+  if (!wasOver && isOver && m_alertEnabled) {
+    wxCommandEvent evt(EVT_MEMORY_ALERT_STOP);
+    wxQueueEvent(m_weatherRouting, evt.Clone());
+  }
 
-    // --- AutoReset ---
-    if (m_autoStopEnabled && !m_autoStopTriggered) {
-        if (percent >= m_autoStopThreshold) {
-            m_autoStopTriggered = true;
-            m_blockAlertDialogAfterAutoStop = true;
-            ShowAutoReset(usedGB, totalGB, percent);
-        }
+  m_wasOverThreshold = isOver;
+
+  // ------------------------------------------------------------
+  // AutoReset event
+  // ------------------------------------------------------------
+  if (m_autoStopEnabled && !m_autoStopTriggered) {
+    if (percent >= m_autoStopThreshold) {
+      m_autoStopTriggered = true;
+
+      wxCommandEvent evt(EVT_MEMORY_AUTO_RESET);
+      wxQueueEvent(m_weatherRouting, evt.Clone());
     }
+  }
 
-    if (m_autoStopTriggered && percent < m_autoStopThreshold - 5.0) {
-        m_autoStopTriggered = false;
-        m_blockAlertDialogAfterAutoStop = false;
-    }
+  if (m_autoStopTriggered && percent < m_autoStopThreshold - 5.0) {
+    m_autoStopTriggered = false;
+  }
 
-    // --- UI Updates ---
-    if (std::fabs(percent - m_alertLastPercent) > m_alertUpdateThreshold) {
-        m_alertLastPercent = percent;
+  // ------------------------------------------------------------
+  // UI gauge + label updates (safe to keep)
+  // ------------------------------------------------------------
+  if (m_textLabel) {
+    wxTheApp->CallAfter([this, percent]() {
+      if (!m_textLabel) return;
+      m_textLabel->SetLabel(wxString::Format("%.1f%%", percent));
+      m_textLabel->Refresh();
+    });
+  }
 
-        if (m_textLabel) {
-            wxTheApp->CallAfter([this, percent, usedGB, totalGB]() {
-                if (!m_textLabel) return;
-                wxString s = wxString::Format("%.1f%% (%.2f GB / %.1f GB)",
-                                              percent, usedGB, totalGB);
-                m_textLabel->SetLabel(s);
-                m_textLabel->Refresh();
-            });
-        }
+  if (m_usageGauge) {
+    wxTheApp->CallAfter([this, percent]() {
+      if (m_usageGauge) m_usageGauge->SetValue((int)percent);
+    });
+  }
 
-        if (m_usageGauge) {
-            wxTheApp->CallAfter([this, percent]() {
-                if (m_usageGauge)
-                    m_usageGauge->SetValue((int)percent);
-            });
-        }
-
-        if (m_logToFile)
-            wxLogMessage("ASM: %.2f GB / %.1f GB (%.1f%%)",
-                         usedGB, totalGB, percent);
-
-        UpdateAlertIfShown(usedGB, totalGB, percent);
-    }
+  if (m_logToFile) {
+    wxLogMessage("ASM: %.1f%%", percent);
+  }
 }
+
 
 // ------------------------------------------------------------
 //  Alert Update Helper
 // ------------------------------------------------------------
-void AddressSpaceMonitor::UpdateAlertIfShown(double usedGB, double totalGB, double percent)
-{
-    if (!m_isValidState.load()) return;
-
-    if (m_alertDismissed) {
-        if (percent < m_alertThreshold - 5.0)
-            m_alertDismissed = false;
-        return;
-    }
-
-    if (percent >= m_alertThreshold && m_alertEnabled && !m_alertHiddenByUser)
-        ShowOrUpdateAlert(usedGB, totalGB, percent);
-    else if (percent < m_alertThreshold && m_dialog && m_dialog->IsShown())
-        CloseAlert();
-}
-
 // ------------------------------------------------------------
 //  Settings
 // ------------------------------------------------------------
-void AddressSpaceMonitor::SetAlertEnabled(bool enabled)
-{
-    if (!m_isValidState.load()) return;
-    m_alertEnabled = enabled;
-    if (!enabled) CloseAlert();
+
+void AddressSpaceMonitor::SetAlertEnabled(bool enabled) {
+  if (!m_isValidState.load()) return;
+  m_alertEnabled = enabled;
 }
+
 
 void AddressSpaceMonitor::SetAlertThreshold(double p)
 {

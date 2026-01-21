@@ -11,6 +11,17 @@ enum class MemoryDialogMode {
     AutoReset
 };
 
+class MemoryStatusDialog : public wxDialog {
+public:
+  MemoryStatusDialog(wxWindow* parent, MemoryDialogMode mode);
+
+private:
+  MemoryDialogMode m_mode;
+  void BuildLayout();
+  void AddAlertStopButtons(wxSizer* s);
+  void AddAutoResetButtons(wxSizer* s);
+};
+
 struct MemoryDialogState {
     MemoryDialogMode mode;
     wxString message;
