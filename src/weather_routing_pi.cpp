@@ -97,7 +97,21 @@ weather_routing_pi::weather_routing_pi(void* ppimgr)
 
 #ifdef __WXMSW__
   m_addressSpaceMonitor = std::make_unique<AddressSpaceMonitor>();
+
+  // Force-disable saved settings
+  wxConfigBase* c = wxConfig::Get();
+  if (c) {
+    c->Write("/PlugIns/WeatherRouting/AddressSpaceAutoStopEnabled", false);
+    c->Write("/PlugIns/WeatherRouting/AddressSpaceAlertEnabled", false);
+    c->Flush();
+  }
+
+   // ---- INSERT THIS ----
+  m_addressSpaceMonitor->SetAlertEnabled(false);
+  m_addressSpaceMonitor->SetAutoStopEnabled(false);
+  // ---- END INSERT ----
 #endif
+
 
   // Create the PlugIn icons
   initialize_images();
@@ -638,6 +652,13 @@ void weather_routing_pi::NewWR() {
   } else {
     wxLogWarning("m_addressSpaceMonitor is nullptr before SetWeatherRouting");
   }
+
+  // ---- INSERT THIS BLOCK ----
+  // Disable memory-triggered StopAll() and AutoReset
+  m_addressSpaceMonitor->SetAlertEnabled(false);
+  m_addressSpaceMonitor->SetAutoStopEnabled(false);
+  // ---- END INSERT ----
+
 #endif
 
   wxPoint p = m_pWeather_Routing->GetPosition();

@@ -50,6 +50,7 @@ public:
    * @return Thread exit code.
    */
   void* Entry();
+  virtual void OnExit() override;  // ? add this
 
 private:
   /** Reference to the parent RouteMapOverlay object. */
@@ -146,6 +147,10 @@ public:
    */
   ~RouteMapOverlay();
 
+  bool Finished();
+  bool ThreadExited() const { return m_bThreadExited; }
+  void SetFinished(bool f);
+
   /**
    * Dirty flag indicating that this overlay's internal routing state
    * has been cleared (via Clear() / Reset()) and the UI must refresh.
@@ -153,11 +158,10 @@ public:
   bool IsDirty() const { return m_dirty.load(std::memory_order_acquire); }
   void ClearDirty() { m_dirty.store(false, std::memory_order_release); }
   void MarkDirty() { m_dirty.store(true, std::memory_order_release); }
-  bool ConsumeDirty() {
-    return m_dirty.exchange(false, std::memory_order_acq_rel);
-  }
+  bool ConsumeDirty() {return m_dirty.exchange(false, std::memory_order_acq_rel); }
 
-    /** Flag indicating the overlay was intentionally stopped */
+ 
+  /** Flag indicating the overlay was intentionally stopped */
   bool m_Stopped = false;
 
   /** Flag indicating the overlay needs to be redrawn */
@@ -380,8 +384,14 @@ private:
   /** Flag indicating the overlay has new data for UI refresh */
   bool m_bUpdated = false;
 
+  std::atomic<bool> m_dirty{false};
 
-  std::atomic<bool> m_dirty{false};  
+  /** Handshake flag: set true by worker thread when Entry() begins */
+  std::atomic<bool> m_bThreadAlive{false};
+
+  /** Handshake flag: set false by worker thread when exiting */
+  std::atomic<bool> m_bThreadExited{false};
+
 
   /**
    * Renders an alternate route.

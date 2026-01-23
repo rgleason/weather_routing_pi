@@ -50,6 +50,10 @@ RouteMapOverlayThread::RouteMapOverlayThread(RouteMapOverlay& routemapoverlay)
 }
 
 void* RouteMapOverlayThread::Entry() {
+
+  // ---- HANDSHAKE: signal thread is alive immediately ----
+  m_RouteMapOverlay.m_bThreadAlive.store(true, std::memory_order_release);
+
   RouteMapConfiguration cf = m_RouteMapOverlay.GetConfiguration();
 
   if (!cf.RouteGUID.IsEmpty()) {
@@ -85,11 +89,22 @@ void* RouteMapOverlayThread::Entry() {
       }
     }
   }
-  //    m_RouteMapOverlay.m_Thread = nullptr;
+  //   m_RouteMapOverlay.m_Thread = nullptr; bad thing to do from worker thread
+  //   No see void RouteMapOverlayThread::OnExit()
   return 0;
 }
 
-RouteMapOverlay::RouteMapOverlay()
+void RouteMapOverlayThread::OnExit() {
+  wxMutexLocker lock(m_RouteMapOverlay.routemutex);
+
+  // Signal that the worker thread has fully exited
+  m_RouteMapOverlay.m_bThreadExited.store(true, std::memory_order_release);
+
+  // Detach thread pointer
+  m_RouteMapOverlay.m_Thread = nullptr;
+}
+
+  RouteMapOverlay::RouteMapOverlay()
     : m_UpdateOverlay(true),
       m_bEndRouteVisible(false),
       m_Thread(nullptr),
@@ -116,47 +131,79 @@ RouteMapOverlay::~RouteMapOverlay() {
 }
 
 bool RouteMapOverlay::Start(wxString& error) {
-  wxMutexLocker lock(routemutex);  // Ensure thread safety
+  // ---- SCOPED BLOCK BEGINS ----
+  {
+    wxMutexLocker lock(routemutex);
 
-  m_Stopped = false;
+    SetFinished(false);
+    m_Stopped = false;
+    m_bThreadAlive.store(false, std::memory_order_release);
 
-  if (m_Thread) {
-    error = _("error, thread already created\n");
-    return false;
+    wxLogMessage("RouteMapOverlay::Start - BEGIN, this=%p", this);
+
+    m_dirty = true;  // notify UI that state changed
+
+    if (m_Thread) {
+      error = _("error, thread already created\n");
+      return false;
+    }
+
+    // Load boat and validate configuration
+    error = LoadBoat();
+    if (error.size()) return false;
+
+    RouteMapConfiguration configuration = GetConfiguration();
+
+    if (configuration.AvoidCycloneTracks &&
+        (!ClimatologyCycloneTrackCrossings ||
+         ClimatologyCycloneTrackCrossings(0, 0, 0, 0, wxDateTime(), 0) == -1)) {
+      error =
+          _("Configuration specifies cyclone track avoidance and Climatology "
+            "cyclone data is not available");
+      return false;
+    }
+
+    if (configuration.DetectBoundary &&
+        !RouteMap::ODFindClosestBoundaryLineCrossing) {
+      error =
+          _("Configuration specifies boundary exclusion but ocpn_draw_pi "
+            "boundary data not available");
+      return false;
+    }
+
+    if (!configuration.UseGrib &&
+        configuration.ClimatologyType <= RouteMapConfiguration::CURRENTS_ONLY) {
+      error = _("Configuration does not allow grib or climatology wind data");
+      return false;
+    }
+
+    // REMOVE THIS (RouteMap has no Start()):
+    // if (!RouteMap::Start(error)) return false;
+
+    // Create worker thread
+    m_Thread = new RouteMapOverlayThread(*this);
+    m_Thread->Run();
+  }
+  // ---- SCOPED BLOCK ENDS ----
+  // mutex is now released
+
+  // ---- HANDSHAKE WAIT LOOP ----
+  auto start = std::chrono::steady_clock::now();
+  while (!m_bThreadAlive.load(std::memory_order_acquire)) {
+    if (std::chrono::steady_clock::now() - start > std::chrono::seconds(2)) {
+      wxLogMessage(
+          "RouteMapOverlay::Start: thread failed to signal alive within "
+          "timeout");
+      error = _("Worker thread failed to start");
+      return false;
+    }
+    wxThread::Sleep(10);
   }
 
-  error = LoadBoat();
-  if (error.size()) return false;
-
-  RouteMapConfiguration configuration = GetConfiguration();
-  /* test for cyclone data if needed */
-  if (configuration.AvoidCycloneTracks &&
-      (!ClimatologyCycloneTrackCrossings ||
-       ClimatologyCycloneTrackCrossings(0, 0, 0, 0, wxDateTime(), 0) == -1)) {
-    error =
-        _("Configuration specifies cyclone track avoidance and Climatology "
-          "cyclone data is not available");
-    return false;
-  }
-
-  if (configuration.DetectBoundary &&
-      !RouteMap::ODFindClosestBoundaryLineCrossing) {
-    error =
-        _("Configuration specifies boundary exclusion but ocpn_draw_pi "
-          "boundary data not available");
-    return false;
-  }
-
-  if (!configuration.UseGrib &&
-      configuration.ClimatologyType <= RouteMapConfiguration::CURRENTS_ONLY) {
-    error = _("Configuration does not allow grib or climatology wind data");
-    return false;
-  }
-
-  m_Thread = new RouteMapOverlayThread(*this);
-  m_Thread->Run();
+  wxLogMessage("RouteMapOverlay::Start - worker thread alive");
   return true;
 }
+
 
 void RouteMapOverlay::RouteAnalysis(PlugIn_Route* proute) {
   wxMutexLocker lock(routemutex);  // Ensure thread safety
@@ -1697,7 +1744,8 @@ void RouteMapOverlay::Clear() {
 
     // Reset the stopped flag
     m_Stopped = false;
-
+    SetFinished(false); 
+    
     // Signal UI/worker that overlay state changed
     MarkDirty();
 
@@ -1715,18 +1763,59 @@ void RouteMapOverlay::Clear() {
 
 
 void RouteMapOverlay::Stop() {
-  wxMutexLocker lock(routemutex);
+  RouteMapOverlayThread* thread = nullptr;
 
-  // Signal the worker loop to exit
-  SetFinished(true);
+  {
+    wxMutexLocker lock(routemutex);
 
-  // Mark this route as intentionally stopped
-  m_Stopped = true;
+    if (!m_Thread) return;
 
-  // Mark overlay as needing UI refresh
-  MarkDirty();
+    // Signal worker thread to exit
+    SetFinished(true);
+    m_Stopped = true;
+
+    // UI refresh
+    MarkDirty();
+
+    // Reset exit handshake flag
+    m_bThreadExited.store(false, std::memory_order_release);
+
+    // Detach thread pointer under lock
+    thread = m_Thread;
+    m_Thread = nullptr;
+  }
+
+  // Request thread termination
+  thread->Delete();
+
+  // ---- SHUTDOWN TIMEOUT LOOP ----
+  auto start = std::chrono::steady_clock::now();
+  const auto timeout = std::chrono::seconds(3);
+
+  while (!m_bThreadExited.load(std::memory_order_acquire)) {
+    if (std::chrono::steady_clock::now() - start > timeout) {
+      wxLogMessage(
+          "RouteMapOverlay::Stop: timeout waiting for worker thread to exit");
+      break;
+    }
+    wxThread::Sleep(10);
+  }
+
+  // Ensure thread is fully joined
+  thread->Wait();
+  delete thread;
+
+  wxLogMessage("RouteMapOverlay::Stop: worker thread shutdown complete");
 }
 
+
+bool RouteMapOverlay::Finished() {
+    return RouteMap::Finished();
+}
+
+void RouteMapOverlay::SetFinished(bool f) {
+    RouteMap::SetFinished(f);
+}
 
 void RouteMapOverlay::UpdateCursorPosition() {
 

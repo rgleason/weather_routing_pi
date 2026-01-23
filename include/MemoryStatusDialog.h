@@ -6,58 +6,49 @@
 #include <wx/config.h>
 #include <functional>
 
-enum class MemoryDialogMode {
-    AlertStop,
-    AutoReset
+enum class MemoryDialogMode { AlertStop, AutoReset };
+
+struct MemoryDialogState {
+  MemoryDialogMode mode;
+  wxString message;
+
+  bool showHideButton = false;
+  bool showResetRoutesButton = false;
+  bool showCountdown = false;
+  int countdownSeconds = 0;
 };
 
 class MemoryStatusDialog : public wxDialog {
 public:
   MemoryStatusDialog(wxWindow* parent, MemoryDialogMode mode);
 
+  void ApplyState(const MemoryDialogState& state);
+
+  std::function<void()> onHide;
+  std::function<void()> onResetRoutes;
+  std::function<void()> onCountdownFinished;
+
 private:
-  MemoryDialogMode m_mode;
   void BuildLayout();
   void AddAlertStopButtons(wxSizer* s);
   void AddAutoResetButtons(wxSizer* s);
-};
 
-struct MemoryDialogState {
-    MemoryDialogMode mode;
-    wxString message;
+  void OnReset(wxCommandEvent&);
+  void OnOK(wxCommandEvent&);
+  void OnTimer(wxTimerEvent&);
 
-    bool showHideButton = false;
-    bool showResetRoutesButton = false;
-    bool showCountdown = false;
-    int countdownSeconds = 0;
-};
+  void LoadPosition();
+  void SavePosition();
 
-class MemoryStatusDialog : public wxDialog {
-public:
-    MemoryStatusDialog(wxWindow* parent);
+  MemoryDialogMode m_mode;
 
-    void ApplyState(const MemoryDialogState& state);
+  wxStaticText* m_message = nullptr;
+  wxButton* m_hideButton = nullptr;
+  wxButton* m_resetButton = nullptr;
+  wxButton* m_okButton = nullptr;
 
-    std::function<void()> onHide;
-    std::function<void()> onResetRoutes;
-    std::function<void()> onCountdownFinished;
+  wxTimer m_timer;
+  int m_secondsLeft = 0;
 
-private:
-    void OnHide(wxCommandEvent&);
-    void OnReset(wxCommandEvent&);
-    void OnOK(wxCommandEvent&);
-    void OnTimer(wxTimerEvent&);
-
-    void LoadPosition();
-    void SavePosition();
-
-    wxStaticText* m_message = nullptr;
-    wxButton* m_hideButton = nullptr;
-    wxButton* m_resetButton = nullptr;
-    wxButton* m_okButton = nullptr;
-
-    wxTimer m_timer;
-    int m_secondsLeft = 0;
-
-    wxDECLARE_EVENT_TABLE();
+  wxDECLARE_EVENT_TABLE();
 };

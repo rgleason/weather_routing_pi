@@ -23,6 +23,7 @@
 #include <wx/treectrl.h>
 #include <wx/fileconf.h>
 #include <wx/collpane.h>
+#include <wx/thread.h>
 
 #ifdef __WXMSW__
     #include <atomic>
@@ -46,6 +47,10 @@
 
 class weather_routing_pi;
 class WeatherRouting;
+
+/*-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -
+ * WeatherRoute
+ * -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -*/
 
 /**
  * Class representing a weather routing configuration and its associated route.
@@ -82,8 +87,6 @@ public:
    * @param stateonly If true, only update the State field, not configuration
    * data.
    */
-
-
 
 
   void Update(WeatherRouting* wr, bool stateonly = false);
@@ -175,6 +178,10 @@ public:
   RouteMapOverlay* routemapoverlay;
 };
 
+/* -------------------------------------------------------------------------
+ * WeatherRouting
+ * ------------------------------------------------------------------------- */
+
 /**
  * Class that handles the main Weather Routing functionality.
  *
@@ -208,33 +215,58 @@ class WeatherRouting : public WeatherRoutingBase {
                                      // private members // private members
 private:
 
-    // Memory alert event handlers
-    void OnMemoryAlertStop(wxCommandEvent& event);
-    void OnMemoryAutoReset(wxCommandEvent& event);
-    void WaitForAllRoutesToStop();
-    void WaitForRoutesToStop(const std::list<RouteMapOverlay*>& overlays);
-
+  // Memory alert event handlers
+  void OnMemoryAlertStop(wxCommandEvent& event);
+  void OnMemoryAutoReset(wxCommandEvent& event);
 
   bool m_disable_colpane;
   wxCollapsiblePane* m_colpane;
-
   wxWindow* m_colpaneWindow;
   WeatherRoutingPanel* m_panel;
+
   /** Timer for auto-saving positions and routes. */
   wxTimer m_tAutoSaveXML;
+
   /** Menu item for resetting selected routes - Move to UI */
-// Disable Reset Selected for now
-//  wxMenuItem* m_mResetSelected = nullptr;
+  // Disable Reset Selected for now
+  // wxMenuItem* m_mResetSelected = nullptr;
+
    void OnResetSelected(wxCommandEvent& event);
 
 public:
-  /**
-   * Structure to store route saving options selected by the user
-   */
 
-    
-  void StopAll();  /// Stop all route calculations AutoStop
-  void RefreshUI(); /// Refresh the UI display after route updates
+  /* --------------------------------------------------------------------- *
+   * Thread lifecycle + reset pipeline (grouped cleanly) *
+   * --------------------------------------------------------------------- */
+  
+   /**
+   * Initiates route calculation for a specific route map overlay.
+   *
+   * This method handles the pre-computation setup for a route map overlay:
+   * - If starting from boat position, it updates the start coordinates
+   * - It attempts to start the computation thread
+   * - It handles any errors that occur during startup
+   * - It adds successful starts to the running routes list
+   *
+   * @param routemapoverlay Pointer to the route map overlay to compute
+   */
+  void Start(RouteMapOverlay* routemapoverlay);
+  void StartAll();
+
+  void Stop(RouteMapOverlay* routemapoverlay);  // Stop the computation of the specified route. 
+  void StopAll();  //Stop the computation of all routes.
+
+  void Reset();          // wrapper for ResetAll
+  void ResetAll();       // global reset Stop ? Wait ? Reset
+  void ResetSelected(); // per-selection reset
+
+  void WaitForAllRoutesToStop();
+  void WaitForRoutesToStop(const std::list<RouteMapOverlay*>& overlays);
+
+
+    /* ---------------------------------------------------------------------
+     * SaveRouteOptions
+     * --------------------------------------------------------------------- */
 
   struct SaveRouteOptions {
     bool dialogAccepted;        //!< Whether the user confirmed the dialog
@@ -288,13 +320,11 @@ public:
 #ifdef __OCPN__ANDROID__
   void OnEvtPanGesture(wxQT_PanGestureEvent& event);
 #endif
+
   void OnLeftDown(wxMouseEvent& event);
   void OnLeftUp(wxMouseEvent& event);
   void OnDownTimer(wxTimerEvent&);
   void OnRightUp(wxMouseEvent& event);
-
-  void Reset();
-  void ResetSelected();
 
   void Render(piDC& dc, PlugIn_ViewPort& vp);
   ConfigurationDialog m_ConfigurationDialog;
@@ -308,6 +338,7 @@ public:
 
   void UpdateCurrentConfigurations();
   void UpdateStates();
+  void RefreshUI();  /// Refresh the UI display after route updates
   SaveRouteOptions ShowRouteSaveOptionsDialog();
 
   /**
@@ -364,6 +395,17 @@ public:
    */
   std::list<WeatherRoute*> m_WeatherRoutes;
 
+/**
+   * Master list of all RouteMapOverlay objects currently alive.
+   *
+   * This list is used to:
+   *  - Stop all overlays deterministically
+   *  - Wait for all overlays to finish
+   *  - Remove overlays when deleted
+   */
+  wxMutex m_OverlayListMutex;  // protects m_RouteMapOverlays
+  std::vector<RouteMapOverlay*> m_RouteMapOverlays;  // master list of overlays
+
   void GenerateBatch();
   bool Show(bool show);
 
@@ -381,7 +423,7 @@ public:
    * @see AddPosition(double lat, double lon, wxString name) The method that
    * performs the actual addition
    */
-  void AddPosition(double lat, double lon);
+    void AddPosition(double lat, double lon);
 
   /**
    * Adds a position with specified latitude, longitude, and name.
@@ -640,24 +682,8 @@ private:
   /** Save weather routing as OpenCPN route. */
   void SaveAsRoute(RouteMapOverlay& routemapoverlay);
   void ExportRoute(RouteMapOverlay& routemapoverlay);
-  /**
-   * Initiates route calculation for a specific route map overlay.
-   *
-   * This method handles the pre-computation setup for a route map overlay:
-   * - If starting from boat position, it updates the start coordinates
-   * - It attempts to start the computation thread
-   * - It handles any errors that occur during startup
-   * - It adds successful starts to the running routes list
-   *
-   * @param routemapoverlay Pointer to the route map overlay to compute
-   */
-  void Start(RouteMapOverlay* routemapoverlay);
-  void StartAll();
-  /* Stop the computation of the specified route. */
-  void Stop(RouteMapOverlay* routemapoverlay);
-  /* Stop the computation of all routes. */
-  /* Moved to Public for AddressSpaceMonitor use */
-  // void StopAll();
+
+
 
   void DeleteRouteMaps(std::list<RouteMapOverlay*> routemapoverlays);
   RouteMapConfiguration DefaultConfiguration();
@@ -750,16 +776,17 @@ private:
 
 #ifdef __WXMSW__
 
+  // Windows-only: Address space monitoring integration
   AddressSpaceMonitor* m_addressSpaceMonitor = nullptr;
 
-private:
-    std::atomic<bool> m_disableNewComputations{false};
+  // Controls whether new computations may start
+  std::atomic<bool> m_disableNewComputations{false};
 
 public:
     void DisableNewComputations() { m_disableNewComputations.store(true); }
     void EnableNewComputations()  { m_disableNewComputations.store(false); }
     bool AreNewComputationsDisabled() const { return m_disableNewComputations.load(); }
-};
 #endif  // __WXMSW__
+};
 
-#endif
+#endif  // _WEATHER_ROUTING_H_
