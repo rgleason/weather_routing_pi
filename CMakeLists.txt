@@ -260,13 +260,11 @@ SET (HDRS
             include/RoutePoint.h
             include/Position.h
             include/IsoRoute.h
-			include/AddressSpaceMonitor.h
-			include/MemoryStatusDialog.h
 )
 if (WIN32)
   SET (HDRS ${HDRS}
-          include/AddressSpaceMonitor.cpp
-          include/MemoryStatusDialog.cpp
+          include/AddressSpaceMonitor.h
+          include/MemoryStatusDialog.h
           )
 endif (WIN32)
 
