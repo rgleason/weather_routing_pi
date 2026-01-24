@@ -219,7 +219,7 @@ SET(SRCS
             src/MemoryStatusDialog.cpp			
 )
 if (WIN32)
-  SET (SRCS $SRCS
+  SET (SRCS ${SRCS}
           src/AddressSpaceMonitor.cpp
           src/MemoryStatusDialog.cpp
           )
@@ -264,7 +264,7 @@ SET (HDRS
 			include/MemoryStatusDialog.h
 )
 if (WIN32)
-  SET (HDRS $HDRS
+  SET (HDRS ${HDRS}
           include/AddressSpaceMonitor.cpp
           include/MemoryStatusDialog.cpp
           )
