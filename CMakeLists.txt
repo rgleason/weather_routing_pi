@@ -225,7 +225,6 @@ if (WIN32)
           )
 endif (WIN32)
 
-
 SET (HDRS
             include/weather_routing_pi.h
             include/WeatherRouting.h
