@@ -218,6 +218,12 @@ SET(SRCS
 			src/AddressSpaceMonitor.cpp
             src/MemoryStatusDialog.cpp			
 )
+if (WIN32)
+  SET (SRCS ${SRCS}
+          src/AddressSpaceMonitor.cpp
+          src/MemoryStatusDialog.cpp
+          )
+endif (WIN32)
 
 SET (HDRS
             include/weather_routing_pi.h
@@ -254,9 +260,17 @@ SET (HDRS
             include/RoutePoint.h
             include/Position.h
             include/IsoRoute.h
-			include/AddressSpaceMonitor.h
-			include/MemoryStatusDialog.h
 )
+if (WIN32)
+  SET (HDRS ${HDRS}
+          include/AddressSpaceMonitor.h
+          include/MemoryStatusDialog.h
+          )
+endif (WIN32)
+
+if (WIN32)
+  add_definitions(-DPLUGIN_USE_ASM)
+endif (WIN32)
 
 add_definitions(-DPLUGIN_USE_SVG)
 

@@ -29,6 +29,7 @@
 #include <math.h>
 #include <cmath>
 #include <time.h>
+#include <algorithm>
 
 #include <wx/glcanvas.h>
 
@@ -375,8 +376,10 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
   // Connect Events
 
   // Memory alert events
+#ifdef PLUGIN_USE_ASM
   Bind(EVT_MEMORY_ALERT_STOP, &WeatherRouting::OnMemoryAlertStop, this);
   Bind(EVT_MEMORY_AUTO_RESET, &WeatherRouting::OnMemoryAutoReset, this);
+#endif
 
   if (m_colpane)
     m_colpane->Connect(
@@ -1575,7 +1578,7 @@ void WeatherRouting::OnCompute(wxCommandEvent& event) {
 
 wxLogMessage("OnCompute() fired");
 
-#ifdef __WXMSW__
+#ifdef PLUGIN_USE_ASM
   if (m_addressSpaceMonitor && m_addressSpaceMonitor->IsComputationDisabled()) {
     wxMessageBox(
         _("Route computation is currently disabled due to high memory usage.\n"
@@ -1592,7 +1595,7 @@ wxLogMessage("OnCompute() fired");
 }
 
 void WeatherRouting::OnComputeAll(wxCommandEvent& event) {
-#ifdef __WXMSW__
+#ifdef PLUGIN_USE_ASM
   if (m_addressSpaceMonitor && m_addressSpaceMonitor->IsComputationDisabled()) {
     wxMessageBox(
         _("Route computation is currently disabled due to high memory usage.\n"
@@ -3510,13 +3513,15 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
   wxLogMessage("Start() - before: running size=%zu waiting size=%zu",
                m_RunningRouteMaps.size(), m_WaitingRouteMaps.size());
 
-  // For AddressSpaceMonitor to decide if we can start new computations  
+  // For AddressSpaceMonitor to decide if we can start new computations
+#ifdef PLUGIN_USE_ASM
   if (AreNewComputationsDisabled()) {
       wxLogMessage(
           "WeatherRouting: New route computations are currently disabled due "
           "to memory usage.");
       return;
     }
+#endif
 
   RouteMapConfiguration configuration = routemapoverlay->GetConfiguration();
   bool boatHasMoved = false;
@@ -3769,8 +3774,10 @@ void WeatherRouting::WaitForAllRoutesToStop() {
     for (auto* o : m_RouteMapOverlays) overlays.push_back(o);
   }
 
+#ifdef PLUGIN_USE_ASM
   auto start = std::chrono::steady_clock::now();
   const auto timeout = std::chrono::seconds(5);
+#endif
 
   bool allExited = false;
 
@@ -3787,12 +3794,12 @@ void WeatherRouting::WaitForAllRoutesToStop() {
     }
 
     if (allExited) break;
-
+#ifdef PLUGIN_USE_ASM
     if (std::chrono::steady_clock::now() - start > timeout) {
       wxLogMessage("WeatherRouting::WaitForAllRoutesToStop - TIMEOUT");
       break;
     }
-
+#endif
     wxThread::Sleep(20);
   }
 
