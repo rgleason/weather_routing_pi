@@ -34,8 +34,6 @@ src/Position.cpp
 src/IsoRoute.cpp
 src/AddressSpaceMonitor.cpp
 src/MemoryStatusDialog.cpp
-src/AddressSpaceMonitor.cpp
-src/MemoryStatusDialog.cpp
 include/weather_routing_pi.h
 include/WeatherRouting.h
 include/SunCalculator.h
@@ -70,7 +68,5 @@ include/WeatherDataProvider.h
 include/RoutePoint.h
 include/Position.h
 include/IsoRoute.h
-include/AddressSpaceMonitor.h
-include/MemoryStatusDialog.h
 include/AddressSpaceMonitor.h
 include/MemoryStatusDialog.h

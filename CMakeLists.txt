@@ -215,8 +215,6 @@ SET(SRCS
             src/RoutePoint.cpp
             src/Position.cpp
             src/IsoRoute.cpp
-			src/AddressSpaceMonitor.cpp
-            src/MemoryStatusDialog.cpp	
 )
 if (WIN32)
    SET (SRCS ${SRCS}
@@ -260,8 +258,6 @@ SET (HDRS
             include/RoutePoint.h
             include/Position.h
             include/IsoRoute.h
-            include/AddressSpaceMonitor.h
-            include/MemoryStatusDialog.h
 )
 if (WIN32)
     SET (HDRS ${HDRS}
