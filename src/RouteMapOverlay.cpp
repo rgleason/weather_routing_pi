@@ -54,6 +54,8 @@ void* RouteMapOverlayThread::Entry() {
   // ---- HANDSHAKE: signal thread is alive immediately ----
   m_RouteMapOverlay.m_bThreadAlive.store(true, std::memory_order_release);
 
+  wxLogMessage("DEBUG BREAKPOINT #4 ? Entry() running for overlay %p", &m_RouteMapOverlay);
+
   RouteMapConfiguration cf = m_RouteMapOverlay.GetConfiguration();
 
   if (!cf.RouteGUID.IsEmpty()) {
@@ -96,6 +98,8 @@ void* RouteMapOverlayThread::Entry() {
 
 void RouteMapOverlayThread::OnExit() {
   wxMutexLocker lock(m_RouteMapOverlay.routemutex);
+
+  wxLogMessage("DEBUG BREAKPOINT #5 ? OnExit() for overlay %p (thread exiting)", &m_RouteMapOverlay);
 
   // Signal that the worker thread has fully exited
   m_RouteMapOverlay.m_bThreadExited.store(true, std::memory_order_release);
@@ -176,6 +180,9 @@ bool RouteMapOverlay::Start(wxString& error) {
       error = _("Configuration does not allow grib or climatology wind data");
       return false;
     }
+
+    wxLogMessage("DEBUG BREAKPOINT #3 ? Creating worker thread for overlay %p",
+                 this);
 
     // REMOVE THIS (RouteMap has no Start()):
     // if (!RouteMap::Start(error)) return false;

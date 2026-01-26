@@ -82,7 +82,29 @@
 
 #include "georef.h"
 
+// ============================================================
+// Static member definitions (must be at global scope)
+// ============================================================
+
+bool (*RouteMap::ClimatologyData)(int setting, const wxDateTime&, double,
+                                  double, double&, double&) = nullptr;
+
+bool (*RouteMap::ClimatologyWindAtlasData)(const wxDateTime&, double, double,
+                                           int& count, double*, double*,
+                                           double&, double&) = nullptr;
+
+int (*RouteMap::ClimatologyCycloneTrackCrossings)(double, double, double,
+                                                  double, const wxDateTime&,
+                                                  int) = nullptr;
+
+OD_FindClosestBoundaryLineCrossing RouteMap::ODFindClosestBoundaryLineCrossing =
+    nullptr;
+
+std::list<RouteMapPosition> RouteMap::Positions;
+
 long RouteMapPosition::s_ID = 0;
+
+
 
 Shared_GribRecordSetData::~Shared_GribRecordSetData() {
   delete m_GribRecordSet;
@@ -120,11 +142,11 @@ bool RouteMapConfiguration::Update() {
   if (StartType == RouteMapConfiguration::START_FROM_BOAT) {
     StartLat = GetBoatLat();
     StartLon = GetBoatLon();
-    if (StartLat != NAN && StartLon != NAN) {
+    // Correct NAN test
+    if (!std::isnan(StartLat) && !std::isnan(StartLon)) {
       havestart = true;
     }
   }
-
   if (!RouteGUID.IsEmpty()) {
     if (StartType == RouteMapConfiguration::START_FROM_POSITION &&
         !StartGUID.IsEmpty() && GetSingleWaypoint(StartGUID, &waypoint)) {
@@ -165,10 +187,13 @@ bool RouteMapConfiguration::Update() {
     }
   }
 
-  if (!havestart || !haveend) {
-    StartLat = StartLon = EndLat = EndLon = NAN;
-    return false;
-  }
+  wxLogMessage("RouteMapConfiguration::Update: havestart=%d haveend=%d RouteGUID=%s StartType=%d Start=%s End=%s",
+      havestart, haveend, RouteGUID, StartType, Start, End);
+
+   if (!havestart || !haveend) {
+      StartLat = StartLon = EndLat = EndLon = NAN;
+      return false;
+   }
 
   if ((positive_longitudes = fabs(average_longitude(StartLon, EndLon)) > 90)) {
     StartLon = positive_degrees(StartLon);
@@ -198,20 +223,6 @@ bool RouteMapConfiguration::Update() {
 
   return true;
 }
-
-bool (*RouteMap::ClimatologyData)(int setting, const wxDateTime&, double,
-                                  double, double&, double&) = nullptr;
-bool (*RouteMap::ClimatologyWindAtlasData)(const wxDateTime&, double, double,
-                                           int& count, double*, double*,
-                                           double&, double&) = nullptr;
-int (*RouteMap::ClimatologyCycloneTrackCrossings)(double, double, double,
-                                                  double, const wxDateTime&,
-                                                  int) = nullptr;
-
-OD_FindClosestBoundaryLineCrossing RouteMap::ODFindClosestBoundaryLineCrossing =
-    nullptr;
-
-std::list<RouteMapPosition> RouteMap::Positions;
 
 RouteMap::RouteMap() {}
 
@@ -259,12 +270,31 @@ bool RouteMap::ReduceList(IsoRouteList& merged, IsoRouteList& routelist,
 bool RouteMap::Propagate() {
   Lock();
 
-  if (m_bNeedsGrib) {  // waiting for timer in main thread to request the grib
-    Unlock();
-    return false;
-  }
+  wxLogMessage(
+      "Propagate(): UseGrib=%d ClimatologyData=%p WindAtlas=%p Cyclone=%p",
+      m_Configuration.UseGrib, RouteMap::ClimatologyData,
+      RouteMap::ClimatologyWindAtlasData,
+      RouteMap::ClimatologyCycloneTrackCrossings);
+
+
+//  if (m_bNeedsGrib) {  // waiting for timer in main thread to request the grib
+//    wxLogMessage("RouteMap::Propagate: EARLY EXIT m_bNeedsGrib=1");
+//    Unlock();
+//    return false;
+//  }
+
+   if (m_bNeedsGrib) {  // waiting for timer in main thread to request the grib
+      wxLogMessage("RouteMap::Propagate: WAITING for GRIB (m_bNeedsGrib=1)");
+      Unlock();
+
+      // Option 1: yield but keep the worker alive
+      wxMilliSleep(50);
+      return true;  // keep loop going, don't mark finished
+    }
+
 
   if (!m_bValid) { /* config change */
+    wxLogMessage("RouteMap::Propagate: EARLY EXIT m_bValid=0 (marking finished)");
     m_bFinished = true;
     Unlock();
     return false;
@@ -330,6 +360,7 @@ bool RouteMap::Propagate() {
              RouteMapConfiguration::CURRENTS_ONLY)) {
       // This route is supposed to use GRIB data without climatology, but the
       // GRIB data is not available.
+      wxLogMessage("RouteMap::Propagate: EARLY EXIT missing GRIB/wind and no usable climatology");
       Lock();
       m_bFinished = true;
       if (!configuration.grib) {
@@ -357,6 +388,11 @@ bool RouteMap::Propagate() {
         m_bWeatherForecastError = _("Unknown weather forecast error occurred");
       }
       Unlock();
+      wxLogMessage(
+          "RouteMap::Propagate: EARLY EXIT missing GRIB/wind and no usable "
+          "climatology; origin.size=%zu m_bFinished=%d",
+          origin.size(), m_bFinished);
+
       return false;
     }
 

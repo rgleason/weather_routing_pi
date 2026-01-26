@@ -2235,6 +2235,9 @@ void WeatherRouting::OnComputationTimer(wxTimerEvent&) {
       m_WaitingRouteMaps.size()) {
     RouteMapOverlay* routemapoverlay = m_WaitingRouteMaps.front();
     m_WaitingRouteMaps.pop_front();
+
+    wxLogMessage( "DEBUG BREAKPOINT #2 ? Timer promoting overlay %p from Waiting?Running", routemapoverlay);
+
     wxString error;
     if (routemapoverlay->Start(error))
       m_RunningRouteMaps.push_back(routemapoverlay);
@@ -2254,7 +2257,10 @@ void WeatherRouting::OnComputationTimer(wxTimerEvent&) {
     std::list<RouteMapOverlay*> currentroutemaps = CurrentRouteMaps();
     for (std::list<RouteMapOverlay*>::iterator it = currentroutemaps.begin();
          it != currentroutemaps.end(); it++)
-      if ((*it)->Updated()) {
+         if ((*it)->Updated()) {
+
+             wxLogMessage("DEBUG BREAKPOINT #6 ? Overlay %p reports Updated()==true", *it);
+
         m_StatisticsDialog.SetRunTime(m_RunTime +=
                                       wxDateTime::Now() - m_StartTime);
         if (m_StatisticsDialog.IsShown())
@@ -2279,6 +2285,8 @@ void WeatherRouting::OnComputationTimer(wxTimerEvent&) {
   if (m_RunningRouteMaps.empty() && m_WaitingRouteMaps.empty()) {
     m_bRunning = false;
   }
+
+  wxLogMessage( "DEBUG BREAKPOINT #7 ? Scheduler idle: Running=0, Waiting=0. All routes finished.");
 
   StopAll();
 }
@@ -3506,7 +3514,7 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
 
   wxLogMessage("Start() - BEGIN for overlay=%p", routemapoverlay);
 
-   // Log whether it?s already in running/waiting lists
+   // Log whether its already in running/waiting lists
   wxLogMessage("Start() - before: running size=%zu waiting size=%zu",
                m_RunningRouteMaps.size(), m_WaitingRouteMaps.size());
 
