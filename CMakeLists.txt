@@ -217,10 +217,12 @@ SET(SRCS
             src/IsoRoute.cpp
 )
 if (WIN32)
+
    SET (SRCS ${SRCS}
 			src/AddressSpaceMonitor.cpp
             src/MemoryStatusDialog.cpp	
             )
+
 endif (WIN32)
 
 SET (HDRS
@@ -270,7 +272,6 @@ endif (WIN32)
 if (WIN32)
   add_definitions(-DPLUGIN_USE_ASM)
 endif (WIN32)
-
 
 add_definitions(-DPLUGIN_USE_SVG)
 
