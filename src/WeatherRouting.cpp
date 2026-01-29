@@ -604,36 +604,49 @@ void WeatherRouting::OnRightUp(wxMouseEvent& event) {
 // ------------------------------------------------------------
 
 void WeatherRouting::OnMemoryAlertStop(wxCommandEvent& event) {
-  // 1. Stop all routing computations
+  wxLogMessage("WeatherRouting::OnMemoryAlertStop - BEGIN");
+
+  // Phase 1: signal all workers to stop
   StopAll();
 
-  // 2. Wait for all routing threads to fully terminate
+  // Phase 2: wait for all threads to exit
   WaitForAllRoutesToStop();
 
-  // 3. Update UI to reflect the stopped state
+  // Phase 3: update UI to reflect stopped state
   RefreshUI();
 
-  // 4. Show the AlertStop dialog (modal)
+  // Show the AlertStop dialog
   MemoryStatusDialog dlg(this, MemoryDialogMode::AlertStop);
   int r = dlg.ShowModal();
 
-  // 5. If the user pressed Reset, perform a full reset
+  // If user pressed Reset, perform a full reset
   if (r == wxID_RESET) {
-    Reset();
-    WaitForAllRoutesToStop();
-    RefreshUI();
+    ResetAll();  // <-- correct call
   }
+
+  wxLogMessage("WeatherRouting::OnMemoryAlertStop - END");
 }
 
 
 void WeatherRouting::OnMemoryAutoReset(wxCommandEvent& event) {
-  Reset();
-  WaitForAllRoutesToStop();
-  RefreshUI();
+  wxLogMessage("WeatherRouting::OnMemoryAutoReset - BEGIN");
 
+  // Phase 1: signal all workers to stop
+  StopAll();
+
+  // Phase 2: wait for all threads to exit
+  WaitForAllRoutesToStop();
+
+  // Phase 3: full reset of all overlays
+  ResetAll();
+
+  // Show informational dialog
   MemoryStatusDialog dlg(this, MemoryDialogMode::AutoReset);
   dlg.ShowModal();
+
+  wxLogMessage("WeatherRouting::OnMemoryAutoReset - END");
 }
+
 
 
 
@@ -1574,39 +1587,79 @@ void WeatherRouting::UpdateComputeState() {
   m_tCompute.Start(1, true);
 }
 
-void WeatherRouting::OnCompute(wxCommandEvent& event) {
-
-wxLogMessage("OnCompute() fired");
+void WeatherRouting::OnCompute(wxCommandEvent & event) {
+  wxLogMessage("OnCompute() fired");
 
 #ifdef PLUGIN_USE_ASM
-  if (m_addressSpaceMonitor && m_addressSpaceMonitor->IsComputationDisabled()) {
-    wxMessageBox(
-        _("Route computation is currently disabled due to high memory usage.\n"
-          "Use Reset All or wait until memory is available."),
-        _("Weather Routing - Memory Alert"), wxOK | wxICON_WARNING);
-    return;
-  }
-#endif
-  std::list<RouteMapOverlay*> currentroutemaps = CurrentRouteMaps();
-  for (auto it = currentroutemaps.begin(); it != currentroutemaps.end(); it++) {
-    Start(*it);
-  }
-  UpdateComputeState();
-}
+   if (m_addressSpaceMonitor &&
+       m_addressSpaceMonitor->IsComputationDisabled()) {
+       wxMessageBox(
+           _("Route computation is currently disabled due to high memory usage.\n"
+              "Use Reset All or wait until memory is available."),
+             _("Weather Routing - Memory Alert"), wxOK | wxICON_WARNING);
+       return;
+   }
+ #endif
+
+    // Build the list of overlays to compute
+    std::list<RouteMapOverlay*> current = CurrentRouteMaps();
+
+    // Reset scheduler lists
+    m_WaitingRouteMaps.clear();
+    m_RunningRouteMaps.clear();
+
+    // Populate waiting list
+    for (auto* ov : current) {
+      if (!ov) continue;
+      m_WaitingRouteMaps.push_back(ov);
+    }
+
+    // Set counters
+    m_RoutesToRun = m_WaitingRouteMaps.size();
+    m_bRunning = (m_RoutesToRun > 0);
+
+    // Start scheduler timer
+    if (m_bRunning) UpdateComputeState();
+ }
 
 void WeatherRouting::OnComputeAll(wxCommandEvent& event) {
+
 #ifdef PLUGIN_USE_ASM
-  if (m_addressSpaceMonitor && m_addressSpaceMonitor->IsComputationDisabled()) {
-    wxMessageBox(
-        _("Route computation is currently disabled due to high memory usage.\n"
-          "Use Reset All or wait until memory is available."),
-        _("Weather Routing - Memory Alert"), wxOK | wxICON_WARNING);
-    return;
-  }
+   if (m_addressSpaceMonitor &&
+       m_addressSpaceMonitor->IsComputationDisabled()) {
+     wxMessageBox(
+         _("Route computation is currently disabled due to high memory usage.\n"
+           "Use Reset All or wait until memory is available."),
+         _("Weather Routing - Memory Alert"), wxOK | wxICON_WARNING);
+     return;
+   }
 #endif
-  StartAll();
-  UpdateComputeState();
-}
+
+   // Build list of ALL overlays
+   std::list<RouteMapOverlay*> all;
+   {
+     wxMutexLocker lock(m_OverlayListMutex);
+     for (auto* ov : m_RouteMapOverlays) all.push_back(ov);
+   }
+
+   // Reset scheduler lists
+   m_WaitingRouteMaps.clear();
+   m_RunningRouteMaps.clear();
+
+   // Populate waiting list
+   for (auto* ov : all) {
+     if (!ov) continue;
+     m_WaitingRouteMaps.push_back(ov);
+   }
+
+   // Set counters
+   m_RoutesToRun = m_WaitingRouteMaps.size();
+   m_bRunning = (m_RoutesToRun > 0);
+
+   // Start scheduler timer
+   if (m_bRunning) UpdateComputeState();
+ }
+
 
 void WeatherRouting::OnStop(wxCommandEvent& event) {
   std::list<RouteMapOverlay*> currentroutemaps = CurrentRouteMaps();
@@ -1620,6 +1673,8 @@ void WeatherRouting::OnStop(wxCommandEvent& event) {
     error = X;   \
     goto failed; \
   } while (0)
+
+
 void WeatherRouting::OnOpen(wxCommandEvent& event) {
   wxString error;
   wxFileDialog openDialog(
@@ -1871,52 +1926,288 @@ void WeatherRouting::OnResetAll(wxCommandEvent& event) {
   UpdateStates();
 }
 
-// Notes about Reset, UpdateStates, RebuidList etc:
-//      Reset() Clears the RouteMapOverlay state  3658
-//      ResetSelected() stops and clears only the selected RouteMapOverlay objects, then updates their states in the UI.
-//      OnResetSelected() is the event handler that calls ResetSelected().
-//      OnSaveAsTrack() is the event handler that saves the selected routes as tracks.
-//      ShowRouteSaveOptionsDialog() shows a dialog to get route saving options from the user.
-//      OnSaveAsRoute() is the event handler that saves the selected routes as routes.
-//      The original ResetSelected implementation is commented out below for reference.
-//  UI Related Functions:
-//      RefreshUI() refreshes the entire UI, including list controls and dialogs
-//      UpdateStates() walks all WeatherRoute objects, calls WeatherRoute::Update(stateonly=true), updates the list control row
-//      RebuidList()  rebuilds the entire wxListCtrl that displays all routes. Heavier than UpdateStates()
-//           Rebuild also repopulates the whole table,refreshes the UI
+void WeatherRouting::OnResetSelected(wxCommandEvent& event) { ResetSelected(); }
 
-// ResetAll and Reset are the same.
-void WeatherRouting::ResetAll() { Reset(); }
 
-// ResetSelected stops and clears only the selected RouteMapOverlay objects, then updates their states in the UI.
+/* Notes about Reset, UpdateStates, RebuidList etc:
+      Reset() Clears the a RouteMapOverlay state
+      ResetSelected() stops and clears only the selected RouteMapOverlay objects, then updates their states in the UI. ResetAll () stops and clears all
+      ResetAll()  RouteMapOverlay objects, then updates their states in the UI.
+      OnResetSelected() is the event handler that calls ResetSelected().
+      OnSaveAsTrack() is the event handler that saves the selected routes as tracks.
+      ShowRouteSaveOptionsDialog() shows a dialog to get route saving options from the user.
+      OnSaveAsRoute() is the event handler that saves the selected routes as routes.
+      The original ResetSelected implementation is commented out below for reference.
+  UI Related Functions:
+      RefreshUI() refreshes the entire UI, including list controls and dialogs
+      UpdateStates() walks all WeatherRoute objects, calls WeatherRoute::Update(stateonly=true), updates the list control row
+      RebuidList()  rebuilds the entire wxListCtrl that displays all routes. Heavier than UpdateStates()
+         Rebuild also repopulates the whole table,refreshes the UI
+      UpdateRouteMap(overlay) updates only the specified RouteMapOverlay
+*/
+
+
+
+void WeatherRouting::Reset() {
+  wxLogMessage("WeatherRouting::Reset(global) - BEGIN");
+
+  // 1. Stop all routes
+  StopAll();
+
+  // 2. Wait for all threads to terminate
+  WaitForAllRoutesToStop();
+
+  // 3. Reset each overlay
+  std::vector<RouteMapOverlay*> overlays;
+  {
+    wxMutexLocker lock(m_OverlayListMutex);
+    overlays = m_RouteMapOverlays;
+  }
+
+  for (auto* o : overlays) {
+    if (o) Reset(o);
+  }
+
+  // 4. Update UI
+  UpdateStates();
+  UpdateDialogs();
+  GetParent()->Refresh();
+
+  wxLogMessage("WeatherRouting::Reset(global) - END");
+}
+
+
+void WeatherRouting::WaitForAllRoutesToStop() {
+  wxLogMessage("WeatherRouting::WaitForAllRoutesToStop - BEGIN");
+
+  std::vector<RouteMapOverlay*> overlays;
+
+  // Snapshot overlays under lock
+  {
+    wxMutexLocker lock(m_OverlayListMutex);
+    overlays.reserve(m_RouteMapOverlays.size());
+    for (auto* o : m_RouteMapOverlays) overlays.push_back(o);
+  }
+
+  auto start = std::chrono::steady_clock::now();
+  const auto timeout = std::chrono::seconds(5);
+
+  bool allStopped = false;
+
+  while (!allStopped) {
+    allStopped = true;
+
+    for (auto* overlay : overlays) {
+      if (!overlay) continue;
+
+      // Must wait for BOTH:
+      // 1. Worker thread has exited
+      // 2. Thread object has been deleted
+      if (!overlay->ThreadExited() || overlay->HasThread()) {
+        allStopped = false;
+        break;
+      }
+    }
+
+    if (allStopped) break;
+
+#ifdef PLUGIN_USE_ASM
+    if (std::chrono::steady_clock::now() - start > timeout) {
+      wxLogMessage("WeatherRouting::WaitForAllRoutesToStop - TIMEOUT");
+      break;
+    }
+#endif
+
+    wxThread::Sleep(20);
+  }
+
+  wxLogMessage("WeatherRouting::WaitForAllRoutesToStop - END");
+}
+
+
+void WeatherRouting::WaitForRoutesToStop(
+    const std::list<RouteMapOverlay*>& overlays) {
+  wxLogMessage("WeatherRouting::WaitForRoutesToStop(one) - BEGIN");
+
+  auto start = std::chrono::steady_clock::now();
+  const auto timeout = std::chrono::seconds(5);
+
+  bool allExited = false;
+
+  while (!allExited) {
+    allExited = true;
+
+    for (auto* ov : overlays) {
+      if (!ov) continue;
+
+      // For per?route: only wait for the worker thread to exit.
+      if (!ov->ThreadExited()) {
+        allExited = false;
+        break;
+      }
+    }
+
+    if (allExited) break;
+
+#ifdef PLUGIN_USE_ASM
+    if (std::chrono::steady_clock::now() - start > timeout) {
+      wxLogMessage("WeatherRouting::WaitForRoutesToStop(one) - TIMEOUT");
+      break;
+    }
+#endif
+
+    wxThread::Sleep(20);
+  }
+
+  wxLogMessage("WeatherRouting::WaitForRoutesToStop(one) - END");
+}
+
+
+// ResetSelected stops and clears only the selected RouteMapOverlay objects,
+// then updates their states in the UI.
 void WeatherRouting::ResetSelected() {
-  // 1. Get selected overlays
+  wxLogMessage("============================================================");
+  wxLogMessage("WeatherRouting::ResetSelected - BEGIN");
+
+  // ------------------------------------------------------------
+  // 1. Gather selected overlays
+  //
+  // CurrentRouteMaps(false) returns ONLY the overlays whose
+  // corresponding WeatherRoute entries are selected in the UI.
+  //
+  // This is the authoritative selection API for this plugin.
+  // ------------------------------------------------------------
   std::list<RouteMapOverlay*> overlays = CurrentRouteMaps(false);
 
-  if (overlays.empty()) return;
+  wxLogMessage("ResetSelected: %zu overlay(s) selected", overlays.size());
 
-  // 2. Stop only the selected computations (non-blocking)
-  for (auto* ov : overlays) {
-    if (ov) ov->Stop();
+  if (overlays.empty()) {
+    wxLogMessage("ResetSelected: no routes selected ? nothing to do");
+    wxLogMessage("WeatherRouting::ResetSelected - END (no selection)");
+    wxLogMessage("============================================================");
+    return;
   }
 
-  // 3. Wait for only the selected overlays to stop (blocking)
-  WaitForRoutesToStop(overlays);
-
-  // 4. Reset only the selected overlays
+  // Log each selected overlay pointer for debugging
   for (auto* ov : overlays) {
-    if (ov) ov->Reset();
+    wxLogMessage("ResetSelected: selected overlay=%p", ov);
   }
 
-  // 5. Refresh UI
+  // ------------------------------------------------------------
+  // 2. Reset each selected overlay using the safe 3?phase Reset()
+  //
+  // Reset(overlay) performs:
+  //   Phase 1: overlay->SetFinished(true), overlay->m_Stopped = true
+  //   Phase 2: WaitForRoutesToStop({overlay})  (wait for worker exit)
+  //   Phase 3: overlay->Stop()  (join + delete thread)
+  //            overlay->Reset() (compute engine reset)
+  //            overlay->MarkDirty()
+  //            UpdateRouteMap(overlay)
+  //
+  // DO NOT call Stop(), Wait(), Reset(), or MarkDirty() here.
+  // Reset(overlay) encapsulates the entire safe lifecycle.
+  // ------------------------------------------------------------
+  for (auto* overlay : overlays) {
+    if (!overlay) {
+      wxLogWarning("ResetSelected: encountered NULL overlay pointer");
+      continue;
+    }
+
+    wxLogMessage("ResetSelected: invoking Reset(per?route) for overlay=%p",
+                 overlay);
+    Reset(overlay);
+  }
+
+  // ------------------------------------------------------------
+  // 3. Clear cursor highlight (UI state only)
+  // ------------------------------------------------------------
+  wxLogMessage("ResetSelected: clearing m_positionOnRoute cursor highlight");
+  m_positionOnRoute = nullptr;
+
+  // ------------------------------------------------------------
+  // 4. Refresh UI once after all resets
+  // ------------------------------------------------------------
+  wxLogMessage("ResetSelected: refreshing UI");
   UpdateStates();
+  UpdateDialogs();
   GetParent()->Refresh();
+
+  wxLogMessage("WeatherRouting::ResetSelected - END");
+  wxLogMessage("============================================================");
 }
 
 
-void WeatherRouting::OnResetSelected(wxCommandEvent& event) {
-  ResetSelected();
+void WeatherRouting::Reset(RouteMapOverlay* overlay) {
+  if (!overlay) return;
+
+  wxLogMessage("WeatherRouting::Reset(per-route) - BEGIN overlay=%p", overlay);
+
+  // Phase 1: signal worker to stop (if running)
+  overlay->SetFinished(true);
+  overlay->m_Stopped = true;
+
+  // Phase 2: wait for this route's thread to terminate
+  std::list<RouteMapOverlay*> one = {overlay};
+  WaitForRoutesToStop(one);
+
+  // Phase 3: cleanup thread object for this overlay
+  if (overlay->ThreadExited() && overlay->HasThread()) {
+    wxLogMessage("WeatherRouting::Reset(per-route) - stopping overlay %p",
+                 overlay);
+    overlay->Stop();  // join + delete thread
+  }
+
+  // 4. Reset compute engine
+  overlay->Reset();  // or Clear(), if Reset() is your engine reset
+
+  // 5. Mark dirty so UI clears computed fields
+  overlay->MarkDirty();
+
+  // 6. Clear cursor highlight
+  m_positionOnRoute = nullptr;
+
+  // 7. Update UI for this route only
+  UpdateRouteMap(overlay);
+  UpdateDialogs();
+  GetParent()->Refresh();
+
+  wxLogMessage("WeatherRouting::Reset(per-route) - END overlay=%p", overlay);
 }
+
+
+
+
+void WeatherRouting::ResetAll() {
+  wxLogMessage("WeatherRouting::ResetAll - BEGIN");
+
+  // 1. Stop all running computations
+  StopAll();
+
+  // 2. Wait for all worker threads to fully terminate
+  WaitForAllRoutesToStop();
+  wxLogMessage("WeatherRouting::ResetAll - All threads stopped.");
+
+  // 3. Reset each overlay's compute engine
+  for (auto* overlay : m_RouteMapOverlays) {
+    overlay->Reset();
+  }
+
+  // 4. Mark all overlays dirty so WeatherRoute::Update() clears computed fields
+  for (auto* overlay : m_RouteMapOverlays) {
+    overlay->MarkDirty();
+  }
+
+  // 5. Clear cursor/selection state
+  m_positionOnRoute = nullptr;
+
+  // 6. Refresh UI
+  UpdateStates();
+  UpdateDialogs();
+  GetParent()->Refresh();
+
+  wxLogMessage("WeatherRouting::ResetAll - END");
+}
+
 
 
 void WeatherRouting::OnSaveAsTrack(wxCommandEvent& event) {
@@ -2194,18 +2485,29 @@ void WeatherRouting::OnAbout(wxCommandEvent& event) {
 }
 
 // Runs the scheduler, moves routes between lists, checks thread progress.
+//Make the scheduler purely a state machine, not an owner of thread lifetime.
 void WeatherRouting::OnComputationTimer(wxTimerEvent&) {
+
+  wxLogMessage("TIMER: Running=%zu Waiting=%zu", m_RunningRouteMaps.size(),
+               m_WaitingRouteMaps.size());
 
   for (std::list<RouteMapOverlay*>::iterator it = m_RunningRouteMaps.begin();
        it != m_RunningRouteMaps.end();) {
     RouteMapOverlay* routemapoverlay = *it;
-    if (!routemapoverlay->Running()) {
-      routemapoverlay->DeleteThread();
 
+    // Worker is no longer running (either natural completion or early exit)
+    if (!routemapoverlay->Running()) {
+
+      // If the worker has exited but the thread object still exists,
+      // let Stop() perform the join + delete + pointer clear.
+      if (routemapoverlay->ThreadExited() && routemapoverlay->HasThread()) {
+        routemapoverlay->Stop(); // safe even after natural completion
+      }
+      // Thread has finished; just move it out of the running list
       it = m_RunningRouteMaps.erase(it);
 
-      m_panel->m_gProgress->SetValue(m_RoutesToRun - m_WaitingRouteMaps.size() -
-                                     m_RunningRouteMaps.size());
+      m_panel->m_gProgress->SetValue(
+          m_RoutesToRun - m_WaitingRouteMaps.size() - m_RunningRouteMaps.size());
       UpdateRouteMap(routemapoverlay);
 
       /* update report if needed */
@@ -2220,7 +2522,6 @@ void WeatherRouting::OnComputationTimer(wxTimerEvent&) {
             break;
           }
       }
-
       continue;
     } else
       it++;
@@ -2291,7 +2592,9 @@ void WeatherRouting::OnComputationTimer(wxTimerEvent&) {
 
   wxLogMessage( "DEBUG BREAKPOINT #7 ? Scheduler idle: Running=0, Waiting=0. All routes finished.");
 
-  StopAll();
+  // Do NOT call StopAll() here. // Just stop the timer and leave
+  // overlays/results intact.
+  m_tCompute.Stop();
 }
 
 void WeatherRouting::OnHideConfigurationTimer(wxTimerEvent&) {
@@ -2749,101 +3052,109 @@ void WeatherRouting::UpdateRouteMap(RouteMapOverlay* routemapoverlay) {
   }
 }
 
-/* we could speed this up more with another flag for when we need to update
-   parameters but not computed route information */
 void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
-  if (!stateonly) {
+
+// ---------------------------------------------------------------------------------
+//    1. Update all computer fields (unless stateonly == true)
+//  --------------------------------------------------------------------------------
+if (!stateonly) {
     RouteMapConfiguration configuration = routemapoverlay->GetConfiguration();
 
     BoatFilename = configuration.boatFileName;
+
     // Add handling for Start field based on StartType
     if (configuration.StartType == RouteMapConfiguration::START_FROM_BOAT) {
       Start = _("Boat");
     } else {
       Start = configuration.Start;
     }
-    StartType =
-        configuration.StartType == RouteMapConfiguration::START_FROM_POSITION
+
+    StartType = configuration.StartType == RouteMapConfiguration::START_FROM_POSITION
             ? _("From Position")
             : _("From Boat");
+
     UseCurrentTime = configuration.UseCurrentTime ? _("true") : _("false");
+
     wxDateTime starttime = configuration.StartTime;
     if (wr->m_SettingsDialog.m_cbUseLocalTime->GetValue())
-      starttime = starttime.FromUTC();
+        starttime = starttime.FromUTC();
     StartTime = starttime.Format("%x %H:%M");
 
     End = configuration.End;
 
     wxDateTime endtime = routemapoverlay->EndTime();
     if (endtime.IsValid()) {
-      if (wr->m_SettingsDialog.m_cbUseLocalTime->GetValue())
-        endtime = endtime.FromUTC();
-      EndTime = endtime.Format("%x %H:%M");
-    } else
-      EndTime = "N/A";
+       if (wr->m_SettingsDialog.m_cbUseLocalTime->GetValue())
+           endtime = endtime.FromUTC();
+       EndTime = endtime.Format("%x %H:%M");
+    } else {
+       EndTime = "N/A";
+    }
 
     // REFACTORING
-    // I decided to dedicate a function for displaying the difference
-    // between two TimeDate as it is usefull in some other part of the code.
+    // Dedicate a function to display the difference
+    // between the two TimeDate. Useful in other parts of the code.
     Time = calculateTimeDelta(starttime, endtime);
 
-    Distance = wxString::Format(
-        "%.0f/%.0f", routemapoverlay->RouteInfo(RouteMapOverlay::DISTANCE),
+    Distance = wxString::Format("%.0f/%.0f",
+        routemapoverlay->RouteInfo(RouteMapOverlay::DISTANCE),
         DistGreatCircle_Plugin(configuration.StartLat, configuration.StartLon,
                                configuration.EndLat, configuration.EndLon));
 
-    AvgSpeed = wxString::Format(
-        "%.1f", routemapoverlay->RouteInfo(RouteMapOverlay::AVGSPEED));
+    AvgSpeed = wxString::Format("%.1f",
+        routemapoverlay->RouteInfo(RouteMapOverlay::AVGSPEED));
 
-    MaxSpeed = wxString::Format(
-        "%.1f", routemapoverlay->RouteInfo(RouteMapOverlay::MAXSPEED));
+    MaxSpeed = wxString::Format("%.1f",
+        routemapoverlay->RouteInfo(RouteMapOverlay::MAXSPEED));
 
-    AvgSpeedGround = wxString::Format(
-        "%.1f", routemapoverlay->RouteInfo(RouteMapOverlay::AVGSPEEDGROUND));
+    AvgSpeedGround = wxString::Format("%.1f",
+        routemapoverlay->RouteInfo(RouteMapOverlay::AVGSPEEDGROUND));
 
-    MaxSpeedGround = wxString::Format(
-        "%.1f", routemapoverlay->RouteInfo(RouteMapOverlay::MAXSPEEDGROUND));
+    MaxSpeedGround = wxString::Format("%.1f",
+        routemapoverlay->RouteInfo(RouteMapOverlay::MAXSPEEDGROUND));
 
-    AvgWind = wxString::Format(
-        "%.1f", routemapoverlay->RouteInfo(RouteMapOverlay::AVGWIND));
+    AvgWind = wxString::Format("%.1f",
+        routemapoverlay->RouteInfo(RouteMapOverlay::AVGWIND));
 
-    MaxWind = wxString::Format(
-        "%.1f", routemapoverlay->RouteInfo(RouteMapOverlay::MAXWIND));
+    MaxWind = wxString::Format("%.1f",
+        routemapoverlay->RouteInfo(RouteMapOverlay::MAXWIND));
 
-    MaxWindGust = wxString::Format(
-        "%.1f", routemapoverlay->RouteInfo(RouteMapOverlay::MAXWINDGUST));
+    MaxWindGust = wxString::Format("%.1f",
+        routemapoverlay->RouteInfo(RouteMapOverlay::MAXWINDGUST));
 
-    AvgCurrent = wxString::Format(
-        "%.1f", routemapoverlay->RouteInfo(RouteMapOverlay::AVGCURRENT));
+    AvgCurrent = wxString::Format("%.1f",
+        routemapoverlay->RouteInfo(RouteMapOverlay::AVGCURRENT));
 
-    MaxCurrent = wxString::Format(
-        "%.1f", routemapoverlay->RouteInfo(RouteMapOverlay::MAXCURRENT));
+    MaxCurrent = wxString::Format("%.1f",
+        routemapoverlay->RouteInfo(RouteMapOverlay::MAXCURRENT));
 
-    AvgSwell = wxString::Format(
-        "%.1f", routemapoverlay->RouteInfo(RouteMapOverlay::AVGSWELL));
+    AvgSwell = wxString::Format("%.1f",
+        routemapoverlay->RouteInfo(RouteMapOverlay::AVGSWELL));
 
-    MaxSwell = wxString::Format(
-        "%.1f", routemapoverlay->RouteInfo(RouteMapOverlay::MAXSWELL));
+    MaxSwell = wxString::Format("%.1f",
+        routemapoverlay->RouteInfo(RouteMapOverlay::MAXSWELL));
 
-    UpwindPercentage = wxString::Format(
-        "%.1f%%",
+    UpwindPercentage = wxString::Format("%.1f%%",
         routemapoverlay->RouteInfo(RouteMapOverlay::PERCENTAGE_UPWIND));
 
     double ps = routemapoverlay->RouteInfo(RouteMapOverlay::PORT_STARBOARD);
     PortStarboard = wxString::Format("%.0f/%.0f", ps, 100 - ps);
 
-    Tacks = wxString::Format(
-        "%.0f", routemapoverlay->RouteInfo(RouteMapOverlay::TACKS));
-    Jibes = wxString::Format(
-        "%.0f", routemapoverlay->RouteInfo(RouteMapOverlay::JIBES));
-    SailPlanChanges = wxString::Format(
-        "%.0f", routemapoverlay->RouteInfo(RouteMapOverlay::SAIL_PLAN_CHANGES));
+    Tacks = wxString::Format("%.0f",
+        routemapoverlay->RouteInfo(RouteMapOverlay::TACKS));
+    Jibes = wxString::Format("%.0f",
+        routemapoverlay->RouteInfo(RouteMapOverlay::JIBES));
+    SailPlanChanges = wxString::Format("%.0f",
+        routemapoverlay->RouteInfo(RouteMapOverlay::SAIL_PLAN_CHANGES));
 
-    // CUSTOMIZATION
-    // Display sailing comfort
+    // CUSTOMIZATION  Display sailing comfort
     int comfort_level = routemapoverlay->RouteInfo(RouteMapOverlay::COMFORT);
     Comfort = RouteMapOverlay::sailingConditionText(comfort_level);
   }
+
+// ---------------------------------------------------------------------------------
+//  2. Compute and Update State field
+// --------------------------------------------------------------------------------
 
   if (!routemapoverlay->Valid()) {
     State = _("Invalid Start/End");
@@ -2853,27 +3164,40 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
       State += ": " + error;
     else if (!weatherError.IsEmpty())
       State += ": " + weatherError;
+    return;
+  }
 
-  } else if (routemapoverlay->Running()) {
+  if (routemapoverlay->Running()) {
     State = _("Computing...");
-  } else if (routemapoverlay->m_Stopped) {
-    State = _("Stopped");
+    return;
+  }
 
-  } else {
-    if (routemapoverlay->Finished()) {
-      if (routemapoverlay->ReachedDestination())
-        State = _("Complete");
-      else {
+  if (routemapoverlay->m_Stopped) {
+    State = _("Stopped");
+    return;
+  }
+
+ // ---------------------------------------------------------------------------------
+ //  3. Finished Route  
+ // --------------------------------------------------------------------------------
+
+ if (routemapoverlay->Finished()) {
+    if (routemapoverlay->ReachedDestination()) {
+          State = _("Complete");
+    } else {
+        // Partial / failed completion
         State = "";
         bool needsComma = false;
+
         wxString weatherStatus = routemapoverlay->GetWeatherForecastError();
         if (weatherStatus != wxEmptyString) {
           if (needsComma) State += ", ";
-          State += _("Grib");
+          State += _("Grib"); 
           State += ": ";
           State += weatherStatus;
           needsComma = true;
         }
+
         PolarSpeedStatus polarStatus = routemapoverlay->GetPolarStatus();
         if (polarStatus != POLAR_SPEED_SUCCESS) {
           if (needsComma) State += ", ";
@@ -2882,12 +3206,14 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
           State += Polar::GetPolarStatusMessage(polarStatus);
           needsComma = true;
         }
+
         wxString gribError = routemapoverlay->GetGribError();
         if (gribError != wxEmptyString) {
           if (needsComma) State += ", ";
           State += gribError;
           needsComma = true;
         }
+
         if (routemapoverlay->LandCrossing()) {
           if (needsComma) State += ", ";
           State += _("Land");
@@ -2895,25 +3221,64 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
           State += _("Failed");
           needsComma = true;
         }
+
         if (routemapoverlay->BoundaryCrossing()) {
           if (needsComma) State += ", ";
           State += _("Boundary");
           State += ": ";
           State += _("Failed");
         }
-      }
-    } else {
-      for (std::list<RouteMapOverlay*>::iterator it =
-               wr->m_WaitingRouteMaps.begin();
-           it != wr->m_WaitingRouteMaps.end(); it++)
-        if (*it == routemapoverlay) {
-          State = _("Waiting...");
-          return;
-        }
-      State = _("Not Computed");
     }
+    return;
+ } 
+
+  // ---------------------------------------------------------------------------------
+  //  4. Waiting in queue state   
+  // ---------------------------------------------------------------------------------
+
+ for (auto it = wr->m_WaitingRouteMaps.begin();
+      it != wr->m_WaitingRouteMaps.end(); ++it) {
+   if (*it == routemapoverlay) {
+     State = _("Waiting...");
+     return;
+   }
+ }
+
+  // ---------------------------------------------------------------------------------
+  // 5. READY state (idle, not computed)
+  // ---------------------------------------------------------------------------------
+  State = _("Ready");
+  
+  // Clear computed fields ONLY when overlay is dirty AND this is a full update
+  if (!stateonly && routemapoverlay->IsDirty()) {
+     ClearComputedFields();
+     routemapoverlay->ClearDirty();
   }
 }
+
+void WeatherRoute::ClearComputedFields() {
+  EndTime = "";
+  Time = "";
+  Distance = "";
+  AvgSpeed = "";
+  MaxSpeed = "";
+  AvgSpeedGround = "";
+  MaxSpeedGround = "";
+  AvgWind = "";
+  MaxWind = "";
+  MaxWindGust = "";
+  AvgCurrent = "";
+  MaxCurrent = "";
+  AvgSwell = "";
+  MaxSwell = "";
+  UpwindPercentage = "";
+  PortStarboard = "";
+  Tacks = "";
+  Jibes = "";
+  SailPlanChanges = "";
+  Comfort = "";
+}
+
 
 void WeatherRouting::UpdateItem(long index, bool stateonly) {
   WeatherRoute* weatherroute = reinterpret_cast<WeatherRoute*>(
@@ -3116,7 +3481,7 @@ void WeatherRouting::SetConfigurationRoute(WeatherRoute* weatherroute) {
   RouteMapOverlay* rmo = weatherroute->routemapoverlay;
   for (std::list<RouteMapOverlay*>::iterator it = m_RunningRouteMaps.begin();
        it != m_RunningRouteMaps.end(); it++)
-    if (*it == rmo && rmo->Running()) rmo->DeleteThread();
+    if (*it == rmo && rmo->Running()) rmo->Stop();
 
   weatherroute->Update(this);
 
@@ -3686,24 +4051,15 @@ void WeatherRouting::StartAll() {
 void WeatherRouting::Stop(RouteMapOverlay* routemapoverlay) {
   if (!routemapoverlay) return;
 
-  // Request cancellation
+  wxLogMessage("WeatherRouting::Stop - BEGIN overlay=%p", routemapoverlay);
+
+  // Stop() already waits, joins, and deletes the thread.
   routemapoverlay->Stop();
-
-  // Timeout guard: wait up to 5 seconds for thread to exit
-  const int timeout_ms = 5000;
-  const int sleep_ms = 50;
-  int waited = 0;
-
-  while (routemapoverlay->Running() && waited < timeout_ms) {
-    wxThread::Sleep(sleep_ms);
-    waited += sleep_ms;
-  }
-
-  // If still running after timeout, force cleanup anyway
-  routemapoverlay->DeleteThread();
 
   // Clear Finished flag so route can be restarted later
   routemapoverlay->ResetFinished();
+
+  wxLogMessage("WeatherRouting::Stop - END overlay=%p", routemapoverlay);
 }
 
 // Made public in weatherrouting.h for AddressSpaceMonitor
@@ -3712,26 +4068,31 @@ void WeatherRouting::Stop(RouteMapOverlay* routemapoverlay) {
 // and free up memory immediately by stopping all threads
 // rather than waiting for user to do so manually
 // This is AddressSpaceMonitor AutoStop
-
-
 void WeatherRouting::StopAll() {
   wxLogMessage("WeatherRouting::StopAll - BEGIN");
 
   // 1. Snapshot the overlays under lock
   std::vector<RouteMapOverlay*> overlays;
-
   {
-    wxMutexLocker lock(
-        m_OverlayListMutex);  // whatever mutex protects your list
+    wxMutexLocker lock(m_OverlayListMutex);
     overlays.reserve(m_RouteMapOverlays.size());
     for (auto* o : m_RouteMapOverlays) overlays.push_back(o);
   }
 
-  // 2. Issue Stop() to each overlay
+  // Phase 1: signal all workers to stop
   for (auto* overlay : overlays) {
-    if (overlay) {
+    overlay->SetFinished(true);
+    overlay->m_Stopped = true;
+  }
+
+  // Phase 2: wait for workers to exit
+  WaitForAllRoutesToStop();
+
+  // Phase 3: cleanup thread objects
+  for (auto* overlay : overlays) {
+    if (overlay->ThreadExited() && overlay->HasThread()) {
       wxLogMessage("WeatherRouting::StopAll - stopping overlay %p", overlay);
-      overlay->Stop();  // uses your new deterministic Stop()
+      overlay->Stop();  // safe: thread already exited
     }
   }
 
@@ -3739,111 +4100,7 @@ void WeatherRouting::StopAll() {
 }
 
 
-// Intended to act the same as ResetAll() because that is how it has always worked.
-void WeatherRouting::Reset() {
-  wxLogMessage("WeatherRouting::Reset() - BEGIN");
 
-  // 1. Stop all computations (non-blocking)
-  StopAll();
-
-  // 2. Wait for all threads to fully terminate (blocking)
-  WaitForAllRoutesToStop();
-  wxLogMessage("WeatherRouting::Reset() - All threads stopped.");
-
-  // 3. Reset all overlays
-  for (int i = 0; i < m_panel->m_lWeatherRoutes->GetItemCount(); i++) {
-    WeatherRoute* weatherroute = reinterpret_cast<WeatherRoute*>(
-        wxUIntToPtr(m_panel->m_lWeatherRoutes->GetItemData(i)));
-
-    if (weatherroute && weatherroute->routemapoverlay) {
-      wxLogMessage(
-          "WeatherRouting::Reset() - Resetting overlay for route index %d", i);
-      weatherroute->routemapoverlay->Reset();
-    } else {
-      wxLogWarning(
-          "WeatherRouting::Reset() - Null WeatherRoute or RouteMapOverlay at "
-          "index %d",
-          i);
-    }
-  }
-
-  // 4. Clear cursor/selection state
-  m_positionOnRoute = nullptr;
-
-  // 5. Refresh UI
-  UpdateDialogs();
-  GetParent()->Refresh();
-
-  wxLogMessage("WeatherRouting::Reset() - END");
-}
-
-
-
-void WeatherRouting::WaitForAllRoutesToStop() {
-  wxLogMessage("WeatherRouting::WaitForAllRoutesToStop - BEGIN");
-
-  std::vector<RouteMapOverlay*> overlays;
-
-  // Snapshot overlays under lock
-  {
-    wxMutexLocker lock(m_OverlayListMutex);
-    overlays.reserve(m_RouteMapOverlays.size());
-    for (auto* o : m_RouteMapOverlays) overlays.push_back(o);
-  }
-
-  auto start = std::chrono::steady_clock::now();
-  const auto timeout = std::chrono::seconds(5);
-
-  bool allExited = false;
-
-  while (!allExited) {
-    allExited = true;
-
-    for (auto* overlay : overlays) {
-      if (!overlay) continue;
-
-      if (!overlay->ThreadExited()) {
-        allExited = false;
-        break;
-      }
-    }
-
-    if (allExited) break;
-
-  #ifdef PLUGIN_USE_ASM
-    if (std::chrono::steady_clock::now() - start > timeout) {
-      wxLogMessage("WeatherRouting::WaitForAllRoutesToStop - TIMEOUT");
-      break;
-    }
-  #endif
-    wxThread::Sleep(20);
-  }
-  wxLogMessage("WeatherRouting::WaitForAllRoutesToStop - END");
-
-}
-
-
-
-void WeatherRouting::WaitForRoutesToStop(
-    const std::list<RouteMapOverlay*>& overlays) {
-  bool anyRunning = true;
-
-  while (anyRunning) {
-    anyRunning = false;
-
-    for (auto* ov : overlays) {
-      if (ov && ov->Running()) {
-        anyRunning = true;
-        break;
-      }
-    }
-
-    if (anyRunning) {
-      wxMilliSleep(10);
-      wxYieldIfNeeded();
-    }
-  }
-}
 
 void WeatherRouting::DeleteRouteMaps(
     std::list<RouteMapOverlay*> routemapoverlays) {

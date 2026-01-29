@@ -199,4 +199,4 @@ private:
   wxDateTime m_last_filetime;
 };
 
-#endif
+#endif /* _WEATHER_ROUTING_BOAT_H_ */

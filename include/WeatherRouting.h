@@ -76,10 +76,12 @@ public:
   ~WeatherRoute();
 
   /**
-   * Updates the weather route object with current configuration and calculation
+   * WeatherRoute operates on a single route!!!! Keep that in mind.
+   * 
+   * Updates the weather route (singular) object with current configuration and calculation
    * status.
    *
-   * This method updates both the route configuration data and status
+   * This method updates both the route (singular) configuration data and status
    * information. It's used whenever route information needs to be refreshed in
    * the UI.
    *
@@ -90,6 +92,8 @@ public:
 
 
   void Update(WeatherRouting* wr, bool stateonly = false);
+
+  void ClearComputedFields();  // Used  by Reset to clear only the computed fields
 
   /** Flag indicating if this route is filtered out in the UI display. */
   bool Filtered;
@@ -256,9 +260,10 @@ public:
   void Stop(RouteMapOverlay* routemapoverlay);  // Stop the computation of the specified route. 
   void StopAll();  //Stop the computation of all routes.
 
-  void Reset();          // wrapper for ResetAll
-  void ResetAll();       // global reset Stop ? Wait ? Reset
-  void ResetSelected(); // per-selection reset
+  void Reset();                // the wrapper that the UI and timers call
+  void ResetAll();             // global reset Stop ? Wait ? Reset
+  void ResetSelected();        // per-selection reset
+  void Reset(RouteMapOverlay* overlay);  // Reset the specified route.
 
   void WaitForAllRoutesToStop();
   void WaitForRoutesToStop(const std::list<RouteMapOverlay*>& overlays);

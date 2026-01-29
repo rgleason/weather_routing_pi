@@ -91,11 +91,8 @@ void* RouteMapOverlayThread::Entry() {
           m_RouteMapOverlay.Finished(), m_RouteMapOverlay.ReachedDestination());
 
       if (!m_RouteMapOverlay.Propagate())
-         // No more work possible: exit workerloop
-         //  wxThread::Sleep(50);
-         break;
+         wxThread::Sleep(50);
       else {
-        m_RouteMapOverlay.m_dirty = true;  // <--- ADD THIS
         m_RouteMapOverlay.UpdateDestination();  // don't do it inside worker thread, race
         wxThread::Sleep(5);   
       }
@@ -126,35 +123,49 @@ void* RouteMapOverlayThread::Entry() {
   return 0;
 }
 
-/* Monitoring and logging of thread exit state only.
- * No logic changes here. Not where you determine status.
- * wxWidgets requires thread object is destroyed by the parent, not the thread itself
- * Thread signals its done, parent waits for signal, 
- * Then parent deletes thread object.
- * OnExit is only safe place clear Thread Alive and set Thread Exited.  */
 void RouteMapOverlayThread::OnExit() {
-  {
-   wxMutexLocker lock(m_RouteMapOverlay.routemutex);
+  wxMutexLocker lock(m_RouteMapOverlay.routemutex);
 
-   wxLogMessage("OnExit(): thread exiting for overlay %p", &m_RouteMapOverlay);
+    // 1. Signal that the worker thread is exiting   
+    wxLogMessage("OnExit(): thread exiting for overlay %p", &m_RouteMapOverlay);
 
-   // Thread is no longer running
-   m_RouteMapOverlay.m_bThreadAlive.store(false, std::memory_order_release);
-   m_RouteMapOverlay.m_bThreadExited.store(true, std::memory_order_release);
- 
-   wxLogMessage(
-     "EngineState:OnExit(): FINAL STATE Finished=%d "
-     "ReachedDest=%d Stopped=%d ThreadAlive=%d ThreadExited=%d",
-     m_RouteMapOverlay.Finished(),
-     m_RouteMapOverlay.ReachedDestination(),
-     m_RouteMapOverlay.m_Stopped,
-     m_RouteMapOverlay.m_bThreadAlive.load(),
-     m_RouteMapOverlay.m_bThreadExited.load());
-  }
-  // No pointer manipulation here.    
+    m_RouteMapOverlay.m_bThreadExited.store(true, std::memory_order_release);
+
+    // 2. Final state snapshot no code here, just logging   
+     wxLogMessage(
+         "EngineState:OnExit(): FINAL STATE Finished=%d "
+         "ReachedDest=%d Stopped=%d ThreadAlive=%d ThreadExited=%d",
+          m_RouteMapOverlay.Finished(),
+          m_RouteMapOverlay.ReachedDestination(),
+          m_RouteMapOverlay.m_Stopped,
+          m_RouteMapOverlay.m_bThreadAlive.load(),
+          m_RouteMapOverlay.m_bThreadExited.load());
+
+    //  3. Handshake flag and Signal that the worker thread has fully exited
+    wxLogMessage(
+         "EngineState:OnExit():setting m_bThreadExited TRUE for overla Finished=%d "
+         "ReachedDest=%d Stopped=%d ThreadAlive=%d ThreadExited=%d",
+          m_RouteMapOverlay.Finished(),
+          m_RouteMapOverlay.ReachedDestination(),
+          m_RouteMapOverlay.m_Stopped,
+          m_RouteMapOverlay.m_bThreadAlive.load(),
+          m_RouteMapOverlay.m_bThreadExited.load());
+
+     m_RouteMapOverlay.m_bThreadExited.store(true, std::memory_order_release);
+
+    // Detach thread pointer
+    wxLogMessage(
+         "ReachedDest=%d Stopped=%d ThreadAlive=%d ThreadExited=%d",
+          m_RouteMapOverlay.Finished(),
+          m_RouteMapOverlay.ReachedDestination(),
+          m_RouteMapOverlay.m_Stopped,
+          m_RouteMapOverlay.m_bThreadAlive.load(),
+          m_RouteMapOverlay.m_bThreadExited.load());
+
+    m_RouteMapOverlay.m_Thread = nullptr;
 }
 
-RouteMapOverlay::RouteMapOverlay()
+  RouteMapOverlay::RouteMapOverlay()
     : m_UpdateOverlay(true),
       m_bEndRouteVisible(false),
       m_Thread(nullptr),
@@ -169,23 +180,16 @@ RouteMapOverlay::RouteMapOverlay()
       wind_barb_cache_scale(NAN),
       wind_barb_cache_origin_size(0),
       current_cache_scale(NAN),
-      current_cache_origin_size(0),
-      m_Stopped(false),
-      m_dirty(false)
-{
-  m_bThreadAlive.store(false, std::memory_order_relaxed);
-  m_bThreadExited.store(false, std::memory_order_relaxed);
-}
+      current_cache_origin_size(0) {}
 
 RouteMapOverlay::~RouteMapOverlay() {
-  // First, ensure the worker is stopped and thread deleted
-  //  Stop( safe to call even if no thread
 
-  // Now clean up overlay internals under lock
-  wxMutexLocker lock(routemutex);
+  wxMutexLocker lock(routemutex);  // Ensure thread safety
+
   delete destination_position;
-}
 
+  if (m_Thread) Stop();
+}
 
 void RouteMapOverlay::SetConfiguration(const RouteMapConfiguration& cfg) {
   wxMutexLocker lock(routemutex);
@@ -282,6 +286,7 @@ bool RouteMapOverlay::Start(wxString& error) {
       "Finished=%d ReachedDest=%d",
       this, m_Stopped, m_bThreadAlive.load(), m_bThreadExited.load(),
       Finished(), ReachedDestination());
+
 
   wxLogMessage("RouteMapOverlay::Start - worker thread alive");
   return true;
@@ -383,13 +388,25 @@ void RouteMapOverlay::RouteAnalysis(PlugIn_Route* proute) {
 }
 
 void RouteMapOverlay::DeleteThread() {
-  // Legacy API: Stop() is now the canonical shutdown.
-  // Keep this as a no-op or a thin wrapper that does NOT touch the thread.
-  wxLogMessage(
-      "RouteMapOverlay::DeleteThread() called; Stop() is canonical, no action "
-      "taken.");
-}
+  RouteMapOverlayThread* thread = nullptr;
 
+  {
+    wxMutexLocker lock(routemutex);
+
+    if (!m_Thread) return;
+
+    thread = m_Thread;
+    m_Thread = nullptr;  // detach under lock
+  }  // mutex released
+
+  // Ask thread to terminate
+  thread->Delete();
+
+  // Wait for worker thread to exit cleanly
+  thread->Wait();
+
+  delete thread;
+}
 
 static void SetColor(piDC& dc, wxColour c, bool penifgl = false) {
 #ifndef __OCPN__ANDROID__
@@ -1830,74 +1847,69 @@ void RouteMapOverlay::Clear() {
   RouteMap::Clear();
 }
 
-/* Stop is the single place that joins and deletes the thread. Still wait.
- * Single owner of Delete(), Wait(), and delete.
- * never reset m_bThreadExited in Stop(). That flag is owned by the worker thread.
- */
-void RouteMapOverlay::Stop() {
-  wxLogMessage(
-      "OverlayState: Stop()  overlay=%p Stopped=%d ThreadAlive=%d "
-      "ThreadExited=%d "
-      "Finished=%d ReachedDest=%d",
-      this, m_Stopped, m_bThreadAlive.load(), m_bThreadExited.load(),
-      Finished(), ReachedDestination());
 
-  if (m_bThreadExited.load(std::memory_order_acquire) && !m_Thread) return;
+void RouteMapOverlay::Stop() {
+
+   wxLogMessage(
+     "OverlayState: Stop()  overlay=%p Stopped=%d ThreadAlive=%d ThreadExited=%d "
+      "Finished=%d ReachedDest=%d",
+      &m_RouteMapOverlay, m_RouteMapOverlay.m_Stopped,
+      m_RouteMapOverlay.m_bThreadAlive.load(),
+      m_RouteMapOverlay.m_bThreadExited.load(), m_RouteMapOverlay.Finished(),
+      m_RouteMapOverlay.ReachedDestination());
+
 
   RouteMapOverlayThread* thread = nullptr;
-  bool already_exited = false;  // <-- THIS MUST EXIST
 
   {
     wxMutexLocker lock(routemutex);
 
-    if (!m_Thread) { wxLogMessage("Stop(): no thread for overlay %p", this);
-      return;
-    }
 
-    // If the worker thread has already exited, we just need to join & delete.
-    already_exited = m_bThreadExited.load(std::memory_order_acquire);
+    if (!m_Thread) return;
 
+    // Signal worker thread to exit
+    SetFinished(true);
+    m_Stopped = true;
 
-    // Signal worker thread to exit if still running
-    if (!already_exited)
-            // Signal worker thread to exit
-       { SetFinished(true);
-       m_Stopped = true;
-            // UI refresh
-       MarkDirty();
-       }
+    // UI refresh
+    MarkDirty();
 
-    // Detach pointer under lock; 
+    // Reset exit handshake flag
+    m_bThreadExited.store(false, std::memory_order_release);
+
+    // Detach thread pointer under lock
     thread = m_Thread;
-    m_Thread = nullptr;  //Stop() is now the sole owner
+    m_Thread = nullptr;
   }
 
- // If not already exited, request termination
-  if (!already_exited) {
-    thread->Delete();
+  // Request thread termination
+  thread->Delete();
 
-    // ---- SHUTDOWN TIMEOUT LOOP ----
-    auto start = std::chrono::steady_clock::now();
-    const auto timeout = std::chrono::seconds(3);
+  // ---- SHUTDOWN TIMEOUT LOOP ----
+  auto start = std::chrono::steady_clock::now();
+  const auto timeout = std::chrono::seconds(3);
 
-    while (!m_bThreadExited.load(std::memory_order_acquire)) {
-      if (std::chrono::steady_clock::now() - start > timeout) {
-        wxLogMessage(
-            "RouteMapOverlay::Stop: timeout waiting for worker thread to exit");
-        break;
-      }
-      wxThread::Sleep(10);
+  while (!m_bThreadExited.load(std::memory_order_acquire)) {
+    if (std::chrono::steady_clock::now() - start > timeout) {
+      wxLogMessage(
+          "RouteMapOverlay::Stop: timeout waiting for worker thread to exit");
+      break;
     }
+    wxThread::Sleep(10);
   }
-  // At this point the thread should be finished; Wait() once, then delete.
+
+  // Ensure thread is fully joined
   thread->Wait();
   delete thread;
 
-  wxLogMessage(
+ wxLogMessage(
       "OverlayState: Stop() COMPLETE  overlay=%p Stopped=%d ThreadAlive=%d "
-      "ThreadExited=%d Finished=%d ReachedDest=%d",
-      this, m_Stopped, m_bThreadAlive.load(), m_bThreadExited.load(),
-      Finished(), ReachedDestination());
+      "ThreadExited=%d "
+      "Finished=%d ReachedDest=%d",
+      &m_RouteMapOverlay, m_RouteMapOverlay.m_Stopped,
+      m_RouteMapOverlay.m_bThreadAlive.load(),
+      m_RouteMapOverlay.m_bThreadExited.load(), m_RouteMapOverlay.Finished(),
+      m_RouteMapOverlay.ReachedDestination());
 
   wxLogMessage("RouteMapOverlay::Stop: worker thread shutdown complete");
 }
@@ -1923,16 +1935,15 @@ void RouteMapOverlay::SetFinished(bool f) {
   wxLogMessage(
       "Overlay::SetFinished(%d): BEFORE overlay=%p EngineFinished=%d "
       "ReachedDest=%d",
-      f, this, RouteMap::Finished(), RouteMap::ReachedDestination());
+      f, this, RouteMap::Finished(), m_bReachedDestination);
 
   RouteMap::SetFinished(f);
 
   wxLogMessage(
       "Overlay::SetFinished(%d): AFTER  overlay=%p EngineFinished=%d "
       "ReachedDest=%d",
-      f, this, RouteMap::Finished(), RouteMap::ReachedDestination());
+      f, this, RouteMap::Finished(), m_bReachedDestination);
 }
-
 
 
 void RouteMapOverlay::UpdateCursorPosition() {

@@ -141,6 +141,12 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
                      wxEmptyString, wxITEM_NORMAL);
   m_mConfiguration->Append(m_mResetAll);
 
+  wxMenuItem* m_mResetSelected;
+  m_mResetSelected =
+      new wxMenuItem(m_mConfiguration, wxID_ANY, wxString(_("Reset &Selected")),
+                     wxEmptyString, wxITEM_NORMAL);
+  m_mConfiguration->Append(m_mResetSelected);
+
   m_mConfiguration->AppendSeparator();
 
   m_mSaveAsTrack =
@@ -419,6 +425,10 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
   m_mConfiguration->Bind(wxEVT_COMMAND_MENU_SELECTED,
                          wxCommandEventHandler(WeatherRoutingBase::OnResetAll),
                          this, m_mResetAll->GetId());
+  m_mConfiguration->Bind(
+      wxEVT_COMMAND_MENU_SELECTED,
+      wxCommandEventHandler(WeatherRoutingBase::OnResetSelected), this,
+      m_mResetSelected->GetId());
   m_mConfiguration->Bind(
       wxEVT_COMMAND_MENU_SELECTED,
       wxCommandEventHandler(WeatherRoutingBase::OnSaveAsTrack), this,

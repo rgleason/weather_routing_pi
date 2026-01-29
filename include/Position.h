@@ -237,4 +237,4 @@ void DeletePoints(Position* point);
 
 int ComputeQuadrantFast(Position* p, Position* q);
 
-#endif
+#endif /* _WEATHER_ROUTING_POSITION_H_ */

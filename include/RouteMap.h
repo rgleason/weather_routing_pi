@@ -20,6 +20,18 @@
 #ifndef _WEATHER_ROUTING_ROUTE_MAP_H_
 #define _WEATHER_ROUTING_ROUTE_MAP_H_
 
+enum WeatherForecastStatus {
+  /** GRIB request was successful. */
+  WEATHER_FORECAST_OK = 0,  // neutral starting state
+  WEATHER_FORECAST_NO_GRIB_DATA,
+  WEATHER_FORECAST_NO_WIND_DATA,
+  WEATHER_FORECAST_NO_CLIMATOLOGY_DATA,
+  WEATHER_FORECAST_CLIMATOLOGY_DISABLED,
+  WEATHER_FORECAST_OTHER_ERROR,
+  WEATHER_FORECAST_SUCCESS   // final success state
+};
+
+
 #include "wx/datetime.h"
 #include <wx/object.h>
 #include <wx/weakref.h>
@@ -33,32 +45,10 @@
 #include "Position.h"
 #include "Boat.h"
 
+
 struct RouteMapConfiguration;
 class IsoRoute;
-
 class PlotData;
-
-/**
- * Enumeration of error codes for GRIB and climatology requests.
- */
-enum WeatherForecastStatus {
-  /** GRIB request was successful. */
-  WEATHER_FORECAST_SUCCESS = 0,
-  /**
-   * There is no GRIB data for the requested time.
-   * For example, the timestamp is beyond the weather forecast range.
-   */
-  WEATHER_FORECAST_NO_GRIB_DATA,
-  /** GRIB contains no wind data. */
-  WEATHER_FORECAST_NO_WIND_DATA,
-  /** There is no climatology data. */
-  WEATHER_FORECAST_NO_CLIMATOLOGY_DATA,
-  /** Climatology data is disabled. */
-  WEATHER_FORECAST_CLIMATOLOGY_DISABLED,
-  /** Other GRIB error (catch all) */
-  WEATHER_FORECAST_OTHER_ERROR,
-};
-
 class WR_GribRecordSet;
 
 /*
@@ -691,6 +681,23 @@ public:
   RouteMap();
   virtual ~RouteMap();
 
+      // --- Added public setters for overlay access ---
+    void SetValid(bool v) { m_bValid = v; }
+    void SetWeatherForecastStatus(WeatherForecastStatus s) {
+      m_bWeatherForecastStatus = s;
+    }
+    void SetReachedDestination(bool r) { m_bReachedDestination = r; }
+    void SetNewTime(const wxDateTime& t) { m_NewTime = t; }
+    void SetNeedsGrib(bool v) { m_bNeedsGrib = v; }
+
+
+    // (rest of the existing public API)
+    bool Finished() const;
+    bool Valid() const;
+    WeatherForecastStatus GetWeatherForecastStatus() const;
+    bool ReachedDestination() const;
+
+  
   /**
    * Resolves a named position to its latitude and longitude coordinates.
    *
@@ -897,6 +904,7 @@ public:
    * as starting points or destinations.
    */
   static std::list<RouteMapPosition> Positions;
+
   /**
    * Stops the routing calculation.
    *
@@ -907,11 +915,13 @@ public:
     m_bFinished = true;
     Unlock();
   }
+
   void ResetFinished() {
     Lock();
     m_bFinished = false;
     Unlock();
   }
+
   /**
    * Loads the boat configuration from XML file.
    *
@@ -957,10 +967,33 @@ public:
   wxString GetRoutingErrorInfo();
 
 protected:
+
+
+/*routing engine?s internal ?we are done? flag.
+  m_bFinished = true
+  ? The routing engine has reached a terminal state.
+  ? The worker thread should stop calling Propagate().
+    m_bReachedDestination = destination
+  ? true means the isochrone hit the destination.
+  ? false means the engine stopped for another reason (no more propagation
+  possible, missing GRIB, invalid config, etc.).
+  This is the flag the worker thread checks to decide whether to exit:
+  If this flag is not set correctly ? or if the worker thread never sees it ?
+  the UI will stay stuck in ?Computing?.
+  */
   void SetFinished(bool destination) {
+    wxLogMessage(
+        "RouteMap::SetFinished(%d): BEFORE  ReachedDest=%d Finished=%d",
+        destination, m_bReachedDestination, m_bFinished);
+
     m_bReachedDestination = destination;
     m_bFinished = true;
+
+    wxLogMessage(
+        "RouteMap::SetFinished(%d): AFTER   ReachedDest=%d Finished=%d",
+        destination, m_bReachedDestination, m_bFinished);
   }
+
 
   void UpdateStatus(const RouteMapConfiguration& configuration) {
     if (configuration.polar_status != POLAR_SPEED_SUCCESS) {

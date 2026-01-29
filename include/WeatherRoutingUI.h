@@ -171,6 +171,7 @@ protected:
   virtual void OnComputeAll(wxCommandEvent& event) { event.Skip(); }
   virtual void OnStop(wxCommandEvent& event) { event.Skip(); }
   virtual void OnResetAll(wxCommandEvent& event) { event.Skip(); }
+  virtual void OnResetSelected(wxCommandEvent& event) { event.Skip(); }
   /** Callback invoked when user clicks "Save as Track" menu item. */
   virtual void OnSaveAsTrack(wxCommandEvent& event) { event.Skip(); }
   /** Callback invoked when user clicks "Save as Route" menu item. */

@@ -189,4 +189,4 @@ void log_cache_stats();
 void maintain_land_cache();
 void clear_land_cache();
 
-#endif
+#endif  //_WEATHER_ROUTING_CONSTRAINT_CHECKER_H_

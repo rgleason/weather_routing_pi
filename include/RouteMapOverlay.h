@@ -23,6 +23,7 @@
 #include <atomic>   
 #include "RouteMap.h"
 #include "LineBufferOverlay.h"
+#include "WeatherRouting.h"
 
 class PlugIn_ViewPort;
 class PlugIn_Route;
@@ -147,10 +148,6 @@ public:
    */
   ~RouteMapOverlay();
 
-  bool Finished();
-  bool ThreadExited() const { return m_bThreadExited; }
-  void SetFinished(bool f);
-
   /**
    * Dirty flag indicating that this overlay's internal routing state
    * has been cleared (via Clear() / Reset()) and the UI must refresh.
@@ -169,6 +166,8 @@ public:
 
   /** Flag indicating if the end route should be visible */
   bool m_bEndRouteVisible = true;
+
+  void SetConfiguration(const RouteMapConfiguration& cfg);
 
   /**
    * Updates the cursor position on the route map.
@@ -319,8 +318,26 @@ public:
   /**
    * Checks if the calculation thread is still running.
    * @return True if the thread is running.
+   * Scheduler must NEVER use m_Thread again,
+   * Use m_bThreadAlive and m_bThreadExited
+   * Have moved to flag?based lifecycle, which is correct.
    */
-  bool Running() { return m_Thread && m_Thread->IsAlive(); }
+  bool Running() const {
+    return m_bThreadAlive.load(std::memory_order_acquire) &&
+           !m_bThreadExited.load(std::memory_order_acquire);
+  }
+
+  bool ThreadExited() const {
+    return m_bThreadExited.load(std::memory_order_acquire);
+  }
+
+  bool HasThread() const {
+      return m_Thread != nullptr;
+  }
+
+  bool Finished();
+
+  void SetFinished(bool f);
 
   /**
    * Starts the route calculation thread.

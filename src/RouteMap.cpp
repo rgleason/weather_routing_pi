@@ -79,6 +79,7 @@
 #include "SunCalculator.h"
 #include "WeatherDataProvider.h"
 #include "weather_routing_pi.h"
+#include "WeatherRouting.h"
 
 #include "georef.h"
 
@@ -224,7 +225,13 @@ bool RouteMapConfiguration::Update() {
   return true;
 }
 
-RouteMap::RouteMap() {}
+RouteMap::RouteMap()
+    : m_bValid(false),
+      m_bFinished(false),
+      m_bNeedsGrib(false),
+      m_NewGrib(nullptr),
+      m_bWeatherForecastStatus(WEATHER_FORECAST_OK) {}
+
 
 RouteMap::~RouteMap() { Clear(); }
 
@@ -268,6 +275,10 @@ bool RouteMap::ReduceList(IsoRouteList& merged, IsoRouteList& routelist,
 
 /* enlarge the map by 1 level */
 bool RouteMap::Propagate() {
+
+  wxLogMessage(
+      "Propagate(): ENTER Valid=%d NeedsGrib=%d Finished=%d origin=%zu",
+      m_bValid, m_bNeedsGrib, m_bFinished, origin.size());
   Lock();
 
   wxLogMessage(
@@ -276,25 +287,39 @@ bool RouteMap::Propagate() {
       RouteMap::ClimatologyWindAtlasData,
       RouteMap::ClimatologyCycloneTrackCrossings);
 
+  if (m_bFinished) {
+    wxLogMessage("Propagate(): EARLY EXIT Finished=1 (origin=%zu)", origin.size());
+    Unlock();
+    return false;  // tell worker loop: no more work
+  }
 
-//  if (m_bNeedsGrib) {  // waiting for timer in main thread to request the grib
-//    wxLogMessage("RouteMap::Propagate: EARLY EXIT m_bNeedsGrib=1");
-//    Unlock();
-//    return false;
-//  }
+  // Temporary: do not block propagation on m_bNeedsGrib.
+  // We allow propagation to proceed using existing GRIB (if any) or
+  // climatology.
+  if (m_bNeedsGrib) {
+    wxLogMessage("RouteMap::Propagate: IGNORING m_bNeedsGrib=1 FOR NOW");
+    m_bNeedsGrib = 0;  // force ?not waiting? so we can start
+  }
 
-   if (m_bNeedsGrib) {  // waiting for timer in main thread to request the grib
-      wxLogMessage("RouteMap::Propagate: WAITING for GRIB (m_bNeedsGrib=1)");
-      Unlock();
+  //  if (m_bNeedsGrib) {  // waiting for timer in main thread to request the
+  //  grib
+  //    wxLogMessage("RouteMap::Propagate: EARLY EXIT m_bNeedsGrib=1");
+  //    Unlock();
+  //    return false;
+  //  }
 
-      // Option 1: yield but keep the worker alive
-      wxMilliSleep(50);
-      return true;  // keep loop going, don't mark finished
-    }
-
+  //   if (m_bNeedsGrib) {  // waiting for timer in main thread to request the
+  //   grib
+  //      wxLogMessage("RouteMap::Propagate: WAITING for GRIB
+  //      (m_bNeedsGrib=1)"); Unlock();
+  //   Option 1: yield but keep the worker alive
+  //      wxMilliSleep(50);
+  //      return true;  // keep loop going, don't mark finished
+  //    }
 
   if (!m_bValid) { /* config change */
-    wxLogMessage("RouteMap::Propagate: EARLY EXIT m_bValid=0 (marking finished)");
+    wxLogMessage(
+        "RouteMap::Propagate: EARLY EXIT m_bValid=0 (marking finished)");
     m_bFinished = true;
     Unlock();
     return false;
@@ -360,7 +385,9 @@ bool RouteMap::Propagate() {
              RouteMapConfiguration::CURRENTS_ONLY)) {
       // This route is supposed to use GRIB data without climatology, but the
       // GRIB data is not available.
-      wxLogMessage("RouteMap::Propagate: EARLY EXIT missing GRIB/wind and no usable climatology");
+      wxLogMessage(
+          "RouteMap::Propagate: EARLY EXIT missing GRIB/wind and no usable "
+          "climatology");
       Lock();
       m_bFinished = true;
       if (!configuration.grib) {
@@ -387,12 +414,15 @@ bool RouteMap::Propagate() {
         m_bWeatherForecastStatus = WEATHER_FORECAST_OTHER_ERROR;
         m_bWeatherForecastError = _("Unknown weather forecast error occurred");
       }
-      Unlock();
+      wxLogMessage(
+          "RouteMap::Propagate(): Finished=%d NeedsGrib=%d Valid=%d "
+          "origin.size=%zu hit=%d", m_bFinished, m_bNeedsGrib, m_bValid,
+          origin.size() ); 
       wxLogMessage(
           "RouteMap::Propagate: EARLY EXIT missing GRIB/wind and no usable "
           "climatology; origin.size=%zu m_bFinished=%d",
           origin.size(), m_bFinished);
-
+      Unlock();
       return false;
     }
 
@@ -414,26 +444,67 @@ bool RouteMap::Propagate() {
   }
 
   Lock();
+
+  bool hit = false;  // declare before the if/else
+
   if (update) {
+
+    // Check if this isochrone contains the destination 
+    hit = update->Contains(m_Configuration.EndLat, m_Configuration.EndLon);
+
+    wxLogMessage("DEBUG: IsoChron %zu Contains(dest=%f,%f) = %d",
+        origin.size(),
+        m_Configuration.EndLat,
+        m_Configuration.EndLon,
+        hit);
+
     origin.push_back(update);
-    if (update->Contains(m_Configuration.EndLat, m_Configuration.EndLon)) {
-      SetFinished(true);  // Route reached the destination
+
+    if (hit) {
+      // Destination reached
+      wxLogMessage( "Propagate(): Destination reached, calling SetFinished(true)");
+      SetFinished(true);
     }
-  } else {
-    // No further propagation possible, but we may still have a useful partial
-    // route Mark as finished but indicate destination wasn't reached
-    SetFinished(false);
+
+    // Update status and land cache,  take note of possible failure reasons
+    UpdateStatus(configuration);
+
+    // Maintain land cache periodically
+    maintain_land_cache();
+
+    Unlock();
+
+    wxLogMessage(
+        "Propagate(): RETURN true (more work possible) Finished=%d "
+        "ReachedDest=%d origin=%zu",
+        Finished(), ReachedDestination(), origin.size());
+
+    return true;  // more work possible (even if finished, worker will see m_bFinished next call
   }
+  else {
 
-  // take note of possible failure reasons
-  UpdateStatus(configuration);
+    // No further propagation possible: terminal condition
+    wxLogMessage("Propagate(): No further propagation possible, calling SetFinished(false)");
+    SetFinished(false);  // partial route, didn?t reach destination
 
-  // Maintain land cache periodically
-  maintain_land_cache();
+    UpdateStatus(configuration);
+    maintain_land_cache();
 
-  Unlock();
+    Unlock();
 
-  return true;
+    // After unlock, report final state
+    wxLogMessage(
+        "Propagate(): EXIT return=%d Finished=%d NeedsGrib=%d Valid=%d "
+        "origin=%zu hit=%d",
+        (update != nullptr),
+        Finished(),
+        m_bNeedsGrib,
+        m_bValid,
+        origin.size(),
+        hit ? 1 : 0);
+
+   return update != nullptr;   // tell RouteMapOverlayThread::Entry() to stop looping
+  }
 }
 
 double RouteMap::DetermineDeltaTime() {
@@ -571,7 +642,7 @@ void RouteMap::Reset() {
   m_ErrorMsg = wxEmptyString;
 
   m_bReachedDestination = false;
-  m_bWeatherForecastStatus = WEATHER_FORECAST_SUCCESS;
+  m_bWeatherForecastStatus = WEATHER_FORECAST_OK;
   m_bPolarStatus = POLAR_SPEED_SUCCESS;
   m_bGribError = wxEmptyString;
   m_bFinished = false;

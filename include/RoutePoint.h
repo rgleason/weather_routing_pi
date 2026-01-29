@@ -401,5 +401,4 @@ public:
 
   DataMask data_mask;
 };
-
-#endif
+#endif  //_WEATHER_ROUTING_ROUTEPOINT_H_
