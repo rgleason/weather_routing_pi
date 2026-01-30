@@ -83,6 +83,8 @@ extern "C" DECL_EXP void destroy_pi(opencpn_plugin* p) { delete p; }
 
 #include "icons.h"
 
+
+
 /**
  * @brief Constructs the Weather Routing plugin instance.
  *

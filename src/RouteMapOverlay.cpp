@@ -151,6 +151,9 @@ void RouteMapOverlayThread::OnExit() {
      m_RouteMapOverlay.m_bThreadAlive.load(),
      m_RouteMapOverlay.m_bThreadExited.load());
   }
+  // UI notification of update
+  wxQueueEvent(m_parent, new wxThreadEvent(wxEVT_THREAD, EVT_ROUTEMAP_UPDATE));
+
   // No pointer manipulation here.    
 }
 

@@ -275,7 +275,6 @@ bool RouteMap::ReduceList(IsoRouteList& merged, IsoRouteList& routelist,
 
 /* enlarge the map by 1 level */
 bool RouteMap::Propagate() {
-
   wxLogMessage(
       "Propagate(): ENTER Valid=%d NeedsGrib=%d Finished=%d origin=%zu",
       m_bValid, m_bNeedsGrib, m_bFinished, origin.size());
@@ -288,7 +287,8 @@ bool RouteMap::Propagate() {
       RouteMap::ClimatologyCycloneTrackCrossings);
 
   if (m_bFinished) {
-    wxLogMessage("Propagate(): EARLY EXIT Finished=1 (origin=%zu)", origin.size());
+    wxLogMessage("Propagate(): EARLY EXIT Finished=1 (origin=%zu)",
+                 origin.size());
     Unlock();
     return false;  // tell worker loop: no more work
   }
@@ -416,8 +416,8 @@ bool RouteMap::Propagate() {
       }
       wxLogMessage(
           "RouteMap::Propagate(): Finished=%d NeedsGrib=%d Valid=%d "
-          "origin.size=%zu hit=%d", m_bFinished, m_bNeedsGrib, m_bValid,
-          origin.size() ); 
+          "origin.size=%zu hit=%d",
+          m_bFinished, m_bNeedsGrib, m_bValid, origin.size());
       wxLogMessage(
           "RouteMap::Propagate: EARLY EXIT missing GRIB/wind and no usable "
           "climatology; origin.size=%zu m_bFinished=%d",
@@ -442,35 +442,34 @@ bool RouteMap::Propagate() {
     update =
         new IsoChron(merged, time, delta, shared_grib, grib_is_data_deficient);
   }
-
   Lock();
 
-  bool hit = false;  // declare before the if/else
+  bool hit = false;
 
   if (update) {
-
-    // Check if this isochrone contains the destination 
+    // Check if this isochrone contains the destination
     hit = update->Contains(m_Configuration.EndLat, m_Configuration.EndLon);
 
-    wxLogMessage("DEBUG: IsoChron %zu Contains(dest=%f,%f) = %d",
-        origin.size(),
-        m_Configuration.EndLat,
-        m_Configuration.EndLon,
-        hit);
+    wxLogMessage("DEBUG: IsoChron %zu Contains(dest=%f,%f) = %d", origin.size(),
+                 m_Configuration.EndLat, m_Configuration.EndLon, hit);
 
     origin.push_back(update);
 
     if (hit) {
-      // Destination reached
       wxLogMessage( "Propagate(): Destination reached, calling SetFinished(true)");
       SetFinished(true);
     }
 
-    // Update status and land cache,  take note of possible failure reasons
+    // Update status and land cache
     UpdateStatus(configuration);
-
-    // Maintain land cache periodically
     maintain_land_cache();
+
+    // If finished or stopped, tell worker loop to exit.
+    if (Finished()) {
+      wxLogMessage("Propagate(): EXIT because Finished=%d", Finished() );
+      Unlock();
+      return false;
+    }
 
     Unlock();
 
@@ -478,32 +477,23 @@ bool RouteMap::Propagate() {
         "Propagate(): RETURN true (more work possible) Finished=%d "
         "ReachedDest=%d origin=%zu",
         Finished(), ReachedDestination(), origin.size());
-
-    return true;  // more work possible (even if finished, worker will see m_bFinished next call
-  }
-  else {
-
+    return true;
+  } else {
     // No further propagation possible: terminal condition
-    wxLogMessage("Propagate(): No further propagation possible, calling SetFinished(false)");
+    wxLogMessage("Propagate(): No further propagation possible" );
     SetFinished(false);  // partial route, didn?t reach destination
 
+   // Update status and land cache
     UpdateStatus(configuration);
     maintain_land_cache();
 
     Unlock();
 
-    // After unlock, report final state
-    wxLogMessage(
-        "Propagate(): EXIT return=%d Finished=%d NeedsGrib=%d Valid=%d "
-        "origin=%zu hit=%d",
-        (update != nullptr),
-        Finished(),
-        m_bNeedsGrib,
-        m_bValid,
-        origin.size(),
-        hit ? 1 : 0);
+    wxLogMessage("Propagate(): EXIT return=false Finished=%d NeedsGrib=%d "
+        "Valid=%d origin=%zu hit=%d",
+        Finished(), m_bNeedsGrib, m_bValid, origin.size(), hit ? 1 : 0);
 
-   return update != nullptr;   // tell RouteMapOverlayThread::Entry() to stop looping
+    return false;  // tell RouteMapOverlayThread::Entry() to stop looping
   }
 }
 

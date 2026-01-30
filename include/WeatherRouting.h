@@ -254,6 +254,14 @@ public:
    *
    * @param routemapoverlay Pointer to the route map overlay to compute
    */
+
+  void OnRouteMapUpdate(wxThreadEvent& event);
+  // update functions
+  void UpdateStates();
+  void UpdateDialogs();
+  void UpdateComputeState();
+  void UpdateItem(int index, bool changed);   //See line below
+
   void Start(RouteMapOverlay* routemapoverlay);
   void StartAll();
 
@@ -342,7 +350,6 @@ public:
   void UpdateBoatFilename(wxString boatFileName);
 
   void UpdateCurrentConfigurations();
-  void UpdateStates();
   void RefreshUI();  /// Refresh the UI display after route updates
   SaveRouteOptions ShowRouteSaveOptionsDialog();
 
@@ -571,8 +578,8 @@ private:
   }
   void OnWeatherRouteKeyDown(wxListEvent& event);
   void OnWeatherRoutesListLeftDown(wxMouseEvent& event);
-  void UpdateComputeState();
   void OnCompute(wxCommandEvent& event);
+//void UpdateComputeState();
   void OnComputeAll(wxCommandEvent& event);
   void OnStop(wxCommandEvent& event);
   void OnResetAll(wxCommandEvent& event);
@@ -617,7 +624,8 @@ private:
   void SetEnableConfigurationMenu();
 
   void UpdateConfigurations();
-  void UpdateDialogs();
+//  void UpdateStates();  // See above
+//  void UpdateDialogs();  //See above
 
   /**
    * Adds a new configuration to the weather routing system.
@@ -655,7 +663,7 @@ private:
    * @param stateonly If true, only update the state field, not all
    * configuration data
    */
-  void UpdateItem(long index, bool stateonly = false);
+//  void UpdateItem(long index, bool stateonly = false);
   /**
    * Adds or modifies a new position with the given name.
    *
