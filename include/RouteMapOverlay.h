@@ -259,21 +259,17 @@ public:
   int Cyclones(int* months);
 
   /**
-   * Gets the destination position, or null if the route could not be completed
-   * successfully.
-   * @return Pointer to the destination position.
+   * Return final arrival point(only valid if ReachedDestination () == true)
+   * Pointer to the destination position for calc of distance sailed
    */
-  Position* GetDestination() { return destination_position; }
+  const Position* GetDestinationPosition() const { return destination_position; }
+
   /**
-   * Gets the best achievable position.
-   *
-   * This is either:
-   * 1. The exact destination position (destination_position) if reached
-   * successfully.
-   * 2. The closest calculated position to the destination if exact arrival
-   * isn't possible.
+   * Gets the best achievable position or null if not completed.
+   * 1. Exact if reached  successfully.
+   * 2. Closest calculated position to the destination if exact arrival  isn't possible.
    */
-  Position* GetLastDestination() { return last_destination_position; }
+  Position* GetLastDestination() { return last_destination_position; }  
 
   /**
    * Checks if the route has been updated.
@@ -397,242 +393,124 @@ public:
 
 
 private:
-  
-  /** Flag indicating the overlay has new data for UI refresh */
+  /* -------------------- Thread + State Flags -------------------- */
+
+  /** True when overlay has new data requiring UI refresh */
   bool m_bUpdated = false;
 
+  /** Dirty flag for external consumers (WeatherRouting) */
   std::atomic<bool> m_dirty{false};
 
-  /** Handshake flag: set true by worker thread when Entry() begins */
+  /** Worker thread has entered Entry() */
   std::atomic<bool> m_bThreadAlive{false};
 
-  /** Handshake flag: set false by worker thread when exiting */
+  /** Worker thread has exited Entry() */
   std::atomic<bool> m_bThreadExited{false};
 
+  /* -------------------- Rendering Helpers -------------------- */
 
-  /**
-   * Renders an alternate route.
-   * @param r Pointer to the route to render.
-   * @param each_parent If true, renders each parent.
-   * @param dc Device context for drawing.
-   * @param vp ViewPort for coordinate transformations.
-   */
   void RenderAlternateRoute(IsoRoute* r, bool each_parent, piDC& dc,
                             PlugIn_ViewPort& vp);
 
-  /**
-   * Renders a single isochrone route.
-   * @param r Pointer to the route to render.
-   * @param time The currently selected time in the GRIB timeline.
-   * @param grib_color Color for grib-based segments.
-   * @param climatology_color Color for climatology-based segments.
-   * @param dc Device context for drawing.
-   * @param vp ViewPort for coordinate transformations.
-   */
   void RenderIsoRoute(IsoRoute* r, wxDateTime time, wxColour& grib_color,
                       wxColour& climatology_color, piDC& dc,
                       PlugIn_ViewPort& vp);
 
-  /**
-   * Renders markers at points where the polar changes.
-   * @param cursor_route If true, renders for cursor route, otherwise for
-   * destination route.
-   * @param dc Device context for drawing.
-   * @param vp ViewPort for coordinate transformations.
-   */
   void RenderPolarChangeMarks(bool cursor_route, piDC& dc, PlugIn_ViewPort& vp);
 
-  /**
-   * Renders the boat position on the course at a given time.
-   * @param cursor_route If true, renders for cursor route, otherwise for
-   * destination route.
-   * @param time Time at which to render the boat.
-   * @param dc Device context for drawing.
-   * @param vp ViewPort for coordinate transformations.
-   */
   void RenderBoatOnCourse(bool cursor_route, wxDateTime time, piDC& dc,
                           PlugIn_ViewPort& vp);
 
-  /**
-   * Renders the calculated course.
-   * @param cursor_route If true, renders cursor route, otherwise destination
-   * route.
-   * @param dc Device context for drawing.
-   * @param vp ViewPort for coordinate transformations.
-   * @param comfortRoute If true, colors the route by sailing comfort.
-   */
   void RenderCourse(bool cursor_route, piDC& dc, PlugIn_ViewPort& vp,
                     bool comfortRoute = false);
 
-  /**
-   * Renders wind barbs along the route.
-   * @param dc Device context for drawing.
-   * @param vp ViewPort for coordinate transformations.
-   * @param lineWidth Width of the wind barb lines.
-   * @param apparentWind If true, shows apparent wind, otherwise true wind.
-   */
   void RenderWindBarbsOnRoute(piDC& dc, PlugIn_ViewPort& vp, int lineWidth,
                               bool apparentWind);
 
-  /**
-   * Checks if the route calculation should be aborted.
-   * @return True if the calculation should be aborted.
-   */
-  virtual bool TestAbort() { return Finished(); }
+  /** Abort test used by RouteMap propagation */
+  bool TestAbort() override { return Finished(); }
 
-  /** Pointer to the calculation thread. */
-  RouteMapOverlayThread* m_Thread;
+  /* -------------------- Thread + Synchronization -------------------- */
 
-  /** Mutex for thread-safe access to route data. */
+  /** Worker thread performing route propagation */
+  RouteMapOverlayThread* m_Thread = nullptr;
+
+  /** Mutex protecting route data during rendering/updates */
   wxMutex routemutex;
 
-  /**
-   * Sets the point color based on position data.
-   * @param dc Device context for drawing.
-   * @param p Position to get the color for.
-   */
+  /* -------------------- Drawing Utilities -------------------- */
+
   void SetPointColor(piDC& dc, Position* p);
 
-  /**
-   * Draws a line between two route points.
-   * @param p1 First point.
-   * @param p2 Second point.
-   * @param dc Device context for drawing.
-   * @param vp ViewPort for coordinate transformations.
-   */
   void DrawLine(const RoutePoint* p1, const RoutePoint* p2, piDC& dc,
                 PlugIn_ViewPort& vp);
 
-  /**
-   * Draws a line between two route points with color gradation.
-   * @param p1 First point.
-   * @param color1 Color for the first point.
-   * @param p2 Second point.
-   * @param color2 Color for the second point.
-   * @param dc Device context for drawing.
-   * @param vp ViewPort for coordinate transformations.
-   */
   void DrawLine(const RoutePoint* p1, wxColour& color1, const RoutePoint* p2,
                 wxColour& color2, piDC& dc, PlugIn_ViewPort& vp);
 
-  /** Last cursor latitude. */
-  double last_cursor_lat;
+  /* -------------------- Cursor + Destination Tracking -------------------- */
 
-  /** Last cursor longitude. */
-  double last_cursor_lon;
+  /** Last cursor latitude */
+  double last_cursor_lat = 0.0;
 
-  /**
-   * Position on the route closest to where the user's cursor is hovering.
-   *
-   * This variable tracks which position on the computed route is nearest to the
-   * current cursor location on the chart. It's used to display
-   * position-specific data in the Cursor Position dialog and for visual
-   * highlighting on the chart.
-   *
-   * @see UpdateCursorPositionDialog() For updating the UI with this position's
-   * data
-   */
-  Position* last_cursor_position;
+  /** Last cursor longitude */
+  double last_cursor_lon = 0.0;
 
-  /**
-   * The final computed position that exactly matches the destination
-   * coordinates.
-   *
-   * This position is created and set only when route propagation successfully
-   * reaches the exact destination point. If the route calculation reaches the
-   * area but can't precisely hit the destination (due to land barriers, etc.),
-   * this will remain null while last_destination_position will be set to the
-   * closest reachable position.
-   *
-   * @see UpdateDestination() Where this is set upon successful route completion
-   */
-  Position* destination_position;
+  /** Position nearest the cursor */
+  Position* last_cursor_position = nullptr;
 
-  /**
-   * Best achievable position reached toward the destination during route
-   * calculation.
-   *
-   * This stores either:
-   * 1. The exact destination position (destination_position) if reached
-   * successfully
-   * 2. The closest calculated position to the destination if exact arrival
-   * isn't possible
-   *
-   * It's always set regardless of whether the exact destination is reached,
-   * making it the reliable reference for the route's endpoint in the UI and
-   * reporting functions.
-   *
-   * @see UpdateDestination() For the logic determining which position to use
-   */
-  Position* last_destination_position;
+  /** Exact destination position (if reached) */
+  Position* destination_position = nullptr;
 
-  /**
-   * The timestamp when the cursor position is at the given point on the route.
-   *
-   * When the user hovers over a point on the calculated route, this variable
-   * stores the projected time when the vessel would reach that specific
-   * position according to the route calculation. This time value is used in the
-   * CursorPositionDialog to display temporal information alongside spatial
-   * coordinates.
-   *
-   * This time is retrieved from the RouteMapOverlay during cursor interaction
-   * via the GetLastCursorTime() method and is updated whenever the cursor moves
-   * to a different position on the route.
-   *
-   * The value is only valid when last_cursor_position is non-null, indicating
-   * that the cursor is currently over a valid position on the route.
-   */
+  /** Best achievable position toward destination */
+  Position* last_destination_position = nullptr;
+
+  /* -------------------- UI Integration -------------------- */
+
+  /** Parent window for posting EVT_ROUTEMAP_UPDATE events */
+  wxWindow* m_parent = nullptr;
+
+  /* -------------------- Time + Display State -------------------- */
+
+  /** Timestamp at cursor position */
   wxDateTime m_cursor_time;
 
-  /** End time of the route. */
+  /** End time of the route */
   wxDateTime m_EndTime;
 
-  /** Display list for OpenGL rendering. */
-  int m_overlaylist;
+  /** OpenGL display list ID */
+  int m_overlaylist = 0;
 
-  /** Projection type for the current display list. */
-  int m_overlaylist_projection;
+  /** Projection type for display list */
+  int m_overlaylist_projection = 0;
 
-  /** Flag indicating if destination plot data should be cleared. Should be
-   * volatile. */
-  bool clear_destination_plotdata;
+  /** Whether destination plot data should be cleared */
+  bool clear_destination_plotdata = false;
 
-  /** Plot data for the destination route. */
+  /* -------------------- Plot Data -------------------- */
+
+  /** Plot data for destination route */
   std::list<PlotData> last_destination_plotdata;
 
-  /** Plot data for the cursor route. */
+  /** Plot data for cursor route */
   std::list<PlotData> last_cursor_plotdata;
 
-  /** Line buffer for wind barb caching. */
+  /* -------------------- Wind Barb Caches -------------------- */
+
   LineBuffer wind_barb_cache;
+  double wind_barb_cache_scale = 0.0;
+  size_t wind_barb_cache_origin_size = 0;
+  int wind_barb_cache_projection = 0;
 
-  /** Scale factor for wind barb cache. */
-  double wind_barb_cache_scale;
-
-  /** Original size of the origin list when the wind barb cache was created. */
-  size_t wind_barb_cache_origin_size;
-
-  /** Projection type for the wind barb cache. */
-  int wind_barb_cache_projection;
-
-  /** Line buffer for wind barbs along the route. */
   LineBuffer wind_barb_route_cache;
 
-  /** Current sailing comfort level. */
-  int m_sailingComfort;
+  /* -------------------- Current Arrow Cache -------------------- */
 
-  /** Line buffer for current arrow caching. */
+  int m_sailingComfort = 0;
+
   LineBuffer current_cache;
-
-  /** Scale factor for current cache. */
-  double current_cache_scale;
-
-  /** Original size of the origin list when the current cache was created. */
-  size_t current_cache_origin_size;
-
-  /** Projection type for the current cache. */
-  int current_cache_projection;
-  
-};  
-
+  double current_cache_scale = 0.0;
+  size_t current_cache_origin_size = 0;
+  int current_cache_projection = 0;
+};
 #endif

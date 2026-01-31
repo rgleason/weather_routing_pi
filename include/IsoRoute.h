@@ -309,7 +309,8 @@ public:
  */
 class IsoChron {
 public:
-  /**
+
+   /*
    * Constructs an IsoChron from a list of routes and associated time and
    * weather data.
    *

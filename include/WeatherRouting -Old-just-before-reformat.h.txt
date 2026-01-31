@@ -45,9 +45,6 @@
 #include "FilterRoutesDialog.h"
 #include "RoutingTablePanel.h"
 
-wxDECLARE_EVENT(EVT_ROUTEMAP_UPDATE, wxThreadEvent);
-
-
 class weather_routing_pi;
 class WeatherRouting;
 

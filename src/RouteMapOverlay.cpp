@@ -35,6 +35,7 @@
 #include "RouteMapOverlay.h"
 #include "SettingsDialog.h"
 #include "georef.h"
+#include "WeatherRouting.h" 
 
 void WR_GetCanvasPixLL(PlugIn_ViewPort* vp, wxPoint* pp, double lat,
                        double lon) {
@@ -152,7 +153,7 @@ void RouteMapOverlayThread::OnExit() {
      m_RouteMapOverlay.m_bThreadExited.load());
   }
   // UI notification of update
-  wxQueueEvent(m_parent, new wxThreadEvent(wxEVT_THREAD, EVT_ROUTEMAP_UPDATE));
+  wxQueueEvent(m_parent, new wxThreadEvent(EVT_ROUTEMAP_UPDATE));
 
   // No pointer manipulation here.    
 }

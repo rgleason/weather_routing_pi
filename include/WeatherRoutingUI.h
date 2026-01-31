@@ -51,6 +51,7 @@
 #include <wx/grid.h>
 #include <wx/spinctrl.h>
 #include <wx/gauge.h>
+#include <wx/timer.h>
 
 #include "wxWTranslateCatalog.h"
 
@@ -227,10 +228,12 @@ public:
 /// Class WeatherRoutingPanel
 ///////////////////////////////////////////////////////////////////////////////
 class WeatherRoutingPanel : public wxPanel {
-private:
 protected:
   wxPanel* m_panel11;
   wxPanel* m_panel12;
+  wxButton* m_bStop;  // or wxBitmapButton* if that?s what the XRC used
+  wxTimer m_tStatus;
+  wxListCtrl* m_lRoutes = nullptr;
 
   // Virtual event handlers, overide them in your derived class
   virtual void OnEditPositionClick(wxMouseEvent& event) { event.Skip(); }
