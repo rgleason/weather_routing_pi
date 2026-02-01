@@ -697,7 +697,7 @@ public:
     WeatherForecastStatus GetWeatherForecastStatus() const;
     bool ReachedDestination() const;
 
-  
+  const Position& GetOrigin() const { return origin; }
   /**
    * Resolves a named position to its latitude and longitude coordinates.
    *
@@ -801,6 +801,7 @@ public:
     Unlock();
     return empty;
   }
+
   /**
    * Thread-safe accessor to check if GRIB data is needed.
    *

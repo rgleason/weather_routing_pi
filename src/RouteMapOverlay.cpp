@@ -45,8 +45,12 @@ void WR_GetCanvasPixLL(PlugIn_ViewPort* vp, wxPoint* pp, double lat,
   pp->y = (int)wxRound(pix_double.m_y);
 }
 
-RouteMapOverlayThread::RouteMapOverlayThread(RouteMapOverlay& routemapoverlay)
-    : wxThread(wxTHREAD_JOINABLE), m_RouteMapOverlay(routemapoverlay) {
+
+RouteMapOverlayThread::RouteMapOverlayThread(RouteMapOverlay& routemapoverlay,
+                                             wxEvtHandler* parent)
+    : wxThread(wxTHREAD_JOINABLE),
+      m_RouteMapOverlay(routemapoverlay),
+      m_parent(parent) {
   Create();
 }
 
@@ -154,12 +158,12 @@ void RouteMapOverlayThread::OnExit() {
   }
   // UI notification of update
   wxQueueEvent(m_parent, new wxThreadEvent(EVT_ROUTEMAP_UPDATE));
-
-  // No pointer manipulation here.    
+  // No pointer manipulation here.
 }
 
-RouteMapOverlay::RouteMapOverlay()
-    : m_UpdateOverlay(true),
+RouteMapOverlay::RouteMapOverlay(wxEvtHandler* parent)
+    : m_parentHandler(parent),
+      m_UpdateOverlay(true),
       m_bEndRouteVisible(false),
       m_Thread(nullptr),
       last_cursor_lat(0),
@@ -175,11 +179,11 @@ RouteMapOverlay::RouteMapOverlay()
       current_cache_scale(NAN),
       current_cache_origin_size(0),
       m_Stopped(false),
-      m_dirty(false)
-{
+      m_dirty(false) {
   m_bThreadAlive.store(false, std::memory_order_relaxed);
   m_bThreadExited.store(false, std::memory_order_relaxed);
 }
+
 
 RouteMapOverlay::~RouteMapOverlay() {
   // First, ensure the worker is stopped and thread deleted
@@ -265,7 +269,7 @@ bool RouteMapOverlay::Start(wxString& error) {
                  this);
 
     // Create and start worker thread after resetting state 
-    m_Thread = new RouteMapOverlayThread(*this);
+    m_Thread = new RouteMapOverlayThread(*this, m_parentHandler);
     m_Thread->Run();
   }
 

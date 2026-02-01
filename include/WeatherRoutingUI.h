@@ -227,7 +227,8 @@ public:
 ///////////////////////////////////////////////////////////////////////////////
 /// Class WeatherRoutingPanel
 ///////////////////////////////////////////////////////////////////////////////
-class WeatherRoutingPanel : public wxPanel {
+class WeatherRoutingPanel :  public wxPanel {
+
 protected:
   wxPanel* m_panel11;
   wxPanel* m_panel12;
@@ -291,6 +292,17 @@ public:
                       long style = wxTAB_TRAVERSAL,
                       const wxString& name = wxEmptyString);
   ~WeatherRoutingPanel();
+
+  // --- Added wrappers for safe UI access ---
+  void SetStopButtonEnabled(bool enabled) {
+    if (m_bStop) m_bStop->Enable(enabled);
+  }
+
+  void SetStatusText(const wxString& text) {
+    // You will replace m_statusLabel with the real wxStaticText name
+ // no op for now WR must stop calling SetLabel on m_tStatus   if (m_statusLabel) m_statusLabel->SetLabel(text);
+  }
+
 };
 
 ///////////////////////////////////////////////////////////////////////////////

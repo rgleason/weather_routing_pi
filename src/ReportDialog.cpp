@@ -71,7 +71,7 @@ void ReportDialog::SetRouteMapOverlays(
     }
 
     RouteMapConfiguration c = (*it)->GetConfiguration();
-    Position* d = (*it)->GetDestinationPosition();
+    const Position* d = (*it)->GetDestinationPosition();
 
     page += _("Boat Filename") + _T(" ") +
             wxFileName(c.boatFileName).GetName() + _T("<dt>");

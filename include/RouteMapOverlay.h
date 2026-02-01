@@ -43,20 +43,28 @@ public:
   /**
    * Constructor for the thread.
    * @param routemapoverlay Reference to the parent RouteMapOverlay object.
+   * @param parent wxEvtHandler that receives EVT_ROUTEMAP_UPDATE
    */
-  RouteMapOverlayThread(RouteMapOverlay& routemapoverlay);
+  RouteMapOverlayThread(RouteMapOverlay& routemapoverlay, wxEvtHandler* parent);
 
   /**
    * Thread entry point that performs the route calculation.
    * @return Thread exit code.
    */
   void* Entry();
-  virtual void OnExit() override;  // ? add this
+
+  virtual void OnExit() override;
 
 private:
   /** Reference to the parent RouteMapOverlay object. */
   RouteMapOverlay& m_RouteMapOverlay;
+
+  /** Event handler to receive EVT_ROUTEMAP_UPDATE */
+  wxEvtHandler* m_parent;
 };
+
+
+  
 
 /**
  * The central class for weather routing calculation, visualization, and
@@ -140,7 +148,7 @@ public:
    * Default constructor.
    * Initializes a new RouteMapOverlay with default values.
    */
-  RouteMapOverlay();
+  RouteMapOverlay(wxEvtHandler* parent);
 
   /**
    * Destructor.
@@ -393,6 +401,9 @@ public:
 
 
 private:
+
+  wxEvtHandler* m_parentHandler;  // ? correct location
+
   /* -------------------- Thread + State Flags -------------------- */
 
   /** True when overlay has new data requiring UI refresh */
@@ -513,4 +524,4 @@ private:
   size_t current_cache_origin_size = 0;
   int current_cache_projection = 0;
 };
-#endif
+#endif  // _WEATHER_ROUTING_ROUTE_MAP_OVERLAY_H_

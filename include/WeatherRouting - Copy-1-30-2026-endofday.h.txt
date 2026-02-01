@@ -230,6 +230,7 @@ class WeatherRouting : public WeatherRoutingBase {
   friend class AddressSpaceMonitor;  // Allow AddressSpaceMonitor to access to
                                      // private members // private members
 private:
+
   // Memory alert event handlers
   void OnMemoryAlertStop(wxCommandEvent& event);
   void OnMemoryAutoReset(wxCommandEvent& event);
@@ -246,14 +247,15 @@ private:
   // Disable Reset Selected for now
   // wxMenuItem* m_mResetSelected = nullptr;
 
-  void OnResetSelected(wxCommandEvent& event);
+   void OnResetSelected(wxCommandEvent& event);
 
 public:
+
   /* --------------------------------------------------------------------- *
    * Thread lifecycle + reset pipeline (grouped cleanly) *
    * --------------------------------------------------------------------- */
-
-  /**
+  
+   /**
    * Initiates route calculation for a specific route map overlay.
    *
    * This method handles the pre-computation setup for a route map overlay:
@@ -267,13 +269,12 @@ public:
 
   // 1. Thread + Event Integration
   //     Receives worker?thread completion events and triggers UI/model updates.
-
+  
   void OnRouteMapUpdate(wxThreadEvent& event);
 
-  // 2. UI Column Pipeline (Core Rendering Layer)
-  //    The unified, modern UI update pipeline. These functions abstract
-  //    all wxListCtrl manipulation and ensure consistent rendering across the
-  //    plugin.
+ // 2. UI Column Pipeline (Core Rendering Layer)
+ //    The unified, modern UI update pipeline. These functions abstract
+ //    all wxListCtrl manipulation and ensure consistent rendering across the plugin.
 
   void SetColumn(long index, int column, const wxString& value);
   void ClearComputedColumns(long index);
@@ -292,16 +293,10 @@ public:
   void UpdateAllItems(bool changed);
   void UpdateSelectedItems(bool changed);
 
-  // 4. Route List Management (Model + UI Synchronization)
-  //    Adds, removes, selects, and rebuilds rows in the route list.
-  //    These functions keep the internal model(m_WeatherRoutes) and
-  //    the wxListCtrl perfectly aligned.
-
-  void OnNew(wxCommandEvent& event);  // Create a new WeatherRoute and add to list
- 
-  
-  void OnBatch(wxCommandEvent& event);  // Open batch configuration dialog
-  void AddRoutingPanel();  // Routing Panel   
+ // 4. Route List Management (Model + UI Synchronization)
+ //    Adds, removes, selects, and rebuilds rows in the route list.
+ //    These functions keep the internal model(m_WeatherRoutes) and
+ //    the wxListCtrl perfectly aligned.
 
   void RebuildListControlColumns();
 
@@ -314,34 +309,33 @@ public:
 
   void SelectRouteInList(WeatherRoute* wr);
 
-  // 5. Routing Computation Control (Thread Lifecycle Management)
-  //    Starts, stops, resets, and waits for route computations.
-  //    Controls the lifecycle of route computations and ensures
-  //    thread?safe shutdown and reset behavior.
+// 5. Routing Computation Control (Thread Lifecycle Management)
+//    Starts, stops, resets, and waits for route computations.
+//    Controls the lifecycle of route computations and ensures
+//    thread?safe shutdown and reset behavior.
 
   void Start(RouteMapOverlay* routemapoverlay);
   void StartAll();
 
-  void Stop(RouteMapOverlay* routemapoverlay);  // Stop the computation of the
-                                                // specified route.
-  void StopAll();  // Stop the computation of all routes.
+  void Stop(RouteMapOverlay* routemapoverlay);  // Stop the computation of the specified route. 
+  void StopAll();  //Stop the computation of all routes.
 
-  void Reset();          // the wrapper that the UI and timers call
-  void ResetAll();       // global reset Stop ? Wait ? Reset
-  void ResetSelected();  // per-selection reset
+  void Reset();                // the wrapper that the UI and timers call
+  void ResetAll();             // global reset Stop ? Wait ? Reset
+  void ResetSelected();        // per-selection reset
   void Reset(RouteMapOverlay* overlay);  // Reset the specified route.
 
   void WaitForAllRoutesToStop();
   void WaitForRoutesToStop(const std::list<RouteMapOverlay*>& overlays);
 
-  /* ---------------------------------------------------------------------
-   * SaveRouteOptions
-   * --------------------------------------------------------------------- */
+    /* ---------------------------------------------------------------------
+     * SaveRouteOptions
+     * --------------------------------------------------------------------- */
 
   struct SaveRouteOptions {
     bool dialogAccepted;        //!< Whether the user confirmed the dialog
     bool simplifyRoute;         //!< Whether to simplify the route
-    double maxTimePenalty;  //!< Maximum permitted ETA loss (percent)
+    double maxDurationPenalty;  //!< Maximum permitted ETA loss (percent)
   };
 
   enum {
@@ -351,40 +345,38 @@ public:
   };
 
   enum {
-    VISIBLE = 0,       //!< Route visibility toggle state
-    BOAT,              //!< Boat configuration file name
+    VISIBLE = 0,        //!< Route visibility toggle state
+    BOAT,               //!< Boat configuration file name
     STARTTYPE,         //!< Starting position type (boat or named)
-    START,             //!< Starting position name/coordinates
-    STARTTIME,         //!< Route departure time
-    END,               //!< Destination position name/coordinates
-    ENDTIME,           //!< Estimated arrival time
-    TIME,              //!< Total route duration
-    DISTANCE,          //!< Total route distance in nautical miles
-    AVGSPEED,          //!< Average boat speed through water in knots
-    MAXSPEED,          //!< Maximum boat speed through water in knots
-    AVGSPEEDGROUND,    //!< Average boat speed over ground in knots
-    MAXSPEEDGROUND,    //!< Maximum boat speed over ground in knots
-    AVGWIND,           //!< Average wind speed encountered in knots
-    MAXWIND,           //!< Maximum sustained wind speed in knots
-    MAXWINDGUST,       //!< Maximum wind gust encountered in knots
-    AVGCURRENT,        //!< Average current speed encountered in knots
-    MAXCURRENT,        //!< Maximum current speed encountered in knots
-    AVGSWELL,          //!< Average swell height encountered in meters
-    MAXSWELL,          //!< Maximum swell height encountered in meters
+    START,              //!< Starting position name/coordinates
+    STARTTIME,          //!< Route departure time
+    END,                //!< Destination position name/coordinates
+    ENDTIME,            //!< Estimated arrival time
+    TIME,               //!< Total route duration
+    DISTANCE,           //!< Total route distance in nautical miles
+    AVGSPEED,           //!< Average boat speed through water in knots
+    MAXSPEED,           //!< Maximum boat speed through water in knots
+    AVGSPEEDGROUND,     //!< Average boat speed over ground in knots
+    MAXSPEEDGROUND,     //!< Maximum boat speed over ground in knots
+    AVGWIND,            //!< Average wind speed encountered in knots
+    MAXWIND,            //!< Maximum sustained wind speed in knots
+    MAXWINDGUST,        //!< Maximum wind gust encountered in knots
+    AVGCURRENT,         //!< Average current speed encountered in knots
+    MAXCURRENT,         //!< Maximum current speed encountered in knots
+    AVGSWELL,           //!< Average swell height encountered in meters
+    MAXSWELL,           //!< Maximum swell height encountered in meters
     UPWINDPERCENTAGE,  //!< Percentage of time spent sailing upwind
     PORTSTARBOARD,     //!< Distribution between port and starboard tacks
-    TACKS,             //!< Number of tacks performed
-    JIBES,             //!< Number of jibes performed
-    SAILPLANCHANGES,   //!< Number of sail plan changes performed
-    COMFORT,           //!< Comfort/safety metrics for conditions
-    STATE,             //!< Current computation state of route
-    NUM_COLS           //!< Total number of display columns
+    TACKS,              //!< Number of tacks performed
+    JIBES,              //!< Number of jibes performed
+    SAILPLANCHANGES,  //!< Number of sail plan changes performed
+    COMFORT,            //!< Comfort/safety metrics for conditions
+    STATE,              //!< Current computation state of route
+    NUM_COLS            //!< Total number of display columns
   };
   long columns[NUM_COLS];
   static const wxString column_names[NUM_COLS];
   int sashpos;
-
-
 
   WeatherRouting(wxWindow* parent, weather_routing_pi& plugin);
   ~WeatherRouting();
@@ -571,327 +563,294 @@ public:
   SettingsDialog m_SettingsDialog;
 
 private:
-
-/* ======================================================================
- *  INTERNAL UTILITY HELPERS
- * ====================================================================== */
-
-/**
- * Copy data files from one directory to another.
- * Used when duplicating configurations or preparing batch runs.
- */
-void CopyDataFiles(wxString from, wxString to);
-
-/**
- * Save a simplified route (post-processing of a computed route).
- * Called after route simplification is performed.
- */
-void SaveSimplifiedRoute(RouteMapOverlay& routemapoverlay,
-                         const std::list<Position*>& simplifiedRoute);
-
-
-/* ======================================================================
- *  POSITION MANAGEMENT (Dialogs + Editing)
- * ====================================================================== */
-
-/** User clicked "New Position" */
-void OnNewPosition(wxCommandEvent& event);
-
-/** User clicked "Update Boat" */
-void OnUpdateBoat(wxCommandEvent& event);
-
-/** Delete a single position */
-void OnDeletePosition(wxCommandEvent& event);
-
-/** Delete all positions */
-void OnDeleteAllPositions(wxCommandEvent& event);
-
-/** Keypress inside the position list */
-void OnPositionKeyDown(wxListEvent& event);
-
-/** Edit configuration dialog */
-void OnEditConfiguration();
-
-/** Edit position dialog */
-void OnEditPosition();
-
-
-
-/**
- * Add a new position using degree/minute string inputs.
- * Internal helper used by the New Position dialog.
- */
-void AddPosition(const wxString& latitude_degrees,
-                 const wxString& latitude_minutes,
-                 const wxString& longitude_degrees,
-                 const wxString& longitude_minutes,
-                 wxString name,
-                 const bool suppress_prompt);
-
-
-/* ======================================================================
- *  FILE OPERATIONS (Open / Save / Export)
- * ====================================================================== */
-
-/** Load configuration from XML */
-void OnOpen(wxCommandEvent& event);
-
-/** Save configuration to current file */
-void OnSave(wxCommandEvent& event);
-
-/** Save configuration to a new file */
-void OnSaveAs(wxCommandEvent& event);
-
-/** Export route as GPX */
-void OnExportRouteAsGPX(wxCommandEvent& event);
-
-/** Export route as KML */
-void ExportRoute(RouteMapOverlay& routemapoverlay);
-
-/** Save as OpenCPN track */
-void OnSaveAsTrack(wxCommandEvent& event);
-
-/** Save as OpenCPN route */
-void OnSaveAsRoute(wxCommandEvent& event);
-
-/** Save all routes as tracks */
-void OnSaveAllAsTracks(wxCommandEvent& event);
-
-/** Auto-save XML when positions/routes change */
-void AutoSaveXML();
-
-/** Auto-save XML timer event */
-void OnAutoSaveXMLTimer(wxTimerEvent& event);
-
-/** Low-level XML load/save helpers */
-bool OpenXML(wxString filename, bool reportfailure = true);
-void SaveXML(wxString filename);
-
-
-/* ======================================================================
- *  WINDOW + UI LAYOUT EVENTS
- * ====================================================================== */
-
-/** Collapsible pane expanded/collapsed */
-void OnCollPaneChanged(wxCollapsiblePaneEvent& event);
-
-/** Window close event */
-void OnClose(wxCloseEvent& event);
-
-/** Command event close (menu/toolbar) */
-void OnClose(wxCommandEvent& event);  
-
-/** Window resize */
-void OnSize(wxSizeEvent& event);
-
-/** Show/hide configuration panel */
-void OnHideConfigurationTimer(wxTimerEvent& event);
-
-/** Rendered timer (post-render UI updates) */
-void OnRenderedTimer(wxTimerEvent& event);
-
-
-/* ======================================================================
- *  ROUTE LIST INTERACTION (Selection, Sorting, Mouse)
- * ====================================================================== */
-
-/** Sorting the weather route list */
-void OnWeatherRouteSort(wxListEvent& event);
-
-/** A route was selected (generic) */
-void OnWeatherRouteSelected();
-
-/** A route was selected (wxListEvent version) */
-void OnWeatherRouteSelected(wxListEvent& event) { OnWeatherRouteSelected(); }
-
-/** A position was selected */
-void OnWeatherPositionSelected();
-
-/** A position was selected (wxListEvent version) */
-void OnWeatherPositionSelected(wxListEvent& event) { OnWeatherPositionSelected(); }
-
-/** Keypress inside the weather route list */
-void OnWeatherRouteKeyDown(wxListEvent& event);
-
-/** Mouse-down inside the weather routes list */
-void OnWeatherRoutesListLeftDown(wxMouseEvent& event);
-
-/** On edit position click list */
-void OnEditPositionClick(wxMouseEvent& event) { OnEditPosition(); }
-
-/** On edit Configuration Click */
-void OnEditConfigurationClick(wxMouseEvent& event) { OnEditConfiguration(); }
-
-
-/* ======================================================================
- *  COMPUTATION COMMANDS (Compute / Stop / Reset)
- * ====================================================================== */
-
-/** Compute a single route */
-void OnCompute(wxCommandEvent& event);
-
-/** Compute all routes */
-void OnComputeAll(wxCommandEvent& event);
-
-/** Stop computation */
-void OnStop(wxCommandEvent& event);
-
-/** Reset all routes */
-void OnResetAll(wxCommandEvent& event);
-
-/** Timer that drives computation scheduling */
-void OnComputationTimer(wxTimerEvent& event);
-
-
-/* ======================================================================
- *  MENU COMMANDS (Navigation, Filtering, Tools)
- * ====================================================================== */
-
-/** Go to selected route on chart */
-void OnGoTo(wxCommandEvent& event);
-
-/** Delete selected route */
-void OnDelete(wxCommandEvent& event);
-
-/** Delete all routes */
-void OnDeleteAll(wxCommandEvent& event);
-
-/** Filter routes */
-void OnFilter(wxCommandEvent& event);
-
-/** Open settings dialog */
-void OnSettings(wxCommandEvent& event);
-
-/** Open statistics dialog */
-void OnStatistics(wxCommandEvent& event);
-
-/** Open report dialog */
-void OnReport(wxCommandEvent& event);
-
-/** Open plot dialog */
-void OnPlot(wxCommandEvent& event);
-
-/** Open cursor position dialog */
-void OnCursorPosition(wxCommandEvent& event);
-
-/** Open route position dialog */
-void OnRoutePosition(wxCommandEvent& event);
-
-/** Open weather table dialog */
-void OnWeatherTable(wxCommandEvent& event);
-
-/** Open manual/help */
-void OnManual(wxCommandEvent& event);
-
-/** Open information dialog */
-void OnInformation(wxCommandEvent& event);
-
-/** About dialog */
-void OnAbout(wxCommandEvent& event);
-
-
-/* ======================================================================
- *  CONFIGURATION MANAGEMENT
- * ====================================================================== */
-
-/** Enable/disable configuration menu items */
-void SetEnableConfigurationMenu();
-
-/** Update all configurations after changes */
-void UpdateConfigurations();
-
-/** Add a new configuration */
-bool AddConfiguration(RouteMapConfiguration& configuration);
-
-/** Update a specific route map overlay */
-void UpdateRouteMap(RouteMapOverlay* routemapoverlay);
-
-
-/* ======================================================================
- *  ROUTE EXPORT + CLEANUP HELPERS
- * ====================================================================== */
-
-RouteMap* SelectedRouteMap();
-void DeleteRouteMaps(std::list<RouteMapOverlay*> routemapoverlays);
-RouteMapConfiguration DefaultConfiguration();
-
-
-/* ======================================================================
- *  DIALOG INSTANCES
- * ====================================================================== */
-
-StatisticsDialog m_StatisticsDialog;
-ReportDialog m_ReportDialog;
-PlotDialog m_PlotDialog;
-FilterRoutesDialog m_FilterRoutesDialog;
-
-
-/* ======================================================================
- *  TIMERS + RUNTIME STATE
- * ====================================================================== */
-
-wxTimer m_tCompute, m_tHideConfiguration;
-wxTimer m_tDownTimer;
-
-bool m_bRunning;
-wxTimeSpan m_RunTime;
-wxDateTime m_StartTime;
-
-wxString m_default_configuration_path;
-
-int m_RoutesToRun;
-bool m_bSkipUpdateCurrentItems;
-
-
-/* ======================================================================
- *  UI VISIBILITY FLAGS
- * ====================================================================== */
-
-bool m_bShowConfiguration;
-bool m_bShowConfigurationBatch;
-bool m_bShowRoutePosition;
-bool m_bShowSettings;
-bool m_bShowStatistics;
-bool m_bShowReport;
-bool m_bShowPlot;
-bool m_bShowFilter;
-
-
-/* ======================================================================
- *  MOUSE + WINDOW STATE
- * ====================================================================== */
-
-wxPoint m_downPos, m_startPos, m_startMouse;
-wxSize m_size;
-wxFileName m_FileName;
-
-
-/* ======================================================================
- *  CURSOR?POSITION TRACKING
- * ====================================================================== */
-
-RoutePoint* m_positionOnRoute;
-RoutePoint  m_savedPosition;
-
-RoutingTablePanel* m_RoutingTablePanel;
-
-
-/* ======================================================================
- *  PLUGIN + PLATFORM?SPECIFIC MEMBERS
- * ====================================================================== */
-
-weather_routing_pi& m_weather_routing_pi;
+  void CopyDataFiles(wxString from, wxString to);
+  void OnCollPaneChanged(wxCollapsiblePaneEvent& event);
+  void OnNewPosition(wxCommandEvent& event);
+  void OnUpdateBoat(wxCommandEvent& event);
+  void OnDeletePosition(wxCommandEvent& event);
+  void OnDeleteAllPositions(wxCommandEvent& event);
+  void OnClose(wxCloseEvent& event) { Hide(); }
+  void OnPositionKeyDown(wxListEvent& event);
+  void OnEditConfiguration();
+  void OnEditPosition();
+
+  void SaveSimplifiedRoute(RouteMapOverlay& routemapoverlay,
+                           const std::list<Position*>& simplifiedRoute);
+
+  /**
+   * Loads a weather routing configuration from an XML file.
+   *
+   * This method displays a file dialog allowing the user to select an XML
+   * configuration file to load. Upon selection, it clears all existing
+   * positions and configurations, then loads the new configuration using
+   * OpenXML(). The loaded file becomes the current working file for the
+   * session.
+   *
+   * @param event The command event (unused)
+   * @see OpenXML() For the actual file parsing functionality
+   * @see SaveXML() For the complementary save operation
+   */
+  void OnOpen(wxCommandEvent& event);
+  /**
+   * Saves the current weather routing configuration to the current file path.
+   *
+   * If no file path is set (first save), it functions like OnSaveAs() and
+   * prompts for a location. Otherwise, it saves directly to the current file
+   * path without showing a dialog. After saving, it updates the window title
+   * with the filename and stops any pending auto-save operations.
+   *
+   * @param event The command event (unused)
+   * @see SaveXML() For the actual file writing functionality
+   * @see OnSaveAs() Used when no existing file path is set
+   */
+  void OnSave(wxCommandEvent& event);
+  /**
+   * Saves the current weather routing configuration to a new file path.
+   *
+   * Always displays a file save dialog allowing the user to specify a new
+   * file location. After saving, it updates the window title with the selected
+   * filename and stops any pending auto-save operations.
+   *
+   * @param event The command event (unused)
+   * @see SaveXML() For the actual file writing functionality
+   */
+  void OnSaveAs(wxCommandEvent& event);
+  void OnClose(wxCommandEvent& event);
+  void OnSize(wxSizeEvent& event);
+  void OnNew(wxCommandEvent& event);
+  void OnEditConfigurationClick(wxMouseEvent& event) { OnEditConfiguration(); }
+  void OnEditPositionClick(wxMouseEvent& event) { OnEditPosition(); }
+  void OnWeatherRouteSort(wxListEvent& event);
+  void OnWeatherRouteSelected();
+  void OnWeatherRouteSelected(wxListEvent& event) { OnWeatherRouteSelected(); }
+  void OnWeatherPositionSelected();
+  void OnWeatherPositionSelected(wxListEvent& event) {
+    OnWeatherPositionSelected();
+  }
+  void OnWeatherRouteKeyDown(wxListEvent& event);
+  void OnWeatherRoutesListLeftDown(wxMouseEvent& event);
+  void OnCompute(wxCommandEvent& event);
+//void UpdateComputeState();
+  void OnComputeAll(wxCommandEvent& event);
+  void OnStop(wxCommandEvent& event);
+  void OnResetAll(wxCommandEvent& event);
+  void OnPositions(wxCommandEvent& event);
+  void OnBatch(wxCommandEvent& event);
+  void OnEditConfiguration(wxCommandEvent& event) { OnEditConfiguration(); }
+  void OnEditPosition(wxCommandEvent& event) { OnEditPosition(); }
+  void OnGoTo(wxCommandEvent& event);
+  void OnDelete(wxCommandEvent& event);
+  void OnDeleteAll(wxCommandEvent& event);
+  void OnFilter(wxCommandEvent& event);
+  /** Callback invoked when user clicks "Save as Track" menu item. */
+  void OnSaveAsTrack(wxCommandEvent& event);
+  /** Callback invoked when user clicks "Save as Route" menu item. */
+  void OnSaveAsRoute(wxCommandEvent& event);
+  /** Export route as GPX file. */
+  void OnExportRouteAsGPX(wxCommandEvent& event);
+  /** Callback invoked when user clicks "Save All as Tracks" menu item. */
+  void OnSaveAllAsTracks(wxCommandEvent& event);
+  void OnSettings(wxCommandEvent& event);
+  void OnStatistics(wxCommandEvent& event);
+  void OnReport(wxCommandEvent& event);
+  void OnPlot(wxCommandEvent& event);
+  void OnCursorPosition(wxCommandEvent& event);
+  // CUSTOMIZATION
+  void OnRoutePosition(wxCommandEvent& event);
+  void OnWeatherTable(wxCommandEvent& event);
+  void OnManual(wxCommandEvent& event);
+  void OnInformation(wxCommandEvent& event);
+  void OnAbout(wxCommandEvent& event);
+
+  void OnComputationTimer(wxTimerEvent&);
+  void OnHideConfigurationTimer(wxTimerEvent&);
+  void OnAutoSaveXMLTimer(wxTimerEvent&);
+  void OnRenderedTimer(wxTimerEvent&);
+
+  bool OpenXML(wxString filename, bool reportfailure = true);
+  void SaveXML(wxString filename);
+  /** Auto save on positions/routes changes. */
+  void AutoSaveXML();
+
+  void SetEnableConfigurationMenu();
+
+  void UpdateConfigurations();
+//  void UpdateStates();  // See above
+//  void UpdateDialogs();  //See above
+
+  /**
+   * Adds a new configuration to the weather routing system.
+   *
+   * Creates a new WeatherRoute object based on the provided configuration,
+   * initializes a RouteMapOverlay for it, and adds it to the UI list.
+   * If the configuration references a route by GUID, it retrieves the route's
+   * waypoints to set start and end positions.
+   *
+   * @param configuration The routing configuration to add
+   * @return True if the configuration was successfully added, false otherwise
+   * @see WeatherRoute For the UI data model created from the configuration
+   * @see RouteMapOverlay For the route calculation and display engine
+   */
+  bool AddConfiguration(RouteMapConfiguration& configuration);
+  /**
+   * Updates a route map overlay in the UI.
+   *
+   * Finds the WeatherRoute object associated with the given RouteMapOverlay
+   * and updates its UI information. This is typically called after calculation
+   * state changes or when configuration parameters are modified.
+   *
+   * @param routemapoverlay Pointer to the RouteMapOverlay to update
+   */
+  void UpdateRouteMap(RouteMapOverlay* routemapoverlay);
+  /**
+   * Updates a specific item in the weather routes list.
+   *
+   * Updates the display values for a weather route at the specified index in
+   * the list. Updates all fields (boat filename, positions, times, speeds,
+   * etc.) unless stateonly is true, in which case it only updates the
+   * computation state information.
+   *
+   * @param index The index of the item to update in the weather routes list
+   * @param stateonly If true, only update the state field, not all
+   * configuration data
+   */
+//  void UpdateItem(long index, bool stateonly = false);
+  /**
+   * Adds or modifies a new position with the given name.
+   *
+   * Internal method to process the contents of the NewPosition dialog
+   *
+   * @param latitude_degrees Latitude of the position (degrees, signed integer
+   * number)
+   * @param latitude_minutes Latitude of the position (minutes, unsigned
+   * floating point number)
+   * @param longitude_degrees Longitude of the position (degrees, signed integer
+   * number)
+   * @param longitude_minutes Longitude of the position (minutes, unsigned
+   * floating point number)
+   * @param name
+   * @param suppress_prompt Suppresses the prompt and replaces existing position
+   * without asking
+   * @see AddPosition(double lat, double lon, wxString name) The method that
+   * performs the actual addition
+   */
+  void AddPosition(const wxString& latitude_degrees,
+                   const wxString& latitude_minutes,
+                   const wxString& longitude_degrees,
+                   const wxString& longitude_minutes, wxString name,
+                   const bool suppress_prompt);
+
+  RouteMap* SelectedRouteMap();
+  /** Save weather routing as OpenCPN track. */
+  void SaveAsTrack(RouteMapOverlay& routemapoverlay);
+  /** Save weather routing as OpenCPN route. */
+  void SaveAsRoute(RouteMapOverlay& routemapoverlay);
+  void ExportRoute(RouteMapOverlay& routemapoverlay);
+
+
+
+  void DeleteRouteMaps(std::list<RouteMapOverlay*> routemapoverlays);
+  RouteMapConfiguration DefaultConfiguration();
+
+  void AddRoutingPanel();
+
+  /** The dialog to display routing statistics. */
+  StatisticsDialog m_StatisticsDialog;
+  /** The dialog to display a routing report. */
+  ReportDialog m_ReportDialog;
+  /** The dialog to display routing plots (wind, current, boat speed, etc). */
+  PlotDialog m_PlotDialog;
+  FilterRoutesDialog m_FilterRoutesDialog;
+
+  wxTimer m_tCompute, m_tHideConfiguration;
+
+  bool m_bRunning;
+  wxTimeSpan m_RunTime;
+  wxDateTime m_StartTime;
+
+  wxString m_default_configuration_path;
+
+  int m_RoutesToRun;
+  bool m_bSkipUpdateCurrentItems;
+
+  bool m_bShowConfiguration;
+  bool m_bShowConfigurationBatch;
+  bool m_bShowRoutePosition;
+  bool m_bShowSettings;
+  bool m_bShowStatistics;
+  bool m_bShowReport;
+  bool m_bShowPlot;
+  bool m_bShowFilter;
+
+  wxPoint m_downPos, m_startPos, m_startMouse;
+  wxTimer m_tDownTimer;
+
+  weather_routing_pi& m_weather_routing_pi;
+
+  wxFileName m_FileName;
+
+  wxSize m_size;
+
+  /**
+   * Pointer to the closest Position object on the route to the user's cursor
+   * location.
+   *
+   * This member variable is used to track and display the position on the
+   * computed weather route closest to where the user has placed their cursor on
+   * the chart. It's utilized by:
+   *
+   * 1. The RoutePositionDialog to display detailed data about this specific
+   * route point
+   * 2. The Render method to visually highlight this position on the chart
+   *
+   * When the user moves their cursor over the chart, this pointer is updated to
+   * point to the closest calculated position on the route by
+   * getClosestRoutePositionFromCursor(). If a direct Position* cannot be
+   * obtained but plot data is available, a temporary position (m_savedPosition)
+   * may be used instead.
+   *
+   * This allows the user to explore detailed information about any point along
+   * the computed route by simply moving their cursor near that point on the
+   * chart.
+   *
+   * @see UpdateRoutePositionDialog() For the method that updates this pointer
+   * @see RouteMapOverlay::getClosestRoutePositionFromCursor() For the
+   * calculation method
+   * @see RoutePositionDialog For the UI that displays data from this position
+   */
+  RoutePoint* m_positionOnRoute;
+  /**
+   * Temporary storage for position data when a direct Position* pointer is
+   * unavailable.
+   *
+   * When getClosestRoutePositionFromCursor() can find plot data for a point but
+   * not a direct Position* pointer, this member variable stores the position
+   * information to ensure the UI can still display details about that point on
+   * the route.
+   *
+   * This prevents information loss in situations where the route data is
+   * available in one form (PlotData) but not another (Position*).
+   *
+   * @see m_positionOnRoute The main position pointer this serves as a backup
+   * for
+   */
+  RoutePoint m_savedPosition;
+
+  RoutingTablePanel* m_RoutingTablePanel;
 
 #ifdef __WXMSW__
-AddressSpaceMonitor* m_addressSpaceMonitor = nullptr;
-std::atomic<bool> m_disableNewComputations{false};
+
+  // Windows-only: Address space monitoring integration
+  AddressSpaceMonitor* m_addressSpaceMonitor = nullptr;
+
+  // Controls whether new computations may start
+  std::atomic<bool> m_disableNewComputations{false};
 
 public:
     void DisableNewComputations() { m_disableNewComputations.store(true); }
     void EnableNewComputations()  { m_disableNewComputations.store(false); }
     bool AreNewComputationsDisabled() const { return m_disableNewComputations.load(); }
-#endif //__WXMSW__
+#endif  // __WXMSW__
+};
 
-};  // end class WeatherRouting
 #endif  // _WEATHER_ROUTING_H_
-

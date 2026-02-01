@@ -230,6 +230,7 @@ class WeatherRouting : public WeatherRoutingBase {
   friend class AddressSpaceMonitor;  // Allow AddressSpaceMonitor to access to
                                      // private members // private members
 private:
+
   // Memory alert event handlers
   void OnMemoryAlertStop(wxCommandEvent& event);
   void OnMemoryAutoReset(wxCommandEvent& event);
@@ -246,14 +247,15 @@ private:
   // Disable Reset Selected for now
   // wxMenuItem* m_mResetSelected = nullptr;
 
-  void OnResetSelected(wxCommandEvent& event);
+   void OnResetSelected(wxCommandEvent& event);
 
 public:
+
   /* --------------------------------------------------------------------- *
    * Thread lifecycle + reset pipeline (grouped cleanly) *
    * --------------------------------------------------------------------- */
-
-  /**
+  
+   /**
    * Initiates route calculation for a specific route map overlay.
    *
    * This method handles the pre-computation setup for a route map overlay:
@@ -267,13 +269,12 @@ public:
 
   // 1. Thread + Event Integration
   //     Receives worker?thread completion events and triggers UI/model updates.
-
+  
   void OnRouteMapUpdate(wxThreadEvent& event);
 
-  // 2. UI Column Pipeline (Core Rendering Layer)
-  //    The unified, modern UI update pipeline. These functions abstract
-  //    all wxListCtrl manipulation and ensure consistent rendering across the
-  //    plugin.
+ // 2. UI Column Pipeline (Core Rendering Layer)
+ //    The unified, modern UI update pipeline. These functions abstract
+ //    all wxListCtrl manipulation and ensure consistent rendering across the plugin.
 
   void SetColumn(long index, int column, const wxString& value);
   void ClearComputedColumns(long index);
@@ -292,16 +293,10 @@ public:
   void UpdateAllItems(bool changed);
   void UpdateSelectedItems(bool changed);
 
-  // 4. Route List Management (Model + UI Synchronization)
-  //    Adds, removes, selects, and rebuilds rows in the route list.
-  //    These functions keep the internal model(m_WeatherRoutes) and
-  //    the wxListCtrl perfectly aligned.
-
-  void OnNew(wxCommandEvent& event);  // Create a new WeatherRoute and add to list
- 
-  
-  void OnBatch(wxCommandEvent& event);  // Open batch configuration dialog
-  void AddRoutingPanel();  // Routing Panel   
+ // 4. Route List Management (Model + UI Synchronization)
+ //    Adds, removes, selects, and rebuilds rows in the route list.
+ //    These functions keep the internal model(m_WeatherRoutes) and
+ //    the wxListCtrl perfectly aligned.
 
   void RebuildListControlColumns();
 
@@ -314,34 +309,33 @@ public:
 
   void SelectRouteInList(WeatherRoute* wr);
 
-  // 5. Routing Computation Control (Thread Lifecycle Management)
-  //    Starts, stops, resets, and waits for route computations.
-  //    Controls the lifecycle of route computations and ensures
-  //    thread?safe shutdown and reset behavior.
+// 5. Routing Computation Control (Thread Lifecycle Management)
+//    Starts, stops, resets, and waits for route computations.
+//    Controls the lifecycle of route computations and ensures
+//    thread?safe shutdown and reset behavior.
 
   void Start(RouteMapOverlay* routemapoverlay);
   void StartAll();
 
-  void Stop(RouteMapOverlay* routemapoverlay);  // Stop the computation of the
-                                                // specified route.
-  void StopAll();  // Stop the computation of all routes.
+  void Stop(RouteMapOverlay* routemapoverlay);  // Stop the computation of the specified route. 
+  void StopAll();  //Stop the computation of all routes.
 
-  void Reset();          // the wrapper that the UI and timers call
-  void ResetAll();       // global reset Stop ? Wait ? Reset
-  void ResetSelected();  // per-selection reset
+  void Reset();                // the wrapper that the UI and timers call
+  void ResetAll();             // global reset Stop ? Wait ? Reset
+  void ResetSelected();        // per-selection reset
   void Reset(RouteMapOverlay* overlay);  // Reset the specified route.
 
   void WaitForAllRoutesToStop();
   void WaitForRoutesToStop(const std::list<RouteMapOverlay*>& overlays);
 
-  /* ---------------------------------------------------------------------
-   * SaveRouteOptions
-   * --------------------------------------------------------------------- */
+    /* ---------------------------------------------------------------------
+     * SaveRouteOptions
+     * --------------------------------------------------------------------- */
 
   struct SaveRouteOptions {
     bool dialogAccepted;        //!< Whether the user confirmed the dialog
     bool simplifyRoute;         //!< Whether to simplify the route
-    double maxTimePenalty;  //!< Maximum permitted ETA loss (percent)
+    double maxDurationPenalty;  //!< Maximum permitted ETA loss (percent)
   };
 
   enum {
@@ -351,40 +345,38 @@ public:
   };
 
   enum {
-    VISIBLE = 0,       //!< Route visibility toggle state
-    BOAT,              //!< Boat configuration file name
+    VISIBLE = 0,        //!< Route visibility toggle state
+    BOAT,               //!< Boat configuration file name
     STARTTYPE,         //!< Starting position type (boat or named)
-    START,             //!< Starting position name/coordinates
-    STARTTIME,         //!< Route departure time
-    END,               //!< Destination position name/coordinates
-    ENDTIME,           //!< Estimated arrival time
-    TIME,              //!< Total route duration
-    DISTANCE,          //!< Total route distance in nautical miles
-    AVGSPEED,          //!< Average boat speed through water in knots
-    MAXSPEED,          //!< Maximum boat speed through water in knots
-    AVGSPEEDGROUND,    //!< Average boat speed over ground in knots
-    MAXSPEEDGROUND,    //!< Maximum boat speed over ground in knots
-    AVGWIND,           //!< Average wind speed encountered in knots
-    MAXWIND,           //!< Maximum sustained wind speed in knots
-    MAXWINDGUST,       //!< Maximum wind gust encountered in knots
-    AVGCURRENT,        //!< Average current speed encountered in knots
-    MAXCURRENT,        //!< Maximum current speed encountered in knots
-    AVGSWELL,          //!< Average swell height encountered in meters
-    MAXSWELL,          //!< Maximum swell height encountered in meters
+    START,              //!< Starting position name/coordinates
+    STARTTIME,          //!< Route departure time
+    END,                //!< Destination position name/coordinates
+    ENDTIME,            //!< Estimated arrival time
+    TIME,               //!< Total route duration
+    DISTANCE,           //!< Total route distance in nautical miles
+    AVGSPEED,           //!< Average boat speed through water in knots
+    MAXSPEED,           //!< Maximum boat speed through water in knots
+    AVGSPEEDGROUND,     //!< Average boat speed over ground in knots
+    MAXSPEEDGROUND,     //!< Maximum boat speed over ground in knots
+    AVGWIND,            //!< Average wind speed encountered in knots
+    MAXWIND,            //!< Maximum sustained wind speed in knots
+    MAXWINDGUST,        //!< Maximum wind gust encountered in knots
+    AVGCURRENT,         //!< Average current speed encountered in knots
+    MAXCURRENT,         //!< Maximum current speed encountered in knots
+    AVGSWELL,           //!< Average swell height encountered in meters
+    MAXSWELL,           //!< Maximum swell height encountered in meters
     UPWINDPERCENTAGE,  //!< Percentage of time spent sailing upwind
     PORTSTARBOARD,     //!< Distribution between port and starboard tacks
-    TACKS,             //!< Number of tacks performed
-    JIBES,             //!< Number of jibes performed
-    SAILPLANCHANGES,   //!< Number of sail plan changes performed
-    COMFORT,           //!< Comfort/safety metrics for conditions
-    STATE,             //!< Current computation state of route
-    NUM_COLS           //!< Total number of display columns
+    TACKS,              //!< Number of tacks performed
+    JIBES,              //!< Number of jibes performed
+    SAILPLANCHANGES,  //!< Number of sail plan changes performed
+    COMFORT,            //!< Comfort/safety metrics for conditions
+    STATE,              //!< Current computation state of route
+    NUM_COLS            //!< Total number of display columns
   };
   long columns[NUM_COLS];
   static const wxString column_names[NUM_COLS];
   int sashpos;
-
-
 
   WeatherRouting(wxWindow* parent, weather_routing_pi& plugin);
   ~WeatherRouting();
@@ -615,8 +607,6 @@ void OnEditConfiguration();
 /** Edit position dialog */
 void OnEditPosition();
 
-
-
 /**
  * Add a new position using degree/minute string inputs.
  * Internal helper used by the New Position dialog.
@@ -645,9 +635,6 @@ void OnSaveAs(wxCommandEvent& event);
 /** Export route as GPX */
 void OnExportRouteAsGPX(wxCommandEvent& event);
 
-/** Export route as KML */
-void ExportRoute(RouteMapOverlay& routemapoverlay);
-
 /** Save as OpenCPN track */
 void OnSaveAsTrack(wxCommandEvent& event);
 
@@ -659,9 +646,6 @@ void OnSaveAllAsTracks(wxCommandEvent& event);
 
 /** Auto-save XML when positions/routes change */
 void AutoSaveXML();
-
-/** Auto-save XML timer event */
-void OnAutoSaveXMLTimer(wxTimerEvent& event);
 
 /** Low-level XML load/save helpers */
 bool OpenXML(wxString filename, bool reportfailure = true);
@@ -677,9 +661,6 @@ void OnCollPaneChanged(wxCollapsiblePaneEvent& event);
 
 /** Window close event */
 void OnClose(wxCloseEvent& event);
-
-/** Command event close (menu/toolbar) */
-void OnClose(wxCommandEvent& event);  
 
 /** Window resize */
 void OnSize(wxSizeEvent& event);
@@ -715,12 +696,6 @@ void OnWeatherRouteKeyDown(wxListEvent& event);
 
 /** Mouse-down inside the weather routes list */
 void OnWeatherRoutesListLeftDown(wxMouseEvent& event);
-
-/** On edit position click list */
-void OnEditPositionClick(wxMouseEvent& event) { OnEditPosition(); }
-
-/** On edit Configuration Click */
-void OnEditConfigurationClick(wxMouseEvent& event) { OnEditConfiguration(); }
 
 
 /* ======================================================================
@@ -867,7 +842,7 @@ wxFileName m_FileName;
 
 
 /* ======================================================================
- *  CURSOR?POSITION TRACKING
+ *  CURSOR‑POSITION TRACKING
  * ====================================================================== */
 
 RoutePoint* m_positionOnRoute;
@@ -877,7 +852,7 @@ RoutingTablePanel* m_RoutingTablePanel;
 
 
 /* ======================================================================
- *  PLUGIN + PLATFORM?SPECIFIC MEMBERS
+ *  PLUGIN + PLATFORM‑SPECIFIC MEMBERS
  * ====================================================================== */
 
 weather_routing_pi& m_weather_routing_pi;
@@ -890,8 +865,4 @@ public:
     void DisableNewComputations() { m_disableNewComputations.store(true); }
     void EnableNewComputations()  { m_disableNewComputations.store(false); }
     bool AreNewComputationsDisabled() const { return m_disableNewComputations.load(); }
-#endif //__WXMSW__
-
-};  // end class WeatherRouting
-#endif  // _WEATHER_ROUTING_H_
-
+#endif
