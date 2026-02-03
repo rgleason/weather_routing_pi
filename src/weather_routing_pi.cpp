@@ -610,7 +610,7 @@ void weather_routing_pi::SetPluginMessage(wxString& message_id,
 
     if (status != PolarSpeedStatus::POLAR_SPEED_SUCCESS) {
       root["Type"] = "Reply";
-      root["Error"] = status;
+      root["Error"] = Polar::GetPolarStatusMessage(status).ToStdString();
       SendPluginMessage("WR_BOATDATA", writer.write(root));
       return;
     }
