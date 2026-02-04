@@ -373,6 +373,7 @@ protected:
   /** Radio buttons for start selection */
   wxRadioButton* m_rbStartFromBoat;
   wxRadioButton* m_rbStartPositionSelection;
+  wxRadioButton* m_rbStartWaypointSelection;
   /** The starting point of the route. */
   wxComboBox* m_cStart;
   wxStaticText* m_staticText28;
@@ -419,6 +420,9 @@ protected:
   wxStaticText* m_staticText27;
   wxSpinCtrlDouble* m_sMaxSwellMeters;
   wxStaticText* m_staticText129;
+  /** Radio buttons for end selection */
+  wxRadioButton* m_rbEndPositionSelection;
+  wxRadioButton* m_rbEndWaypointSelection;
   /** The end point of the route. */
   wxComboBox* m_cEnd;
   wxSpinCtrl* m_sTimeStepHours;
@@ -475,6 +479,9 @@ protected:
   // Virtual event handlers, overide them in your derived class
   virtual void OnStartFromBoat(wxCommandEvent& event) { event.Skip(); }
   virtual void OnStartFromPosition(wxCommandEvent& event) { event.Skip(); }
+  virtual void OnStartFromWaypoint(wxCommandEvent& event) { event.Skip(); }
+  virtual void OnEndAtPosition(wxCommandEvent& event) { event.Skip(); }
+  virtual void OnEndAtWaypoint(wxCommandEvent& event) { event.Skip(); }
   virtual void OnUpdate(wxCommandEvent& event) { event.Skip(); }
   virtual void OnUpdateDate(wxDateEvent& event) { event.Skip(); }
   virtual void OnUseCurrentTime(wxCommandEvent& event) { event.Skip(); }

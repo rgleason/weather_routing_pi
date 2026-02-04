@@ -105,7 +105,26 @@ void ConfigurationDialog::OnStartFromBoat(wxCommandEvent& event) {
 }
 
 void ConfigurationDialog::OnStartFromPosition(wxCommandEvent& event) {
+  AddPositions(true);
   m_cStart->Enable(m_rbStartPositionSelection->GetValue());
+  Update();
+}
+
+void ConfigurationDialog::OnStartFromWaypoint(wxCommandEvent& event) {
+  AddWaypoints(true);
+  m_cStart->Enable(m_rbStartWaypointSelection->GetValue());
+  Update();
+}
+
+void ConfigurationDialog::OnEndAtPosition(wxCommandEvent& event) {
+  AddPositions(false);
+  m_cStart->Enable(m_rbStartPositionSelection->GetValue());
+  Update();
+}
+
+void ConfigurationDialog::OnEndAtWaypoint(wxCommandEvent& event) {
+  AddWaypoints(false);
+  m_cStart->Enable(m_rbStartWaypointSelection->GetValue());
   Update();
 }
 
@@ -325,8 +344,38 @@ void ConfigurationDialog::SetConfigurations(
   m_rbStartFromBoat->SetValue(allStartFromBoat);
   m_rbStartPositionSelection->SetValue(allStartFromPosition);
 
-  m_cStart->Enable(!oRoute && !m_rbStartFromBoat->GetValue());
-  m_cEnd->Enable(!oRoute);
+  if (!oRoute && !m_rbStartFromBoat->GetValue()) {
+    bool isPosition = false;
+    for (const auto& p : RouteMap::Positions) {
+      if (p.Name == it->Start) {
+        isPosition = true;
+        break;
+      }
+    }
+    isPosition ? AddPositions(true) : AddWaypoints(true);
+    m_rbStartPositionSelection->SetValue(isPosition);
+    m_rbStartWaypointSelection->SetValue(!isPosition);
+    m_cStart->SetValue(it->Start);
+    m_cStart->Enable(true);
+  } else
+    m_cStart->Enable(false);
+
+  if (!oRoute) {
+    bool isPosition = false;
+    std::cout << "INIT Searching for " << it->End << std::endl;
+    for (const auto& p : RouteMap::Positions) {
+      if (p.Name == it->End) {
+        isPosition = true;
+        break;
+      }
+    }
+    isPosition ? AddPositions(false) : AddWaypoints(false);
+    m_rbEndPositionSelection->SetValue(isPosition);
+    m_rbEndWaypointSelection->SetValue(!isPosition);
+    m_cEnd->SetValue(it->End);
+    m_cEnd->Enable(true);
+  } else
+    m_cEnd->Enable(false);
 
   m_bGribTime->Enable(!m_cbUseCurrentTime->IsChecked());
   m_bCurrentTime->Enable(!m_cbUseCurrentTime->IsChecked());
@@ -407,6 +456,22 @@ void ConfigurationDialog::RemoveSource(wxString name) {
 void ConfigurationDialog::ClearSources() {
   m_cStart->Clear();
   m_cEnd->Clear();
+}
+
+void ConfigurationDialog::AddWaypoints(const bool atStart) {
+  wxComboBox* combobox = atStart ? m_cStart : m_cEnd;
+  combobox->Clear();
+
+  wxArrayString waypoint_guids = GetWaypointGUIDArray();
+  for (const auto& guid : waypoint_guids)
+    combobox->Append(GetWaypoint_Plugin(guid)->m_MarkName);
+}
+
+void ConfigurationDialog::AddPositions(const bool atStart) {
+  wxComboBox* combobox = atStart ? m_cStart : m_cEnd;
+  combobox->Clear();
+
+  for (const auto& p : RouteMap::Positions) combobox->Append(p.Name);
 }
 
 void ConfigurationDialog::SetBoatFilename(wxString path) {
