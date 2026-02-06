@@ -569,6 +569,13 @@ void weather_routing_pi::SetPluginMessage(wxString& message_id,
         p_weather_route = wr;
         break;
       }
+      std::unique_ptr<PlugIn_Waypoint> wp_start = GetWaypoint_Plugin(root["StartGUID"].asString());
+      std::unique_ptr<PlugIn_Waypoint> wp_end = GetWaypoint_Plugin(root["EndGUID"].asString());
+      if ((wp_start != nullptr && wp_start->m_MarkName == wr->Start) ||
+          (wp_end != nullptr && wp_end->m_MarkName == wr->End)) {
+          p_weather_route = wr;
+          break;
+      }
     }
 
     if (p_weather_route == nullptr) {
