@@ -31,6 +31,8 @@ class ReportDialog : public ReportDialogBase {
 public:
   ReportDialog(WeatherRouting& weatherrouting);
 
+  void InitUI();
+
   void SetRouteMapOverlays(std::list<RouteMapOverlay*> routemapoverlays);
 
   bool m_bReportStale;

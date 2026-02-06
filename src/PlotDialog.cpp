@@ -44,26 +44,37 @@ PlotDialog::PlotDialog(WeatherRouting& weatherrouting)
                      wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER | wxSTAY_ON_TOP),
 #endif
       m_WeatherRouting(weatherrouting) {
+}
+
+void PlotDialog::InitUI() {
 #ifdef __OCPN__ANDROID__
-  wxSize sz = ::wxGetDisplaySize();
+   wxSize sz = ::wxGetDisplaySize();
   SetSize(0, 0, sz.x, sz.y - 40);
-#endif
+#endif Layout();
 }
 
 PlotDialog::~PlotDialog() {}
 
-void PlotDialog::OnMouseEventsPlot(wxMouseEvent& event) {
-  wxStaticText* stMousePosition[3] = {m_stMousePosition1, m_stMousePosition2,
-                                      m_stMousePosition3};
-  if (event.Leaving()) {
-    for (int i = 0; i < 3; i++) stMousePosition[i]->SetLabel(_("N/A"));
-    return;
-  }
 
-  int w, h;
-  m_PlotWindow->GetSize(&w, &h);
 
-  wxPoint p = event.GetPosition();
+void PlotDialog::OnMouseEventsPlot(wxMouseEvent& event)
+{
+    wxStaticText* stMousePosition[3] = {
+        m_stMousePosition1,
+        m_stMousePosition2,
+        m_stMousePosition3
+    };
+
+    if (event.Leaving()) {
+        for (int i = 0; i < 3; i++)
+            stMousePosition[i]->SetLabel(_("N/A"));
+        return;
+    }
+
+    int w, h;
+    m_PlotWindow->GetSize(&w, &h);
+
+    wxPoint p = event.GetPosition();
 
 #if 0
     double position = m_sPosition->GetValue() / 100.0;
@@ -73,12 +84,14 @@ void PlotDialog::OnMouseEventsPlot(wxMouseEvent& event) {
     wxDateTime datetime = m_StartTime + wxTimeSpan(0, 0, time);
 #endif
 
+
   for (int i = 0; i < 3; i++) {
-    double value = (1.0 - (double)p.y / h) * (m_maxvalue[i] - m_minvalue[i]) +
-                   m_minvalue[i];
-    stMousePosition[i]->SetLabel(wxString::Format(_T(" %.1f"), value));
-  }
+      double value = (1.0 - (double)p.y / h) * (m_maxvalue[i] - m_minvalue[i]) +
+                     m_minvalue[i];
+      stMousePosition[i]->SetLabel(wxString::Format(_T(" %.1f"), value));
+    }
 }
+
 
 double PlotDialog::GetValue(PlotData& data, Variable variable) {
   switch (variable) {

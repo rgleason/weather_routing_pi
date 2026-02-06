@@ -671,7 +671,7 @@ void weather_routing_pi::NewWR() {
   SendPluginMessage("GRIB_TIMELINE_REQUEST", "");
   SendPluginMessage("CLIMATOLOGY_REQUEST", "");
   RequestOcpnDrawSetting();
-  m_pWeather_Routing->Reset();
+ // m_pWeather_Routing->ResetSelected();
 }
 
 void weather_routing_pi::OnToolbarToolCallback(int id) {
@@ -698,7 +698,7 @@ void weather_routing_pi::OnContextMenuItemCallback(int id) {
 
     m_pWeather_Routing->AddRoute(GUID);
   }
-  m_pWeather_Routing->Reset();
+  m_pWeather_Routing->ResetSelected();
 }
 
 bool weather_routing_pi::RenderOverlay(wxDC& wxdc, PlugIn_ViewPort* vp) {
@@ -742,17 +742,24 @@ void weather_routing_pi::ReassignAddressSpaceMonitor() {
 }
 #endif
 
-
 void weather_routing_pi::OnCursorLatLonTimer(wxTimerEvent&) {
-  if (m_pWeather_Routing == 0) return;
+  if (!m_pWeather_Routing) return;
 
-  std::list<RouteMapOverlay*> routemapoverlays =
-      m_pWeather_Routing->CurrentRouteMaps();
+  // ---------------------------------------------------------------------
+  // Modern selection model:
+  // The list control is the authoritative source of which routes are active.
+  // We retrieve all selected overlays and update each one.
+  // ---------------------------------------------------------------------
+  std::vector<RouteMapOverlay*> overlays =
+      m_pWeather_Routing->GetSelectedOverlays();
+
   bool refresh = false;
-  for (std::list<RouteMapOverlay*>::iterator it = routemapoverlays.begin();
-       it != routemapoverlays.end(); it++)
-    if ((*it)->SetCursorLatLon(m_cursor_lat, m_cursor_lon)) refresh = true;
 
+  for (RouteMapOverlay* ov : overlays) {
+    if (ov && ov->SetCursorLatLon(m_cursor_lat, m_cursor_lon)) refresh = true;
+  }
+
+  // Update UI dialogs that depend on cursor position
   m_pWeather_Routing->UpdateCursorPositionDialog();
   m_pWeather_Routing->UpdateRoutePositionDialog();
 
@@ -761,6 +768,7 @@ void weather_routing_pi::OnCursorLatLonTimer(wxTimerEvent&) {
     m_pWeather_Routing->CursorRouteChanged();
   }
 }
+
 
 bool weather_routing_pi::LoadConfig() {
   wxFileConfig* pConf = (wxFileConfig*)m_pconfig;

@@ -273,6 +273,15 @@ bool RouteMap::ReduceList(IsoRouteList& merged, IsoRouteList& routelist,
   return true;
 }
 
+RouteMapConfiguration RouteMap::GetConfiguration() const {
+  RouteMap* self = const_cast<RouteMap*>(this);
+  self->Lock();
+  RouteMapConfiguration o = m_Configuration;
+  self->Unlock();
+  return o;
+}
+
+
 /* enlarge the map by 1 level */
 bool RouteMap::Propagate() {
   wxLogMessage(

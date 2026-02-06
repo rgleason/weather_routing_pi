@@ -196,6 +196,8 @@ RouteMapOverlay::~RouteMapOverlay() {
 
 
 void RouteMapOverlay::SetConfiguration(const RouteMapConfiguration& cfg) {
+  wxLogMessage("WR: RMO::SetConfiguration() entered");
+
   wxMutexLocker lock(routemutex);
 
   // Forward to RouteMap (compute engine)
@@ -1786,6 +1788,29 @@ double RouteMapOverlay::RouteInfo(enum RouteInfoType type, bool cursor_route) {
   return total;
 }
 
+
+// ---------------------------------------------------------------------------
+// Build a route from the best destination back to origin.
+// Required by WeatherRouting.cpp for GPX export, statistics, simplification,
+// and report generation.
+// ---------------------------------------------------------------------------
+std::list<Position*> RouteMapOverlay::GetRoute() const {
+  std::list<Position*> route;
+
+  // Prefer exact destination if reached, otherwise best approximation.
+  const Position* end =
+      destination_position ? destination_position : last_destination_position;
+
+  if (end) {
+    Position* p = const_cast<Position*>(end);
+    route = p->BuildRoute();
+  }
+
+  return route;
+}
+
+
+
 /* how many cyclone tracks did we cross? which month? */
 int RouteMapOverlay::Cyclones(int* months) {
   if (!RouteMap::ClimatologyCycloneTrackCrossings) return -1;
@@ -1815,8 +1840,11 @@ int RouteMapOverlay::Cyclones(int* months) {
   return cyclones;
 }
 
+
+
 void RouteMapOverlay::Clear() {
   {
+    wxLogMessage("WR: RMO::Clear() entered");
     wxMutexLocker lock(routemutex);  // Ensure thread safety
 
     // Reset the stopped flag

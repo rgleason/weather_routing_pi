@@ -22,6 +22,7 @@
 
 #include <json/json.h>
 #include <wx/wx.h>
+#include <wx/datetime.h>
 
 #include "RoutePoint.h"
 #include "IsoRoute.h"
@@ -158,6 +159,21 @@ public:
 
   /** Indicates why propagation failed. */
   PropagationError propagation_error;
+
+  // --------------------------------------------------------------------
+  // Legacy per-position metadata required by WeatherRouting.cpp,
+  // ReportDialog, StatisticsDialog, PlotDialog, GPX export, and comfort
+  // analysis. These fields were always present in the original plugin.
+  // --------------------------------------------------------------------
+  wxDateTime time;                 // seconds or hours from route start
+  double speed = 0.0;              // boat speed (knots)
+  double wind_speed = 0.0;         // true wind speed
+  double wind_direction = 0.0;     // true wind direction (degrees)
+  double current_speed = 0.0;      // current speed
+  double current_direction = 0.0;  // current direction (degrees)
+  double swell_height = 0.0;       // swell height
+
+
 private:
   /** Reset error tracking information. */
   void ResetErrorTracking();

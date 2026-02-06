@@ -33,6 +33,8 @@ public:
   BoatDialog(WeatherRouting& weatherrouting);
   ~BoatDialog();
 
+  void InitUI();
+
   void LoadPolar(const wxString& filename);
 
   Boat m_Boat;

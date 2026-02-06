@@ -35,6 +35,7 @@ public:
   PlotDialog(WeatherRouting& weatherrouting);
   ~PlotDialog();
 
+  void InitUI();
   void SetRouteMapOverlay(RouteMapOverlay* routemapoverlay);
 
 private:

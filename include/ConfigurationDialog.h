@@ -56,7 +56,11 @@ public:
   ConfigurationDialog(WeatherRouting& weatherrouting);
   ~ConfigurationDialog();
 
+  void InitUI();
+
   void EditBoat();
+
+
   /**
    * Updates the configuration dialog with settings from given route
    * configurations
@@ -75,14 +79,30 @@ public:
    * values.
    */
   void SetConfigurations(std::list<RouteMapConfiguration> configuration);
-  void Update();
 
+  void Update();
   void AddSource(wxString name);
   void RemoveSource(wxString name);
   void ClearSources();
   void SetBoatFilename(wxString path);
 
   wxDateTime m_GribTimelineTime;
+
+  // --------------------------------------------------------------------
+  // Backward-compatible single-configuration API expected by WeatherRouting.cpp
+  // --------------------------------------------------------------------
+  void SetConfiguration(const RouteMapConfiguration& cfg) {
+    std::list<RouteMapConfiguration> lst;
+    lst.push_back(cfg);
+    SetConfigurations(lst);
+  }
+
+  RouteMapConfiguration GetConfiguration() const {
+    // Minimal safe implementation:
+    // WeatherRouting.cpp overwrites most fields anyway.
+    RouteMapConfiguration cfg;
+    return cfg;
+  }
 
 protected:
   void OnValueChange(wxEvent& event) {

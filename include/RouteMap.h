@@ -690,14 +690,8 @@ public:
     void SetNewTime(const wxDateTime& t) { m_NewTime = t; }
     void SetNeedsGrib(bool v) { m_bNeedsGrib = v; }
 
-
-    // (rest of the existing public API)
-    bool Finished() const;
-    bool Valid() const;
-    WeatherForecastStatus GetWeatherForecastStatus() const;
-    bool ReachedDestination() const;
-
-  const Position& GetOrigin() const { return origin; }
+  //const Position& GetOrigin() const { return origin; }
+    const IsoChronList& GetOrigin() const { return origin; }
   /**
    * Resolves a named position to its latitude and longitude coordinates.
    *
@@ -850,12 +844,9 @@ public:
     m_bFinished = false;
     Unlock();
   }
-  RouteMapConfiguration GetConfiguration() {
-    Lock();
-    RouteMapConfiguration o = m_Configuration;
-    Unlock();
-    return o;
-  }
+
+  RouteMapConfiguration GetConfiguration() const;
+
 
   void GetStatistics(int& isochrones, int& routes, int& invroutes,
                      int& skippositions, int& positions);

@@ -156,6 +156,11 @@ public:
    */
   ~RouteMapOverlay();
 
+
+   // Temporarily moved to Public for direct access from WeatherRouting, but
+  // should be private with proper accessors
+   RouteMapOverlayThread* m_Thread = nullptr;
+
   /**
    * Dirty flag indicating that this overlay's internal routing state
    * has been cleared (via Clear() / Reset()) and the UI must refresh.
@@ -380,6 +385,12 @@ public:
   Position* getClosestRoutePositionFromCursor(double cursorLat,
                                               double cursorLon,
                                               PlotData& posData);
+  // --------------------------------------------------------------------
+  // Build a route from the best destination back to origin.
+  // Used by WeatherRouting.cpp for GPX export and simplification.
+  // --------------------------------------------------------------------
+  std::list<Position*> GetRoute() const;
+
    /**
    * Performs route analysis on a predefined route.
    * @param proute Pointer to the route to analyze.
@@ -444,7 +455,9 @@ private:
   /* -------------------- Thread + Synchronization -------------------- */
 
   /** Worker thread performing route propagation */
-  RouteMapOverlayThread* m_Thread = nullptr;
+  // Temporarily moved to Public for direct access from WeatherRouting, but
+  // should be private with proper accessors
+  //RouteMapOverlayThread* m_Thread = nullptr;
 
   /** Mutex protecting route data during rendering/updates */
   wxMutex routemutex;

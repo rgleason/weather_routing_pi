@@ -231,9 +231,6 @@ class WeatherRouting : public WeatherRoutingBase {
 
     friend class AddressSpaceMonitor;  // Allow AddressSpaceMonitor to access to
                                      // private members // private members
-
-
-
 private:
   // Memory alert event handlers
   void OnMemoryAlertStop(wxCommandEvent& event);
@@ -253,51 +250,19 @@ private:
   /** Timer for auto-saving positions and routes. */
   wxTimer m_tAutoSaveXML;
 
-  /** Menu item for resetting selected routes - Move tvoido UI */
+  /** Menu item for resetting selected routes - Move to UI */
   // wxMenuItem* m_mResetSelected = nullptr;
 
   // Scheduler-level containers
-
-
-    /**
-   * List of route map overlays currently being computed in background threads.
-   * This list tracks all route map overlays that have active computation
-   * threads. The WeatherRouting class uses this list to:
-   * - Monitor computation progress of each route
-   * - Check if any routes need updated GRIB data during computation
-   * - Limit the number of concurrent computations based on settings
-   * - Update the UI when computations complete
-   * Routes move from m_WaitingRouteMaps to m_RunningRouteMaps when computation
-   * threads are started, then are removed when computation completes.
-   * @see m_WaitingRouteMaps For routes waiting to be computed
-   * @see RouteMapOverlay::Running() To check if computation is still active
-   * @see OnComputationTimer() For the timer handler that processes this list
-   */
-
- std::list<RouteMapOverlay*> m_RunningRouteMaps;
-
-   /**
-   * List of route map overlays queued for computation but not yet started.
-   * This list contains route map overlays that have been scheduled for
-   * computation but are waiting for resources to become available (e.g., when
-   * the number of concurrent computations is limited by settings).
-   */
-
- std::list<RouteMapOverlay*> m_WaitingRouteMaps;
-
-
+  std::list<RouteMapOverlay*> m_WaitingRouteMaps;
+  std::list<RouteMapOverlay*> m_RunningRouteMaps;
+  std::vector<RouteMapOverlay*> m_RouteMapOverlays;
 
 
 public:
   /* --------------------------------------------------------------------- *
    * Thread lifecycle + reset pipeline (grouped cleanly) *
    * --------------------------------------------------------------------- */
-
-
-
-
-  bool IsWaiting(const RouteMapOverlay* rmo) const;
-
 
   /**
    * Initiates route calculation for a specific route map overlay.
@@ -334,7 +299,6 @@ public:
   void UpdateDialogs();
   void UpdateComputeState();
   void UpdateCurrentConfigurations();
-  void UpdateRoutePositionDialog(RoutePositionDialog& dlg);
 
   void UpdateItem(int index, bool changed);  // See line below
   void UpdateAllItems(bool changed);
@@ -372,7 +336,6 @@ public:
                                                 // specified route.
   void StopAll();  // Stop the computation of all routes.
 
- // void Reset();
   void Reset(RouteMapOverlay* overlay); // the wrapper that the UI and timers call
   void ResetAll();       // global reset Stop ? Wait ? Reset
   void ResetSelected();  // per-selection reset to prepard for new computation 
@@ -464,61 +427,51 @@ public:
    * selected
    * @return List of RouteMapOverlay pointers for selected routes
    */
-
-  //OLD CODE-delete
-  // std::list<RouteMapOverlay*> CurrentRouteMaps(bool messagedialog = false);
-
+  std::list<RouteMapOverlay*> CurrentRouteMaps(bool messagedialog = false);
   RouteMapOverlay* FirstCurrentRouteMap();
   RouteMapOverlay* m_RouteMapOverlayNeedingGrib;
 
-  // Overlay enumeration helpers
-  // Locks mutex ? must NOT be const
-  std::vector<RouteMapOverlay*> GetAllOverlays();
- 
-  // Return all selected route overlays from the list control.
-  // This supports multi-route editing, cursor updates, and batch operations.
-  // Reads UI only ? SHOULD be const
-  std::vector<RouteMapOverlay*> GetSelectedOverlays() const;
-
- 
-  // Apply a callable to every overlay in the master list.
-  template <typename Func>
-  void ForEachOverlay(Func&& func) const {
-    wxMutexLocker lock(m_OverlayListMutex);
-    for (auto* ov : m_RouteMapOverlays) {
-      if (ov) func(ov);
-    }
-  }
-
-  // Apply a callable to each selected overlay, with index in the selection.
-  template <typename Func>
-  void ForEachSelectedOverlay(Func&& func) const {
-    auto selected = GetSelectedOverlays();
-    for (size_t i = 0; i < selected.size(); ++i) {
-      if (selected[i]) func(selected[i], i);
-    }
-  }
-
-
- 
-
-
-
   void RebuildList();
-
-    /**
+  /**
+   * List of route map overlays currently being computed in background threads.
+   *
+   * This list tracks all route map overlays that have active computation
+   * threads. The WeatherRouting class uses this list to:
+   * - Monitor computation progress of each route
+   * - Check if any routes need updated GRIB data during computation
+   * - Limit the number of concurrent computations based on settings
+   * - Update the UI when computations complete
+   *
+   * Routes move from m_WaitingRouteMaps to m_RunningRouteMaps when computation
+   * threads are started, then are removed when computation completes.
+   *
+   * @see m_WaitingRouteMaps For routes waiting to be computed
+   * @see RouteMapOverlay::Running() To check if computation is still active
+   * @see OnComputationTimer() For the timer handler that processes this list
+   */
+  std::list<RouteMapOverlay*> m_RunningRouteMaps;
+  /**
+   * List of route map overlays queued for computation but not yet started.
+   *
+   * This list contains route map overlays that have been scheduled for
+   * computation but are waiting for resources to become available (e.g., when
+   * the number of concurrent computations is limited by settings).
+   */
+  std::list<RouteMapOverlay*> m_WaitingRouteMaps;
+  /**
    * Master list of all weather routes managed by the application.
+   *
    * This list contains all weather routes created by the user, regardless of
    * computation state. Each WeatherRoute object contains a RouteMapOverlay that
    * handles the actual route calculation and a collection of formatted UI
    * strings for displaying route information.
+   *
    * The WeatherRouting class maintains this list for:
    * - Displaying routes in the UI list control
    * - Saving/loading route configurations
    * - Generating statistics, reports, and plots
    * - Performing batch operations on multiple routes
    */
-
   std::list<WeatherRoute*> m_WeatherRoutes;
 
 /**
@@ -529,7 +482,6 @@ public:
    *  - Wait for all overlays to finish
    *  - Remove overlays when deleted
    */
-
   wxMutex m_OverlayListMutex;  // protects m_RouteMapOverlays
   std::vector<RouteMapOverlay*> m_RouteMapOverlays;  // master list of overlays
 
@@ -642,18 +594,16 @@ void CopyDataFiles(wxString from, wxString to);
  * Save a simplified route (post-processing of a computed route).
  * Called after route simplification is performed.
  */
-
-TiXmlElement* SaveSimplifiedRouteAsGPX(const RouteMapOverlay&,
-                                       const std::list<Position*>&);
-
+TiXmlElement* SaveSimplifiedRoute(const RouteMapOverlay& routemapoverlay,
+                                  const std::list<Position*>& simplifiedRoute);
 
 /* ======================================================================
  * LIFECYCLE MANAGEMENT GUARDS
  * ====================================================================== */
 
-void AssertAllInvariants();
-void AssertSchedulerInvariants();
-void AssertThreadLifecycleInvariants();
+void WeatherRouting::AssertAllInvariants();
+void WeatherRouting::AssertSchedulerInvariants();
+void WeatherRouting::AssertThreadLifecycleInvariants();
 
 /* ======================================================================
  *  POSITION MANAGEMENT (Dialogs + Editing)
@@ -974,4 +924,4 @@ public:
 #endif //__WXMSW__
 
 };  // end class WeatherRouting
-#endif
+#endif  // _WEATHER_ROUTING_H_

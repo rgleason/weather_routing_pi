@@ -281,42 +281,85 @@ void ConfigurationBatchDialog::OnClose(wxCommandEvent& event) { Hide(); }
 void ConfigurationBatchDialog::OnGenerate(wxCommandEvent& event) {
   m_WeatherRouting.GenerateBatch();
 }
-
 void ConfigurationBatchDialog::Reset() {
+  // ---------------------------------------------------------------------
+  // 1. Reset batch timing fields to defaults
+  // ---------------------------------------------------------------------
   m_tStartDays->SetValue(_T("0"));
   m_tStartHours->SetValue(_T("0"));
   m_tStartSpacingDays->SetValue(_T("1"));
   m_tStartSpacingHours->SetValue(_T("0"));
 
-  for (std::vector<BatchSource*>::iterator bit = sources.begin();
-       bit != sources.end(); bit++)
+  // ---------------------------------------------------------------------
+  // 2. Clear all destination lists for each batch source
+  // ---------------------------------------------------------------------
+  for (auto bit = sources.begin(); bit != sources.end(); ++bit)
     (*bit)->destinations.clear();
 
-  std::list<RouteMapOverlay*> currentroutemaps =
-      m_WeatherRouting.CurrentRouteMaps();
-  for (std::list<RouteMapOverlay*>::iterator it = currentroutemaps.begin();
-       it != currentroutemaps.end(); it++) {
-    RouteMapConfiguration configuration = (*it)->GetConfiguration();
-
-    for (std::vector<BatchSource*>::iterator bit = sources.begin();
-         bit != sources.end(); bit++) {
-      if ((*bit)->Name == configuration.Start)
-        for (std::vector<BatchSource*>::iterator bit2 = sources.begin();
-             bit2 != sources.end(); bit2++)
-          if ((*bit2)->Name == configuration.End) {
-            bool have = false;
-            for (std::list<BatchDestination*>::iterator bit3 =
-                     (*bit)->destinations.begin();
-                 bit3 != (*bit)->destinations.end(); bit3++)
-              if (*bit3 == *bit2) have = true;
-            if (!have) (*bit)->destinations.push_back(*bit2);
-          }
-    }
-
-    m_lBoats->Clear();
-    m_lBoats->Append(configuration.boatFileName);
+  // ---------------------------------------------------------------------
+  // 3. Retrieve the active route
+  //
+  // The old code used:
+  //     m_WeatherRouting.CurrentRouteMaps()
+  //
+  // That API no longer exists. The modern architecture uses the list
+  // control as the authoritative source of selection. For now, batch
+  // configuration is based on the *currently selected* route.
+  //
+  // (Multi-route batch initialization can be added later.)
+  // ---------------------------------------------------------------------
+  RouteMapOverlay* overlay = m_WeatherRouting.FirstCurrentRouteMap();
+  if (!overlay) {
+    // No route selected ? nothing to initialize
+    return;
   }
 
+  RouteMapConfiguration configuration = overlay->GetConfiguration();
+
+  // ---------------------------------------------------------------------
+  // 4. Populate batch source/destination relationships
+  //
+  // This mirrors the original logic:
+  //   ? Find the BatchSource whose Name matches Start
+  //   ? Find the BatchSource whose Name matches End
+  //   ? Add the End source as a destination of the Start source
+  //
+  // This allows the batch dialog to pre-fill the "routes to generate"
+  // matrix based on the selected route?s configuration.
+  // ---------------------------------------------------------------------
+  for (auto bit = sources.begin(); bit != sources.end(); ++bit) {
+    if ((*bit)->Name == configuration.Start) {
+      for (auto bit2 = sources.begin(); bit2 != sources.end(); ++bit2) {
+        if ((*bit2)->Name == configuration.End) {
+          bool have = false;
+
+          // Avoid duplicate destinations
+          for (auto bit3 = (*bit)->destinations.begin();
+               bit3 != (*bit)->destinations.end(); ++bit3) {
+            if (*bit3 == *bit2) {
+              have = true;
+              break;
+            }
+          }
+
+          if (!have) (*bit)->destinations.push_back(*bit2);
+        }
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // 5. Populate boat list with the selected route?s boat file
+  //
+  // The old code appended all boats from all routes. Since we now use
+  // single-route editing, we simply show the boat for the active route.
+  // ---------------------------------------------------------------------
+  m_lBoats->Clear();
+  m_lBoats->Append(configuration.boatFileName);
+
+  // ---------------------------------------------------------------------
+  // 6. Reset wind strength sweep parameters
+  // ---------------------------------------------------------------------
   m_sWindStrengthMin->SetValue(100);
   m_sWindStrengthMax->SetValue(100);
   m_sWindStrengthStep->SetValue(10);

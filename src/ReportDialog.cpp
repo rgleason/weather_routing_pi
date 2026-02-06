@@ -45,12 +45,27 @@ ReportDialog::ReportDialog(WeatherRouting& weatherrouting)
 #endif
       m_WeatherRouting(weatherrouting) {
   m_bReportStale = true;
+
+  // SAFE constructor ? no UI work here
+  // Do NOT call SetRouteMapOverlays() here
+  // Do NOT call SetSize() here
+}
+
+void ReportDialog::InitUI() {
+  // Restore initial empty state safely
   SetRouteMapOverlays(std::list<RouteMapOverlay*>());
+
 #ifdef __OCPN__ANDROID__
   wxSize sz = ::wxGetDisplaySize();
   SetSize(0, 0, sz.x, sz.y - 40);
 #endif
+
+  // If the original constructor had any other UI work,
+  // move it here as well.
+
+  Layout();
 }
+
 
 void ReportDialog::SetRouteMapOverlays(
     std::list<RouteMapOverlay*> routemapoverlays) {

@@ -83,6 +83,7 @@ static wxColor GetWindSpeedColor(unsigned int windSpeedIndex,
   return wxColor(r, g, b);
 }
 
+
 BoatDialog::BoatDialog(WeatherRouting& weatherrouting)
 #ifndef __WXOSX__
     : BoatDialogBase(&weatherrouting),
@@ -103,6 +104,11 @@ BoatDialog::BoatDialog(WeatherRouting& weatherrouting)
       m_CursorVMGAngle(0),
       m_CrossOverRegenerate(false),
       m_CrossOverGenerationThread(NULL) {
+  // SAFE constructor
+  // No UI work here
+}
+
+void BoatDialog::InitUI() {
   // for small screens: don't let boat dialog be larger than screen
   int w, h;
   wxDisplaySize(&w, &h);
@@ -114,7 +120,7 @@ BoatDialog::BoatDialog(WeatherRouting& weatherrouting)
   m_lPolars->InsertColumn(spFILENAME, _("Filename"));
 
   wxFileConfig* pConf = GetOCPNConfigObject();
-  pConf->SetPath(_T( "/PlugIns/WeatherRouting/BoatDialog" ));
+  pConf->SetPath(_T("/PlugIns/WeatherRouting/BoatDialog"));
 
 #ifdef __OCPN__ANDROID__
   wxSize sz = ::wxGetDisplaySize();
@@ -123,7 +129,16 @@ BoatDialog::BoatDialog(WeatherRouting& weatherrouting)
   // hack to adjust items
   SetSize(wxSize(w, h));
 #endif
+
+  // If the original constructor had event bindings, move them here too.
+  // Example:
+  // Bind(wxEVT_PAINT, &BoatDialog::OnPaintPlot, this);
+  // Bind(wxEVT_SIZE, &BoatDialog::OnUpdatePlot, this);
+
+  Layout();
 }
+
+//===========
 
 BoatDialog::~BoatDialog() {
   wxFileConfig* pConf = GetOCPNConfigObject();
@@ -1626,7 +1641,7 @@ void BoatDialog::UpdateBestVMGInfo() {
     double downwindVMG = downwindSpeed * cos(deg2rad(180.0 - downwindAngle));
 
     m_stBestVMGDownwindAngle->SetLabel(
-        wxString::Format(_("%.1f\u00B0"), downwindAngle));  // "Â°"
+        wxString::Format(_("%.1f\u00B0"), downwindAngle));  // "°"
     m_stBestVMGDownwindSpeed->SetLabel(
         wxString::Format(_("%.1f kts"), downwindSpeed));
     m_stBestVMGDownwindVMG->SetLabel(

@@ -54,18 +54,28 @@ ConfigurationDialog::ConfigurationDialog(WeatherRouting& weatherrouting)
 #endif
       m_WeatherRouting(weatherrouting),
       m_bBlockUpdate(false) {
+  // DO NOT build UI here
+  // DO NOT read config here
+  // DO NOT set size or position here
+  // All UI work must happen in InitUI()
+}
+
+void ConfigurationDialog::InitUI() {
   wxFileConfig* pConf = GetOCPNConfigObject();
-  pConf->SetPath(_T( "/PlugIns/WeatherRouting" ));
+  pConf->SetPath(_T("/PlugIns/WeatherRouting"));
 
 #ifdef __OCPN__ANDROID__
   wxSize sz = ::wxGetDisplaySize();
   SetSize(0, 0, sz.x, sz.y - 40);
 #else
   wxPoint p = GetPosition();
-  pConf->Read(_T ( "ConfigurationX" ), &p.x, p.x);
-  pConf->Read(_T ( "ConfigurationY" ), &p.y, p.y);
+  pConf->Read(_T("ConfigurationX"), &p.x, p.x);
+  pConf->Read(_T("ConfigurationY"), &p.y, p.y);
   SetPosition(p);
 #endif
+
+  // If the dialog normally builds controls or sizers in the constructor,
+  // move that code here as well.
 }
 
 ConfigurationDialog::~ConfigurationDialog() {
@@ -492,210 +502,262 @@ void ConfigurationDialog::SetStartDateTime(wxDateTime datetime) {
 	
 
 void ConfigurationDialog::Update() {
+  // Prevent recursive updates when controls trigger each other
   if (m_bBlockUpdate) return;
 
-  // Ensure the combobox is properly enabled/disabled based on radio button
-  // selection
+  // Enable/disable the start-position combobox depending on radio selection
   m_cStart->Enable(!m_rbStartFromBoat->GetValue());
 
   bool refresh = false;
-  RouteMapConfiguration configuration;
-  std::list<RouteMapOverlay*> currentroutemaps =
-      m_WeatherRouting.CurrentRouteMaps();
-  for (std::list<RouteMapOverlay*>::iterator it = currentroutemaps.begin();
-       it != currentroutemaps.end(); it++) {
-    configuration = (*it)->GetConfiguration();
 
-    // Set the start type based on the radio button selection
-    if (m_rbStartFromBoat->GetValue()) {
-      configuration.StartType = RouteMapConfiguration::START_FROM_BOAT;
-    } else {
-      configuration.StartType = RouteMapConfiguration::START_FROM_POSITION;
-    }
-
-    // Only get start position choice if not using boat position
-    if (configuration.StartType == RouteMapConfiguration::START_FROM_POSITION)
-      GET_CHOICE(Start);
-    GET_CHOICE(End);
-
-    GET_CHECKBOX(UseCurrentTime);
-
-    if (NO_EDITED_CONTROLS ||
-        std::find(m_edited_controls.begin(), m_edited_controls.end(),
-                  (wxObject*)m_dpStartDate) != m_edited_controls.end()) {
-      if (!m_dpStartDate->GetDateCtrlValue().IsValid()) continue;
-      // We must preserve the time in case only date but not time, is being
-      // changed by the user... configuration.StartTime is UTC, m_dpStartDate
-      // Local or UTC so adjust
-	// Replace each occurrence of:
-	//    wxDateTime time = configuration.StartTime;
-	// with the defensive version below.
-	
-	wxDateTime time = configuration.StartTime;
-	if (!time.IsValid())
-	{
-		// Defensive fallback: avoid passing an invalid wxDateTime to SetValue().
-		// Policy choices:
-		//  - Use current time to keep UI populated: time = wxDateTime::Now();
-		//  - Skip calling SetValue() for invalid dates (requires branch at call site)
-		//  - Use SetStartDateTime(time) which shows a warning (not ideal in bulk updates)
-		//
-		// Here we choose to fall back to now to avoid the wxCHECK abort.
-		time = wxDateTime::Now();
-	}
-      if (m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue())
-        time = time.FromUTC();
-
-      wxDateTime date = m_dpStartDate->GetDateCtrlValue();
-      // ... and add it afterwards
-      date.SetHour(time.GetHour());
-      date.SetMinute(time.GetMinute());
-      date.SetSecond(time.GetSecond());
-
-      if (m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue())
-        date = date.ToUTC();
-
-      configuration.StartTime = date;
-      m_dpStartDate->SetForegroundColour(wxColour(0, 0, 0));
-    }
-
-    if (NO_EDITED_CONTROLS ||
-        std::find(m_edited_controls.begin(), m_edited_controls.end(),
-                  (wxObject*)m_tpTime) != m_edited_controls.end()) {
-      // must use correct data on UTC conversion to preserve Daylight Savings
-      // Time changes across dates
-
-	// Replace each occurrence of:
-	//    wxDateTime time = configuration.StartTime;
-	// with the defensive version below.
-
-	wxDateTime time = configuration.StartTime;
-	if (!time.IsValid())
-	{
-		// Defensive fallback: avoid passing an invalid wxDateTime to SetValue().
-		// Policy choices:
-		//  - Use current time to keep UI populated: time = wxDateTime::Now();
-		//  - Skip calling SetValue() for invalid dates (requires branch at call site)
-		//  - Use SetStartDateTime(time) which shows a warning (not ideal in bulk updates)
-		//
-		// Here we choose to fall back to now to avoid the wxCHECK abort.
-		time = wxDateTime::Now();
-}
-      if (m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue())
-        time = time.FromUTC();
-
-      time.SetHour(m_tpTime->GetTimeCtrlValue().GetHour());
-      time.SetMinute(m_tpTime->GetTimeCtrlValue().GetMinute());
-      time.SetSecond(m_tpTime->GetTimeCtrlValue().GetSecond());
-
-      if (m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue())
-        time = time.ToUTC();
-
-      configuration.StartTime = time;
-      m_tpTime->SetForegroundColour(wxColour(0, 0, 0));
-    }
-
-    if (!m_tBoat->GetValue().empty()) {
-      configuration.boatFileName = m_tBoat->GetValue();
-      m_tBoat->SetForegroundColour(wxColour(0, 0, 0));
-    }
-
-    if (NO_EDITED_CONTROLS ||
-        std::find(m_edited_controls.begin(), m_edited_controls.end(),
-                  (wxObject*)m_sTimeStepHours) != m_edited_controls.end() ||
-        std::find(m_edited_controls.begin(), m_edited_controls.end(),
-                  (wxObject*)m_sTimeStepMinutes) != m_edited_controls.end()) {
-      configuration.DeltaTime = 60 * (60 * m_sTimeStepHours->GetValue() +
-                                      m_sTimeStepMinutes->GetValue());
-      m_sTimeStepHours->SetForegroundColour(wxColour(0, 0, 0));
-      m_sTimeStepMinutes->SetForegroundColour(wxColour(0, 0, 0));
-    }
-
-    if (m_cIntegrator->GetValue() == _T("Newton"))
-      configuration.Integrator = RouteMapConfiguration::NEWTON;
-    else if (m_cIntegrator->GetValue() == _T("Runge Kutta"))
-      configuration.Integrator = RouteMapConfiguration::RUNGE_KUTTA;
-
-    GET_SPIN(MaxDivertedCourse);
-    GET_SPIN(MaxCourseAngle);
-    GET_SPIN(MaxSearchAngle);
-    GET_SPIN(MaxTrueWindKnots);
-    GET_SPIN(MaxApparentWindKnots);
-
-    GET_SPIN(MaxSwellMeters);
-    GET_SPIN(MaxLatitude);
-    GET_SPIN(TackingTime);
-    GET_SPIN(JibingTime);
-    GET_SPIN(SailPlanChangeTime);
-    GET_SPIN(WindVSCurrent);
-
-    if (m_sWindStrength->IsEnabled())
-      configuration.WindStrength = m_sWindStrength->GetValue() / 100.0;
-
-    if (m_sUpwindEfficiency->IsEnabled())
-      configuration.UpwindEfficiency = m_sUpwindEfficiency->GetValue() / 100.0;
-    if (m_sDownwindEfficiency->IsEnabled())
-      configuration.DownwindEfficiency =
-          m_sDownwindEfficiency->GetValue() / 100.0;
-    if (m_sNightCumulativeEfficiency->IsEnabled())
-      configuration.NightCumulativeEfficiency =
-          m_sNightCumulativeEfficiency->GetValue() / 100.0;
-
-    GET_CHECKBOX(AvoidCycloneTracks);
-    GET_SPIN(CycloneMonths);
-    GET_SPIN(CycloneDays);
-    GET_SPIN(SafetyMarginLand);
-
-    GET_CHECKBOX(DetectLand);
-    GET_CHECKBOX(DetectBoundary);
-    GET_CHECKBOX(Currents);
-    GET_CHECKBOX(OptimizeTacking);
-
-    GET_CHECKBOX(InvertedRegions);
-    GET_CHECKBOX(Anchoring);
-
-    GET_CHECKBOX(UseGrib);
-    if (m_cClimatologyType->GetSelection() != -1)
-      configuration.ClimatologyType =
-          (RouteMapConfiguration::ClimatologyDataType)
-              m_cClimatologyType->GetSelection();
-    GET_CHECKBOX(AllowDataDeficient);
-    if (m_sWindStrength->IsEnabled())
-      configuration.WindStrength = m_sWindStrength->GetValue() / 100.0;
-
-    GET_SPIN(FromDegree);
-    GET_SPIN(ToDegree);
-    GET_SPIN(ByDegrees);
-
-    // Motor settings
-    GET_CHECKBOX(UseMotor);
-    if (NO_EDITED_CONTROLS ||
-        std::find(m_edited_controls.begin(), m_edited_controls.end(),
-                  (wxObject*)m_sMotorSpeedThreshold) !=
-            m_edited_controls.end()) {
-      configuration.MotorSpeedThreshold = m_sMotorSpeedThreshold->GetValue();
-      m_sMotorSpeedThreshold->SetForegroundColour(wxColour(0, 0, 0));
-    }
-    if (NO_EDITED_CONTROLS ||
-        std::find(m_edited_controls.begin(), m_edited_controls.end(),
-                  (wxObject*)m_sMotorSpeed) != m_edited_controls.end()) {
-      configuration.MotorSpeed = m_sMotorSpeed->GetValue();
-      m_sMotorSpeed->SetForegroundColour(wxColour(0, 0, 0));
-    }
-
-    (*it)->SetConfiguration(configuration);
-
-    /* if the start position changed, we must reset the route */
-    RouteMapConfiguration newc = (*it)->GetConfiguration();
-    if (newc.StartLat != configuration.StartLat ||
-        newc.StartLon != configuration.StartLon) {
-      (*it)->Reset();
-      refresh = true;
-    } else if (newc.EndLat != configuration.EndLat ||
-               newc.EndLon != configuration.EndLon)
-      refresh = true;  // update drawing
+  // ---------------------------------------------------------------------
+  // 1. Select the active route
+  //
+  // The modern WeatherRouting architecture uses the list control as the
+  // authoritative source of selection. This dialog edits the configuration
+  // of the *currently selected* route only.
+  //
+  // (Multi-route editing can be added later by iterating over all selected
+  // overlays, but for now we keep it simple and stable.)
+  // ---------------------------------------------------------------------
+  RouteMapOverlay* overlay = m_WeatherRouting.FirstCurrentRouteMap();
+  if (!overlay) {
+    // No route selected ? nothing to update
+    return;
   }
 
+  // Retrieve the current configuration for the selected route
+  RouteMapConfiguration configuration = overlay->GetConfiguration();
+
+  // ---------------------------------------------------------------------
+  // 2. Start type (boat vs. fixed position)
+  // ---------------------------------------------------------------------
+  if (m_rbStartFromBoat->GetValue())
+    configuration.StartType = RouteMapConfiguration::START_FROM_BOAT;
+  else
+    configuration.StartType = RouteMapConfiguration::START_FROM_POSITION;
+
+  // Only allow selecting a start position if not starting from boat
+  if (configuration.StartType == RouteMapConfiguration::START_FROM_POSITION)
+    GET_CHOICE(Start);
+
+  GET_CHOICE(End);
+  GET_CHECKBOX(UseCurrentTime);
+
+  // ---------------------------------------------------------------------
+  // 3. Start date (preserve time component)
+  //
+  // wxDateTime has strict validity rules. Passing an invalid wxDateTime
+  // into SetValue() or converting between UTC/local can trigger wxCHECK
+  // assertions. To avoid this, we:
+  //
+  //   ? defensively check configuration.StartTime.IsValid()
+  //   ? fall back to wxDateTime::Now() if invalid
+  //   ? convert UTC?local only *after* ensuring validity
+  //
+  // This ensures the dialog never crashes due to invalid timestamps.
+  // ---------------------------------------------------------------------
+  if (NO_EDITED_CONTROLS ||
+      std::find(m_edited_controls.begin(), m_edited_controls.end(),
+                (wxObject*)m_dpStartDate) != m_edited_controls.end()) {
+    if (!m_dpStartDate->GetDateCtrlValue().IsValid()) goto after_updates;
+
+    wxDateTime time = configuration.StartTime;
+
+    if (!time.IsValid()) {
+      // Defensive fallback:
+      // Avoid passing invalid wxDateTime into SetValue() or FromUTC().
+      // Using "now" keeps the UI populated and avoids wxCHECK aborts.
+      time = wxDateTime::Now();
+    }
+
+    // Convert to local time *only if requested*
+    if (m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue())
+      time = time.FromUTC();
+
+    // Preserve the time-of-day while updating the date
+    wxDateTime date = m_dpStartDate->GetDateCtrlValue();
+    date.SetHour(time.GetHour());
+    date.SetMinute(time.GetMinute());
+    date.SetSecond(time.GetSecond());
+
+    // Convert back to UTC if needed
+    if (m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue())
+      date = date.ToUTC();
+
+    configuration.StartTime = date;
+    m_dpStartDate->SetForegroundColour(*wxBLACK);
+  }
+
+  // ---------------------------------------------------------------------
+  // 4. Start time (preserve date component)
+  //
+  // Same defensive pattern as above:
+  //   ? ensure configuration.StartTime is valid
+  //   ? convert UTC?local only after validity is guaranteed
+  //   ? apply user-selected time-of-day
+  //   ? convert back to UTC if needed
+  //
+  // This avoids DST-related errors and wxDateTime assertion failures.
+  // ---------------------------------------------------------------------
+  if (NO_EDITED_CONTROLS ||
+      std::find(m_edited_controls.begin(), m_edited_controls.end(),
+                (wxObject*)m_tpTime) != m_edited_controls.end()) {
+    wxDateTime time = configuration.StartTime;
+
+    if (!time.IsValid()) {
+      // Defensive fallback for invalid timestamps
+      time = wxDateTime::Now();
+    }
+
+    if (m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue())
+      time = time.FromUTC();
+
+    // Apply the time-of-day from the control
+    time.SetHour(m_tpTime->GetTimeCtrlValue().GetHour());
+    time.SetMinute(m_tpTime->GetTimeCtrlValue().GetMinute());
+    time.SetSecond(m_tpTime->GetTimeCtrlValue().GetSecond());
+
+    if (m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue())
+      time = time.ToUTC();
+
+    configuration.StartTime = time;
+    m_tpTime->SetForegroundColour(*wxBLACK);
+  }
+
+  // ---------------------------------------------------------------------
+  // 5. Boat file
+  // ---------------------------------------------------------------------
+  if (!m_tBoat->GetValue().empty()) {
+    configuration.boatFileName = m_tBoat->GetValue();
+    m_tBoat->SetForegroundColour(*wxBLACK);
+  }
+
+  // ---------------------------------------------------------------------
+  // 6. Time step (hours + minutes)
+  // ---------------------------------------------------------------------
+  if (NO_EDITED_CONTROLS ||
+      std::find(m_edited_controls.begin(), m_edited_controls.end(),
+                (wxObject*)m_sTimeStepHours) != m_edited_controls.end() ||
+      std::find(m_edited_controls.begin(), m_edited_controls.end(),
+                (wxObject*)m_sTimeStepMinutes) != m_edited_controls.end()) {
+    configuration.DeltaTime = 60 * (60 * m_sTimeStepHours->GetValue() +
+                                    m_sTimeStepMinutes->GetValue());
+
+    m_sTimeStepHours->SetForegroundColour(*wxBLACK);
+    m_sTimeStepMinutes->SetForegroundColour(*wxBLACK);
+  }
+
+  // ---------------------------------------------------------------------
+  // 7. Integrator selection
+  // ---------------------------------------------------------------------
+  if (m_cIntegrator->GetValue() == _T("Newton"))
+    configuration.Integrator = RouteMapConfiguration::NEWTON;
+  else if (m_cIntegrator->GetValue() == _T("Runge Kutta"))
+    configuration.Integrator = RouteMapConfiguration::RUNGE_KUTTA;
+
+  // ---------------------------------------------------------------------
+  // 8. Numeric configuration fields
+  // ---------------------------------------------------------------------
+  GET_SPIN(MaxDivertedCourse);
+  GET_SPIN(MaxCourseAngle);
+  GET_SPIN(MaxSearchAngle);
+  GET_SPIN(MaxTrueWindKnots);
+  GET_SPIN(MaxApparentWindKnots);
+
+  GET_SPIN(MaxSwellMeters);
+  GET_SPIN(MaxLatitude);
+  GET_SPIN(TackingTime);
+  GET_SPIN(JibingTime);
+  GET_SPIN(SailPlanChangeTime);
+  GET_SPIN(WindVSCurrent);
+
+  if (m_sWindStrength->IsEnabled())
+    configuration.WindStrength = m_sWindStrength->GetValue() / 100.0;
+
+  if (m_sUpwindEfficiency->IsEnabled())
+    configuration.UpwindEfficiency = m_sUpwindEfficiency->GetValue() / 100.0;
+
+  if (m_sDownwindEfficiency->IsEnabled())
+    configuration.DownwindEfficiency =
+        m_sDownwindEfficiency->GetValue() / 100.0;
+
+  if (m_sNightCumulativeEfficiency->IsEnabled())
+    configuration.NightCumulativeEfficiency =
+        m_sNightCumulativeEfficiency->GetValue() / 100.0;
+
+  // ---------------------------------------------------------------------
+  // 9. Checkboxes and climatology settings
+  // ---------------------------------------------------------------------
+  GET_CHECKBOX(AvoidCycloneTracks);
+  GET_SPIN(CycloneMonths);
+  GET_SPIN(CycloneDays);
+  GET_SPIN(SafetyMarginLand);
+
+  GET_CHECKBOX(DetectLand);
+  GET_CHECKBOX(DetectBoundary);
+  GET_CHECKBOX(Currents);
+  GET_CHECKBOX(OptimizeTacking);
+
+  GET_CHECKBOX(InvertedRegions);
+  GET_CHECKBOX(Anchoring);
+
+  GET_CHECKBOX(UseGrib);
+
+  if (m_cClimatologyType->GetSelection() != -1)
+    configuration.ClimatologyType = (RouteMapConfiguration::ClimatologyDataType)
+                                        m_cClimatologyType->GetSelection();
+
+  GET_CHECKBOX(AllowDataDeficient);
+
+  GET_SPIN(FromDegree);
+  GET_SPIN(ToDegree);
+  GET_SPIN(ByDegrees);
+
+  // ---------------------------------------------------------------------
+  // 10. Motor settings
+  // ---------------------------------------------------------------------
+  GET_CHECKBOX(UseMotor);
+
+  if (NO_EDITED_CONTROLS ||
+      std::find(m_edited_controls.begin(), m_edited_controls.end(),
+                (wxObject*)m_sMotorSpeedThreshold) != m_edited_controls.end()) {
+    configuration.MotorSpeedThreshold = m_sMotorSpeedThreshold->GetValue();
+    m_sMotorSpeedThreshold->SetForegroundColour(*wxBLACK);
+  }
+
+  if (NO_EDITED_CONTROLS ||
+      std::find(m_edited_controls.begin(), m_edited_controls.end(),
+                (wxObject*)m_sMotorSpeed) != m_edited_controls.end()) {
+    configuration.MotorSpeed = m_sMotorSpeed->GetValue();
+    m_sMotorSpeed->SetForegroundColour(*wxBLACK);
+  }
+
+  // ---------------------------------------------------------------------
+  // 11. Apply updated configuration to the selected route
+  // ---------------------------------------------------------------------
+  overlay->SetConfiguration(configuration);
+
+  // If start or end changed, route must be recomputed
+  {
+    RouteMapConfiguration newc = overlay->GetConfiguration();
+
+    if (newc.StartLat != configuration.StartLat ||
+        newc.StartLon != configuration.StartLon) {
+      overlay->Reset();
+      refresh = true;
+
+    } else if (newc.EndLat != configuration.EndLat ||
+               newc.EndLon != configuration.EndLon) {
+      refresh = true;
+    }
+  }
+
+after_updates:
+
+  // ---------------------------------------------------------------------
+  // 12. Sanity check for degree stepping
+  // ---------------------------------------------------------------------
   double by = m_sByDegrees->GetValue();
   if (m_sToDegree->GetValue() - m_sFromDegree->GetValue() < 2 * by) {
     wxMessageDialog mdlg(
@@ -704,10 +766,12 @@ void ConfigurationDialog::Update() {
     mdlg.ShowModal();
   }
 
+  // Update internal caches
   m_WeatherRouting.UpdateCurrentConfigurations();
 
+  // Refresh chart if needed
   if (refresh) m_WeatherRouting.GetParent()->Refresh();
 
-  // Schedule auto-save to persist any configuration changes
+  // Schedule auto-save
   m_WeatherRouting.ScheduleAutoSave();
 }
