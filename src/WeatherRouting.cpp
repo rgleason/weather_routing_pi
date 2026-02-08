@@ -2365,6 +2365,7 @@ bool WeatherRouting::OpenXML(wxString filename, bool reportfailure) {
 
         configuration.FromDegree = AttributeDouble(e, "FromDegree", 0);
         configuration.ToDegree = AttributeDouble(e, "ToDegree", 180);
+        configuration.UseOptimalAngles = AttributeBool(e, "UseOptimalAngles", false);
         configuration.ByDegrees = AttributeDouble(e, "ByDegrees", 5.);
 
         // Motor configuration loading
@@ -2495,6 +2496,7 @@ void WeatherRouting::SaveXML(wxString filename) {
 
     c->SetDoubleAttribute("FromDegree", configuration.FromDegree);
     c->SetDoubleAttribute("ToDegree", configuration.ToDegree);
+    c->SetAttribute("UseOptimalAngles", configuration.UseOptimalAngles);
     c->SetDoubleAttribute("ByDegrees", configuration.ByDegrees);
 
     // Motor configuration saving
@@ -3606,6 +3608,7 @@ RouteMapConfiguration WeatherRouting::DefaultConfiguration() {
 
   configuration.FromDegree = 0;
   configuration.ToDegree = 180;
+  configuration.UseOptimalAngles = false;
   configuration.ByDegrees = 5;
 
   return configuration;

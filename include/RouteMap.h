@@ -529,6 +529,11 @@ struct RouteMapConfiguration {
    */
   double ToDegree;
   /**
+   * Use the optimal angles calculated from the boats's polar instead of
+   * FromDegree and ToDegree
+   */
+  bool UseOptimalAngles;
+  /**
    * The angular resolution at each step of the route calculation, in degrees.
    * Lower values provide finer resolution but increase computation time.
    * Higher values provide coarser resolution, but faster computation time.

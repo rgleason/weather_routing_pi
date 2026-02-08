@@ -17,6 +17,8 @@
  *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,  USA.         *
  **************************************************************************/
 
+#include <algorithm>
+
 #include <wx/wx.h>
 
 #include "Position.h"
@@ -246,12 +248,82 @@ bool Position::Propagate(IsoRouteList& routelist,
     bearing2 = heading_resolve(parent_bearing + configuration.MaxSearchAngle);
   }
 
-  for (const double& twa : configuration.DegreeSteps) {
+  std::vector<double> degree_steps;
+  degree_steps.reserve(configuration.DegreeSteps.size());
+
+  // Do not waste time exploring directions outside the configured optimal
+  // angles
+  if (configuration.UseOptimalAngles) {
+    int polar_idx = polar;
+    if (polar_idx < 0) {
+        // Find a reasonable polar for the first propagation
+        PolarSpeedStatus status;
+        polar_idx = configuration.boat.FindBestPolarForCondition(
+            polar, weather_data.twsOverWater, 90.0, weather_data.swell,
+            configuration.OptimizeTacking, &status);
+        if (polar_idx < 0 || status != POLAR_SPEED_SUCCESS)
+            polar_idx = 0;
+    }
+    Polar& the_polar = configuration.boat.Polars[polar_idx];
+
+    // Note: Optimal angles are in the range of 0 to 360, where values
+    // greater than 180 are for the port tack
+    SailingVMG opt_angles = the_polar.GetVMGTrueWind(weather_data.twsOverWater);
+    opt_angles.values[SailingVMG::PORT_DOWNWIND] -= 360.0;
+    opt_angles.values[SailingVMG::PORT_UPWIND] -= 360.0;
+
+    // Check sanity to avoid indexing beyond limits of DegreeSteps
+    if (configuration.DegreeSteps.front() <
+            opt_angles.values[SailingVMG::PORT_DOWNWIND] &&
+        configuration.DegreeSteps.back() >
+            *std::max_element(opt_angles.values, opt_angles.values + 4)) {
+      size_t step_idx = 0;
+      while (configuration.DegreeSteps[step_idx] <
+             opt_angles.values[SailingVMG::PORT_DOWNWIND])
+        ++step_idx;
+      degree_steps.emplace_back(opt_angles.values[SailingVMG::PORT_DOWNWIND]);
+      while (configuration.DegreeSteps[step_idx] <
+             opt_angles.values[SailingVMG::PORT_UPWIND]) {
+        degree_steps.emplace_back(configuration.DegreeSteps[step_idx]);
+        ++step_idx;
+      }
+      degree_steps.emplace_back(opt_angles.values[SailingVMG::PORT_UPWIND]);
+      while (configuration.DegreeSteps[step_idx] <
+             opt_angles.values[SailingVMG::STARBOARD_UPWIND])
+        ++step_idx;
+      degree_steps.emplace_back(
+          opt_angles.values[SailingVMG::STARBOARD_UPWIND]);
+      while (configuration.DegreeSteps[step_idx] <
+             opt_angles.values[SailingVMG::STARBOARD_DOWNWIND]) {
+        degree_steps.emplace_back(configuration.DegreeSteps[step_idx]);
+        ++step_idx;
+      }
+      degree_steps.emplace_back(
+          opt_angles.values[SailingVMG::STARBOARD_DOWNWIND]);
+
+      if (parent != nullptr) {
+        /* add a position behind the lines to ensure our route intersects
+        with the previous one to nicely merge the resulting graph */
+        first_avoid = false;
+        rp = new Position(this);
+        double dp = .95;
+        rp->lat = (1 - dp) * lat + dp * parent->lat;
+        rp->lon = (1 - dp) * lon + dp * parent->lon;
+        rp->propagated = true;
+        rp->prev = rp->next = rp;
+        points = rp;
+        ++count;
+      }
+    }
+  } else
+    degree_steps = configuration.DegreeSteps;
+
+  for (const double& twa : degree_steps) {
     double timeseconds = configuration.UsedDeltaTime;
     double ctw =
         weather_data.twdOverWater + twa; /* rotated relative to true wind */
 
-    // Do no waste time exploring directions outside the configured search
+    // Do not waste time exploring directions outside the configured search
     // angle.
     if (!std::isnan(bearing1)) {
       double bearing3 = heading_resolve(ctw);
@@ -283,7 +355,7 @@ bool Position::Propagate(IsoRouteList& routelist,
       int newpolar = -1;
       // Note: newperformance is applied to the boat_data.stw, boat_data.cog and
       // boat_data.dist. Penalties for sail plan change, tacking and jibing are
-      // subtracted from timeseconds, which is used to calculated boat_data.dist
+      // subtracted from timeseconds, which is used to calculate boat_data.dist
       double newperformance = performance;
       if (!boat_data.GetBestPolarAndBoatSpeed(
               configuration, weather_data, twa, ctw, parent_heading, data_mask,

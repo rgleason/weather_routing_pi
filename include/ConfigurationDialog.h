@@ -130,6 +130,7 @@ protected:
   void OnEndAtWaypoint(wxCommandEvent& event);
   void OnAvoidCyclones(wxCommandEvent& event);
   void OnUseMotor(wxCommandEvent& event);
+  void OnUseOptimalAngles(wxCommandEvent& event);
   void OnAddDegreeStep(wxCommandEvent& event);
   void OnRemoveDegreeStep(wxCommandEvent& event);
   void OnClearDegreeSteps(wxCommandEvent& event);

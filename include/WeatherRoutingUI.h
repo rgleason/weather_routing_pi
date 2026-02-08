@@ -493,6 +493,7 @@ protected:
   virtual void EnableSpin(wxMouseEvent& event) { event.Skip(); }
   virtual void EnableSpinDouble(wxMouseEvent& event) { event.Skip(); }
   virtual void OnUpdateSpin(wxSpinEvent& event) { event.Skip(); }
+  virtual void OnUseOptimalAngles(wxCommandEvent& event) { event.Skip(); }
   virtual void OnClose(wxCommandEvent& event) { event.Skip(); }
   virtual void OnAvoidCyclones(wxCommandEvent& event) { event.Skip(); }
   virtual void OnUseMotor(wxCommandEvent& event) { event.Skip(); }
@@ -512,6 +513,9 @@ public:
                                              //!< night sailing
   wxSpinCtrl* m_sFromDegree;  //!< Minimum course relative to true wind.
   wxSpinCtrl* m_sToDegree;    //!< Maximum course relative to true wind.
+  wxCheckBox* m_cbUseOptimalAngles; //!< Use polar optimal angles for minimum
+                                    //!< and maximum course relative to true
+                                    //<! wind
   /** The increment course angle when calculating a isochrone route. */
   wxSpinCtrlDouble* m_sByDegrees;
 

@@ -2257,6 +2257,15 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
                                wxSize(140, -1), wxSP_ARROW_KEYS, 0, 180, 180);
   bSizer4->Add(m_sToDegree, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
 
+  m_cbUseOptimalAngles =
+      new wxCheckBox(sbCourses->GetStaticBox(), wxID_ANY,
+                     _("Use optimal angles"), wxDefaultPosition,
+                     wxDefaultSize, wxCHK_3STATE);
+  m_cbUseOptimalAngles->SetToolTip(
+      _("When enabled, uses the optimal upwind and downwind angles "
+        "calculated from the boat's polar instead of fixed values."));
+  bSizer4->Add(m_cbUseOptimalAngles, 0, wxALL, 5);
+
   sbCourses->Add(bSizer4, 1, wxEXPAND, 5);
 
   wxBoxSizer* bSizer3;
@@ -2913,6 +2922,9 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   m_sToDegree->Connect(
       wxEVT_COMMAND_SPINCTRL_UPDATED,
       wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
+  m_cbUseOptimalAngles->Connect(
+      wxEVT_COMMAND_CHECKBOX_CLICKED,
+      wxCommandEventHandler(ConfigurationDialogBase::OnUseOptimalAngles), NULL, this);
   m_sByDegrees->Connect(
       wxEVT_COMMAND_SPINCTRLDOUBLE_UPDATED,
       wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
@@ -3545,6 +3557,10 @@ ConfigurationDialogBase::~ConfigurationDialogBase() {
   m_sToDegree->Disconnect(
       wxEVT_COMMAND_SPINCTRL_UPDATED,
       wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
+  m_cbUseOptimalAngles->Disconnect(
+      wxEVT_COMMAND_CHECKBOX_CLICKED,
+      wxCommandEventHandler(ConfigurationDialogBase::OnUseOptimalAngles), NULL,
+      this);
   m_sByDegrees->Disconnect(
       wxEVT_COMMAND_SPINCTRLDOUBLE_UPDATED,
       wxCommandEventHandler(ConfigurationDialogBase::OnUpdate), NULL, this);

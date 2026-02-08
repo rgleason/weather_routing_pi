@@ -133,6 +133,19 @@ void ConfigurationDialog::OnUseMotor(wxCommandEvent& event) {
   Update();
 }
 
+void ConfigurationDialog::OnUseOptimalAngles(wxCommandEvent& event) {
+    bool use_optimal_angles = m_cbUseOptimalAngles->IsChecked();
+    if (use_optimal_angles) {
+        m_sFromDegree->SetValue(0.0);
+        m_sToDegree->SetValue(180.0);
+        m_edited_controls.push_back(m_sFromDegree);
+        m_edited_controls.push_back(m_sToDegree);
+    }
+    m_sFromDegree->Enable(!use_optimal_angles);
+    m_sToDegree->Enable(!use_optimal_angles);
+    Update();
+}
+
 void ConfigurationDialog::OnBoatFilename(wxCommandEvent& event) {
   wxFileDialog openDialog(
       this, _("Select Boat File"), wxFileName(m_tBoat->GetValue()).GetPath(),
@@ -379,6 +392,10 @@ void ConfigurationDialog::SetConfigurations(
 
   SET_SPIN(FromDegree);
   SET_SPIN(ToDegree);
+  SET_CHECKBOX(UseOptimalAngles);
+  // Enable/disable degree controls based on checkbox state
+  m_sFromDegree->Enable(!m_cbUseOptimalAngles->IsChecked());
+  m_sToDegree->Enable(!m_cbUseOptimalAngles->IsChecked());
   SET_SPIN_DOUBLE(ByDegrees);
 
   // Motor settings
@@ -503,6 +520,9 @@ void ConfigurationDialog::OnResetAdvanced(wxCommandEvent& event) {
 
   m_sFromDegree->SetValue(0);
   m_sToDegree->SetValue(180);
+  m_cbUseOptimalAngles->SetValue(false);
+  m_sFromDegree->Enable(true);
+  m_sToDegree->Enable(true);
   m_sByDegrees->SetValue(5.0);
 
   // Motor settings
@@ -725,6 +745,7 @@ void ConfigurationDialog::Update() {
 
     GET_SPIN(FromDegree);
     GET_SPIN(ToDegree);
+    GET_CHECKBOX(UseOptimalAngles);
     GET_SPIN(ByDegrees);
 
     // Motor settings
