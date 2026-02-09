@@ -188,7 +188,71 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
       m_ReportDialog(*this),
       m_PlotDialog(*this),
       m_FilterRoutesDialog(this),
-      m_panel(NULL) {
+      m_RoutingTablePanel(nullptr),
+      m_panel(NULL),
+      m_bShowConfiguration(false), // ADD THIS
+      m_bShowConfigurationBatch(false),
+      m_bShowSettings(false),
+      m_bShowStatistics(false),
+      m_bShowReport(false),
+      m_bShowPlot(false),
+      m_bShowFilter(false),
+      m_bShowRoutePosition(false)
+{
+  wxLogMessage("WR: ctor START");
+
+  wxLogMessage("WR: before LoadConfigurationAndData");
+  LoadConfigurationAndData();
+  wxLogMessage("WR: after LoadConfigurationAndData");
+
+  // Create the overlay FIRST before calling InitializUI
+  // since some UI elements depend on it(e.g.RoutePositionDialog)
+  m_pRouteMapOverlay = new RouteMapOverlay(this);
+
+  wxLogMessage("WR: before InitializeUI");
+  InitializeUI();
+  wxLogMessage("WR: after InitializeUI");
+
+  wxLogMessage("WR: before BindEvents");
+  BindEvents();
+  wxLogMessage("WR: after BindEvents");
+
+  wxLogMessage("WR: ctor END");
+}
+
+
+
+/*
+WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
+    : WeatherRoutingBase(parent),
+      m_weather_routing_pi(plugin),
+
+
+// --- TEMPORARY PLACEHOLDERS FOR DIAGNOSTICS ---
+ m_ConfigurationDialog(*(WeatherRouting*)nullptr),
+
+//   m_ConfigurationBatchDialog((WeatherRouting*)nullptr),
+//    m_CursorPositionDialog((wxWindow*)nullptr),
+//    m_RoutePositionDialog((wxWindow*)nullptr),
+//    m_BoatDialog(*(WeatherRouting*)nullptr),
+//    m_SettingsDialog((wxWindow*)nullptr),
+//    m_StatisticsDialog((wxWindow*)nullptr),
+//    m_ReportDialog(*(WeatherRouting*)nullptr),
+//    m_PlotDialog(*(WeatherRouting*)nullptr),
+//    m_FilterRoutesDialog((WeatherRouting*)nullptr),
+
+     m_ConfigurationDialog(*this),
+     m_ConfigurationBatchDialog(this),
+     m_CursorPositionDialog(this),
+     m_RoutePositionDialog(this),
+     m_BoatDialog(*this),
+     m_SettingsDialog(this),
+     m_StatisticsDialog(this),
+     m_ReportDialog(*this),
+     m_PlotDialog(*this),
+     m_FilterRoutesDialog(this),
+     m_panel(NULL) {
+
   wxLogMessage("WR: ctor START");
 
   LoadConfigurationAndData();
@@ -196,14 +260,14 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
   BindEvents();
 
   // Only the four dialogs that actually HAVE InitUI()
-  m_ConfigurationDialog.InitUI();
-  m_BoatDialog.InitUI();
-  m_ReportDialog.InitUI();
-  m_PlotDialog.InitUI();
+ // m_ConfigurationDialog.InitUI();
+ // m_BoatDialog.InitUI();
+ // m_ReportDialog.InitUI();
+ // m_PlotDialog.InitUI();
 
   wxLogMessage("WR: ctor END");
 }
-
+*/
 
 
 /*
@@ -451,8 +515,14 @@ void WeatherRouting::InitializeUI() {
   m_PlotDialog.SetIcon(icon);
   m_PlotDialog.InitUI();
 
+  // Now that m_panel exists, it is safe to reset the batch dialog
+  m_ConfigurationBatchDialog.Reset();
+
   SetEnableConfigurationMenu();
   wxLogMessage("WR: InitializeUI() completed");
+
+  m_RoutingTablePanel = new RoutingTablePanel(this, *this, m_pRouteMapOverlay);
+  bSizer->Add(m_RoutingTablePanel, 1, wxEXPAND | wxALL, 5);
 }
 
 
@@ -556,6 +626,21 @@ void WeatherRouting::BindEvents() {
 //==============================================================
 
 WeatherRouting::~WeatherRouting() {
+
+  m_shuttingDown = true;  // <-- ADD THIS
+
+  // Stop internal timers
+  if (m_tAutoSaveXML.IsRunning())
+      m_tAutoSaveXML.Stop();
+
+  // Quiesce RoutingTablePanel early to prevent late callbacks
+  if (m_RoutingTablePanel) {
+    m_RoutingTablePanel->Freeze();
+    m_RoutingTablePanel->Disconnect();
+  }
+  wxLogMessage(
+      "WeatherRouting::~WeatherRouting - shutdown flag set, timers stopped, "
+      "panel disconnected");
   wxLogMessage("~WeatherRouting() - BEGIN");
 
   // ---------------------------------------------------------
@@ -998,6 +1083,10 @@ static void RoutePositionDialogMessage(RoutePositionDialog& dlg, wxString msg) {
 // -----------------------------------------------------------------------------
 
 std::vector<RouteMapOverlay*> WeatherRouting::GetAllOverlays() {
+  if (m_shuttingDown)
+    wxLogMessage("IGNORED CALLBACK: %s during shutdown", __FUNCTION__);
+      return {};
+
   std::vector<RouteMapOverlay*> result;
 
   // Lock the master overlay list for safe iteration
@@ -2579,12 +2668,12 @@ bool WeatherRouting::OpenXML(wxString filename, bool reportfailure) {
   wxString error;
 
 
-wxWindow* p = GetParent();
-  if (p && p->IsTopLevel()) {
-    p->SetTitle(_("Weather Routing"));
-  }
+//wxWindow* p = GetParent();
+//  if (p && p->IsTopLevel()) {
+//    p->SetTitle(_("Weather Routing"));
+//  }
 
-  m_FileName = fn;
+//  m_FileName = fn;
 
   wxProgressDialog* progressdialog = NULL;
   wxDateTime start = wxDateTime::UNow();
@@ -2802,10 +2891,10 @@ failed:
 void WeatherRouting::SaveXML(wxString filename) {
   wxFileName fn(filename);
 
-  wxWindow* p = GetParent();
-  if (p && p->IsTopLevel()) {
-    p->SetTitle(_("Weather Routing") + " - " + fn.GetFullName());
-  }
+//  wxWindow* p = GetParent();
+//  if (p && p->IsTopLevel()) {
+//    p->SetTitle(_("Weather Routing") + " - " + fn.GetFullName());
+//  }
 
   m_FileName = fn;
 
@@ -4064,7 +4153,7 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
     UseCurrentTime = configuration.UseCurrentTime ? _("true") : _("false");
 
     wxDateTime starttime = configuration.StartTime;
-    if (wr->m_SettingsDialog.m_cbUseLocalTime->GetValue())
+    if (wr->GetSettingsDialog().m_cbUseLocalTime->GetValue())
       starttime = starttime.FromUTC();
     StartTime = starttime.Format("%x %H:%M");
 
@@ -4072,7 +4161,7 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
 
     wxDateTime endtime = routemapoverlay->EndTime();
     if (endtime.IsValid()) {
-      if (wr->m_SettingsDialog.m_cbUseLocalTime->GetValue())
+      if (wr->GetSettingsDialog().m_cbUseLocalTime->GetValue())
         endtime = endtime.FromUTC();
       EndTime = endtime.Format("%x %H:%M");
     } else {
@@ -4371,13 +4460,13 @@ void WeatherRouting::UpdateColumns() {
   m_panel->m_lWeatherRoutes->DeleteAllColumns();
 
   for (int i = 0; i < NUM_COLS; i++) {
-    if (m_SettingsDialog.m_cblFields->IsChecked(i)) {
+    if (GetSettingsDialog().m_cblFields->IsChecked(i)) {
       columns[i] = m_panel->m_lWeatherRoutes->GetColumnCount();
       wxString name = _(column_names[i]);
 
       if (i == STARTTIME || i == ENDTIME) {
         name += " (";
-        if (m_SettingsDialog.m_cbUseLocalTime->GetValue())
+        if (GetSettingsDialog().m_cbUseLocalTime->GetValue())
           name += _("local");
         else
           name += "UTC";
@@ -4477,6 +4566,10 @@ void WeatherRouting::RebuildList() {
 //------------------------------------------
 
 void WeatherRouting::StopAll() {
+  if (m_shuttingDown)
+    wxLogMessage("IGNORED CALLBACK: %s during shutdown", __FUNCTION__);
+      return;
+
   wxLogMessage("WeatherRouting::StopAll - BEGIN");
 
 #ifdef __WXMSW__
@@ -4537,6 +4630,10 @@ void WeatherRouting::StopAll() {
 
 
 void WeatherRouting::ResetAll() {
+  if (m_shuttingDown)
+    wxLogMessage("IGNORED CALLBACK: %s during shutdown", __FUNCTION__);
+      return;
+
   wxLogMessage("WeatherRouting::ResetAll - BEGIN");
 
   // Stop all threads first
@@ -4571,6 +4668,10 @@ void WeatherRouting::ResetAll() {
 
 
 void WeatherRouting::WaitForAllRoutesToStop() {
+  if (m_shuttingDown)
+    wxLogMessage("IGNORED CALLBACK: %s during shutdown", __FUNCTION__);
+      return;
+
   wxLogMessage("WeatherRouting::WaitForAllRoutesToStop - BEGIN");
 
   std::vector<RouteMapOverlay*> overlays;
@@ -4672,8 +4773,6 @@ void WeatherRouting::Reset(RouteMapOverlay* overlay) {
   AssertThreadLifecycleInvariants();
   wxLogMessage("WeatherRouting::Reset(per-route) - END overlay=%p", overlay);
 }
-
-
 
 void WeatherRoute::ClearComputedFields() {
   // TODO: clear any cached/computed values
@@ -4798,6 +4897,11 @@ void WeatherRouting::ResetSelected() {
 
 void WeatherRouting::WaitForRoutesToStop(
     const std::list<RouteMapOverlay*>& overlays) {
+
+  if (m_shuttingDown)
+    wxLogMessage("IGNORED CALLBACK: %s during shutdown", __FUNCTION__);
+    return;
+
   wxLogMessage("WeatherRouting::WaitForRoutesToStop(one) - BEGIN, count=%zu",
                overlays.size());
 
@@ -5040,7 +5144,7 @@ void WeatherRouting::OnComputationTimer(wxTimerEvent& event) {
   // If Start() fails, overlay remains non?running and is NOT requeued.
   // =========================================================
   // _CRTDBG_REPORT_FLAG |= _CRTDBG_LEAK_CHECK_DF; 
-  //  const int maxConcurrent = m_SettingsDialog.m_sMaxConcurrent->GetValue();
+  //  const int maxConcurrent = GetSettingsDialog().m_sMaxConcurrent->GetValue();
 
   const int maxConcurrent = 1;  // modern architecture: one thread at a time
 
@@ -5560,7 +5664,7 @@ void WeatherRouting::SaveAsTrack(RouteMapOverlay & routemapoverlay) {
 
     PlugIn_Track* newPath = new PlugIn_Track;
     wxDateTime display_time = routemapoverlay.StartTime();
-    if (m_SettingsDialog.m_cbUseLocalTime->GetValue())
+    if (GetSettingsDialog().m_cbUseLocalTime->GetValue())
       display_time = display_time.FromUTC();
 
     newPath->m_NameString =
@@ -5621,7 +5725,7 @@ void WeatherRouting::SaveAsRoute(RouteMapOverlay & routemapoverlay) {
 
     PlugIn_Route_Ex* newRoute = new PlugIn_Route_Ex();
     wxDateTime display_time = routemapoverlay.StartTime();
-    if (m_SettingsDialog.m_cbUseLocalTime->GetValue())
+    if (GetSettingsDialog().m_cbUseLocalTime->GetValue())
       display_time = display_time.FromUTC();
 
     newRoute->m_NameString =
@@ -5715,7 +5819,7 @@ void WeatherRouting::SaveSimplifiedRoute(
       if (closestData && minDistance < 0.1) {  // Within 0.1 nm
         // Add time information to waypoint description
         wxDateTime time = closestData->time;
-        if (m_SettingsDialog.m_cbUseLocalTime->GetValue())
+        if (GetSettingsDialog().m_cbUseLocalTime->GetValue())
           time = time.FromUTC();
 
         waypoint->m_MarkDescription = time.Format("%x %H:%M");
@@ -5869,6 +5973,9 @@ void WeatherRouting::UpdateStates() {
 
 
 void WeatherRouting::UpdateDialogs() {
+  if (m_shuttingDown)
+    wxLogMessage("IGNORED CALLBACK: %s during shutdown", __FUNCTION__);
+     return;
   // ---------------------------------------------------------------------
   // 1. Collect overlays for all *selected* WeatherRoutes
   // ---------------------------------------------------------------------
@@ -5915,6 +6022,10 @@ void WeatherRouting::UpdateDialogs() {
 }
 
 void WeatherRouting::UpdateComputeState() {
+  if (m_shuttingDown)
+    wxLogMessage("IGNORED CALLBACK: %s during shutdown", __FUNCTION__);
+      return;
+
   // Count how many overlays are in each state
   int computing = 0;
   int ready = 0;
@@ -6141,6 +6252,9 @@ void WeatherRouting::UpdateRouteMap(RouteMapOverlay* routemapoverlay) {
 
 
 void WeatherRouting::UpdateAllItems(bool changed) {
+  if (m_shuttingDown)
+    wxLogMessage("IGNORED CALLBACK: %s during shutdown", __FUNCTION__);
+    return;
   if (m_WeatherRoutes.empty()) return;
   if (!m_panel || !m_panel->m_lWeatherRoutes) return;
 
@@ -6286,6 +6400,19 @@ void WeatherRouting::UpdateComputedColumns(long index, WeatherRoute* wr) {
 bool WeatherRouting::Show(bool show) {
   m_weather_routing_pi.ShowMenuItems(show);
 
+if (show) {
+    m_ConfigurationDialog.Show(true);  // Always show main dialog
+    m_ConfigurationBatchDialog.Show(m_bShowConfigurationBatch);
+    m_SettingsDialog.Show(m_bShowSettings);
+    m_StatisticsDialog.Show(m_bShowStatistics);
+    m_ReportDialog.Show(m_bShowReport);
+    m_PlotDialog.Show(m_bShowPlot);
+    m_FilterRoutesDialog.Show(m_bShowFilter);
+    m_RoutePositionDialog.Show(m_bShowRoutePosition);
+
+
+
+  /*
   if (show) {
     // Show dialogs
     m_ConfigurationDialog.Show(m_bShowConfiguration);
@@ -6296,6 +6423,7 @@ bool WeatherRouting::Show(bool show) {
     m_PlotDialog.Show(m_bShowPlot);
     m_FilterRoutesDialog.Show(m_bShowFilter);
     m_RoutePositionDialog.Show(m_bShowRoutePosition);
+*/
 
   } else {
     // Save + hide dialogs

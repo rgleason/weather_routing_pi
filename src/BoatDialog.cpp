@@ -136,7 +136,11 @@ void BoatDialog::InitUI() {
   // Bind(wxEVT_SIZE, &BoatDialog::OnUpdatePlot, this);
 
   Layout();
+  Fit();
+  Update();
+  Refresh();
 }
+
 
 //===========
 
@@ -1237,7 +1241,7 @@ void BoatDialog::SaveBoat() {
 
   wxString error = m_Boat.SaveXML(m_boatpath);
   if (error.empty()) {
-    m_WeatherRouting.m_ConfigurationDialog.SetBoatFilename(m_boatpath);
+    m_WeatherRouting.GetConfigurationDialog().SetBoatFilename(m_boatpath);
     /* update any configurations that use this boat */
     m_WeatherRouting.UpdateBoatFilename(m_boatpath);
     Update();

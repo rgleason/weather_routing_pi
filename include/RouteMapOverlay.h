@@ -157,6 +157,8 @@ public:
   ~RouteMapOverlay();
 
 
+
+
    // Temporarily moved to Public for direct access from WeatherRouting, but
   // should be private with proper accessors
    RouteMapOverlayThread* m_Thread = nullptr;
@@ -199,6 +201,7 @@ public:
    * @param justendroute If true, only renders the end route.
    * @param positionOnRoute Optional position to mark on the route.
    */
+
   void Render(wxDateTime time, SettingsDialog& settingsdialog, piDC& dc,
               PlugIn_ViewPort& vp, bool justendroute,
               const RoutePoint* positionOnRoute = nullptr);
@@ -317,12 +320,15 @@ public:
   /**
    * Locks the route map for thread-safe access.
    */
-  virtual void Lock() { routemutex.Lock(); }
+  //virtual void Lock() { routemutex.Lock(); }
 
   /**
    * Unlocks the route map after thread-safe access.
    */
-  virtual void Unlock() { routemutex.Unlock(); }
+  // virtual void Unlock() { routemutex.Unlock(); }
+  // After removal, RouteMapOverlay will inherit the base
+  // RouteMap::Lock() and Unlock() implementations,
+  // which is exactly what we want.
 
   /**
    * Checks if the calculation thread is still running.
@@ -410,12 +416,34 @@ public:
    */
   const IsoChronList& GetIsoChronList() const { return origin; }
 
+protected:
+
+  // This is where the engine locking contract lives
+  void Lock() override { m_mutex.Lock(); }
+  void Unlock() override { m_mutex.Unlock(); }
+  bool TestAbort() override { return Finished(); }
+
 
 private:
+
+  /* -------------------- Thread + Synchronization -------------------- */
+
+  /** Worker thread performing route propagation */
+  // Temporarily moved to Public for direct access from WeatherRouting, but
+  // should be private with proper accessors
+  // RouteMapOverlayThread* m_Thread = nullptr;
+
+  /** Mutex protecting route data during rendering/updates */
+  // wxMutex routemutex;
+
+  // m_mutex  replaces routemutex everywhere
+  wxMutex m_mutex;  
+
 
   wxEvtHandler* m_parentHandler;  // ? correct location
 
   /* -------------------- Thread + State Flags -------------------- */
+
 
   /** True when overlay has new data requiring UI refresh */
   bool m_bUpdated = false;
@@ -449,18 +477,10 @@ private:
   void RenderWindBarbsOnRoute(piDC& dc, PlugIn_ViewPort& vp, int lineWidth,
                               bool apparentWind);
 
-  /** Abort test used by RouteMap propagation */
-  bool TestAbort() override { return Finished(); }
+  /** Abort test used by RouteMap propagation  Duplicate see protected TestAbort() */
+ // bool TestAbort() override { return Finished(); }
 
-  /* -------------------- Thread + Synchronization -------------------- */
 
-  /** Worker thread performing route propagation */
-  // Temporarily moved to Public for direct access from WeatherRouting, but
-  // should be private with proper accessors
-  //RouteMapOverlayThread* m_Thread = nullptr;
-
-  /** Mutex protecting route data during rendering/updates */
-  wxMutex routemutex;
 
   /* -------------------- Drawing Utilities -------------------- */
 

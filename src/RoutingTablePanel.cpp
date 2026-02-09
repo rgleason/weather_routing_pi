@@ -450,9 +450,9 @@ static wxColor GetWaveRelativeColor(double waveRelAngle) {
   while (waveRelAngle >= 360) waveRelAngle -= 360;
 
   // Color coding based on wave direction relative to boat heading:
-  // Green: Following seas (135-225Â°) - favorable
-  // Yellow: Beam seas (45-135Â° & 225-315Â°) - moderate comfort
-  // Red: Head seas (315-45Â°) - challenging
+  // Green: Following seas (135-225°) - favorable
+  // Yellow: Beam seas (45-135° & 225-315°) - moderate comfort
+  // Red: Head seas (315-45°) - challenging
 
   if ((waveRelAngle >= 135 && waveRelAngle <= 225)) {
     // Following seas - green (favorable)
@@ -534,11 +534,11 @@ static wxColor GetCurrentEffectColor(double currentAngle, double currentSpeed) {
 // Helper function to get time-of-day color based on sun elevation angle
 // Color scheme follows nautical standards for visibility and navigation
 // conditions:
-// - High sun (>15Â°): Bright yellow - excellent visibility
-// - Civil twilight (0Â° to 6Â°): Light colors - good navigation conditions
-// - Nautical twilight (-6Â° to 0Â°): Moderate colors - horizon visible
-// - Astronomical twilight (-12Â° to -6Â°): Darker colors - star navigation
-// - Deep night (<-18Â°): Dark blue - full night conditions
+// - High sun (>15°): Bright yellow - excellent visibility
+// - Civil twilight (0° to 6°): Light colors - good navigation conditions
+// - Nautical twilight (-6° to 0°): Moderate colors - horizon visible
+// - Astronomical twilight (-12° to -6°): Darker colors - star navigation
+// - Deep night (<-18°): Dark blue - full night conditions
 static wxColor GetTimeOfDayColor(const wxDateTime& dateTime, double lat,
                                  double lon) {
   // Use the enhanced CalculateSun function with precise sun elevation
@@ -669,15 +669,24 @@ RoutingTablePanel::RoutingTablePanel(wxWindow* parent,
   // Force layout update to ensure tabs are visible
   Layout();
   m_notebook->Layout();
-
-  // Populate the table with data from the route
-  PopulateTable();
-
+  if (m_RouteMap) {
+    // Populate the table with data from the route
+    PopulateTable();
+  } else {
+    wxLogMessage(
+        "RoutingTablePanel: deferring PopulateTable(), no RouteMapOverlay yet");
+  }
   // Apply the current color scheme to eliminate any black areas
   SetColorScheme(PI_GLOBAL_COLOR_SCHEME_DAY);  // Default to day scheme
 }
 
-RoutingTablePanel::~RoutingTablePanel() {}
+// RoutingTablePanel constructor and  destructor
+// - ensure proper cleanup of resources
+
+RoutingTablePanel::~RoutingTablePanel() {
+  wxLogMessage("RoutingTablePanel::~RoutingTablePanel - Disconnecting events");
+    Disconnect();
+}
 
 void RoutingTablePanel::OnClose(wxCommandEvent& event) {
   // Hide parent Aui pane rather than destroying the dialog
@@ -778,6 +787,10 @@ void RoutingTablePanel::handleSailPlanCell(
 }
 
 void RoutingTablePanel::PopulateTable() {
+  if (!m_RouteMap) {
+  wxLogMessage("RoutingTablePanel::PopulateTable(): no RouteMapOverlay yet");
+  return;
+  }
   // Get plot data from the route
   std::list<PlotData> plotData = m_RouteMap->GetPlotData(false);
   // Clear existing grid content and set new size
@@ -792,7 +805,7 @@ void RoutingTablePanel::PopulateTable() {
   // Get configuration for formatting
   RouteMapConfiguration configuration = m_RouteMap->GetConfiguration();
   bool useLocalTime =
-      m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue();
+      m_WeatherRouting.GetSettingsDialog().m_cbUseLocalTime->GetValue();
 
   // Fill the grid with data
   int row = 0;
@@ -1141,10 +1154,11 @@ void RoutingTablePanel::PopulateTable() {
 
   // Apply highlight if timeline time is valid
   wxDateTime timelineTime =
-      m_WeatherRouting.m_ConfigurationDialog.m_GribTimelineTime;
+      m_WeatherRouting.GetConfigurationDialog().m_GribTimelineTime;
   if (timelineTime.IsValid()) {
     UpdateTimeHighlight(timelineTime);
   }
+
 
   // Update the summary information
   UpdateSummary();
@@ -1543,8 +1557,9 @@ void RoutingTablePanel::UpdateSummary() {
     return;
   }
 
-  bool useLocalTime =
-      m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue();
+bool useLocalTime =
+      m_WeatherRouting.GetSettingsDialog().m_cbUseLocalTime->GetValue();
+
 
   // Update summary text controls with calculated data
 #if OCPN_API_VERSION_MAJOR > 1 || \

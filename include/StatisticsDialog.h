@@ -33,4 +33,6 @@ public:
   void SetRunTime(wxTimeSpan RunTime);
 };
 
+
+
 #endif

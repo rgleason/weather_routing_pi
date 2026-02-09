@@ -837,13 +837,14 @@ public:
     return time;
   }
 
-  void SetConfiguration(const RouteMapConfiguration& o) {
+void RouteMap::SetConfiguration(const RouteMapConfiguration& o) {
     Lock();
     m_Configuration = o;
     m_bValid = m_Configuration.Update();
     m_bFinished = false;
     Unlock();
   }
+
 
   RouteMapConfiguration GetConfiguration() const;
 
@@ -973,18 +974,29 @@ protected:
   If this flag is not set correctly ? or if the worker thread never sees it ?
   the UI will stay stuck in ?Computing?.
   */
-  void SetFinished(bool destination) {
+  void SetFinished(bool finished) {
     wxLogMessage(
         "RouteMap::SetFinished(%d): BEFORE  ReachedDest=%d Finished=%d",
-        destination, m_bReachedDestination, m_bFinished);
+        finished, m_bReachedDestination, m_bFinished);
 
-    m_bReachedDestination = destination;
-    m_bFinished = true;
+    m_bFinished = finished;
+
+    if (!finished) {
+      // Reset state when marking ?not finished?
+      m_bReachedDestination = false;
+      m_bLandCrossing = false;
+      m_bBoundaryCrossing = false;
+      m_bNeedsGrib = false;
+      m_bWeatherForecastStatus = WEATHER_FORECAST_OK;
+      m_bPolarStatus = POLAR_SPEED_SUCCESS;
+    }
 
     wxLogMessage(
         "RouteMap::SetFinished(%d): AFTER   ReachedDest=%d Finished=%d",
-        destination, m_bReachedDestination, m_bFinished);
+        finished, m_bReachedDestination, m_bFinished);
   }
+
+
 
 
   void UpdateStatus(const RouteMapConfiguration& configuration) {

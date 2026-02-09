@@ -49,7 +49,12 @@ ConfigurationBatchDialog::ConfigurationBatchDialog(WeatherRouting* parent)
           wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER | wxSTAY_ON_TOP),
 #endif
       m_WeatherRouting(*parent) {
-  Reset();
+
+  //  Reset();  must NOT be called here.Causes crash becasse it tries to access the current route
+  //  configuration before the dialog is fully initialized. Instead, we call
+  //  Reset() in OnReset() and after the dialog is created and shown.
+
+
 #ifdef __OCPN__ANDROID__
   wxSize sz = ::wxGetDisplaySize();
   SetSize(0, 0, sz.x, sz.y - 40);

@@ -35,8 +35,9 @@
 #include "RoutePoint.h"
 #include "RouteMap.h"
 #include "RouteMapOverlay.h"
-#include "WeatherRouting.h"
 #include "weather_routing_pi.h"
+#include "WeatherRouting.h"
+
 
 Json::Value g_ReceivedJSONMsg;
 wxString g_ReceivedMessage;
@@ -94,6 +95,10 @@ extern "C" DECL_EXP void destroy_pi(opencpn_plugin* p) { delete p; }
  * space monitoring. The monitor runs independently of the Settings dialog and
  * alerts users when memory usage exceeds the configured threshold.
  */
+
+
+
+/*
 weather_routing_pi::weather_routing_pi(void* ppimgr)
     : opencpn_plugin_118(ppimgr) {
 
@@ -158,6 +163,58 @@ weather_routing_pi::weather_routing_pi(void* ppimgr)
   wxLogMessage("weather_routing_pi: Address space monitoring started");
 #endif
 }
+*/
+
+WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
+    : WeatherRoutingBase(parent),
+      m_weather_routing_pi(plugin),
+      m_panel(nullptr),
+      m_colpaneWindow(nullptr),
+      m_colpane(nullptr),
+      m_pRouteMapOverlay(nullptr),
+      m_disable_colpane(false),
+      m_shuttingDown(false),
+
+      // *** REQUIRED: construct all dialog members ***
+      m_ConfigurationDialog(*this),
+      m_ConfigurationBatchDialog(this),
+      m_CursorPositionDialog(this),
+      m_RoutePositionDialog(this),
+      m_BoatDialog(*this),
+      m_SettingsDialog(this),
+      m_StatisticsDialog(this),
+      m_ReportDialog(*this),
+      m_PlotDialog(*this),
+      m_FilterRoutesDialog(this),
+
+      // UI visibility flags
+      m_bShowConfiguration(true),
+      m_bShowConfigurationBatch(false),
+      m_bShowRoutePosition(false),
+      m_bShowSettings(false),
+      m_bShowStatistics(false),
+      m_bShowReport(false),
+      m_bShowPlot(false),
+      m_bShowFilter(false) {
+  wxLogMessage("WR: ctor START");
+
+  // 1. Load configuration, settings, and plugin data
+  LoadConfigurationAndData();
+
+  // 2. Create the global overlay BEFORE UI initialization
+  m_pRouteMapOverlay = new RouteMapOverlay(this);
+
+  // 3. Build the UI (panels, list control, collapsible pane, etc.)
+  InitializeUI();
+
+  // 4. Bind all events (buttons, list control, timers, thread events)
+  BindEvents();
+
+  wxLogMessage("WR: ctor END");
+}
+
+
+
 
 /**
  * @brief Destructor - ensures proper cleanup of all resources.
@@ -475,9 +532,9 @@ void weather_routing_pi::SetPluginMessage(wxString& message_id,
                v["Second"].asInt());
 
       if (m_pWeather_Routing && time.IsValid()) {
-        m_pWeather_Routing->m_ConfigurationDialog.m_GribTimelineTime =
+        m_pWeather_Routing->GetConfigurationDialog().m_GribTimelineTime =
             time.ToUTC();
-        //            m_pWeather_Routing->m_ConfigurationDialog.m_cbUseGrib->Enable();
+        //            m_pWeather_Routing->GetConfigurationDialog().m_cbUseGrib->Enable();
         RequestRefresh(m_parent_window);
       }
     }
@@ -505,6 +562,7 @@ void weather_routing_pi::SetPluginMessage(wxString& message_id,
     GribRecordSet* gptr;
     sscanf(ptr, "%p", &gptr);
 
+    /*
     if (m_pWeather_Routing) {
       RouteMapOverlay* routemapoverlay =
           m_pWeather_Routing->m_RouteMapOverlayNeedingGrib;
@@ -512,6 +570,14 @@ void weather_routing_pi::SetPluginMessage(wxString& message_id,
         routemapoverlay->Lock();
         routemapoverlay->SetNewGrib(gptr);
         routemapoverlay->Unlock();
+      }
+    }
+    */
+    if (m_pWeather_Routing) {
+      RouteMapOverlay* routemapoverlay =
+          m_pWeather_Routing->m_RouteMapOverlayNeedingGrib;
+      if (routemapoverlay) {
+        routemapoverlay->SetNewGrib(gptr);
       }
     }
   } else if (message_id == "CLIMATOLOGY") {
@@ -550,13 +616,13 @@ void weather_routing_pi::SetPluginMessage(wxString& message_id,
 
     if (m_pWeather_Routing) {
       if (RouteMap::ClimatologyData == nullptr) {
-        m_pWeather_Routing->m_ConfigurationDialog.m_cClimatologyType->Enable(
+        m_pWeather_Routing->GetConfigurationDialog().m_cClimatologyType->Enable(
             false);
       } else {
-        m_pWeather_Routing->m_ConfigurationDialog.m_cClimatologyType->Enable(
+        m_pWeather_Routing->GetConfigurationDialog().m_cClimatologyType->Enable(
             true);
       }
-      m_pWeather_Routing->m_ConfigurationDialog.m_cbAvoidCycloneTracks->Enable(
+      m_pWeather_Routing->GetConfigurationDialog().m_cbAvoidCycloneTracks->Enable(
           RouteMap::ClimatologyCycloneTrackCrossings != nullptr);
     }
   } else if (message_id == wxS("OCPN_DRAW_PI_READY_FOR_REQUESTS")) {
@@ -639,10 +705,15 @@ void weather_routing_pi::RequestOcpnDrawSetting() {
   }
 }
 
+
+/*
 void weather_routing_pi::NewWR() {
+  wxLogMessage("WR_PI: NewWR ENTER");
   if (m_pWeather_Routing) return;
 
+  wxLogMessage("WR_PI: NewWR before ctor");
   m_pWeather_Routing = new WeatherRouting(m_parent_window, *this);
+  wxLogMessage("WR_PI: NewWR after ctor");
 
 #ifdef __WXMSW__
   wxLogMessage("Before: m_addressSpaceMonitor=%p",
@@ -651,34 +722,80 @@ void weather_routing_pi::NewWR() {
     m_addressSpaceMonitor->SetWeatherRouting(m_pWeather_Routing);
     wxLogMessage("After: m_addressSpaceMonitor=%p (SetWeatherRouting called)",
                  static_cast<void*>(m_addressSpaceMonitor.get()));
+    m_addressSpaceMonitor->SetAlertEnabled(false);
+    m_addressSpaceMonitor->SetAutoStopEnabled(false);
   } else {
     wxLogWarning("m_addressSpaceMonitor is nullptr before SetWeatherRouting");
   }
-
-  // ---- INSERT THIS BLOCK ----
-  // Disable memory-triggered StopAll() and AutoReset
-  m_addressSpaceMonitor->SetAlertEnabled(false);
-  m_addressSpaceMonitor->SetAutoStopEnabled(false);
-  // ---- END INSERT ----
-
 #endif
 
+  wxLogMessage("WR_PI: NewWR before Move");
   wxPoint p = m_pWeather_Routing->GetPosition();
-  m_pWeather_Routing->Move(0,
-                           0);  // workaround for gtk autocentre dialog behavior
+  m_pWeather_Routing->Move(0, 0);
   m_pWeather_Routing->Move(p);
+  wxLogMessage("WR_PI: NewWR before messages");
 
   SendPluginMessage("GRIB_TIMELINE_REQUEST", "");
   SendPluginMessage("CLIMATOLOGY_REQUEST", "");
   RequestOcpnDrawSetting();
- // m_pWeather_Routing->ResetSelected();
+
+  wxLogMessage("WR_PI: NewWR EXIT");
+}
+*/
+
+void weather_routing_pi::NewWR() {
+  if (m_pWeather_Routing) return;
+
+  wxLogMessage("WR_PI: NewWR() ENTER");
+
+  m_pWeather_Routing = new WeatherRouting(m_parent_window, *this);
+
+  wxAuiManager* mgr = GetFrameAuiManager();
+  if (mgr && m_pWeather_Routing) {
+    mgr->AddPane(m_pWeather_Routing, wxAuiPaneInfo()
+                                         .Name("WeatherRouting")
+                                         .Caption(_("Weather Routing"))
+                                         .Float()
+                                         .FloatingPosition(50, 50)
+                                         .FloatingSize(900, 600)
+                                         .CloseButton(true)
+                                         .MaximizeButton(true));
+
+    mgr->Update();
+
+    wxAuiPaneInfo& pane = mgr->GetPane(m_pWeather_Routing);
+    wxLogMessage("WR_PI: NewWR() pane added, shown=%d floating=%d",
+                 pane.IsShown(), pane.IsFloating());
+  }
+
+  wxLogMessage("WR_PI: NewWR() EXIT");
 }
 
+
+/*
 void weather_routing_pi::OnToolbarToolCallback(int id) {
+  wxLogMessage("WR_PI: OnToolbarToolCallback ENTER, id=%d", id);
+
   if (!m_pWeather_Routing) NewWR();
 
   m_pWeather_Routing->Show(!m_pWeather_Routing->IsShown());
 }
+*/
+
+void weather_routing_pi::OnToolbarToolCallback(int id) {
+  if (!m_pWeather_Routing) NewWR();
+
+  wxAuiManager* mgr = GetFrameAuiManager();
+  if (mgr && m_pWeather_Routing) {
+    wxAuiPaneInfo& pane = mgr->GetPane(m_pWeather_Routing);
+    pane.Show(true);
+    mgr->Update();
+    m_pWeather_Routing->Raise();  // ? correct
+  }
+}
+
+
+
 
 void weather_routing_pi::OnContextMenuItemCallback(int id) {
   if (!m_pWeather_Routing) NewWR();
@@ -701,7 +818,8 @@ void weather_routing_pi::OnContextMenuItemCallback(int id) {
   m_pWeather_Routing->ResetSelected();
 }
 
-bool weather_routing_pi::RenderOverlay(wxDC& wxdc, PlugIn_ViewPort* vp) {
+bool weather_routing_pi::RenderOverlay(wxDC& wxdc,
+                         PlugIn_ViewPort* vp) {
   if (m_pWeather_Routing && m_pWeather_Routing->IsShown()) {
     piDC dc(wxdc);
     m_pWeather_Routing->Render(dc, *vp);
@@ -721,26 +839,6 @@ bool weather_routing_pi::RenderGLOverlay(wxGLContext* pcontext,
   return false;
 }
 
-#ifdef __WXMSW__
-void weather_routing_pi::ReassignAddressSpaceMonitor() {
-  if (m_addressSpaceTimer.IsRunning()) {
-    m_addressSpaceTimer.Stop();
-    m_addressSpaceTimer.Unbind(wxEVT_TIMER,
-                               &weather_routing_pi::OnAddressSpaceTimer, this);
-  }
-
-  if (m_addressSpaceMonitor) {
-    m_addressSpaceMonitor->Shutdown();
-    m_addressSpaceMonitor.reset();
-  }
-
-  m_addressSpaceMonitor = std::make_unique<AddressSpaceMonitor>();
-
-  m_addressSpaceTimer.Bind(wxEVT_TIMER,
-                           &weather_routing_pi::OnAddressSpaceTimer, this);
-  m_addressSpaceTimer.Start(5000);
-}
-#endif
 
 void weather_routing_pi::OnCursorLatLonTimer(wxTimerEvent&) {
   if (!m_pWeather_Routing) return;

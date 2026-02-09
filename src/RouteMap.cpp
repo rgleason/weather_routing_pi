@@ -274,13 +274,13 @@ bool RouteMap::ReduceList(IsoRouteList& merged, IsoRouteList& routelist,
 }
 
 RouteMapConfiguration RouteMap::GetConfiguration() const {
-  RouteMap* self = const_cast<RouteMap*>(this);
+  // const_cast because Lock/Unlock are non-const
+  auto* self = const_cast<RouteMap*>(this);
   self->Lock();
-  RouteMapConfiguration o = m_Configuration;
+  RouteMapConfiguration cfg = m_Configuration;
   self->Unlock();
-  return o;
+  return cfg;
 }
-
 
 /* enlarge the map by 1 level */
 bool RouteMap::Propagate() {

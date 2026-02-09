@@ -64,6 +64,9 @@ void ReportDialog::InitUI() {
   // move it here as well.
 
   Layout();
+  Fit();
+  Update();
+  Refresh();
 }
 
 
@@ -189,7 +192,7 @@ void ReportDialog::SetRouteMapOverlays(
 
 wxDateTime ReportDialog::DisplayedTime(wxDateTime t) {
   wxDateTime display_time = t;
-  if (m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue())
+  if (m_WeatherRouting.GetSettingsDialog().m_cbUseLocalTime->GetValue())
     display_time = t.FromUTC();
   return display_time;
 }
@@ -198,7 +201,7 @@ wxString ReportDialog::FormatTime(wxDateTime t) {
   wxString r = DisplayedTime(t).Format(_T("%x %X"));
 #if 0
     // XXX add this?
-    if(m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue())
+    if(m_WeatherRouting.GetSettingsDialog().m_cbUseLocalTime->GetValue())
         r += _(" (local)");
     else
         r += _T(" (UTC)");

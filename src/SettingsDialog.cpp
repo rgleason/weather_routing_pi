@@ -69,6 +69,21 @@ const wxString SettingsDialog::column_names[] = {"",  // "Visible" column
                                                  "Sailing Comfort",
                                                  "State"};
 
+
+
+
+WeatherRoutingSettings SettingsDialog::GetSettings() const {
+  WeatherRoutingSettings s;
+  s.UseLocalTime = m_cbUseLocalTime->GetValue();
+  s.DisplayWindBarbs = m_cbDisplayWindBarbs->GetValue();
+  s.DisplayCurrent = m_cbDisplayCurrent->GetValue();
+  return s;
+}
+
+
+
+
+
 SettingsDialog::SettingsDialog(wxWindow* parent)
     : SettingsDialogBase(
 #ifdef __WXOSX__
@@ -249,6 +264,7 @@ SettingsDialog::SettingsDialog(wxWindow* parent)
 }
 
 
+
 SettingsDialog::~SettingsDialog() {
 #ifdef __WXMSW__
   wxLogMessage("SettingsDialog: Destructor starting");
@@ -406,6 +422,7 @@ void SettingsDialog::LoadSettings() {
   SetSize(0, 0, sz.x, sz.y - 40);
 #endif
 }
+
 
 void SettingsDialog::SaveSettings() {
   wxFileConfig* pConf = GetOCPNConfigObject();

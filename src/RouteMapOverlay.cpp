@@ -139,7 +139,7 @@ void* RouteMapOverlayThread::Entry() {
  * OnExit is only safe place clear Thread Alive and set Thread Exited.  */
 void RouteMapOverlayThread::OnExit() {
   {
-   wxMutexLocker lock(m_RouteMapOverlay.routemutex);
+  // wxMutexLocker lock(m_RouteMapOverlay.routemutex);
 
    wxLogMessage("OnExit(): thread exiting for overlay %p", &m_RouteMapOverlay);
 
@@ -190,15 +190,17 @@ RouteMapOverlay::~RouteMapOverlay() {
   //  Stop( safe to call even if no thread
 
   // Now clean up overlay internals under lock
-  wxMutexLocker lock(routemutex);
+ // wxMutexLocker lock(routemutex);
+  wxMutexLocker lock(m_mutex);
+
   delete destination_position;
 }
 
-
-void RouteMapOverlay::SetConfiguration(const RouteMapConfiguration& cfg) {
+ void RouteMapOverlay::SetConfiguration(const RouteMapConfiguration& cfg) {
   wxLogMessage("WR: RMO::SetConfiguration() entered");
 
-  wxMutexLocker lock(routemutex);
+  //wxMutexLocker lock(routemutex);
+  wxMutexLocker lock(m_mutex);
 
   // Forward to RouteMap (compute engine)
   RouteMap::SetConfiguration(cfg);
@@ -217,7 +219,9 @@ void RouteMapOverlay::SetConfiguration(const RouteMapConfiguration& cfg) {
 
 bool RouteMapOverlay::Start(wxString& error) {
   {
-    wxMutexLocker lock(routemutex);
+   // wxMutexLocker lock(routemutex);
+    wxMutexLocker lock(m_mutex);
+
 
     wxLogMessage("RouteMapOverlay::Start - BEGIN, this=%p", this);
     wxLogMessage(
@@ -299,7 +303,9 @@ bool RouteMapOverlay::Start(wxString& error) {
 
 
 void RouteMapOverlay::RouteAnalysis(PlugIn_Route* proute) {
-  wxMutexLocker lock(routemutex);  // Ensure thread safety
+ // wxMutexLocker lock(routemutex);  // Ensure thread safety
+  wxMutexLocker lock(m_mutex);
+
 
   std::list<PlotData>& plotdata = last_destination_plotdata;
   RouteMapConfiguration configuration = GetConfiguration();
@@ -501,7 +507,9 @@ void RouteMapOverlay::RenderIsoRoute(IsoRoute* r, wxDateTime time,
                                      wxColour& climatology_color, piDC& dc,
                                      PlugIn_ViewPort& vp) {
 
-  wxMutexLocker lock(routemutex);  // Ensure thread safety
+  //wxMutexLocker lock(routemutex);  // Ensure thread safety
+  wxMutexLocker lock(m_mutex);
+
 
   SkipPosition* s = r->skippoints;
   if (!s) return;
@@ -539,7 +547,9 @@ void RouteMapOverlay::RenderIsoRoute(IsoRoute* r, wxDateTime time,
 void RouteMapOverlay::RenderAlternateRoute(IsoRoute* r, bool each_parent,
                                            piDC& dc, PlugIn_ViewPort& vp) {
 
-  wxMutexLocker lock(routemutex);  // Ensure thread safety
+  //wxMutexLocker lock(routemutex);  // Ensure thread safety
+  wxMutexLocker lock(m_mutex);
+
 
   Position* pos = r->skippoints->point;
   wxColor black = wxColour(0, 0, 0, 192), tblack = TransparentColor(black);
@@ -823,7 +833,9 @@ void RouteMapOverlay::Render(wxDateTime time, SettingsDialog& settingsdialog,
 void RouteMapOverlay::RenderPolarChangeMarks(bool cursor_route, piDC& dc,
                                              PlugIn_ViewPort& vp) {
 
-  wxMutexLocker lock(routemutex);  // Ensure thread safety if needed
+  //wxMutexLocker lock(routemutex);  // Ensure thread safety if needed
+  wxMutexLocker lock(m_mutex);
+
 
   Position* pos =
       cursor_route ? last_cursor_position : last_destination_position;
@@ -955,7 +967,9 @@ wxString RouteMapOverlay::sailingConditionText(int level) {
 
 void RouteMapOverlay::RenderCourse(bool cursor_route, piDC& dc,
                                    PlugIn_ViewPort& vp, bool comfortRoute) {
-    wxMutexLocker lock(routemutex);  // Ensures thread safety and auto-unlocks
+   //wxMutexLocker lock(routemutex);  // Ensures thread safety and auto-unlocks
+  wxMutexLocker lock(m_mutex);
+
 
     Position* pos =
       cursor_route ? last_cursor_position : last_destination_position;
@@ -1019,7 +1033,9 @@ void RouteMapOverlay::RenderBoatOnCourse(bool cursor_route, wxDateTime time,
    * (1 normally, 1 for polar changed -- to avoid)
    */
 
-  wxMutexLocker lock(routemutex);  // Ensure thread safety
+  //wxMutexLocker lock(routemutex);  // Ensure thread safety
+  wxMutexLocker lock(m_mutex);
+
 
   Position* pos =
       cursor_route ? last_cursor_position : last_destination_position;
@@ -1077,7 +1093,8 @@ void RouteMapOverlay::RenderWindBarbsOnRoute(piDC& dc, PlugIn_ViewPort& vp,
    * March, 2018
    */
 
-  wxMutexLocker lock(routemutex);  // Ensure thread safety
+  //wxMutexLocker lock(routemutex);  // Ensure thread safety
+  wxMutexLocker lock(m_mutex);
 
   if (vp.bValid == false) return;
 
@@ -1182,7 +1199,8 @@ void RouteMapOverlay::RenderWindBarbs(piDC& dc, PlugIn_ViewPort& vp) {
   if (origin.size() < 2)  // no map to work with
     return;
 
-  wxMutexLocker lock(routemutex);  // Ensure thread safety
+  //wxMutexLocker lock(routemutex);  // Ensure thread safety
+  wxMutexLocker lock(m_mutex);
 
   if (vp.bValid == false) return;
 
@@ -1376,7 +1394,8 @@ void RouteMapOverlay::RenderCurrent(piDC& dc, PlugIn_ViewPort& vp) {
   if (origin.size() < 2)  // no map to work with
     return;
 
-  wxMutexLocker lock(routemutex);  // Ensure thread safety
+  //wxMutexLocker lock(routemutex);  // Ensure thread safety
+  wxMutexLocker lock(m_mutex);
 
   if (vp.bValid == false) return;
 
@@ -1579,7 +1598,8 @@ void RouteMapOverlay::RenderCurrent(piDC& dc, PlugIn_ViewPort& vp) {
 
 void RouteMapOverlay::GetLLBounds(double& latmin, double& latmax,
                                   double& lonmin, double& lonmax) {
-  wxMutexLocker lock(routemutex);  // Ensure thread safety if needed
+  //wxMutexLocker lock(routemutex);  // Ensure thread safety if needed
+  wxMutexLocker lock(m_mutex);
 
   latmin = INFINITY, lonmin = INFINITY;
   latmax = -INFINITY, lonmax = -INFINITY;
@@ -1600,7 +1620,8 @@ void RouteMapOverlay::GetLLBounds(double& latmin, double& latmax,
 
 void RouteMapOverlay::RequestGrib(wxDateTime time) {
 
-   wxMutexLocker lock(routemutex);  // Ensure thread safety
+   //wxMutexLocker lock(routemutex);  // Ensure thread safety
+  wxMutexLocker lock(m_mutex);
 
   Json::Value v;
   time = time.FromUTC();
@@ -1622,7 +1643,7 @@ void RouteMapOverlay::RequestGrib(wxDateTime time) {
 
 std::list<PlotData>& RouteMapOverlay::GetPlotData(bool cursor_route) {
 
-  wxMutexLocker lock(routemutex);  // Ensure thread safety if needed
+ // wxMutexLocker lock(routemutex);  // Ensure thread safety if needed
 
   std::list<PlotData>& plotdata =
       cursor_route ? last_cursor_plotdata : last_destination_plotdata;
@@ -1689,7 +1710,9 @@ std::list<PlotData>& RouteMapOverlay::GetPlotData(bool cursor_route) {
 }
 
 double RouteMapOverlay::RouteInfo(enum RouteInfoType type, bool cursor_route) {
-  wxMutexLocker lock(routemutex);  // Ensure thread safety if needed
+  //wxMutexLocker lock(routemutex);  // Ensure thread safety if needed
+  wxMutexLocker lock(m_mutex);
+
 
   std::list<PlotData>& plotdata = GetPlotData(cursor_route);
 
@@ -1815,7 +1838,8 @@ std::list<Position*> RouteMapOverlay::GetRoute() const {
 int RouteMapOverlay::Cyclones(int* months) {
   if (!RouteMap::ClimatologyCycloneTrackCrossings) return -1;
 
-  wxMutexLocker lock(routemutex);  // Ensure thread safety
+  //wxMutexLocker lock(routemutex);  // Ensure thread safety
+  wxMutexLocker lock(m_mutex);
 
   int days = 30;  // search for 30 day range
   int cyclones = 0;
@@ -1845,7 +1869,8 @@ int RouteMapOverlay::Cyclones(int* months) {
 void RouteMapOverlay::Clear() {
   {
     wxLogMessage("WR: RMO::Clear() entered");
-    wxMutexLocker lock(routemutex);  // Ensure thread safety
+    //wxMutexLocker lock(routemutex);  // Ensure thread safety
+    wxMutexLocker lock(m_mutex);
 
     // Reset the stopped flag
     m_Stopped = false;
@@ -1884,7 +1909,8 @@ void RouteMapOverlay::Stop() {
   bool already_exited = false;  // <-- THIS MUST EXIST
 
   {
-    wxMutexLocker lock(routemutex);
+    //wxMutexLocker lock(routemutex);
+    wxMutexLocker lock(m_mutex);
 
     if (!m_Thread) { wxLogMessage("Stop(): no thread for overlay %p", this);
       return;
@@ -1973,7 +1999,8 @@ void RouteMapOverlay::SetFinished(bool f) {
 
 void RouteMapOverlay::UpdateCursorPosition() {
 
-  wxMutexLocker lock(routemutex);  // Ensure thread safety
+  //wxMutexLocker lock(routemutex);  // Ensure thread safety
+  wxMutexLocker lock(m_mutex);
 
   // only called in main thread, no race
   Position* last_last_cursor_position = last_cursor_position;
@@ -1985,7 +2012,8 @@ void RouteMapOverlay::UpdateCursorPosition() {
 
 bool RouteMapOverlay::SetCursorLatLon(double lat, double lon) {
 
-  wxMutexLocker lock(routemutex);  // Ensure thread safety
+  //wxMutexLocker lock(routemutex);  // Ensure thread safety
+  wxMutexLocker lock(m_mutex);
 
   Position* p = last_cursor_position;
   last_cursor_lat = lat;
@@ -2002,7 +2030,8 @@ bool RouteMapOverlay::Updated() {
 }
 
 void RouteMapOverlay::UpdateDestination() {
-  wxMutexLocker lock(routemutex);  // Ensure thread safety
+  // wxMutexLocker lock(routemutex);  // Ensure thread safety
+  wxMutexLocker lock(m_mutex);
 
   RouteMapConfiguration configuration = GetConfiguration();
   Position* last_last_destination_position = last_destination_position;
@@ -2083,7 +2112,8 @@ void RouteMapOverlay::UpdateDestination() {
 Position* RouteMapOverlay::getClosestRoutePositionFromCursor(
     double cursorLat, double cursorLon, PlotData& posData) {
 
-    wxMutexLocker lock(routemutex);  // Ensure thread safety
+  // wxMutexLocker lock(routemutex);  // Ensure thread safety
+  wxMutexLocker lock(m_mutex);
 
   /* Method to find the closest calculated position of the boat on
    * the weather route based on the cursor position

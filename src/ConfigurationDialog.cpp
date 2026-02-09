@@ -76,7 +76,13 @@ void ConfigurationDialog::InitUI() {
 
   // If the dialog normally builds controls or sizers in the constructor,
   // move that code here as well.
+
+  Layout();
+  Fit();
+  Update();
+  Refresh();
 }
+
 
 ConfigurationDialog::~ConfigurationDialog() {
   wxFileConfig* pConf = GetOCPNConfigObject();
@@ -88,8 +94,8 @@ ConfigurationDialog::~ConfigurationDialog() {
 }
 
 void ConfigurationDialog::EditBoat() {
-  m_WeatherRouting.m_BoatDialog.LoadPolar(m_tBoat->GetValue());
-  m_WeatherRouting.m_BoatDialog.Show();
+  m_WeatherRouting.GetBoatDialog().LoadPolar(m_tBoat->GetValue());
+  m_WeatherRouting.GetBoatDialog().Show();
 }
 void ConfigurationDialog::OnGribTime(wxCommandEvent& event) {
   SetStartDateTime(m_GribTimelineTime);
@@ -263,7 +269,7 @@ void ConfigurationDialog::SetConfigurations(
   std::list<RouteMapConfiguration>::iterator it = configurations.begin();
 
   const bool ult =
-      m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue();
+      m_WeatherRouting.GetSettingsDialog().m_cbUseLocalTime->GetValue();
 #define STARTTIME (ult ? it->StartTime.FromUTC() : it->StartTime)
 
   // Populate date/time from the first configuration safely
@@ -468,7 +474,7 @@ void ConfigurationDialog::OnResetAdvanced(wxCommandEvent& event) {
 
 void ConfigurationDialog::SetStartDateTime(wxDateTime datetime) {
   if (datetime.IsValid()) {
-    if (m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue())
+    if (m_WeatherRouting.GetSettingsDialog().m_cbUseLocalTime->GetValue())
       datetime = datetime.FromUTC();
 
     m_dpStartDate->SetValue(datetime);
@@ -572,7 +578,7 @@ void ConfigurationDialog::Update() {
     }
 
     // Convert to local time *only if requested*
-    if (m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue())
+    if (m_WeatherRouting.GetSettingsDialog().m_cbUseLocalTime->GetValue())
       time = time.FromUTC();
 
     // Preserve the time-of-day while updating the date
@@ -582,7 +588,7 @@ void ConfigurationDialog::Update() {
     date.SetSecond(time.GetSecond());
 
     // Convert back to UTC if needed
-    if (m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue())
+    if (m_WeatherRouting.GetSettingsDialog().m_cbUseLocalTime->GetValue())
       date = date.ToUTC();
 
     configuration.StartTime = date;
@@ -610,7 +616,7 @@ void ConfigurationDialog::Update() {
       time = wxDateTime::Now();
     }
 
-    if (m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue())
+    if (m_WeatherRouting.GetSettingsDialog().m_cbUseLocalTime->GetValue())
       time = time.FromUTC();
 
     // Apply the time-of-day from the control
@@ -618,7 +624,7 @@ void ConfigurationDialog::Update() {
     time.SetMinute(m_tpTime->GetTimeCtrlValue().GetMinute());
     time.SetSecond(m_tpTime->GetTimeCtrlValue().GetSecond());
 
-    if (m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue())
+    if (m_WeatherRouting.GetSettingsDialog().m_cbUseLocalTime->GetValue())
       time = time.ToUTC();
 
     configuration.StartTime = time;

@@ -50,7 +50,12 @@ void PlotDialog::InitUI() {
 #ifdef __OCPN__ANDROID__
    wxSize sz = ::wxGetDisplaySize();
   SetSize(0, 0, sz.x, sz.y - 40);
-#endif Layout();
+#endif
+
+  Layout();
+  Fit();
+  Update();
+  Refresh();
 }
 
 PlotDialog::~PlotDialog() {}
@@ -373,7 +378,7 @@ void PlotDialog::OnPaintPlot(wxPaintEvent& event) {
   // Draw a cursor on the graph to show
   // the current time position by the GRIB file
   wxDateTime gribTime =
-      m_WeatherRouting.m_ConfigurationDialog.m_GribTimelineTime;
+      m_WeatherRouting.GetConfigurationDialog().m_GribTimelineTime;
 
   // Check for valid timestamps and avoid division by zero
   if (gribTime.IsValid() && m_StartTime.IsValid() && m_maxtime > m_mintime) {

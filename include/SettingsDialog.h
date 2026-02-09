@@ -31,6 +31,16 @@
 class AddressSpaceMonitor;
 #endif
 
+
+
+struct WeatherRoutingSettings {
+  bool UseLocalTime;
+  bool DisplayWindBarbs;
+  bool DisplayCurrent;
+  // add any other fields used by RouteMapOverlay::Render()
+};
+
+
 /**
  * @brief Settings dialog for Weather Routing plugin configuration.
  *
@@ -71,6 +81,11 @@ public:
   void OnHelp(wxCommandEvent& event);           ///< Show help dialog
 
   static const wxString column_names[];
+
+
+  WeatherRoutingSettings GetSettings() const;
+
+  
 
 
 #ifdef __WXMSW__
