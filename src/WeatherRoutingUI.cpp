@@ -1249,12 +1249,20 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
                            wxALL | wxALIGN_CENTER_VERTICAL, 5);
 
   m_rbStartPositionSelection =
-      new wxRadioButton(sbStart->GetStaticBox(), wxID_ANY, _("Start position"),
+      new wxRadioButton(sbStart->GetStaticBox(), wxID_ANY, _("Position"),
                         wxDefaultPosition, wxDefaultSize);
   m_rbStartPositionSelection->SetToolTip(
       _("Select a predefined position as the starting point"));
   m_rbStartPositionSelection->SetValue(true);  // Default to position selection
   startSelectionSizer->Add(m_rbStartPositionSelection, 0,
+                           wxALL | wxALIGN_CENTER_VERTICAL, 5);
+
+  m_rbStartWaypointSelection =
+      new wxRadioButton(sbStart->GetStaticBox(), wxID_ANY, _("Waypoint"),
+                        wxDefaultPosition, wxDefaultSize);
+  m_rbStartWaypointSelection->SetToolTip(
+      _("Select a waypoint as the starting point"));
+  startSelectionSizer->Add(m_rbStartWaypointSelection, 0,
                            wxALL | wxALIGN_CENTER_VERTICAL, 5);
 
   fgSizer60->Add(startSelectionSizer, 0, wxEXPAND, 5);
@@ -1474,6 +1482,35 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   wxStaticBoxSizer* sbEnd;
   sbEnd = new wxStaticBoxSizer(new wxStaticBox(m_pBasic, wxID_ANY, _("End")),
                                wxVERTICAL);
+
+  wxFlexGridSizer* fgSizer61;
+  fgSizer61 = new wxFlexGridSizer(0, 1, 0, 0);
+  fgSizer61->AddGrowableCol(0);
+  fgSizer61->SetFlexibleDirection(wxBOTH);
+  fgSizer61->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
+
+  // Add radio button group for end selection
+  wxBoxSizer* endSelectionSizer = new wxBoxSizer(wxHORIZONTAL);
+
+  m_rbEndPositionSelection =
+      new wxRadioButton(sbEnd->GetStaticBox(), wxID_ANY, _("Position"),
+                        wxDefaultPosition, wxDefaultSize, wxRB_GROUP);
+  m_rbEndPositionSelection->SetToolTip(
+      _("Select a predefined position as the end point"));
+  m_rbEndPositionSelection->SetValue(true);  // Default to position selection
+  endSelectionSizer->Add(m_rbEndPositionSelection, 0,
+                         wxALL | wxALIGN_CENTER_VERTICAL, 5);
+
+  m_rbEndWaypointSelection =
+      new wxRadioButton(sbEnd->GetStaticBox(), wxID_ANY, _("Waypoint"),
+                        wxDefaultPosition, wxDefaultSize);
+  m_rbEndWaypointSelection->SetToolTip(_("Select a waypoint as the end point"));
+  endSelectionSizer->Add(m_rbEndWaypointSelection, 0,
+                         wxALL | wxALIGN_CENTER_VERTICAL, 5);
+
+  fgSizer61->Add(endSelectionSizer, 0, wxEXPAND, 5);
+
+  sbEnd->Add(fgSizer61, 1, wxEXPAND | wxALL, 5);
 
   m_cEnd =
       new wxComboBox(sbEnd->GetStaticBox(), wxID_ANY, wxEmptyString,
@@ -2279,6 +2316,10 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
       wxEVT_COMMAND_RADIOBUTTON_SELECTED,
       wxCommandEventHandler(ConfigurationDialogBase::OnStartFromPosition), NULL,
       this);
+  m_rbStartWaypointSelection->Connect(
+      wxEVT_COMMAND_RADIOBUTTON_SELECTED,
+      wxCommandEventHandler(ConfigurationDialogBase::OnStartFromWaypoint), NULL,
+      this);
   m_cStart->Connect(wxEVT_COMMAND_COMBOBOX_SELECTED,
                     wxCommandEventHandler(ConfigurationDialogBase::OnUpdate),
                     NULL, this);
@@ -2462,6 +2503,14 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   m_sMaxSwellMeters->Connect(
       wxEVT_COMMAND_SPINCTRLDOUBLE_UPDATED,
       wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
+  m_rbEndPositionSelection->Connect(
+      wxEVT_COMMAND_RADIOBUTTON_SELECTED,
+      wxCommandEventHandler(ConfigurationDialogBase::OnEndAtPosition), NULL,
+      this);
+  m_rbEndWaypointSelection->Connect(
+      wxEVT_COMMAND_RADIOBUTTON_SELECTED,
+      wxCommandEventHandler(ConfigurationDialogBase::OnEndAtWaypoint), NULL,
+      this);
   m_cEnd->Connect(wxEVT_COMMAND_COMBOBOX_SELECTED,
                   wxCommandEventHandler(ConfigurationDialogBase::OnUpdate),
                   NULL, this);
@@ -2893,6 +2942,10 @@ ConfigurationDialogBase::~ConfigurationDialogBase() {
       wxEVT_COMMAND_RADIOBUTTON_SELECTED,
       wxCommandEventHandler(ConfigurationDialogBase::OnStartFromPosition), NULL,
       this);
+  m_rbStartWaypointSelection->Disconnect(
+      wxEVT_COMMAND_RADIOBUTTON_SELECTED,
+      wxCommandEventHandler(ConfigurationDialogBase::OnStartFromWaypoint), NULL,
+      this);
   m_cStart->Disconnect(wxEVT_COMMAND_COMBOBOX_SELECTED,
                        wxCommandEventHandler(ConfigurationDialogBase::OnUpdate),
                        NULL, this);
@@ -3077,6 +3130,14 @@ ConfigurationDialogBase::~ConfigurationDialogBase() {
   m_sMaxSwellMeters->Disconnect(
       wxEVT_COMMAND_SPINCTRLDOUBLE_UPDATED,
       wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
+  m_rbEndPositionSelection->Disconnect(
+      wxEVT_COMMAND_RADIOBUTTON_SELECTED,
+      wxCommandEventHandler(ConfigurationDialogBase::OnEndAtPosition), NULL,
+      this);
+  m_rbEndWaypointSelection->Disconnect(
+      wxEVT_COMMAND_RADIOBUTTON_SELECTED,
+      wxCommandEventHandler(ConfigurationDialogBase::OnEndAtWaypoint), NULL,
+      this);
   m_cEnd->Disconnect(wxEVT_COMMAND_COMBOBOX_SELECTED,
                      wxCommandEventHandler(ConfigurationDialogBase::OnUpdate),
                      NULL, this);

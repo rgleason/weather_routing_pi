@@ -135,6 +135,23 @@ bool RouteMapConfiguration::Update() {
       haveend = true;
     }
   }
+  wxArrayString waypoint_guids = GetWaypointGUIDArray();
+  PlugIn_Waypoint wp;
+
+  for (const auto& guid : waypoint_guids) {
+    GetSingleWaypoint(guid, &wp);
+
+    if (wp.m_MarkName == Start) {
+      StartLat = wp.m_lat;
+      StartLon = wp.m_lon;
+      havestart = true;
+    }
+    if (wp.m_MarkName == End) {
+      EndLat = wp.m_lat;
+      EndLon = wp.m_lon;
+      haveend = true;
+    }
+  }
   for (const auto& it : RouteMap::Positions) {
     if (StartType == RouteMapConfiguration::START_FROM_POSITION &&
         Start == it.Name) {

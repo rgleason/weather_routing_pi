@@ -78,6 +78,10 @@ public:
   void AddSource(wxString name);
   void RemoveSource(wxString name);
   void ClearSources();
+  /// Fill combobox for start or end selection with all waypoints
+  void AddWaypoints(const bool toStart);
+  /// Fill combobox for start or end selection with all positions
+  void AddPositions(const bool toStart);
   void SetBoatFilename(wxString path);
 
   wxDateTime m_GribTimelineTime;
@@ -121,6 +125,9 @@ protected:
   }
   void OnStartFromBoat(wxCommandEvent& event);
   void OnStartFromPosition(wxCommandEvent& event);
+  void OnStartFromWaypoint(wxCommandEvent& event);
+  void OnEndAtPosition(wxCommandEvent& event);
+  void OnEndAtWaypoint(wxCommandEvent& event);
   void OnAvoidCyclones(wxCommandEvent& event);
   void OnUseMotor(wxCommandEvent& event);
   void OnAddDegreeStep(wxCommandEvent& event);
