@@ -189,7 +189,7 @@ void RouteMapOverlay::RouteAnalysis(PlugIn_Route* proute) {
     pwp = pwpnode->GetData();
     rte.lat = pwp->m_lat, rte.lon = pwp->m_lon;
     next = &rte;
-    eta = data.PropagateToPoint(rte.lat, rte.lon, configuration, NAN, H, data_mask,
+    double eta = data.PropagateToPoint(rte.lat, rte.lon, configuration, NAN, H, data_mask,
                                 false);
     if (std::isnan(eta)) {
       ok = false;
