@@ -24,7 +24,6 @@
 #include "Utilities.h"
 
 #include "georef.h"
-#include "ocpn_plugin.h"
 
 /* sufficient for routemap uses only.. is this faster than below? if not, remove
  * it */
@@ -72,7 +71,10 @@ Position::Position(double latitude, double longitude, Position* p,
       parent_heading(pheading),
       parent_bearing(pbearing),
       parent(p),
+      prev(nullptr),
+      next(nullptr),
       propagated(false),
+      drawn(false),
       copied(false),
       propagation_error(PROPAGATION_NO_ERROR) {
   lat = EPSILON * std::round(lat / EPSILON);
@@ -260,8 +262,11 @@ bool Position::Propagate(IsoRouteList& routelist,
           first_avoid = false;
           rp = new Position(this);
           double dp = .95;
+          // NOLINTBEGIN: parent cannot be nullptr, because otherwise bearing1
+          // would be NAN and we would not reach this branch
           rp->lat = (1 - dp) * lat + dp * parent->lat;
           rp->lon = (1 - dp) * lon + dp * parent->lon;
+          // NOLINTEND
           rp->propagated =
               true;  // not a "real" position so we don't propagate it either.
           goto add_position;
@@ -351,7 +356,6 @@ bool Position::Propagate(IsoRouteList& routelist,
           ll_gc_ll(lat, lon, heading_resolve(boat_data.cog), dist2test, &dlat1,
                    &dlon1);
         } else {
-          dist2test = boat_data.dist;
           dlat1 = dlat;
           dlon1 = dlon;
         }

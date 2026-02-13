@@ -1293,8 +1293,6 @@ void WeatherRouting::OnEditPosition() {
   for (const auto& p : RouteMap::Positions) {
     if (p.Name == name) {
       dlg.m_tName->SetValue(p.Name);
-      double degrees;
-      double minutes = std::modf(p.lat, &degrees);
       dlg.m_tLatitude->SetValue(toSDMM_PlugIn(1, p.lat));
       dlg.m_tLongitude->SetValue(toSDMM_PlugIn(2, p.lon));
       break;

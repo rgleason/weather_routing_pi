@@ -20,7 +20,6 @@
 #include <wx/wx.h>
 #include <wx/glcanvas.h>
 
-#include <functional>
 #include <list>
 // Add near other includes at top of file
 #include "heap_checker.h"
@@ -29,12 +28,9 @@
 
 #include "ocpn_plugin.h"
 #include "pidc.h"
-#include "json/json.h"
 #include "Utilities.h"
-#include "Boat.h"
 #include "RouteMapOverlay.h"
 #include "SettingsDialog.h"
-#include "georef.h"
 
 void WR_GetCanvasPixLL(PlugIn_ViewPort* vp, wxPoint* pp, double lat,
                        double lon) {
@@ -110,6 +106,8 @@ RouteMapOverlay::~RouteMapOverlay() {
   delete destination_position;
 
   if (m_Thread) Stop();
+
+  Clear();
 }
 
 bool RouteMapOverlay::Start(wxString& error) {
@@ -183,7 +181,6 @@ void RouteMapOverlay::RouteAnalysis(PlugIn_Route* proute) {
     pwp = pwpnode->GetData();
     configuration.time = data.time;
     data.lat = pwp->m_lat, data.lon = pwp->m_lon;
-    double eta = dt;
     pwpnode = pwpnode->GetNext();  // PlugInWaypoint
     if (pwpnode == nullptr) break;
 
@@ -192,8 +189,8 @@ void RouteMapOverlay::RouteAnalysis(PlugIn_Route* proute) {
     pwp = pwpnode->GetData();
     rte.lat = pwp->m_lat, rte.lon = pwp->m_lon;
     next = &rte;
-    eta = data.PropagateToPoint(rte.lat, rte.lon, configuration, H, data_mask,
-                                false);
+    double eta = data.PropagateToPoint(rte.lat, rte.lon, configuration, H,
+                                       data_mask, false);
     if (std::isnan(eta)) {
       ok = false;
       eta = dt;
@@ -1055,7 +1052,7 @@ void RouteMapOverlay::RenderWindBarbs(piDC& dc, PlugIn_ViewPort& vp) {
       vp.view_scale_ppm != wind_barb_cache_scale ||
       vp.m_projection_type != wind_barb_cache_projection) {
     wxStopWatch timer;
-    static double step = 36.0;
+    static double step = 36.0;  // Must be float, is adjusted by 1.5 below
 
     wind_barb_cache_origin_size = origin.size();
     wind_barb_cache_scale = vp.view_scale_ppm;
@@ -1074,8 +1071,10 @@ void RouteMapOverlay::RenderWindBarbs(piDC& dc, PlugIn_ViewPort& vp) {
 
     IsoChronList::iterator it = origin.end();
     it--;
-    for (double x = r.x + xoff; x < r.x + r.width; x += step) {
-      for (double y = r.y + yoff; y < r.y + r.height; y += step) {
+    double x = r.x + xoff;
+    while (x < r.x + r.width) {
+      double y = r.y + yoff;
+      while (y < r.y + r.height) {
         double lat, lon;
         GetCanvasLLPix(&nvp, wxPoint(x, y), &lat, &lon);
 
@@ -1145,7 +1144,9 @@ void RouteMapOverlay::RenderWindBarbs(piDC& dc, PlugIn_ViewPort& vp) {
               wind_barb_cache, x, y, VW, deg2rad(W) + nvp.rotation, lat < 0);
         }
       skip:;
+        y += step;
       }
+      x += step;
     }
 
     Unlock();
@@ -1247,7 +1248,7 @@ void RouteMapOverlay::RenderCurrent(piDC& dc, PlugIn_ViewPort& vp) {
       vp.view_scale_ppm != current_cache_scale ||
       vp.m_projection_type != current_cache_projection) {
     wxStopWatch timer;
-    static double step = 80.0;
+    static double step = 80.0;  // Must be float, is adjusted by 1.5 below
 
     current_cache_origin_size = origin.size();
     current_cache_scale = vp.view_scale_ppm;
@@ -1266,8 +1267,10 @@ void RouteMapOverlay::RenderCurrent(piDC& dc, PlugIn_ViewPort& vp) {
 
     IsoChronList::iterator it = origin.end();
     it--;
-    for (double x = r.x + xoff; x < r.x + r.width; x += step) {
-      for (double y = r.y + yoff; y < r.y + r.height; y += step) {
+    double x = r.x + xoff;
+    while (x < r.x + r.width) {
+      double y = r.y + yoff;
+      while (y < r.y + r.height) {
         double lat, lon;
         GetCanvasLLPix(&nvp, wxPoint(x, y), &lat, &lon);
 
@@ -1347,7 +1350,9 @@ void RouteMapOverlay::RenderCurrent(piDC& dc, PlugIn_ViewPort& vp) {
                                               lat < 0);
         }
       skip2:;
+        y += step;
       }
+      x += step;
     }
 
     Unlock();
@@ -1716,7 +1721,9 @@ void RouteMapOverlay::UpdateDestination() {
       }
       Unlock();
 
-      if (std::isinf(mindt)) {
+      // Note: else branch will crash when empty() because endp is not
+      // initialized
+      if (std::isinf(mindt) || isochrone->routes.empty()) {
         // destination is between two isochrones
         // but propagate can't reach it (land or boundaries in the way).
         // Use an upper bound time for EndTime, not defined times are too much
@@ -1725,10 +1732,13 @@ void RouteMapOverlay::UpdateDestination() {
         last_destination_position =
             ClosestPosition(configuration.EndLat, configuration.EndLon);
       } else {
+        // NOLINTBEGIN: endp is always initialized when isochrone->routes is not
+        // empty()
         destination_position = new Position(
             configuration.EndLat, configuration.EndLon, endp, minH, NAN,
-            endp->polar, endp->tacks + mintacked, endp->jibes + minjibes,
+            endp->polar, endp->tacks + mintacked,  endp->jibes + minjibes,
             endp->sail_plan_changes + minsail_plan_changed, mindata_mask);
+        // NOLINTEND
 
         m_EndTime = isochrone->time + wxTimeSpan::Milliseconds(1000 * mindt);
         isochrone->delta = mindt;

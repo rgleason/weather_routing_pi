@@ -23,13 +23,10 @@
 #include <stdlib.h>
 #include <math.h>
 #include <cmath>  // For std::isnan
-#include <time.h>
 
 #include "Utilities.h"
-#include "Boat.h"
 #include "RouteMapOverlay.h"
 #include "WeatherRouting.h"
-#include "wx28compat.h"
 
 //---------------------------------------------------------------------------------------
 //          Weather Routing Dialog Implementation
@@ -383,9 +380,12 @@ void PlotDialog::OnPaintPlot(wxPaintEvent& event) {
   dc.SetTextForeground(*wxBLACK);
   dc.SetPen(wxPen(*wxBLACK, 1, wxPENSTYLE_DOT));
 
-  const double steps = 10;
+  const double steps = 10;  // Note that the loop only has 8 steps
   bool grid = true;
-  for (double i = 1 / steps; i < 1 - 1 / steps; i += 1 / steps) {
+  double i = 1.0 / steps;
+  while (i <
+         1.0 - 1.0 / steps -
+             0.5 * 1.0 / steps) {  // Avoid creating an extra step, due to rounding errors
     int x = i * w, y = i * h;
     if (grid) {
       dc.DrawLine(x, 0, x, h);
@@ -397,6 +397,7 @@ void PlotDialog::OnPaintPlot(wxPaintEvent& event) {
                                  m_mintime);
     wxSize s = dc.GetTextExtent(time);
     dc.DrawText(time, x - s.x / 2, 0);
+    i += 1.0 / steps;
   }
 
   int x = 0;
@@ -405,7 +406,8 @@ void PlotDialog::OnPaintPlot(wxPaintEvent& event) {
     dc.SetTextForeground(
         wxColour(c.Red() * 3 / 4, c.Green() * 3 / 4, c.Blue() * 3 / 4));
     int maxx = 0;
-    for (double i = 1 / steps; i < 1 - 1 / steps; i += 1 / steps) {
+    i = 1.0 / steps;
+    while (i < 1.0 - 1.0 / steps - 0.5 * 1.0 / steps) {  // This loop also has only 8 steps
       wxString value = wxString::Format(
           _T("%.1f"),
           (1 - i) * (m_maxvalue[ci] - m_minvalue[ci]) + m_minvalue[ci]);
@@ -414,6 +416,7 @@ void PlotDialog::OnPaintPlot(wxPaintEvent& event) {
       dc.DrawText(value, x, y - s.y / 2);
 
       if (s.x > maxx) maxx = s.x;
+      i += 1.0 / steps;
     }
 
     x += maxx + 5;

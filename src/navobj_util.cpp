@@ -24,7 +24,6 @@
 // https://www.cruisersforum.com/forums/f134/weather-routing-100060-476.html#post3806197
 
 #include "navobj_util.h"
-#include <iostream>
 
 // RFC4122 version 4 compliant random UUIDs generator.
 wxString GetUUID(void) {

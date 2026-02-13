@@ -66,17 +66,14 @@
 
 #include <stdlib.h>
 #include <math.h>
-#include <functional>
 #include <list>
 #include <map>
 
 #include "Utilities.h"
-#include "Boat.h"
 #include "ConstraintChecker.h"
 #include "RoutePoint.h"
 #include "IsoRoute.h"
 #include "RouteMap.h"
-#include "SunCalculator.h"
 #include "WeatherDataProvider.h"
 #include "weather_routing_pi.h"
 
@@ -187,9 +184,12 @@ bool RouteMapConfiguration::Update() {
     if (FromDegree > ToDegree) FromDegree = ToDegree;
     ByDegrees = wxMax(wxMin(ByDegrees, 60), .1);
 
-    for (double step = FromDegree; step <= ToDegree; step += ByDegrees) {
+    double step = FromDegree;
+    while (step <= ToDegree + 1E-3) {  // Avoid missing the last step by a tiny
+                                       // fraction, due to rounding errors
       DegreeSteps.push_back(step);
       if (step > 0 && step < 180) DegreeSteps.push_back(360 - step);
+      step += ByDegrees;
     }
   } else {
     DegreeSteps.push_back(0.);
@@ -215,7 +215,7 @@ std::list<RouteMapPosition> RouteMap::Positions;
 
 RouteMap::RouteMap() {}
 
-RouteMap::~RouteMap() { Clear(); }
+RouteMap::~RouteMap() { RouteMap::Clear(); }
 
 void RouteMap::PositionLatLon(wxString Name, double& lat, double& lon) {
   for (std::list<RouteMapPosition>::iterator it = Positions.begin();

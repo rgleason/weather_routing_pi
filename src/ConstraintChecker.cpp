@@ -22,11 +22,9 @@
 
 #include <unordered_map>
 #include <cmath>
-#include <sstream>
 #include <cstdint>
 #include <chrono>
 #include <vector>
-#include <tuple>
 #include <algorithm>
 #include <mutex>
 #include <atomic>
@@ -135,13 +133,8 @@ void log_cache_stats() {
   size_t hits = segment_cache_hits.load();
   size_t misses = segment_cache_misses.load();
   size_t evictions = segment_evictions.load();
-  size_t df_queries_val = df_queries.load();
-  size_t df_safe_water_opt = df_safe_water_optimizations.load();
 
   double segment_hit_rate = queries ? (double)hits / queries : 0.0;
-  // How often segments using distance field avoided expensive GSHHS calls.
-  double df_optimization_rate =
-      df_queries_val ? (double)df_safe_water_opt / df_queries_val : 0.0;
 
   // Note: land_cache.size() must be called under mutex protection
   std::lock_guard<std::mutex> lock(land_cache_mutex);
