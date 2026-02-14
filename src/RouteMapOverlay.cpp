@@ -1770,15 +1770,20 @@ Position* RouteMapOverlay::getClosestRoutePositionFromCursor(
    * the weather route based on the cursor position
    */
 
+  RouteMapConfiguration configuration = GetConfiguration();
+  const double normalizedCursorLon =
+      configuration.positive_longitudes ? positive_degrees(cursorLon)
+                                        : cursorLon;
+
   double dist = INFINITY;
   std::list<PlotData> plot = GetPlotData(false);
   bool found = false;
   posData.time = wxInvalidDateTime;
   for (const auto& it : plot) {
     // Calculate distance
-    // Almost like a plan (x,y) because of small distance -- is that correct?
-    double tempDist =
-        sqrt(pow(cursorLat - it.lat, 2) + pow(cursorLon - it.lon, 2));
+    // Compare longitudes with wrap-around handling for dateline crossing.
+    double dlon = heading_resolve(normalizedCursorLon - it.lon);
+    double tempDist = hypot(cursorLat - it.lat, dlon);
     if (tempDist < dist) {
       posData = it;
       dist = tempDist;
