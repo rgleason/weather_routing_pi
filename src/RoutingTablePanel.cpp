@@ -957,7 +957,6 @@ void RoutingTablePanel::PopulateTable() {
       double apparentWindAngle = Polar::DirectionApparentWind(
           apparentWindSpeed, data.stw, data.twdOverWater - data.ctw,
           data.twsOverWater);
-
       if (!std::isnan(apparentWindSpeed)) {
         // Apply coloring to AWS cell based on apparent wind speed
         wxColor awsColor = GetWindSpeedColor(apparentWindSpeed);
@@ -977,9 +976,6 @@ void RoutingTablePanel::PopulateTable() {
         setCellWithColor(row, COL_AWA,
                          wxString::Format("%.0f\u00B0", apparentWindAngle),
                          awaColor);
-        wxGridCellAttr* attr = new wxGridCellAttr();
-        attr->SetTextColour(GetTextColorForBackground(awaColor));
-        m_gridWeatherTable->SetAttr(row, COL_AWA, attr);
       }
     }
 
