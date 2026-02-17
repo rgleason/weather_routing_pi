@@ -242,10 +242,8 @@ bool Position::Propagate(IsoRouteList& routelist,
     bearing2 = heading_resolve(parent_bearing + configuration.MaxSearchAngle);
   }
 
-  for (auto it = configuration.DegreeSteps.begin();
-       it != configuration.DegreeSteps.end(); it++) {
+  for (const double& twa : configuration.DegreeSteps) {
     double timeseconds = configuration.UsedDeltaTime;
-    double twa = heading_resolve(*it);
     double ctw =
         weather_data.twdOverWater + twa; /* rotated relative to true wind */
 

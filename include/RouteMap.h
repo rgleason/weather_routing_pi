@@ -562,7 +562,7 @@ struct RouteMapConfiguration {
   /**
    * Collection of angular steps used for vessel propagation calculations.
    *
-   * This list contains the discrete angular steps (in degrees) that represent
+   * This vector contains the discrete angular steps (in degrees) that represent
    * the possible headings relative to the true wind direction that the vessel
    * can take during propagation. These angles are pre-computed based on the
    * FromDegree, ToDegree, and ByDegrees configuration parameters.
@@ -578,7 +578,7 @@ struct RouteMapConfiguration {
    * complexity. Smaller step sizes provide more precise routing but require
    * more calculations.
    */
-  std::list<double> DegreeSteps;
+  std::vector<double> DegreeSteps;
   /** The latitude of the starting position, in decimal degrees. */
   double StartLat;
   /** The longitude of the starting position, in decimal degrees. */

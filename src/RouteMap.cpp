@@ -206,13 +206,13 @@ bool RouteMapConfiguration::Update() {
     while (step <= ToDegree + 1E-3) {  // Avoid missing the last step by a tiny
                                        // fraction, due to rounding errors
       DegreeSteps.push_back(step);
-      if (step > 0 && step < 180) DegreeSteps.push_back(360 - step);
+      if (step > 0.0 && step < 180.0) DegreeSteps.push_back(-step);
       step += ByDegrees;
     }
   } else {
     DegreeSteps.push_back(0.);
   }
-  DegreeSteps.sort();
+  std::sort(DegreeSteps.begin(), DegreeSteps.end());
 
   return true;
 }
