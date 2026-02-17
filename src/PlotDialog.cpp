@@ -275,8 +275,8 @@ void PlotDialog::GetScale() {
   for (int i = 0; i < 2; i++) {
     for (int j = i + 1; j < 3; j++) {
       // Use the same scale if variables are of the same type
-      if (GetType(cVariable[i]->GetSelection()) ==
-          GetType(cVariable[j]->GetSelection())) {
+      if (GetType(GetVariableEnumFromIndex(cVariable[i]->GetSelection())) ==
+          GetType(GetVariableEnumFromIndex(cVariable[j]->GetSelection()))) {
         m_minvalue[i] = m_minvalue[j] = wxMin(m_minvalue[i], m_minvalue[j]);
         m_maxvalue[i] = m_maxvalue[j] = wxMax(m_maxvalue[i], m_maxvalue[j]);
       }
