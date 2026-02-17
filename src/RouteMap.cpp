@@ -68,6 +68,7 @@
 #include <math.h>
 #include <list>
 #include <map>
+#include <algorithm>
 
 #include "Utilities.h"
 #include "ConstraintChecker.h"
