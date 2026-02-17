@@ -676,6 +676,21 @@ RoutingTablePanel::RoutingTablePanel(wxWindow* parent,
     wxLogMessage(
         "RoutingTablePanel: deferring PopulateTable(), no RouteMapOverlay yet");
   }
+  if (!m_RouteMap) {
+    // Multi-route mode: populate from selected routes
+    std::list<RouteMapOverlay*> overlays;
+
+    for (auto* wr : m_WeatherRouting.m_WeatherRoutes) {
+      if (wr && wr->routemapoverlay)
+          overlays.push_back(wr->routemapoverlay);
+    }
+
+    if (!overlays.empty()) {
+      // Convert list ? vector because PopulateMultiRouteTable expects vector
+      std::vector<RouteMapOverlay*> vec(overlays.begin(), overlays.end());
+      PopulateMultiRouteTable(vec);
+    }
+  }
   // Apply the current color scheme to eliminate any black areas
   SetColorScheme(PI_GLOBAL_COLOR_SCHEME_DAY);  // Default to day scheme
 }
@@ -785,6 +800,46 @@ void RoutingTablePanel::handleSailPlanCell(
     m_gridWeatherTable->SetCellValue(row, COL_SAIL_PLAN, _("Unknown"));
   }
 }
+
+
+void RoutingTablePanel::PopulateMultiRouteTable(
+    const std::vector<RouteMapOverlay*>& overlays) {
+  // Clear existing rows
+  int rows = m_gridWeatherTable->GetNumberRows();
+  if (rows > 0) m_gridWeatherTable->DeleteRows(0, rows);
+
+  int legNumber = 0;
+
+  for (auto* ov : overlays) {
+    if (!ov) continue;
+
+    // Public API: final route as a list of Position*
+    std::list<Position*> route = ov->GetRoute();
+
+    for (Position* pos : route) {
+      if (!pos) continue;
+
+      m_gridWeatherTable->AppendRows(1);
+      int row = m_gridWeatherTable->GetNumberRows() - 1;
+
+      // You?ll adapt these to your Position fields / formatting helpers
+      m_gridWeatherTable->SetCellValue(row, COL_LEG_NUMBER,
+                                       wxString::Format("%d", legNumber++));
+
+      // Example placeholders ? wire these to real data:
+      // m_gridWeatherTable->SetCellValue(row, COL_ETA, pos->m_ETAString);
+      // m_gridWeatherTable->SetCellValue(row, COL_TWS, wxString::Format("%.1f",
+      // pos->m_TWS)); m_gridWeatherTable->SetCellValue(row, COL_TWA,
+      // wxString::Format("%.0f", pos->m_TWA));
+      // m_gridWeatherTable->SetCellValue(row, COL_SOG, wxString::Format("%.2f",
+      // pos->m_SOG));
+      // ... etc ...
+    }
+  }
+
+  m_gridWeatherTable->AutoSize();
+}
+
 
 void RoutingTablePanel::PopulateTable() {
   if (!m_RouteMap) {

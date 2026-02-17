@@ -1,0 +1,54 @@
+--- a/WeatherRouting.cpp
++++ b/WeatherRouting.cpp
+@@ -147,12 +147,12 @@ void WeatherRouting::AddPosition(double lat, double lon, wxString name,
+   RouteMap::Positions.push_back(p);
+   UpdateConfigurations();
+
+-  wxListItem item;
+-  long index = m_panel->m_lPositions->InsertItem(
+-      m_panel->m_lPositions->GetItemCount(), item);
++  wxListItem item;
++  long index = m_PositionPanel->m_lPositions->InsertItem(
++      m_PositionPanel->m_lPositions->GetItemCount(), item);
+
+-  m_panel->m_lPositions->SetItem(index, POSITION_NAME, name);
+-  m_panel->m_lPositions->SetColumnWidth(POSITION_NAME, wxLIST_AUTOSIZE);
++  m_PositionPanel->m_lPositions->SetItem(index, POSITION_NAME, name);
++  m_PositionPanel->m_lPositions->SetColumnWidth(POSITION_NAME, wxLIST_AUTOSIZE);
+
+@@ -165,12 +165,12 @@ void WeatherRouting::AddPosition(double lat, double lon, wxString name,
+-  m_panel->m_lPositions->SetItem(
++  m_PositionPanel->m_lPositions->SetItem(
+       index, POSITION_LAT, toSDMM_PlugIn(NEflag::LAT, lat, Precision::HI));
+-  m_panel->m_lPositions->SetColumnWidth(POSITION_LAT, wxLIST_AUTOSIZE);
++  m_PositionPanel->m_lPositions->SetColumnWidth(POSITION_LAT, wxLIST_AUTOSIZE);
+
+-  m_panel->m_lPositions->SetItem(
++  m_PositionPanel->m_lPositions->SetItem(
+       index, POSITION_LON, toSDMM_PlugIn(NEflag::LON, lon, Precision::HI));
+-  m_panel->m_lPositions->SetColumnWidth(POSITION_LON, wxLIST_AUTOSIZE);
++  m_PositionPanel->m_lPositions->SetColumnWidth(POSITION_LON, wxLIST_AUTOSIZE);
+
+-  m_panel->m_lPositions->SetItemData(index, p.ID);
++  m_PositionPanel->m_lPositions->SetItemData(index, p.ID);
+
+@@ -220,7 +220,7 @@ void WeatherRouting::OnEditPosition() {
+-  if (m_panel->m_lPositions->GetSelectedItemCount() == 0) return;
++  if (m_PositionPanel->m_lPositions->GetSelectedItemCount() == 0) return;
+
+-  long item = m_panel->m_lPositions->GetNextItem(-1, wxLIST_NEXT_ALL,
++  long item = m_PositionPanel->m_lPositions->GetNextItem(-1, wxLIST_NEXT_ALL,
+                                                  wxLIST_STATE_SELECTED);
+
+@@ -260,7 +260,7 @@ void WeatherRouting::OnDeletePosition(wxCommandEvent& event) {
+-  long index = m_panel->m_lPositions->GetNextItem(-1, wxLIST_NEXT_ALL,
++  long index = m_PositionPanel->m_lPositions->GetNextItem(-1, wxLIST_NEXT_ALL,
+                                                   wxLIST_STATE_SELECTED);
+
+@@ -276,7 +276,7 @@ void WeatherRouting::OnDeletePosition(wxCommandEvent& event) {
+-  m_panel->m_lPositions->DeleteItem(index);
++  m_PositionPanel->m_lPositions->DeleteItem(index);
+
+@@ -289,7 +289,7 @@ void WeatherRouting::OnDeleteAllPositions(wxCommandEvent& event) {
+-  m_panel->m_lPositions->DeleteAllItems();
++  m_PositionPanel->m_lPositions->DeleteAllItems();

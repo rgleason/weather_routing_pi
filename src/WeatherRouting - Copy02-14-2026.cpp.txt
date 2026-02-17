@@ -22,14 +22,6 @@
 // Whenever positions  change  m_PositionPanel->PopulatePositions();
 // Whenever routes change  m_RouteMapPanel->PopulateRoutes();
 
-// ======================================================================
-// PATH A ? Compatibility Shims (Legacy API ? New Architecture)
-// ======================================================================
-
-
-
-// ======================================================================
-
 
 #include <wx/wx.h>
 #include <wx/aui/aui.h>
@@ -61,8 +53,6 @@
 #include "MemoryStatusDialog.h"
 #include "RouteMapPanel.h"
 #include "WeatherRoutingConfigDialog.h"
-#include "WeatherRoutingPositionPanel.h"
-
 
 // Declare the custom event for route map updates
 // This event is used by RouteMapOverlay threads to notify WeatherRouting of
@@ -685,8 +675,8 @@ void WeatherRouting::InitializeUI() {
  //We don't have this yet. 
 // Bind(wxEVT_MENU, &WeatherRouting::OnEditRouting, this, ID_ROUTING_EDIT);  
   Bind(wxEVT_MENU, &WeatherRouting::OnGotoRouting, this, ID_ROUTING_GOTO);
-  Bind(wxEVT_MENU, &WeatherRouting::OnDelete, this, ID_ROUTING_DELETE);
-  Bind(wxEVT_MENU, &WeatherRouting::OnDeleteAll, this, ID_ROUTING_DELETE_ALL);
+  Bind(wxEVT_MENU, &WeatherRouting::OnDeleteRouting, this, ID_ROUTING_DELETE);
+  Bind(wxEVT_MENU, &WeatherRouting::OnDeleteAllRoutings, this, ID_ROUTING_DELETE_ALL);
 
   Bind(wxEVT_MENU, &WeatherRouting::OnCompute, this, ID_ROUTING_COMPUTE);
   Bind(wxEVT_MENU, &WeatherRouting::OnComputeAll, this, ID_ROUTING_COMPUTE_ALL);
@@ -702,6 +692,7 @@ void WeatherRouting::InitializeUI() {
 
 
   Bind(wxEVT_MENU, &WeatherRouting::OnSaveAsRoute, this, ID_ROUTING_SAVE_ROUTE); 
+// We don't have this yet.
 //  Bind(wxEVT_MENU, &WeatherRouting::OnExportGPX, this, ID_ROUTING_EXPORT_GPX);  
   Bind(wxEVT_MENU, &WeatherRouting::OnFilter, this, ID_ROUTING_FILTER);
 
@@ -712,6 +703,7 @@ void WeatherRouting::InitializeUI() {
   Bind(wxEVT_MENU, &WeatherRouting::OnPlot, this, ID_VIEW_PLOT);
   Bind(wxEVT_MENU, &WeatherRouting::OnCursorPosition, this,ID_VIEW_CURSOR_POSITION);
   Bind(wxEVT_MENU, &WeatherRouting::OnRoutePosition, this, D_VIEW_ROUTE_POSITION);
+// not implemented yet
 //  Bind(wxEVT_MENU, &WeatherRouting::OnRoutingTable, this, ID_VIEW_ROUTING_TABLE);
 
   // HELP
@@ -751,7 +743,11 @@ void WeatherRouting::InitializeUI() {
 //  m_panel->m_lWeatherRoutes->Bind(
 //      wxEVT_LIST_ITEM_SELECTED, &WeatherRouting::OnWeatherRouteSelected, this);
 
+//  m_panel->m_lWeatherRoutes->Bind(
+//      wxEVT_LIST_ITEM_DESELECTED, &WeatherRouting::OnWeatherRouteSelected, this);
+
 }
+
 
 
 //============================================================
@@ -848,6 +844,8 @@ void WeatherRouting::BindEvents() {
       wxEVT_COMMAND_BUTTON_CLICKED,
       wxCommandEventHandler(WeatherRouting::OnExportRouteAsGPX), nullptr, this);
 }
+
+
 
 
 //==============================================================
@@ -962,25 +960,87 @@ WeatherRouting::~WeatherRouting() {
 //==============================================================
 // RENDER   OPENCPN Render overlay drawing function
 //==============================================================
-// This function is called by OpenCPN to render the plugin's overlays on the
-// map. it must be pure drawing code, and must not perform any computations or
-// state changes. Render() must be pure drawing, not UI logic
-// Positions UI is now driven by wr->Positions
-// Global RouteMap::Positions is engine?internal only
-// UI updates belong in :
-//    PopulatePositions()
-//    UpdateStates()
-//    UpdateDialogs()
-//    UpdateComputeState()
-//This makes the rendering pipeline deterministic, side?effect?free,
-// and aligned with your modern architectu
 
+
+/*
 
 void WeatherRouting::Render(piDC& dc, PlugIn_ViewPort& vp) {
-  // 1. Validate viewport
+  // ---------------------------------------------------------------------
+  // 1. Validate viewport and detect SDMM format changes
+  // ---------------------------------------------------------------------
+  static int prevLocationFormat = -1;
+  int currentLocationFormat = GetLatLonFormat();
+  bool locationFormatChanged = false;
+
   if (!vp.bValid) return;
 
-  // 2. Prepare OpenGL state (if using GL instead of wxDC)
+  if (currentLocationFormat != prevLocationFormat) {
+    prevLocationFormat = currentLocationFormat;
+    locationFormatChanged = true;
+  }
+
+  // ---------------------------------------------------------------------
+  // 2. Update waypoint positions in the Positions list control
+  //    This is legacy behavior: the plugin polls RouteMap::Positions
+  //    and updates the UI if any waypoint has moved or been renamed.
+  // ---------------------------------------------------------------------
+  bool work = false;
+
+  for (auto& it : RouteMap::Positions) {
+    PlugIn_Waypoint waypoint;
+    bool gotWaypoint = false;
+
+    wxString name = it.Name;
+    double lat = it.lat;
+    double lon = it.lon;
+
+    // If the waypoint has a GUID, fetch its current state from OpenCPN
+    if (!it.GUID.IsEmpty()) {
+      gotWaypoint = GetSingleWaypoint(it.GUID, &waypoint);
+
+      if (gotWaypoint) {
+        if (lat != waypoint.m_lat || lon != waypoint.m_lon ||
+            !waypoint.m_MarkName.IsSameAs(it.Name)) {
+          work = true;
+        }
+      }
+    }
+
+    long index = m_panel->m_lPositions->FindItem(0, it.ID);
+    if (index < 0) continue;  // corrupted or missing row
+
+    // Update cached values if waypoint changed
+    if (gotWaypoint && work) {
+      name = waypoint.m_MarkName;
+      lat = waypoint.m_lat;
+      lon = waypoint.m_lon;
+
+      it.Name = name;
+      it.lat = lat;
+      it.lon = lon;
+    }
+
+    // Update UI if waypoint changed or SDMM format changed
+    if (work || locationFormatChanged) {
+      m_panel->m_lPositions->SetItem(index, POSITION_NAME, name);
+      m_panel->m_lPositions->SetColumnWidth(POSITION_NAME, wxLIST_AUTOSIZE);
+
+      m_panel->m_lPositions->SetItem(
+          index, POSITION_LAT, toSDMM_PlugIn(NEflag::LAT, lat, Precision::HI));
+      m_panel->m_lPositions->SetColumnWidth(POSITION_LAT, wxLIST_AUTOSIZE);
+
+      m_panel->m_lPositions->SetItem(
+          index, POSITION_LON, toSDMM_PlugIn(NEflag::LON, lon, Precision::HI));
+      m_panel->m_lPositions->SetColumnWidth(POSITION_LON, wxLIST_AUTOSIZE);
+    }
+  }
+
+  // If anything changed, refresh the parent window
+  if (work || locationFormatChanged) GetParent()->Refresh();
+
+  // ---------------------------------------------------------------------
+  // 3. Prepare OpenGL state (if using GL instead of wxDC)
+  // ---------------------------------------------------------------------
   if (!dc.GetDC()) {
 #ifndef __OCPN__ANDROID__
     glPushAttrib(GL_LINE_BIT | GL_ENABLE_BIT | GL_HINT_BIT);
@@ -991,36 +1051,73 @@ void WeatherRouting::Render(piDC& dc, PlugIn_ViewPort& vp) {
     glEnable(GL_BLEND);
   }
 
-  // 3. Determine GRIB timeline time
+  // ---------------------------------------------------------------------
+  // 4. Determine GRIB timeline time for rendering
+  // ---------------------------------------------------------------------
   wxDateTime time = m_ConfigurationDialog.m_GribTimelineTime;
   if (!time.IsValid()) time = wxDateTime::UNow();
 
-  // 4. Update routing table highlight (UI only)
+  // ---------------------------------------------------------------------
+  // 5. Update routing table highlight (UI only)
+  // ---------------------------------------------------------------------
   if (m_RoutingTablePanel) m_RoutingTablePanel->UpdateTimeHighlight(time);
 
-  // 5. Render all route overlays
-  if (m_panel && m_panel->m_lWeatherRoutes) {
-    wxListCtrl* list = m_panel->m_lWeatherRoutes;
+  // ---------------------------------------------------------------------
+  // 6. Render all route overlays in the list control
+  // ---------------------------------------------------------------------
+  for (int i = 0; i < m_panel->m_lWeatherRoutes->GetItemCount(); i++) {
+    WeatherRoute* weatherroute = reinterpret_cast<WeatherRoute*>(
+        wxUIntToPtr(m_panel->m_lWeatherRoutes->GetItemData(i)));
 
-    for (int i = 0; i < list->GetItemCount(); i++) {
-      WeatherRoute* wr =
-          reinterpret_cast<WeatherRoute*>(wxUIntToPtr(list->GetItemData(i)));
-
-      if (wr && wr->routemapoverlay &&
-          wr->routemapoverlay->m_bEndRouteVisible) {
-        wr->routemapoverlay->Render(time, m_SettingsDialog, dc, vp, true);
-      }
+    if (weatherroute && weatherroute->routemapoverlay &&
+        weatherroute->routemapoverlay->m_bEndRouteVisible) {
+      weatherroute->routemapoverlay->Render(time, m_SettingsDialog, dc, vp,
+                                            true);
     }
   }
 
-  // 6. Render batch configuration overlay
+  // ---------------------------------------------------------------------
+  // 7. Render batch configuration overlay (if active)
+  // ---------------------------------------------------------------------
   m_ConfigurationBatchDialog.Render(dc, vp);
 
-// 7. Restore OpenGL state
+  // ---------------------------------------------------------------------
+  // 8. Restore OpenGL state
+  // ---------------------------------------------------------------------
 #ifndef __OCPN__ANDROID__
   if (!dc.GetDC()) glPopAttrib();
 #endif
 }
+
+//==============================================================
+// ANDROID GESTURE EVENT HANDLER
+//==============================================================
+
+
+#ifdef __OCPN__ANDROID__
+void WeatherRouting::OnEvtPanGesture(wxQT_PanGestureEvent& event) {
+  switch (event.GetState()) {
+    case GestureStarted:
+      m_startPos = GetPosition();
+      m_startMouse = event.GetCursorPos();  // g_mouse_pos_screen;
+      break;
+    default: {
+      wxPoint pos = event.GetCursorPos();
+      int x = wxMax(0, pos.x + m_startPos.x - m_startMouse.x);
+      int y = wxMax(0, pos.y + m_startPos.y - m_startMouse.y);
+      int xmax = ::wxGetDisplaySize().x - GetSize().x;
+      x = wxMin(x, xmax);
+      int ymax =
+          ::wxGetDisplaySize().y - GetSize().y;  // Some fluff at the bottom
+      y = wxMin(y, ymax);
+
+      Move(x, y);
+      m_tDownTimer.Stop();
+    } break;
+  }
+}
+#endif
+
 
 
 //==============================================================
@@ -1051,6 +1148,10 @@ void WeatherRouting::OnEvtPanGesture(wxQT_PanGestureEvent& event) {
   }
 }
 #endif
+
+*/
+
+
 
 
 
@@ -1214,8 +1315,7 @@ std::vector<RouteMapOverlay*> WeatherRouting::GetSelectedOverlays() const {
 // based on list indices or scheduler state.
 
 // MODERN
-WeatherRoute* WeatherRouting::GetSelectedRoute()
-
+WeatherRoute* WeatherRouting::GetSelectedRoute() const {
   // Ensure UI is valid
   if (!m_panel || !m_panel->m_lWeatherRoutes) return nullptr;
 
@@ -1392,12 +1492,87 @@ void WeatherRouting::OnWeatherRouteSelected(wxListEvent& event) {
 }
 
 
+// Put these methods together for better context
+// GetSelectedOverlays()
+// FirstCurrentRouteMap()(if still present)
+// CurrentRouteMaps()
+//This keeps your selection helpers grouped.
+// MODERN
 
+void WeatherRouting::DeleteSelectedRoute() {
+  // ---------------------------------------------------------
+  // 1. Get selected overlays
+  // ---------------------------------------------------------
+  std::vector<RouteMapOverlay*> overlays = GetSelectedOverlays();
+  if (overlays.empty()) {
+    wxLogMessage("WR: DeleteSelectedRoute ? no routes selected");
+    return;
+  }
+
+  wxLogMessage("WR: DeleteSelectedRoute ? BEGIN");
+
+  // ---------------------------------------------------------
+  // 2. Stop running computations
+  // ---------------------------------------------------------
+  for (auto* rmo : overlays) {
+    if (!rmo) continue;
+
+    rmo->Stop();
+    rmo->DeleteThread();
+  }
+
+  // ---------------------------------------------------------
+  // 3. Delete overlays + WeatherRoute objects
+  // ---------------------------------------------------------
+  for (auto* rmo : overlays) {
+    if (!rmo) continue;
+
+    WeatherRoute* wr = rmo->m_weatherRoute;
+    if (!wr) continue;
+
+    // Remove from master list
+    auto it = std::find(m_WeatherRoutes.begin(), m_WeatherRoutes.end(), wr);
+    if (it != m_WeatherRoutes.end()) m_WeatherRoutes.erase(it);
+
+    // Delete overlay (thread-safe, centralized)
+    DeleteRouteMap(rmo);
+
+    // Delete WeatherRoute object
+    delete wr;
+  }
+
+  // ---------------------------------------------------------
+  // 4. Clear stale UI state
+  // ---------------------------------------------------------
+  m_positionOnRoute = nullptr;
+
+  // ---------------------------------------------------------
+  // 5. Refresh UI (modern pipeline)
+  // ---------------------------------------------------------
+  UpdateCurrentConfigurations();  // rebuilds list control
+  UpdateDialogs();                // stats/report/plot
+  UpdateComputeState();           // compute button, etc.
+
+  if (GetParent()) GetParent()->Refresh();
+
+  // ---------------------------------------------------------
+  // 6. Schedule autosave
+  // ---------------------------------------------------------
+  m_tAutoSaveXML.Start(5000, true);
+
+  wxLogMessage("WR: DeleteSelectedRoute ? END");
+}
+
+
+
+void WeatherRouting::OnDeleteRouting(wxCommandEvent& event) {
+  DeleteSelectedRoute();
+}
 
 
 // MODERN
-/*
- void WeatherRouting::OnDeleteAllRoutings(wxCommandEvent& event) {
+
+void WeatherRouting::OnDeleteAllRoutings(wxCommandEvent& event) {
   // ---------------------------------------------------------
   // 1. Stop all computations first
   // ---------------------------------------------------------
@@ -1437,7 +1612,8 @@ void WeatherRouting::OnWeatherRouteSelected(wxListEvent& event) {
 
   wxLogMessage("WR: OnDeleteAllRoutings ? all routes deleted");
 }
-*/
+
+
 
 
 // --------------------------------------------------------------------
@@ -1445,8 +1621,7 @@ void WeatherRouting::OnWeatherRouteSelected(wxListEvent& event) {
 // --------------------------------------------------------------------
 // MODERN helper: returns the row index of the given WeatherRoute*
 
-int WeatherRouting::GetRouteRow(WeatherRoute* wr) const
-
+long WeatherRouting::GetRouteRow(WeatherRoute* wr) const {
   if (!wr || !m_panel || !m_panel->m_lWeatherRoutes) return -1;
 
   wxListCtrl* list = m_panel->m_lWeatherRoutes;
@@ -2244,38 +2419,17 @@ bool WeatherRouting::IsWaiting(const RouteMapOverlay* rmo) const {
 // run on the main thread in a race-free, deterministic order.
 // NOTE: This event is posted by worker threads when they complete
 // their computations. All UI updates MUST occur here!!!
-// Implements the "UI Update" step in the worker thread workflow diagram.
-// So that all UI updates are centralized, consistent, and thread-safe.
-// Stops doing global Update() calls on the list control, and instead updates
-// only the specific row(s) that changed, based on the RouteMapOverlay* passed
-// in the event payload. Also triggers updates to dependent dialogs and buttons,
 //-----------------------------------------------------------------
 
 void WeatherRouting::OnRouteMapUpdate(wxThreadEvent& event) {
   wxLogMessage("WeatherRouting::OnRouteMapUpdate - BEGIN");
 
-  // Identify which overlay triggered the event
-  RouteMapOverlay* ov = event.GetPayload<RouteMapOverlay*>();
-  if (!ov) {
-    wxLogMessage("WeatherRouting::OnRouteMapUpdate - no payload");
-    return;
-  }
-
-  // Update only this overlay?s row in the list control
-  UpdateRouteMap(ov);
-
-  // Update dependent dialogs (statistics, plot, report)
-  UpdateDialogs();
-
-  // Update compute/stop buttons and progress
-  UpdateComputeState();
-
-  // Trigger chart redraw
-  if (GetParent()) GetParent()->Refresh();
+  UpdateStates();        // must run first
+  UpdateDialogs();       // refresh dependent dialogs
+  UpdateComputeState();  // update compute button, etc.
 
   wxLogMessage("WeatherRouting::OnRouteMapUpdate - END");
 }
-
 
 //-----------------------------------------------------------------
 // Core UI Update Methods
@@ -2632,36 +2786,6 @@ void WeatherRouting::UpdateColumns() {
 }
 
 
-
-// -----------------------------------------------------------------
-// UpdateConfigurations
-// -----------------------------------------------------------------
-// Updates the Start/End dropdowns in the ConfigurationDialog based on the
-// currently selected WeatherRoute. Called when user selects a different route
-// in the list control, and when the ConfigurationDialog is opened. The dialog
-// itself also calls this method on open to ensure it is always up to date with
-// the current selection. The method safely handles cases where no route is
-// selected or where the selected route has no overlay, in which case it simply
-// clears the dropdowns and returns without error.
-
-void WeatherRouting::UpdateConfigurations() {
-  auto overlays = GetSelectedOverlays();
-  if (overlays.size() != 1) return;
-
-  WeatherRoute* wr = overlays[0]->m_weatherRoute;
-  if (!wr) return;
-
-  m_ConfigurationDialog.ClearSources();
-
-  for (const WeatherPoint& p : wr->Positions)
-    m_ConfigurationDialog.AddSource(p.Name);
-
-  m_ConfigurationDialog.Update();
-}
-
-
-
-
 //-----------------------------------------------------------------------
 // Update method for WeatherRoute (Time)
 //-----------------------------------------------------------------------
@@ -2672,6 +2796,111 @@ void WeatherRouting::UpdateConfigurations() {
 // then UpdateItem() writes those strings into the list control
 
 
+void WeatherRoute::Update(WeatherRouting* parent, bool fullUpdate) {
+  // ---------------------------------------------------------------------
+  // 1. Update state string (WeatherRouting already computed the state)
+  // ---------------------------------------------------------------------
+  if (fullUpdate) {
+    if (!routemapoverlay)
+      State = _("Not Computed");
+    else if (routemapoverlay->HasThread())
+      State = _("Computing");
+    else if (routemapoverlay->Finished() &&
+             routemapoverlay->ReachedDestination())
+      State = _("Complete");
+    else if (routemapoverlay->Finished())
+      State = _("Ready");
+    else
+      State = _("Not Computed");
+  }
+
+  // ---------------------------------------------------------------------
+  // 2. Update time strings (UTC/local toggle)
+  // ---------------------------------------------------------------------
+  if (routemapoverlay && routemapoverlay->Finished()) {
+    const auto& iso = routemapoverlay->GetIsoChronList();
+    if (!iso.empty()) {
+      IsoChron* firstIso = iso.front();
+      IsoChron* lastIso = iso.back();
+
+      if (firstIso && lastIso) {
+        bool useLocal =
+            parent->GetSettingsDialog().m_cbUseLocalTime->GetValue();
+
+        wxDateTime start = firstIso->time;
+        wxDateTime end = lastIso->time;
+
+        if (useLocal) {
+          start.MakeFromUTC();
+          end.MakeFromUTC();
+        }
+
+        StartTimeString = start.FormatISOCombined(' ');
+        EndTimeString = end.FormatISOCombined(' ');
+
+        wxTimeSpan span = end - start;
+        DurationString = span.Format("%H:%M");
+      }
+    }
+  } else {
+    StartTimeString.clear();
+    EndTimeString.clear();
+    DurationString.clear();
+  }
+
+  // ---------------------------------------------------------------------
+  // 3. Distance and other computed fields are now handled in UpdateItem()
+  // ---------------------------------------------------------------------
+}
+
+
+//-----------------------------------------------------------------
+// ComputeStateString
+//-----------------------------------------------------------------
+// This method computes the state string for a given RouteMapOverlay.
+// It is used by WeatherRoute::Update() to set the State field based on the
+// current status of the overlay. The logic is:
+// - If no overlay, return "Not Computed"
+// - If dirty, return "Ready"
+// - If has active thread, return "Computing"
+// - If finished and reached destination, return "Complete"
+// - If finished but not at destination, return "Ready"
+// - Default fallback: "Not Computed"
+// This method is purely a string computation based on the overlay state.
+// The actual state machine logic lives in WeatherRouting::UpdateStates() which
+// sets the WeatherRoute->State field and controls when UpdateItem() is called.
+// This separation allows us to keep the state machine logic in one place
+// and the string representation logic in another, making it easier to maintain
+// and test each part independently.
+// Note: WeatherRouting::UpdateStates() is responsible for calling this method
+// and then updating the WeatherRoute->State field accordingly.
+// WeatherRoute::Update()
+// calls this method indirectly through WeatherRouting::UpdateStates() and
+// then updates the list control through WeatherRouting::UpdateItem() if needed.
+// This method does NOT have any side effects and does not modify the overlay
+// or the WeatherRoute. It simply returns the appropriate string based on the
+// current state of the overlay.
+//-----------------------------------------------------------------
+
+wxString WeatherRouting::ComputeStateString(const RouteMapOverlay* ov) const {
+  // No overlay ? nothing has been computed yet
+  if (!ov) return _("Not Computed");
+
+  // Dirty means configuration changed and route is ready to recompute
+  if (ov->IsDirty()) return _("Ready");
+
+  // Active worker thread
+  if (ov->HasThread()) return _("Computing");
+
+  // Finished and reached destination
+  if (ov->Finished() && ov->ReachedDestination()) return _("Complete");
+
+  // Finished but not at destination ? Ready to recompute
+  if (ov->Finished()) return _("Ready");
+
+  // Default fallback
+  return _("Not Computed");
+}
 
 
 
@@ -3145,7 +3374,6 @@ void WeatherRouting::OnStop(wxCommandEvent& event) {
 
 
 
-
 // ============================================================================
 // WeatherRouting::OnWeatherRoutesListLeftDown
 // Modern visibility-toggle handler for the WeatherRoutes list control.
@@ -3371,8 +3599,7 @@ double WeatherRouting::ComputeRouteDistance(const Position* dest) {
 
 // ============================================================================
 // WeatherRouting::PopulatePositions
-// Rebuilds the positions list control based on the currently selected
-// WeatherRoute.
+// Rebuilds the positions list control from RouteMap::Positions.
 // ============================================================================
 // Modern implementation of positions list population.
 
@@ -3420,18 +3647,19 @@ void WeatherRouting::PopulatePositions() {
 // loads start/end positions (if GUID present), inserts into UI, and autosaves.
 // ============================================================================
 // Modern implementation
+
 bool WeatherRouting::AddConfiguration(RouteMapConfiguration& configuration) {
   wxLogMessage("WR: AddConfiguration() - BEGIN");
 
   // ---------------------------------------------------------------------
-  // 1. Create WeatherRoute + Overlay (modern constructor)
+  // 1. Create WeatherRoute + Overlay
   // ---------------------------------------------------------------------
-  WeatherRoute* weatherroute = new WeatherRoute(this);
+  WeatherRoute* weatherroute = new WeatherRoute;
   weatherroute->routemapoverlay = new RouteMapOverlay(this, weatherroute);
 
   RouteMapOverlay* ov = weatherroute->routemapoverlay;
   ov->SetConfiguration(configuration);
-  ov->ResetFinished();  // clean initial state
+  ov->ResetFinished();  // modern clean state
 
   // ---------------------------------------------------------------------
   // 2. Load start/end positions if a Route GUID is provided
@@ -3439,7 +3667,6 @@ bool WeatherRouting::AddConfiguration(RouteMapConfiguration& configuration) {
   if (!configuration.RouteGUID.IsEmpty()) {
     std::unique_ptr<PlugIn_Route> rte =
         GetRoute_Plugin(configuration.RouteGUID);
-
     if (rte && rte->pWaypointList) {
       wxPlugin_WaypointListNode* pwpnode = rte->pWaypointList->GetFirst();
 
@@ -3447,7 +3674,7 @@ bool WeatherRouting::AddConfiguration(RouteMapConfiguration& configuration) {
         // Start
         PlugIn_Waypoint* pwp = pwpnode->GetData();
         AddPosition(weatherroute, pwp->m_lat, pwp->m_lon, pwp->m_MarkName,
-                    pwp->m_GUID, false);
+                    pwp->m_GUID);
 
         configuration.Start = pwp->m_MarkName;
         configuration.StartGUID = pwp->m_GUID;
@@ -3459,7 +3686,7 @@ bool WeatherRouting::AddConfiguration(RouteMapConfiguration& configuration) {
 
         pwp = pwpnode->GetData();
         AddPosition(weatherroute, pwp->m_lat, pwp->m_lon, pwp->m_MarkName,
-                    pwp->m_GUID, false);
+                    pwp->m_GUID);
 
         configuration.End = pwp->m_MarkName;
         configuration.EndGUID = pwp->m_GUID;
@@ -3468,14 +3695,16 @@ bool WeatherRouting::AddConfiguration(RouteMapConfiguration& configuration) {
       }
     }
   }
-
   // ---------------------------------------------------------------------
-  // 3. Insert into model list
+  // 3. Insert into model lists
   // ---------------------------------------------------------------------
   m_WeatherRoutes.push_back(weatherroute);
 
   // ---------------------------------------------------------------------
-  // 4. Insert into the list control (modern UI)
+  // 4. Insert into the list control (modern panel)
+  // ---------------------------------------------------------------------
+  // ---------------------------------------------------------------------
+  // 4. Insert into the list control (modern panel)
   // ---------------------------------------------------------------------
   if (m_panel && m_panel->m_lWeatherRoutes) {
     wxListCtrl* list = m_panel->m_lWeatherRoutes;
@@ -3492,14 +3721,11 @@ bool WeatherRouting::AddConfiguration(RouteMapConfiguration& configuration) {
   // ---------------------------------------------------------------------
   // 5. Autosave
   // ---------------------------------------------------------------------
-  SaveXML(m_FileName.GetFullPath());
+  SaveXML();
 
   wxLogMessage("WR: AddConfiguration() - END");
   return true;
 }
-
-
-
 
 
 
@@ -3545,7 +3771,7 @@ void WeatherRouting::UpdateBoatFilename(const wxString& boatFileName) {
   }
 
   // Autosave
-  SaveXML(m_FileName.GetFullPath());
+  SaveXML();
 
   wxLogMessage("WR: UpdateBoatFilename() - END");
 }
@@ -3713,7 +3939,7 @@ void WeatherRouting::OnUpdateBoat(wxCommandEvent& event) {
   // ---------------------------------------------------------------------
   // 7. Autosave
   // ---------------------------------------------------------------------
-  SaveXML(m_FileName.GetFullPath());
+  SaveXML();
 }
 
 
@@ -3777,11 +4003,10 @@ void WeatherRouting::OnStatistics(wxCommandEvent& event) {
   m_StatisticsDialog.Show();
 }
 
-
-// ---------------------------------------------------------------------
-// Collect overlays for all selected WeatherRoutes
-// ---------------------------------------------------------------------
 void WeatherRouting::OnReport(wxCommandEvent& event) {
+  // ---------------------------------------------------------------------
+  // Collect overlays for all selected WeatherRoutes
+  // ---------------------------------------------------------------------
   std::list<RouteMapOverlay*> overlays;
 
   long item = -1;
@@ -3820,12 +4045,10 @@ void WeatherRouting::OnBatch(wxCommandEvent& event) {
   m_ConfigurationBatchDialog.Show();
 }
 
-
-  // ---------------------------------------------------------------------
-// Use the *first selected* WeatherRoute for plotting
-// ---------------------------------------------------------------------
 void WeatherRouting::OnPlot(wxCommandEvent& event) {
-
+  // ---------------------------------------------------------------------
+  // Use the *first selected* WeatherRoute for plotting
+  // ---------------------------------------------------------------------
   long item = m_panel->m_lWeatherRoutes->GetNextItem(-1, wxLIST_NEXT_ALL,
                                                      wxLIST_STATE_SELECTED);
 
@@ -3902,36 +4125,9 @@ bool WeatherRouting::OpenXML(wxString filename, bool reportfailure) {
   wxString lastboatFileName;
   Boat lastboat;
 
-  // ------------------------------------------------------------
-  // 1. Load document
-  // ------------------------------------------------------------
-  if (!doc.LoadFile(filename.mb_str())) {
-    error = _("Failed to load file.");
-    if (reportfailure) {
-      wxMessageDialog mdlg(this, error, _("Weather Routing"),
-                           wxOK | wxICON_ERROR);
-      mdlg.ShowModal();
-    }
-    delete progressdialog;
-    return false;
-  }
+  if (!doc.LoadFile(filename.mb_str())) FAIL(_("Failed to load file."));
 
-  // ------------------------------------------------------------
-  // 2. Root element + name validation
-  // ------------------------------------------------------------
-  TiXmlElement* rootElem = doc.RootElement();
-  if (!rootElem) {
-    error = _("Invalid xml file");
-    if (reportfailure) {
-      wxMessageDialog mdlg(this, error, _("Weather Routing"),
-                           wxOK | wxICON_ERROR);
-      mdlg.ShowModal();
-    }
-    delete progressdialog;
-    return false;
-  }
-
-  TiXmlHandle root(rootElem);
+  TiXmlHandle root(doc.RootElement());
   wxString rootName = wxString::FromUTF8(root.Element()->Value());
   wxLogMessage("ROOT ELEMENT = %s", rootName.mb_str());
 
@@ -3939,27 +4135,15 @@ bool WeatherRouting::OpenXML(wxString filename, bool reportfailure) {
   if (rootName != "OpenCPNWeatherRoutingConfiguration" &&
       rootName != "WeatherRoutingConfiguration" &&
       rootName != "OpenCPNWeatherRouting") {
-    error = _("Invalid xml file");
-    if (reportfailure) {
-      wxMessageDialog mdlg(this, error, _("Weather Routing"),
-                           wxOK | wxICON_ERROR);
-      mdlg.ShowModal();
-    }
-    delete progressdialog;
-    return false;
+    FAIL(_("Invalid xml file"));
   }
 
-  // ------------------------------------------------------------
-  // 3. Count nodes for progress dialog
-  // ------------------------------------------------------------
+  // Count nodes for progress dialog
   int count = 0;
   for (TiXmlElement* e = root.FirstChild().Element(); e;
        e = e->NextSiblingElement())
     count++;
 
-  // ------------------------------------------------------------
-  // 4. Iterate children
-  // ------------------------------------------------------------
   int i = 0;
   for (TiXmlElement* e = root.FirstChild().Element(); e;
        e = e->NextSiblingElement(), i++) {
@@ -4133,12 +4317,20 @@ bool WeatherRouting::OpenXML(wxString filename, bool reportfailure) {
       continue;
     }
   }
-  
-  UpdateConfigurations();
 
   delete progressdialog;
   return true;
+
+failed:
+  delete progressdialog;
+  if (reportfailure) {
+    wxMessageDialog mdlg(this, error, _("Weather Routing"),
+                         wxOK | wxICON_ERROR);
+    mdlg.ShowModal();
+  }
+  return false;
 }
+
 
 void WeatherRouting::SaveXML(wxString filename) {
   wxFileName fn(filename);
@@ -4263,7 +4455,7 @@ void WeatherRouting::SaveXML(wxString filename) {
 
 
 
-TiXmlElement* WeatherRouting::SaveSimplifiedRouteAsGPXFile(
+TiXmlElement* WeatherRouting::SaveSimplifiedRouteAsGPX(
     const RouteMapOverlay& routemapoverlay,
     const std::list<Position*>& simplifiedRoute) {
   if (simplifiedRoute.empty()) return nullptr;
@@ -4350,11 +4542,11 @@ TiXmlElement* WeatherRouting::SaveSimplifiedRouteAsGPXFile(
 // OnDeletePosition
 //   User selects a position in the list and clicks Delete
 //   Prompts for confirmation, Removes from the list control
-//   Updates configuration dialog.
+//   Updates configuration dialogs, Removes from RouteMap::Positions
 // OnDeleteAllPositions
 //   User clicks Delete All Positions
 //   Prompts for confirmation, Clears the list control
-//   Updates configuration dialogs
+//   Updates configuration dialogs, Clears RouteMap::Positions
 //--------------------------------
 
 
@@ -4386,16 +4578,17 @@ void WeatherRouting::AddPosition(WeatherRoute* wr, double lat, double lon,
                                  bool suppress_prompt) {
   if (!wr) return;
 
-  // 1. GUID-based positions go to the GUID handler
+  // ---------------------------------------------------------------------
+  // 1. GUID?based positions go to the GUID handler
+  // ---------------------------------------------------------------------
   if (!GUID.IsEmpty()) {
     AddPosition_GUID(wr, lat, lon, name, GUID);
-
-    // NEW: keep dialog in sync
-    UpdateConfigurations();
     return;
   }
 
-  // 2. Check for name collision among user-defined positions
+  // ---------------------------------------------------------------------
+  // 2. Check for name collision among user?defined positions
+  // ---------------------------------------------------------------------
   for (size_t i = 0; i < wr->Positions.size(); i++) {
     WeatherPoint& p = wr->Positions[i];
 
@@ -4414,15 +4607,14 @@ void WeatherRouting::AddPosition(WeatherRoute* wr, double lat, double lon,
         p.lon = lon;
         UpdatePositionRow(i);
         MarkRouteDirty(wr);
-
-        // NEW: keep dialog in sync
-        UpdateConfigurations();
       }
       return;
     }
   }
 
-  // 3. Insert new user-defined position
+  // ---------------------------------------------------------------------
+  // 3. Insert new user?defined position
+  // ---------------------------------------------------------------------
   WeatherPoint p;
   p.lat = lat;
   p.lon = lon;
@@ -4433,9 +4625,6 @@ void WeatherRouting::AddPosition(WeatherRoute* wr, double lat, double lon,
 
   AddPositionRow(wr->Positions.size() - 1);
   MarkRouteDirty(wr);
-
-  // NEW: keep dialog in sync
-  UpdateConfigurations();
 }
 
 
@@ -4486,8 +4675,6 @@ void WeatherRouting::AddPosition_GUID(WeatherRoute* wr, double lat, double lon,
 }
 
 
-// Supporting UI Helper: opens the New Position dialog, collects user input, and
-// calls the main AddPosition logic.
 void WeatherRouting::OnNewPosition(wxCommandEvent& event) {
   NewPositionDialog dlg(this);
   if (dlg.ShowModal() == wxID_OK) {
@@ -4497,126 +4684,8 @@ void WeatherRouting::OnNewPosition(wxCommandEvent& event) {
   }
 }
 
-//-------------------------------------------------------------------
-// OnNewRouting
-// -------------------------------------------------------------------
-// User clicks ?New Routing? in the UI. Creates a new WeatherRoute with default
-// configuration, adds it to the model, opens the configuration dialog for user
-// edits, applies changes, and refreshes the UI. If the user cancels the
-// configuration dialog, deletes the new route cleanly.
-void WeatherRouting::OnNewRouting(wxCommandEvent& event) {
-  if (m_shuttingDown) {
-    wxLogMessage("IGNORED CALLBACK: %s during shutdown", __FUNCTION__);
-    return;
-  }
-
-  wxLogMessage("WeatherRouting::OnNewRouting - BEGIN");
-
-  // 1. Build a default configuration using the new per?route logic
-  RouteMapConfiguration config = DefaultConfiguration();
-
-  // 2. Add the new configuration to the model
-  if (!AddConfiguration(config)) {
-    wxLogMessage("OnNewRouting: AddConfiguration failed");
-    return;
-  }
-
-  UpdateConfigurations();
-
-  // 3. Retrieve the newly created WeatherRoute
-  WeatherRoute* wr = m_WeatherRoutes.back();
-  RouteMapOverlay* ov = wr->routemapoverlay;
-
-  // 4. Open the configuration dialog for user edits
-  m_ConfigurationDialog.SetConfiguration(config);
-
-  if (m_ConfigurationDialog.ShowModal() != wxID_OK) {
-    // User cancelled ? delete the new route cleanly
-    wxLogMessage("OnNewRouting: user cancelled, deleting new route");
-    DeleteRouteMap(ov);
-    return;
-  }
-
-  // 5. Apply updated configuration
-  config = m_ConfigurationDialog.GetConfiguration();
-  ov->SetConfiguration(config);
-  ov->MarkDirty();
-
-  // 6. Refresh UI
-  UpdateStates();
-  UpdateDialogs();
-  UpdateComputeState();
-
-  // 7. Persist
-  SaveXML(m_FileName.GetFullPath());
-
-  wxLogMessage("WeatherRouting::OnNewRouting - END");
-}
-
-
-//-----------------------------------------------------------------------
-// OnDuplicateRouting
-//------------------------------------------------------------------------
-// User clicks ?Duplicate Routing? in the UI. Creates a copy of the selected
-// WeatherRoute, adds it to the model, opens the configuration dialog for user
-// edits, applies changes, and refreshes the UI. If the user cancels the
-// configuration dialog, deletes the new route cleanly.
-
-void WeatherRouting::OnDuplicateRoute(wxCommandEvent& event) {
-  if (m_shuttingDown) {
-    wxLogMessage("IGNORED CALLBACK: %s during shutdown", __FUNCTION__);
-    return;
-  }
-
-  wxLogMessage("WeatherRouting::OnDuplicateRoute - BEGIN");
-
-  // 1. Determine which route is selected
-  auto overlays = GetSelectedOverlays();
-  if (overlays.size() != 1) {
-    wxLogMessage("OnDuplicateRoute: requires exactly one selected route");
-    return;
-  }
-
-  RouteMapOverlay* srcOV = overlays[0];
-  WeatherRoute* srcWR = srcOV->m_weatherRoute;
-  if (!srcWR) return;
-
-  // 2. Clone the configuration
-  RouteMapConfiguration config = srcOV->GetConfiguration();
-
-  // Give the duplicate a new GUID
-  config.RouteGUID = GetNewGUID();
-
-  // 3. Add the new configuration to create a new WeatherRoute + overlay
-  if (!AddConfiguration(config)) {
-    wxLogMessage("OnDuplicateRoute: AddConfiguration failed");
-    return;
-  }
-
-  // 4. Retrieve the newly created WeatherRoute
-  WeatherRoute* newWR = m_WeatherRoutes.back();
-  RouteMapOverlay* newOV = newWR->routemapoverlay;
-
-  // 5. Copy per?route positions
-  newWR->Positions = srcWR->Positions;
-
-  // 6. Mark overlay dirty so it recomputes
-  newOV->MarkDirty();
-
-  UpdateConfigurations();
-
-  // 7. Refresh UI
-  UpdateStates();
-  UpdateDialogs();
-  UpdateComputeState();
-
-  // 8. Persist
-  SaveXML(m_FileName.GetFullPath());
-
-  wxLogMessage("WeatherRouting::OnDuplicateRoute - END");
-}
-
-
+// Supporting UI Helper: opens the New Position dialog, collects user input, and
+// calls the main AddPosition logic.
 
 void WeatherRouting::AddPositionRow(size_t index) {
   if (!m_PositionPanel || !m_PositionPanel->m_lPositions) return;
@@ -4659,30 +4728,10 @@ void WeatherRouting::MarkRouteDirty(WeatherRoute* wr) {
   if (!wr) return;
 
   wr->routemapoverlay->MarkDirty();
-  SaveXML(m_FileName.GetFullPath());    // or schedule autosave
+  SaveXML(true);  // or schedule autosave
 }
 
 
-// Add helper function  BY GUID or by name, depending on whether GUID is
-// provided.
-// by Copilot   
-//  Supporting UI Helper: adds a position to the currently selected route, with
-//  optional name and GUID.
-//   Used by the New Position dialog and the XML loading logic.
-//    If GUID is empty, treats as user?defined position and checks for name
-//     collisions. If GUID exists, treats as route?defined position and updates
-//      existing position with same GUID or adds new if no match. Does not
-//      prompt the user in either case. Updates the UI and configuration dialogs as
-//         needed.
-
-
-void WeatherRouting::AddPosition(double lat, double lon, wxString name,
-                                 wxString GUID) {
-  WeatherRoute* wr = GetSelectedRoute();
-  if (!wr) return;
-
-  AddPosition(wr, lat, lon, name, GUID, false);
-}
 
 
 
@@ -4698,55 +4747,68 @@ void WeatherRouting::OnEditPosition(wxCommandEvent& event) {
     return;
   }
 
+  // ---------------------------------------------------------------------
+  // 1. Determine which route is selected
+  // ---------------------------------------------------------------------
   auto overlays = GetSelectedOverlays();
-  if (overlays.size() != 1) return;
+  if (overlays.size() != 1) {
+    wxLogMessage("OnEditPosition: requires exactly one selected route");
+    return;
+  }
 
   RouteMapOverlay* ov = overlays[0];
   WeatherRoute* wr = ov->m_weatherRoute;
   if (!wr) return;
 
-  if (!m_PositionPanel || !m_PositionPanel->m_lPositions) return;
+// ---------------------------------------------------------------------
+  // 2. Determine which position is selected in the Positions list
+  // ---------------------------------------------------------------------
+  if (!m_PositionPanel || !m_PositionPanel->m_lPositions) {
+    wxLogMessage("OnEditPosition: no positions list available");
+    return;
+  }
+
   wxListCtrl* list = m_PositionPanel->m_lPositions;
 
   long item = list->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
-  if (item < 0) return;
+  if (item < 0) {
+    wxLogMessage("OnEditPosition: no position selected");
+    return;
+  }
 
+
+  // The list control stores the index of the position in wr->Positions
   long posIndex = list->GetItemData(item);
-  if (posIndex < 0 || posIndex >= (long)wr->Positions.size()) return;
+  if (posIndex < 0 || posIndex >= (long)wr->Positions.size()) {
+    wxLogMessage("OnEditPosition: invalid position index");
+    return;
+  }
 
   WeatherPoint& p = wr->Positions[posIndex];
 
+  // ---------------------------------------------------------------------
+  // 3. Fill dialog with position data
+  // ---------------------------------------------------------------------
   NewPositionDialog dlg(this);
   dlg.m_tName->SetValue(p.Name);
   dlg.m_tLatitude->SetValue(toSDMM_PlugIn(1, p.lat));
   dlg.m_tLongitude->SetValue(toSDMM_PlugIn(2, p.lon));
 
+  // ---------------------------------------------------------------------
+  // 4. Apply edits
+  // ---------------------------------------------------------------------
   if (dlg.ShowModal() == wxID_OK) {
-    wxString oldName = p.Name;
-
-    // 1. Update model
     p.Name = dlg.m_tName->GetValue();
     p.lat = fromDMM_Plugin(dlg.m_tLatitude->GetValue());
     p.lon = fromDMM_Plugin(dlg.m_tLongitude->GetValue());
 
-    // 2. Rebuild list
-    PopulatePositions();
-
-    // 3. Update dialog internal lists
-    m_ConfigurationDialog.RemoveSource(oldName);
-    m_ConfigurationDialog.AddSource(p.Name);
-
-    // 4. Refresh dialog Start/End dropdowns
-    UpdateConfigurations();
-
-    // 5. Mark dirty
+    // Mark overlay dirty so compute results are invalidated
     ov->MarkDirty();
 
-    // 6. Update UI state
+    // Refresh UI
+    PopulatePositions();
     UpdateStates();
-
-    // 7. Persist
-    SaveXML(m_FileName.GetFullPath());
+    SaveXML(true);
 
     wxLogMessage("OnEditPosition: updated position index=%ld", posIndex);
   }
@@ -4756,93 +4818,59 @@ void WeatherRouting::OnEditPosition(wxCommandEvent& event) {
 
 
 void WeatherRouting::OnDeletePosition(wxCommandEvent& event) {
-  if (m_shuttingDown) {
-    wxLogMessage("IGNORED CALLBACK: %s during shutdown", __FUNCTION__);
-    return;
-  }
-
-  // Ensure the positions panel exists
+  // Ensure the new UI panel exists
   if (!m_PositionPanel || !m_PositionPanel->m_lPositions) return;
+
   wxListCtrl* list = m_PositionPanel->m_lPositions;
 
-  // We operate on the currently selected route (same pattern as OnEditPosition)
-  auto overlays = GetSelectedOverlays();
-  if (overlays.size() != 1) {
-    wxLogMessage("OnDeletePosition: requires exactly one selected route");
-    return;
+  // Find the selected row
+  long index = list->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
+  if (index < 0) return;
+
+  // Retrieve the ID stored in the row
+  long ID = list->GetItemData(index);
+  assert(ID >= 0);
+
+  // Remove from RouteMap::Positions
+  for (auto it = RouteMap::Positions.begin(); it != RouteMap::Positions.end();
+       ++it) {
+    if (it->ID == ID) {
+      wxString name = it->Name;
+
+      // Remove from configuration dialogs
+      m_ConfigurationDialog.RemoveSource(name);
+      m_ConfigurationBatchDialog.RemoveSource(name);
+
+      RouteMap::Positions.erase(it);
+      break;
+    }
   }
 
-  RouteMapOverlay* ov = overlays[0];
-  WeatherRoute* wr = ov->m_weatherRoute;
-  if (!wr) return;
+  // Remove from the UI list
+  list->DeleteItem(index);
 
-  // Find the selected row in the positions list
-  long row = list->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
-  if (row < 0) {
-    wxLogMessage("OnDeletePosition: no position selected");
-    return;
-  }
-
-  // Row data is the index into wr->Positions (see AddPositionRow)
-  long posIndex = list->GetItemData(row);
-  if (posIndex < 0 || posIndex >= (long)wr->Positions.size()) {
-    wxLogMessage("OnDeletePosition: invalid position index");
-    return;
-  }
-
-  wxString name = wr->Positions[posIndex].Name;
-
-  // Remove from the per?route model
-  wr->Positions.erase(wr->Positions.begin() + posIndex);
-
-  // Rebuild the positions list for this route
-  list->DeleteAllItems();
-  for (size_t i = 0; i < wr->Positions.size(); ++i)
-      AddPositionRow(i);
-
-  // Keep configuration dialogs in sync if they still use position names
-  m_ConfigurationDialog.RemoveSource(name);
-  m_ConfigurationBatchDialog.RemoveSource(name);
-
-  // Update dependent UI / configuration and persist
+  // Update dependent UI
   UpdateConfigurations();
-  MarkRouteDirty(wr);  // marks overlay dirty and saves XML
+
+  // Schedule autosave
+  m_tAutoSaveXML.Start(5000, true);
 }
 
 
-
 void WeatherRouting::OnDeleteAllPositions(wxCommandEvent& event) {
-  if (m_shuttingDown) {
-    wxLogMessage("IGNORED CALLBACK: %s during shutdown", __FUNCTION__);
-    return;
-  }
+  // Clear model
+  RouteMap::Positions.clear();
 
-  // Collect selected overlays (may be one or many)
-  std::vector<RouteMapOverlay*> overlays = GetSelectedOverlays();
-  if (overlays.empty()) {
-    wxLogMessage("OnDeleteAllPositions: no routes selected");
-    return;
-  }
-
-  // Clear positions for each selected route
-  for (auto* ov : overlays) {
-    if (!ov || !ov->m_weatherRoute) continue;
-
-    WeatherRoute* wr = ov->m_weatherRoute;
-    wr->Positions.clear();
-    MarkRouteDirty(wr);  // clear compute state + persist
-  }
-
-  // Clear configuration dialogs? sources if they are still driven by positions
+  // Clear configuration dialogs
   m_ConfigurationDialog.ClearSources();
   m_ConfigurationBatchDialog.ClearSources();
 
-  // Clear the UI list for positions
+  // Clear UI list
   if (m_PositionPanel && m_PositionPanel->m_lPositions)
     m_PositionPanel->m_lPositions->DeleteAllItems();
 
-  // Optionally also refresh route configurations
-  UpdateConfigurations();
+  // Schedule autosave
+  m_tAutoSaveXML.Start(5000, true);
 }
 
 
@@ -4856,8 +4884,7 @@ void WeatherRouting::OnDelete(wxCommandEvent& event) {
   StopAll();
 
   // 3. Delete the selected overlays/routes safely
-  std::list<RouteMapOverlay*> overlayList(overlays.begin(), overlays.end());
-  DeleteRouteMaps(overlayList);
+  DeleteRouteMaps(overlays);
 
   // 4. Update UI state
   UpdateStates();
@@ -4921,46 +4948,33 @@ void WeatherRouting::OnDefaultConfiguration(wxCommandEvent& event) {
 RouteMapConfiguration WeatherRouting::DefaultConfiguration() {
   RouteMapConfiguration configuration;
 
-  // 1. Use per?route positions if available
-  WeatherRoute* wr = GetSelectedRoute();
-
-  if (wr && !wr->Positions.empty()) {
-    // Start = first position
-    const WeatherPoint& p = wr->Positions.front();
+  if (RouteMap::Positions.size() >= 1) {
+    RouteMapPosition& p = *RouteMap::Positions.begin();
     configuration.Start = p.Name;
-    configuration.StartLat = p.lat;
-    configuration.StartLon = p.lon;
-  } else {
-    configuration.StartLat = 0;
-    configuration.StartLon = 0;
-  }
+    configuration.StartLat = p.lat, configuration.StartLon = p.lon;
+  } else
+    configuration.StartLat = 0, configuration.StartLon = 0;
 
   configuration.StartTime = wxDateTime::Now();
   configuration.DeltaTime = 3600;
 
-  if (wr && wr->Positions.size() >= 2) {
-    // End = second position
-    const WeatherPoint& p = wr->Positions[1];
+  if (RouteMap::Positions.size() >= 2) {
+    RouteMapPosition& p = *(++RouteMap::Positions.begin());
     configuration.End = p.Name;
-    configuration.EndLat = p.lat;
-    configuration.EndLon = p.lon;
-  } else {
-    configuration.EndLat = 0;
-    configuration.EndLon = 0;
-  }
+    configuration.EndLat = p.lat, configuration.EndLon = p.lon;
+  } else
+    configuration.EndLat = 0, configuration.EndLon = 0;
 
-  // 2. Default boat
   configuration.boatFileName = weather_routing_pi::StandardPath() + "boats" +
                                wxFileName::GetPathSeparator() + "Boat.xml";
 
-  // 3. Default routing parameters
   configuration.Integrator = RouteMapConfiguration::NEWTON;
 
   configuration.MaxDivertedCourse = 90;
   configuration.MaxCourseAngle = 180;
   configuration.MaxSearchAngle = 120;
-  configuration.MaxTrueWindKnots = 50;
-  configuration.MaxApparentWindKnots = 50;
+  configuration.MaxTrueWindKnots = 50;      // Safety margin for wind speed
+  configuration.MaxApparentWindKnots = 50;  // Safety margin for wind speed
 
   configuration.MaxSwellMeters = 20.;
   configuration.MaxLatitude = 90;
@@ -4977,7 +4991,6 @@ RouteMapConfiguration WeatherRouting::DefaultConfiguration() {
   configuration.ClimatologyType = RouteMapConfiguration::MOST_LIKELY;
   configuration.AllowDataDeficient = false;
   configuration.WindStrength = 1;
-
   configuration.DetectLand = true;
   configuration.SafetyMarginLand = 0.;
   configuration.DetectBoundary = false;
@@ -5711,8 +5724,7 @@ void WeatherRouting::StopSelected() {
       m_positionOnRoute = nullptr;
 
       UpdateStates();
-      SaveXML(m_FileName.GetFullPath());
-
+      SaveXML(true);
       AssertThreadLifecycleInvariants();
 
       wxLogMessage("WR: StopSelected ? END");
@@ -5785,7 +5797,7 @@ void WeatherRouting::Reset(RouteMapOverlay* ov) {
 
   // Refresh UI state and persist
   UpdateStates();
-  SaveXML(m_FileName.GetFullPath());
+  SaveXML(true);
 
   // Assert lifecycle invariants
   AssertThreadLifecycleInvariants();
@@ -5844,8 +5856,7 @@ void WeatherRouting::ResetSelected() {
   // 4. Refresh UI state
   // ---------------------------------------------------------------------
   UpdateStates();
-  SaveXML(m_FileName.GetFullPath());
-
+  SaveXML(true);
 
   // ---------------------------------------------------------------------
   // 5. Assert lifecycle invariants
@@ -5903,8 +5914,7 @@ void WeatherRouting::ResetAll() {
   // ---------------------------------------------------------------------
   // 5. Autosave
   // ---------------------------------------------------------------------
-  SaveXML(m_FileName.GetFullPath());
-
+  SaveXML(true);
 
   // ---------------------------------------------------------------------
   // 6. Assert modern lifecycle invariants
@@ -5916,7 +5926,7 @@ void WeatherRouting::ResetAll() {
 
 
 
-
+/
 /*********************************************************/
 /*   11.Compute Scheduler     */
 /*********************************************************/
@@ -5945,18 +5955,22 @@ void WeatherRouting::OnHideConfigurationTimer(wxTimerEvent& event) {
 }
 
 
-// 1. Clean up overlays whose worker threads have
-//    exited(Stop them, remove them from running list)
-// 2. Promote waiting overlays into running(Respect concurrency limit)
-// 3. Handle GRIB requests(If you still want GRIB gating)
-// 4. Update the progress bar(This is UI, but it?s global
-//    and not overlay?specific ? it stays)
-// 5. Restart the timer if work remains(Or stop it if all work is done)
-
 void WeatherRouting::OnComputationTimer(wxTimerEvent& event) {
+  // Safety: UI must exist
   if (!m_panel || !m_panel->m_lWeatherRoutes) return;
 
+  // =========================================================
   // 1. CLEAN UP RUNNING OVERLAYS
+  //
+  // Each RouteMapOverlay owns its worker thread.
+  // The scheduler NEVER joins or deletes threads directly.
+  // Instead, it checks overlay state:
+  //   - Running() means the worker thread is alive
+  //   - IsThreadExited() means the worker thread has returned
+  //   - Stop() performs the join + cleanup on the overlay
+  //
+  // This ensures thread lifecycle is race?free and deterministic.
+  // =========================================================
   for (auto it = m_RunningRouteMaps.begin(); it != m_RunningRouteMaps.end();) {
     RouteMapOverlay* ov = *it;
     if (!ov) {
@@ -5964,19 +5978,41 @@ void WeatherRouting::OnComputationTimer(wxTimerEvent& event) {
       continue;
     }
 
+    // Worker thread has exited: overlay must finalize its own cleanup.
+    // Stop() joins the thread, clears m_Thread, sets m_Stopped, etc.
     if (ov->ThreadExited()) {
       ov->Stop();
     }
 
+    // If overlay is no longer Running(), the worker thread is gone.
+    // Remove it from the running list and update UI.
     if (!ov->Running()) {
+      UpdateRouteMap(ov);  // WeatherRoute::Update() computes correct State
       it = m_RunningRouteMaps.erase(it);
     } else {
+      // Still computing: update UI row
+      UpdateRouteMap(ov);
       ++it;
     }
   }
-
+  // =========================================================
   // 2. PROMOTE WAITING ? RUNNING
-  const int maxConcurrent = 1;
+  //
+  // Only the scheduler starts worker threads.
+  // Concurrency limit is enforced here.
+  //
+  // ov->Start(error):
+  //   - Creates worker thread
+  //   - Sets Running() = true
+  //   - Returns false if thread could not be created
+  //
+  // If Start() fails, overlay remains non?running and is NOT requeued.
+  // =========================================================
+  // _CRTDBG_REPORT_FLAG |= _CRTDBG_LEAK_CHECK_DF; 
+  //  const int maxConcurrent = GetSettingsDialog().m_sMaxConcurrent->GetValue();
+
+  const int maxConcurrent = 1;  // modern architecture: one thread at a time
+
   while ((int)m_RunningRouteMaps.size() < maxConcurrent &&
          !m_WaitingRouteMaps.empty()) {
     RouteMapOverlay* ov = m_WaitingRouteMaps.front();
@@ -5986,33 +6022,91 @@ void WeatherRouting::OnComputationTimer(wxTimerEvent& event) {
 
     wxString error;
     if (!ov->Start(error)) {
+      // Worker thread could not be created.
+      // UI will show the error via WeatherRoute::Update().
       wxLogMessage("OnComputationTimer: Failed to start overlay: %s",
                    error.mb_str());
+      UpdateRouteMap(ov);
       continue;
     }
 
+    // Worker thread successfully created.
     m_RunningRouteMaps.push_back(ov);
+    UpdateRouteMap(ov);  // State becomes "Computing..."
   }
+  // =========================================================
+  // 3. GRIB REQUEST HANDLING
+  //
+  // Only one overlay at a time may request GRIB.
+  // NeedsGrib() is set by the worker thread when it reaches a GRIB boundary.
+  //
+  // The scheduler:
+  //   - detects the first overlay needing GRIB
+  //   - sets m_RouteMapOverlayNeedingGrib
+  //   - calls RequestGrib() (main?thread safe)
+  //
+  // Worker threads remain blocked until GRIB arrives.
+  // =========================================================
 
-  // 3. GRIB REQUEST HANDLING (optional)
-  // (Your GRIB logic here)
+  // OLD CODE  REMOVED FOR CLARITY
+  // m_RouteMapOverlayNeedingGrib = nullptr;
 
+  //for (auto* ov : m_RunningRouteMaps) {
+  //  if (ov && ov->NeedsGrib()) {
+  //    m_RouteMapOverlayNeedingGrib = ov;
+  //    RequestGrib();
+  //    break;
+  //   }
+  // }
+  // =========================================================
   // 4. PROGRESS BAR UPDATE
+  //
+  // Progress = total - waiting - running
+  // Clamped to [0, total].
+  //
+  // Worker threads update Finished() internally.
+  // Scheduler updates progress only from main thread.
+  // =========================================================
   if (m_panel->m_gProgress) {
     int done = m_RoutesToRun - (int)m_WaitingRouteMaps.size() -
                (int)m_RunningRouteMaps.size();
+
     if (done < 0) done = 0;
     if (done > (int)m_RoutesToRun) done = m_RoutesToRun;
+
     m_panel->m_gProgress->SetValue(done);
   }
-
-  // 5. RESTART TIMER IF WORK REMAINS
+  // =========================================================
+  // 5. UPDATE DIALOGS
+  //
+  // Statistics, Report, and Plot dialogs are read?only views.
+  // They must be updated from the main thread only.
+  // =========================================================
+  UpdateDialogs();
+  // =========================================================
+  // 6. UPDATE COMPUTE STATE (buttons, status text)
+  //
+  // Compute enabled when at least one route is Ready/NotComputed.
+  // Stop enabled when at least one worker thread is alive.
+  //
+  // This function does NOT touch worker threads.
+  // =========================================================
+  UpdateComputeState();
+  // =========================================================
+  // 7. RESTART TIMER IF WORK REMAINS
+  //
+  // The scheduler runs as a one?shot timer.
+  // It restarts itself only when:
+  //   - at least one worker thread is alive, OR
+  //   - at least one overlay is waiting to be started
+  //
+  // When both lists are empty, computation is complete.
+  // =========================================================
   if (!m_RunningRouteMaps.empty() || !m_WaitingRouteMaps.empty()) {
     m_tCompute.Start(25, true);
   } else {
     m_bRunning = false;
   }
-
   AssertSchedulerInvariants();
 }
 
@@ -6031,7 +6125,7 @@ RouteMapOverlay* WeatherRouting::FirstCurrentRouteMap() {
 
   return (wr && wr->routemapoverlay) ? wr->routemapoverlay : nullptr;
 }
-
+}
 
 // COMPUTE CURRENT ROUTEMAPS
 
@@ -6158,14 +6252,9 @@ void WeatherRouting::OnDeleteAll(wxCommandEvent& event) {
 
   wxLogMessage("OnDeleteAll(): deleting all routes");
 
-  // Collect all overlays
-  std::list<RouteMapOverlay*> overlays;
-  for (auto* wr : m_WeatherRoutes) {
-    if (wr && wr->routemapoverlay) overlays.push_back(wr->routemapoverlay);
-  }
-
-  DeleteRouteMaps(overlays);
+  DeleteAllRoutes();
 }
+
 
 
 
@@ -6183,7 +6272,8 @@ void WeatherRouting::OnDeleteAll(wxCommandEvent& event) {
 // ============================================================================
 // MODERN
 
-void WeatherRouting::DeleteRouteMaps( const std::list<RouteMapOverlay*>& overlays) {
+void WeatherRouting::DeleteRouteMaps(
+    const std::list<RouteMapOverlay*>& overlays) {
   if (m_shuttingDown) {
     wxLogMessage("IGNORED CALLBACK: %s during shutdown", __FUNCTION__);
     return;
@@ -6308,9 +6398,7 @@ void WeatherRouting::DeleteRouteMap(RouteMapOverlay* ov) {
   //    Modern UI pipeline: UpdateStates() + SaveXML()
   // ---------------------------------------------------------------------
   UpdateStates();
-  UpdateConfigurations();
-  SaveXML(m_FileName.GetFullPath());
-
+  SaveXML(true);
 
   // ---------------------------------------------------------------------
   // 8. Assert lifecycle invariants
@@ -6441,15 +6529,8 @@ abort:
   // 4. Cleanup: delete the overlays used for batch generation
   for (auto* ov : routemapoverlays) DeleteRouteMap(ov);
 
-  // 5. Refresh UI and persist
-  UpdateStates();
-  UpdateDialogs();
-  UpdateConfigurations();
-  SaveXML(m_FileName.GetFullPath());
-
   delete progressdialog;
 }
-
 
 
 /*********************************************************/
@@ -6760,9 +6841,11 @@ WeatherRouting::SaveRouteOptions
 
   // MODERN
 
-//  void WeatherRouting::SaveSimplifiedRouteAsGPX(
-//      const RouteMapOverlay& ov, const std::list<Position*>& simplifiedRoute,
-//      const wxString& filename);
+  void WeatherRouting::SaveSimplifiedRouteAsGPX(
+      const RouteMapOverlay& ov, const std::list<Position*>& simplifiedRoute,
+      const wxString& filename);
+
+
 
 
 
@@ -7004,33 +7087,6 @@ void WeatherRouting::ClearComputedColumns(long index) {
   SetColumn(index, JIBES, "");
   SetColumn(index, SAILPLANCHANGES, "");
   SetColumn(index, COMFORT, "");
-}
-
-
-void WeatherRoute::ClearComputedFields() {
-  // These are all derived / computed presentation fields.
-  Distance.clear();
-  AvgSpeed.clear();
-  MaxSpeed.clear();
-  AvgSpeedGround.clear();
-  MaxSpeedGround.clear();
-  AvgWind.clear();
-  MaxWind.clear();
-  MaxWindGust.clear();
-  AvgCurrent.clear();
-  MaxCurrent.clear();
-  AvgSwell.clear();
-  MaxSwell.clear();
-  UpwindPercentage.clear();
-  PortStarboard.clear();
-  Tacks.clear();
-  Jibes.clear();
-  SailPlanChanges.clear();
-  Comfort.clear();
-  Time.clear();
-  EndTime.clear();
-  State.clear();
-  StateChanged = false;
 }
 
 

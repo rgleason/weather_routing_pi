@@ -31,6 +31,8 @@ class PlugIn_Route;
 class piDC;
 class RouteMapOverlay;
 class SettingsDialog;
+class WeatherRoute;
+
 
 /**
  * Thread class for route map overlay calculations.
@@ -148,7 +150,7 @@ public:
    * Default constructor.
    * Initializes a new RouteMapOverlay with default values.
    */
-  RouteMapOverlay(wxEvtHandler* parent);
+  RouteMapOverlay(wxEvtHandler* parent, WeatherRoute* route);
 
   /**
    * Destructor.
@@ -156,12 +158,16 @@ public:
    */
   ~RouteMapOverlay();
 
-
-
-
-   // Temporarily moved to Public for direct access from WeatherRouting, but
+  // Temporarily moved to Public for direct access from WeatherRouting, but
   // should be private with proper accessors
-   RouteMapOverlayThread* m_Thread = nullptr;
+  RouteMapOverlayThread* m_Thread = nullptr;
+
+
+
+  // Compatibility: old code expects m_weatherRoute and GetParentRoute()
+  WeatherRoute* m_weatherRoute = nullptr;
+
+  WeatherRoute* GetParentRoute() const { return m_weatherRoute; }
 
   /**
    * Dirty flag indicating that this overlay's internal routing state
@@ -181,6 +187,16 @@ public:
 
   /** Flag indicating if the end route should be visible */
   bool m_bEndRouteVisible = true;
+
+
+  // Notify the UI controller that this overlay has new state. // Thread-safe:
+  // may be called from worker thread.
+  // Called from worker thread or main thread to request a UI refresh
+  void NotifyUI();
+  wxEvtHandler* GetParentHandler() const { return m_parentHandler; }
+
+  // Optional: expose self for event payloads
+   RouteMapOverlay* Self() { return this; }
 
   void SetConfiguration(const RouteMapConfiguration& cfg);
 
@@ -442,8 +458,15 @@ private:
 
   wxEvtHandler* m_parentHandler;  // ? correct location
 
-  /* -------------------- Thread + State Flags -------------------- */
+    //---------------------------------------------------------
+  // Parent route for alternate route rendering. This is set when rendering
+  // alternate routes. It allows the alternate route rendering to access the
+  // parent route's isochrones for rendering the alternate route in the context
+  // of the parent route's conditions.
 
+  WeatherRoute* m_parentRoute = nullptr;
+
+  /* -------------------- Thread + State Flags -------------------- */
 
   /** True when overlay has new data requiring UI refresh */
   bool m_bUpdated = false;
@@ -456,6 +479,8 @@ private:
 
   /** Worker thread has exited Entry() */
   std::atomic<bool> m_bThreadExited{false};
+
+
 
   /* -------------------- Rendering Helpers -------------------- */
 

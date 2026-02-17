@@ -1,3 +1,10 @@
+///////////////////////////////////////////////////////////////////////////
+// C++ code generated with wxFormBuilder (version Oct 26 2018)
+// http://www.wxformbuilder.org/
+//
+// PLEASE DO *NOT* EDIT THIS FILE!
+///////////////////////////////////////////////////////////////////////////
+
 #pragma once
 
 #include <wx/artprov.h>
@@ -70,7 +77,7 @@
  * class
  * @see WeatherRoutingPanel The panel containing the list controls and buttons
  */
-class WeatherRoutingBase : public wxPanel {
+class WeatherRoutingBase : public wxFrame {
 private:
 protected:
   wxMenuBar* m_menubar3;
@@ -201,14 +208,16 @@ public:
   wxMenu* m_mContextMenu;
   wxMenu* m_mContextMenuPositions;
 
-WeatherRoutingBase(wxWindow* parent, wxWindowID id = wxID_ANY,
+  WeatherRoutingBase(wxWindow* parent, wxWindowID id = wxID_ANY,
                      const wxString& title = _("Weather Routing"),
                      const wxPoint& pos = wxDefaultPosition,
                      const wxSize& size = wxSize(-1, -1),
-                     long style = wxTAB_TRAVERSAL);
+                     long style = wxCAPTION | wxCLOSE_BOX |
+                                  wxFRAME_FLOAT_ON_PARENT | wxFRAME_NO_TASKBAR |
+                                  wxRESIZE_BORDER | wxSYSTEM_MENU |
+                                  wxTAB_TRAVERSAL);
 
   ~WeatherRoutingBase();
-
 
   void WeatherRoutingBaseOnContextMenu(wxMouseEvent& event) {
     this->PopupMenu(m_mContextMenu, event.GetPosition());

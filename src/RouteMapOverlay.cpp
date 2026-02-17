@@ -100,8 +100,9 @@ void* RouteMapOverlayThread::Entry() {
          //  wxThread::Sleep(50);
          break;
       else {
-        m_RouteMapOverlay.m_dirty = true;  // <--- ADD THIS
-        m_RouteMapOverlay.UpdateDestination();  // don't do it inside worker thread, race
+        m_RouteMapOverlay.MarkDirty();  // atomic + safe
+        m_RouteMapOverlay.UpdateDestination();
+        m_RouteMapOverlay.NotifyUI();
         wxThread::Sleep(5);   
       }
 
@@ -213,8 +214,9 @@ RouteMapOverlay::~RouteMapOverlay() {
   // Answer: Remove this line ? it illegally touches RouteMap::m_Configuration
   //m_Configuration = cfg;
 
-  m_dirty = true;
-}
+  MarkDirty();
+  NotifyUI();
+ }
 
 
 bool RouteMapOverlay::Start(wxString& error) {
@@ -256,7 +258,8 @@ bool RouteMapOverlay::Start(wxString& error) {
     m_Stopped = false;
     m_bThreadAlive.store(false, std::memory_order_release);
     m_bThreadExited.store(false, std::memory_order_release);
-    m_dirty = true;
+    MarkDirty();
+    NotifyUI();
 
     // Ensure no existing thread is running
     if (m_Thread) {
@@ -381,6 +384,7 @@ void RouteMapOverlay::RouteAnalysis(PlugIn_Route* proute) {
 
   m_bUpdated = true;
   m_UpdateOverlay = true;
+  NotifyUI();
 
   last_destination_position =
       new Position(data.lat, data.lon, nullptr /* position */,
@@ -501,6 +505,20 @@ static inline wxColour& PositionColor(Position* p, wxColour& grib_color,
 static wxColour TransparentColor(wxColor c) {
   return wxColor(c.Red(), c.Green(), c.Blue(), c.Alpha() * 7 / 24);
 }
+
+
+void RouteMapOverlay::NotifyUI() {
+  // Mark overlay as dirty for any polling logic
+  MarkDirty();
+
+  // Post a lightweight event to the parent handler (WeatherRouting)
+  if (m_parentHandler) {
+    auto* evt = new wxThreadEvent(EVT_ROUTEMAP_UPDATE);
+    evt->SetPayload<RouteMapOverlay*>(this);
+    wxQueueEvent(m_parentHandler, evt);
+  }
+}
+
 
 void RouteMapOverlay::RenderIsoRoute(IsoRoute* r, wxDateTime time,
                                      wxColour& grib_color,
@@ -1878,6 +1896,7 @@ void RouteMapOverlay::Clear() {
     
     // Signal UI/worker that overlay state changed
     MarkDirty();
+    NotifyUI();
 
     last_cursor_position = nullptr;
     last_destination_position = nullptr;
@@ -1927,6 +1946,7 @@ void RouteMapOverlay::Stop() {
        m_Stopped = true;
             // UI refresh
        MarkDirty();
+       NotifyUI();
        }
 
     // Detach pointer under lock; 
@@ -1980,7 +2000,6 @@ When the overlay requests the engine to mark finished
 What the engine?s finished state was before and after
 Whether the overlay is marking ?destination reached? or ?finished but not reached?*/
 
-
 void RouteMapOverlay::SetFinished(bool f) {
   wxLogMessage(
       "Overlay::SetFinished(%d): BEFORE overlay=%p EngineFinished=%d "
@@ -1988,6 +2007,12 @@ void RouteMapOverlay::SetFinished(bool f) {
       f, this, RouteMap::Finished(), RouteMap::ReachedDestination());
 
   RouteMap::SetFinished(f);
+
+  // Mark overlay dirty for any polling fallback
+  MarkDirty();
+
+  // Notify UI immediately (Option A)
+  NotifyUI();
 
   wxLogMessage(
       "Overlay::SetFinished(%d): AFTER  overlay=%p EngineFinished=%d "
@@ -2105,6 +2130,7 @@ void RouteMapOverlay::UpdateDestination() {
 
   m_bUpdated = true;
   m_UpdateOverlay = true;
+  NotifyUI();
 }
 
 // CUSTOMIZATION

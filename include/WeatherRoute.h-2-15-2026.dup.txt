@@ -1,0 +1,35 @@
+class WeatherRoute {
+public:
+  // --- Helper methods for UI display ---
+  wxString StartTypeString() const;
+  wxString StartString() const;
+  wxString StartTimeString() const;
+  wxString EndString() const;
+  wxString EndTimeString() const;
+  wxString DurationString() const;
+  wxString DistanceString() const;
+  wxString StateString() const;
+
+  // ... other public methods ...
+
+  // --- Data members used by helpers ---
+  bool visible;
+  wxString BoatName;
+
+  int start_type;
+  WeatherRoutingPosition* start_position;
+  double start_lat, start_lon;
+  wxDateTime start_time;
+
+  WeatherRoutingPosition* end_position;
+  double end_lat, end_lon;
+  wxDateTime end_time;
+
+  double distance_nm;
+  int state;
+
+  // ... other fields ...
+
+private:
+  // private internals if needed
+};

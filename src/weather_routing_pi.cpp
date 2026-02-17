@@ -98,7 +98,7 @@ extern "C" DECL_EXP void destroy_pi(opencpn_plugin* p) { delete p; }
 
 
 
-/*
+
 weather_routing_pi::weather_routing_pi(void* ppimgr)
     : opencpn_plugin_118(ppimgr) {
 
@@ -162,58 +162,8 @@ weather_routing_pi::weather_routing_pi(void* ppimgr)
 
   wxLogMessage("weather_routing_pi: Address space monitoring started");
 #endif
+
 }
-*/
-
-WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
-    : WeatherRoutingBase(parent),
-      m_weather_routing_pi(plugin),
-      m_panel(nullptr),
-      m_colpaneWindow(nullptr),
-      m_colpane(nullptr),
-      m_pRouteMapOverlay(nullptr),
-      m_disable_colpane(false),
-      m_shuttingDown(false),
-
-      // *** REQUIRED: construct all dialog members ***
-      m_ConfigurationDialog(*this),
-      m_ConfigurationBatchDialog(this),
-      m_CursorPositionDialog(this),
-      m_RoutePositionDialog(this),
-      m_BoatDialog(*this),
-      m_SettingsDialog(this),
-      m_StatisticsDialog(this),
-      m_ReportDialog(*this),
-      m_PlotDialog(*this),
-      m_FilterRoutesDialog(this),
-
-      // UI visibility flags
-      m_bShowConfiguration(true),
-      m_bShowConfigurationBatch(false),
-      m_bShowRoutePosition(false),
-      m_bShowSettings(false),
-      m_bShowStatistics(false),
-      m_bShowReport(false),
-      m_bShowPlot(false),
-      m_bShowFilter(false) {
-  wxLogMessage("WR: ctor START");
-
-  // 1. Load configuration, settings, and plugin data
-  LoadConfigurationAndData();
-
-  // 2. Create the global overlay BEFORE UI initialization
-  m_pRouteMapOverlay = new RouteMapOverlay(this);
-
-  // 3. Build the UI (panels, list control, collapsible pane, etc.)
-  InitializeUI();
-
-  // 4. Bind all events (buttons, list control, timers, thread events)
-  BindEvents();
-
-  wxLogMessage("WR: ctor END");
-}
-
-
 
 
 /**
@@ -744,30 +694,35 @@ void weather_routing_pi::NewWR() {
 */
 
 void weather_routing_pi::NewWR() {
-  if (m_pWeather_Routing) return;
+  if (m_pWeather_Routing)
+      return;
 
   wxLogMessage("WR_PI: NewWR() ENTER");
 
-  m_pWeather_Routing = new WeatherRouting(m_parent_window, *this);
+m_pWeather_Routing =
+      new WeatherRouting(GetOCPNCanvasWindow()->GetParent(), *this);
 
   wxAuiManager* mgr = GetFrameAuiManager();
   if (mgr && m_pWeather_Routing) {
-    mgr->AddPane(m_pWeather_Routing, wxAuiPaneInfo()
-                                         .Name("WeatherRouting")
-                                         .Caption(_("Weather Routing"))
-                                         .Float()
-                                         .FloatingPosition(50, 50)
-                                         .FloatingSize(900, 600)
-                                         .CloseButton(true)
-                                         .MaximizeButton(true));
 
+    mgr->AddPane(m_pWeather_Routing,
+       wxAuiPaneInfo()
+         .Name("WeatherRouting")
+         .Caption(_("Weather Routing"))
+         .Float()
+         .FloatingPosition(100, 100)
+         .FloatingSize(800, 600)
+         .CloseButton(true)
+         .MaximizeButton(true)
+         .MinimizeButton(true)
+         .Resizable(true)
+         .Movable(true)
+         .Floatable(true)
+         .Dockable(false)// CRITICAL
+         .CaptionVisible(true)
+         .PaneBorder(true));
     mgr->Update();
-
-    wxAuiPaneInfo& pane = mgr->GetPane(m_pWeather_Routing);
-    wxLogMessage("WR_PI: NewWR() pane added, shown=%d floating=%d",
-                 pane.IsShown(), pane.IsFloating());
   }
-
   wxLogMessage("WR_PI: NewWR() EXIT");
 }
 
@@ -783,17 +738,30 @@ void weather_routing_pi::OnToolbarToolCallback(int id) {
 */
 
 void weather_routing_pi::OnToolbarToolCallback(int id) {
-  if (!m_pWeather_Routing) NewWR();
-
   wxAuiManager* mgr = GetFrameAuiManager();
-  if (mgr && m_pWeather_Routing) {
-    wxAuiPaneInfo& pane = mgr->GetPane(m_pWeather_Routing);
-    pane.Show(true);
-    mgr->Update();
-    m_pWeather_Routing->Raise();  // ? correct
-  }
-}
 
+  // 1. Create panel if missing
+  if (!m_pWeather_Routing) {
+    NewWR();
+    return;
+  }
+
+  wxAuiPaneInfo& pane = mgr->GetPane(m_pWeather_Routing);
+
+  // 2. If pane was closed/destroyed, recreate it
+  if (!pane.IsOk() || !pane.window) {
+    NewWR();
+    return;
+  }
+
+  // 3. Toggle visibility
+  bool currentlyShown = pane.IsShown();
+  pane.Show(!currentlyShown);
+  mgr->Update();
+
+  // 4. If now shown, raise it
+  if (!currentlyShown) m_pWeather_Routing->Raise();
+}
 
 
 

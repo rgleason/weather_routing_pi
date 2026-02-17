@@ -51,6 +51,14 @@ public:
                     RouteMapOverlay* routemap);
   ~RoutingTablePanel();
 
+
+  /**
+   * Multiple Route version - Populates the weather table with data from the route.
+   * This method extracts weather and navigation data at each position along the
+   * route and fills the grid with the appropriate values.
+   */
+  void PopulateMultiRouteTable(const std::vector<RouteMapOverlay*>& overlays);
+
   /**
    * Populates the weather table with data from the route.
    * This method extracts weather and navigation data at each position along the

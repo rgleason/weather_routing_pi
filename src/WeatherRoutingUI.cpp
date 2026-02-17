@@ -1,22 +1,14 @@
-///////////////////////////////////////////////////////////////////////////
-// C++ code generated with wxFormBuilder (version Oct 26 2018)
-// http://www.wxformbuilder.org/
-//
-// PLEASE DO *NOT* EDIT THIS FILE!
-///////////////////////////////////////////////////////////////////////////
 
 #include "WeatherRoutingUI.h"
 #include <vector>
-
-///////////////////////////////////////////////////////////////////////////
 
 WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
                                        const wxString& title,
                                        const wxPoint& pos, const wxSize& size,
                                        long style)
-    : wxFrame(parent, id, title, pos, size, style) {
-  this->SetSizeHints(wxSize(400, 300), wxDefaultSize);
+    : wxPanel(parent, id, pos, size, style) {
 
+  this->SetSizeHints(wxSize(400, 300), wxDefaultSize);
   m_menubar3 = new wxMenuBar(0);
   m_mFile = new wxMenu();
   wxMenuItem* m_mOpen;
@@ -242,7 +234,7 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
 
   m_menubar3->Append(m_mHelp, _("&Help"));
 
-  this->SetMenuBar(m_menubar3);
+ // this->SetMenuBar(m_menubar3);
 
   m_mContextMenu = new wxMenu();
   wxMenuItem* m_mNew1;
@@ -359,7 +351,7 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
       wxMouseEventHandler(WeatherRoutingBase::WeatherRoutingBaseOnContextMenu),
       NULL, this);
 
-  this->Centre(wxBOTH);
+ // this->Centre(wxBOTH);
 
   // Connect Events
   this->Connect(wxEVT_CLOSE_WINDOW,
@@ -579,7 +571,7 @@ WeatherRoutingPanel::WeatherRoutingPanel(wxWindow* parent, wxWindowID id,
   fgSizer93->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
 
   m_lPositions = new wxListCtrl(
-      sbSizer30->GetStaticBox(), wxID_ANY, wxDefaultPosition, wxSize(-1, -1),
+      m_panel11, wxID_ANY, wxDefaultPosition, wxSize(-1, -1),
       wxLC_HRULES | wxLC_REPORT | wxLC_SINGLE_SEL | wxHSCROLL | wxVSCROLL);
   fgSizer93->Add(m_lPositions, 0, wxALL | wxEXPAND, 5);
 
@@ -1097,7 +1089,7 @@ SettingsDialogBase::SettingsDialogBase(wxWindow* parent, wxWindowID id,
   this->Layout();
   fgSizer92->Fit(this);
 
-  this->Centre(wxBOTH);
+ // this->Centre(wxBOTH);
 
   // Connect Events
   m_cpCursorRoute->Connect(
@@ -2281,7 +2273,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   this->Layout();
   fgSizer95->Fit(this);
 
-  this->Centre(wxBOTH);
+  //this->Centre(wxBOTH);
 
   // Connect Events
   m_rbStartFromBoat->Connect(
@@ -3659,7 +3651,7 @@ PlotDialogBase::PlotDialogBase(wxWindow* parent, wxWindowID id,
   this->Layout();
   fgSizer3->Fit(this);
 
-  this->Centre(wxBOTH);
+  //this->Centre(wxBOTH);
 
   // Connect Events
   m_PlotWindow->Connect(wxEVT_LEFT_DOWN,
@@ -3990,7 +3982,7 @@ AboutDialogBase::AboutDialogBase(wxWindow* parent, wxWindowID id,
   this->Layout();
   fgSizer90->Fit(this);
 
-  this->Centre(wxBOTH);
+ // this->Centre(wxBOTH);
 
   // Connect Events
   m_bAboutAuthor->Connect(wxEVT_COMMAND_BUTTON_CLICKED,
@@ -4340,7 +4332,7 @@ BoatDialogBase::BoatDialogBase(wxWindow* parent, wxWindowID id,
   this->Layout();
   m_fgSizer->Fit(this);
 
-  this->Centre(wxBOTH);
+  //this->Centre(wxBOTH);
 
   // Connect Events
   m_PlotWindow->Connect(
@@ -4833,7 +4825,7 @@ StatisticsDialogBase::StatisticsDialogBase(wxWindow* parent, wxWindowID id,
   this->Layout();
   fgSizer55->Fit(this);
 
-  this->Centre(wxBOTH);
+//  this->Centre(wxBOTH);
 }
 
 StatisticsDialogBase::~StatisticsDialogBase() {}
@@ -4912,7 +4904,7 @@ ReportDialogBase::ReportDialogBase(wxWindow* parent, wxWindowID id,
   this->Layout();
   fgSizer90->Fit(this);
 
-  this->Centre(wxBOTH);
+ // this->Centre(wxBOTH);
 
   // Connect Events
   m_bInformation->Connect(
@@ -5276,7 +5268,7 @@ ConfigurationBatchDialogBase::ConfigurationBatchDialogBase(
   this->Layout();
   fgSizer76->Fit(this);
 
-  this->Centre(wxBOTH);
+ // this->Centre(wxBOTH);
 
   // Connect Events
   m_button41->Connect(
@@ -5457,7 +5449,7 @@ FilterRoutesDialogBase::FilterRoutesDialogBase(wxWindow* parent, wxWindowID id,
   this->Layout();
   fgSizer95->Fit(this);
 
-  this->Centre(wxBOTH);
+  // this->Centre(wxBOTH);
 
   // Connect Events
   m_cCategory->Connect(
@@ -5604,7 +5596,7 @@ CursorPositionDialog::CursorPositionDialog(wxWindow* parent, wxWindowID id,
   this->Layout();
   fgSizer90->Fit(this);
 
-  this->Centre(wxBOTH);
+ // this->Centre(wxBOTH);
 }
 
 CursorPositionDialog::~CursorPositionDialog() {}
@@ -5813,7 +5805,7 @@ RoutePositionDialog::RoutePositionDialog(wxWindow* parent, wxWindowID id,
   this->Layout();
   fgSizer90->Fit(this);
 
-  this->Centre(wxBOTH);
+ // this->Centre(wxBOTH);
 }
 
 RoutePositionDialog::~RoutePositionDialog() {}
@@ -5879,7 +5871,7 @@ NewPositionDialog::NewPositionDialog(wxWindow* parent, wxWindowID id,
   this->Layout();
   fgSizer120->Fit(this);
 
-  this->Centre(wxBOTH);
+ // this->Centre(wxBOTH);
 }
 
 NewPositionDialog::~NewPositionDialog() {}
@@ -6508,7 +6500,7 @@ EditPolarDialogBase::EditPolarDialogBase(wxWindow* parent, wxWindowID id,
   this->Layout();
   fgSizer96->Fit(this);
 
-  this->Centre(wxBOTH);
+ // this->Centre(wxBOTH);
 
   // Connect Events
   m_gPolar->Connect(wxEVT_GRID_CELL_CHANGED,
@@ -6694,7 +6686,7 @@ RoutingTablePanelBase::RoutingTablePanelBase(wxWindow* parent, wxWindowID id,
   this->Layout();
   bMainSizer->Fit(this);
 
-  this->Centre(wxBOTH);
+ // this->Centre(wxBOTH);
 
   // Connect Events
   m_btnClose->Connect(wxEVT_COMMAND_BUTTON_CLICKED,
