@@ -1552,8 +1552,9 @@ void RoutingTablePanel::UpdateSummary() {
       useLocalTime ? summary.startTime.FromUTC() : summary.startTime;
   wxDateTime displayEndTime =
       useLocalTime ? summary.endTime.FromUTC() : summary.endTime;
-  m_departureText->SetLabel(displayStartTime.Format("%Y-%m-%d %H:%M %Z"));
-  m_arrivalText->SetLabel(displayEndTime.Format("%Y-%m-%d %H:%M %Z"));
+  std::string timeFormat = useLocalTime? "%Y-%m-%d %H:%M %Z" : "%Y-%m-%d %H:%M UTC"; 
+  m_departureText->SetLabel(displayStartTime.Format(timeFormat.c_str()));
+  m_arrivalText->SetLabel(displayEndTime.Format(timeFormat.c_str()));
 #endif
 
   m_distanceText->SetLabel(FormatDistance(summary.totalDistance));
