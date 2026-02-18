@@ -4635,9 +4635,9 @@ void WeatherRouting::RebuildList() {
 
 
 // ============================================================================
-// WeatherRouting::StopSelected
-// Modern deterministic shutdown of all RouteMapOverlay worker threads,
-// followed by lifecycle invariant verification.
+    // WeatherRouting::StopSelected
+    // Modern deterministic shutdown of all RouteMapOverlay worker threads,
+    // followed by lifecycle invariant verification.
 // ========================================================================
 
 void WeatherRouting::StopSelected() {
@@ -4674,7 +4674,6 @@ void WeatherRouting::StopSelected() {
 
   wxLogMessage("WR: StopSelected ? END");
 }
-
 
 
 // ============================================================================

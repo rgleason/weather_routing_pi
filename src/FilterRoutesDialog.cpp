@@ -80,23 +80,36 @@ void FilterRoutesDialog::ApplyFilters() {
            m_WeatherRouting->m_WeatherRoutes.begin();
        it != m_WeatherRouting->m_WeatherRoutes.end(); it++) {
     (*it)->Filtered = 0;
+
     for (int f = 0; f < NUM_FILTERS; f++) {
       wxString value;
+
       switch (f) {
         case START:
-          value = (*it)->Start;
+          // Position* ? string
+          value = wxString::Format("%p", (*it)->Start);
           break;
+
         case STARTTIME:
-          value = (*it)->StartTime;
+          // wxDateTime ? string
+          value = (*it)->StartTime.IsValid()
+                      ? (*it)->StartTime.FormatISOCombined(' ')
+                      : wxEmptyString;
           break;
+
         case END:
-          value = (*it)->End;
+          // Position* ? string
+          value = wxString::Format("%p", (*it)->End);
           break;
+
         case BOATFILENAME:
+          // wxString ? wxString (already correct)
           value = (*it)->BoatFilename;
           break;
+
         case STATE:
-          value = (*it)->State;
+          // int ? string
+          value = wxString::Format("%d", (*it)->State);
           break;
       }
 

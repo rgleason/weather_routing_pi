@@ -150,7 +150,11 @@ public:
    * Default constructor.
    * Initializes a new RouteMapOverlay with default values.
    */
+  // Modern constructor (used by WeatherRouting)
   RouteMapOverlay(wxEvtHandler* parent, WeatherRoute* route);
+
+  // Legacy constructor (still used by older code paths)
+  RouteMapOverlay(wxEvtHandler* parent);
 
   /**
    * Destructor.
@@ -161,6 +165,7 @@ public:
   // Temporarily moved to Public for direct access from WeatherRouting, but
   // should be private with proper accessors
   RouteMapOverlayThread* m_Thread = nullptr;
+
 
 
 

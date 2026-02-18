@@ -525,7 +525,7 @@ void weather_routing_pi::SetPluginMessage(wxString& message_id,
     */
     if (m_pWeather_Routing) {
       RouteMapOverlay* routemapoverlay =
-          m_pWeather_Routing->m_RouteMapOverlayNeedingGrib;
+          m_pWeather_Routing->RouteMapOverlayNeedingGrib();
       if (routemapoverlay) {
         routemapoverlay->SetNewGrib(gptr);
       }

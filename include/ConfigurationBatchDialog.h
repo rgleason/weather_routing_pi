@@ -21,6 +21,7 @@
 #define _WEATHER_ROUTING_BATCH_DIALOG_H_
 
 #include <wx/fileconf.h>
+#include <ocpn_plugin.h>
 
 #include "WeatherRoutingUI.h"
 

@@ -1,0 +1,562 @@
+/***************************************************************************
+ *   Copyright (C) 2016 by Sean D'Epagnier                                 *
+ *                                                                         *
+ *   This program is free software; you can redistribute it and/or modify  *
+ *   it under the terms of the GNU General Public License as published by  *
+ *   the Free Software Foundation; either version 3 of the License, or     *
+ *   (at your option) any later version.                                   *
+ *                                                                         *
+ *   This program is distributed in the hope that it will be useful,       *
+ *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
+ *   GNU General Public License for more details.                          *
+ *                                                                         *
+ *   You should have received a copy of the GNU General Public License     *
+ *   along with this program; if not, write to the                         *
+ *   Free Software Foundation, Inc.,                                       *
+ *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,  USA.         *
+ ***************************************************************************/
+
+
+
+#ifndef _WEATHER_ROUTING_H_
+#define _WEATHER_ROUTING_H_
+
+#include <wx/treectrl.h>
+#include <wx/fileconf.h>
+#include <wx/collpane.h>
+#include <wx/thread.h>
+
+#ifdef __WXMSW__
+#include <atomic>
+#endif
+
+#ifdef __OCPN__ANDROID__
+#include <wx/qt/private/wxQtGesture.h>
+#endif
+
+#include "ocpn_plugin.h"
+#include "WeatherRoutingUI.h"
+#include "ConfigurationDialog.h"
+#include "ConfigurationBatchDialog.h"
+#include "RouteMapOverlay.h"
+#include "BoatDialog.h"
+#include "SettingsDialog.h"
+#include "StatisticsDialog.h"
+#include "ReportDialog.h"
+#include "PlotDialog.h"
+#include "FilterRoutesDialog.h"
+#include "RoutingTablePanel.h"
+#include "WeatherRoutingPositionPanel.h"
+
+wxDECLARE_EVENT(EVT_ROUTEMAP_UPDATE, wxThreadEvent);
+
+// ============================================================================
+// Forward declarations & menu IDs
+// ============================================================================
+
+class weather_routing_pi;
+class WeatherRouting;
+class TiXmlElement;
+class RouteMapOverlay;
+class RouteMapPanel;
+class WeatherRoutingPositionPanel;
+class Position;
+
+// Menu ID enum (UI wiring)
+enum {
+  ID_FILE_OPEN = wxID_HIGHEST + 1,
+  ID_FILE_SAVE,
+  ID_FILE_SAVEAS,
+  ID_FILE_CLOSE,
+
+  ID_POSITION_NEW,
+  ID_POSITION_EDIT,
+  ID_POSITION_UPDATE_BOAT,
+  ID_POSITION_DELETE,
+  ID_POSITION_DELETE_ALL,
+
+  ID_ROUTING_NEW,
+  ID_ROUTING_BATCH,
+  ID_ROUTING_EDIT,
+  ID_ROUTING_GOTO,
+  ID_ROUTING_DELETE,
+  ID_ROUTING_DELETE_ALL,
+  ID_ROUTING_COMPUTE,
+  ID_ROUTING_COMPUTE_ALL,
+  ID_ROUTING_STOP,
+  ID_ROUTING_STOP_ALL,
+  ID_ROUTING_RESET,
+  ID_ROUTING_RESET_ALL,
+  ID_ROUTING_SAVE_TRACK,
+  ID_ROUTING_SAVE_ALL_TRACKS,
+  ID_ROUTING_SAVE_ROUTE,
+  ID_ROUTING_EXPORT_GPX,
+  ID_ROUTING_FILTER,
+  ID_TOGGLE_VISIBILITY,
+  ID_GOTO_ROUTING,
+
+  ID_VIEW_SETTINGS,
+  ID_VIEW_STATISTICS,
+  ID_VIEW_REPORT,
+  ID_VIEW_PLOT,
+  ID_VIEW_CURSOR_POSITION,
+  ID_VIEW_ROUTE_POSITION,
+  ID_VIEW_ROUTING_TABLE,
+
+  ID_HELP_INFORMATION,
+  ID_HELP_MANUAL,
+  ID_HELP_ABOUT
+};
+
+
+struct WeatherPoint {
+  double lat;
+  double lon;
+  wxString Name;
+  wxString GUID;
+};
+
+// ============================================================================
+// WeatherRoute ? per?route state and computed fields
+// ============================================================================
+
+class WeatherRoute {
+
+
+public:
+  WeatherRoute(WeatherRouting* parent);
+  ~WeatherRoute();
+
+  // Update route state and computed fields
+  void Update(WeatherRouting* wr, bool stateonly = false);
+  void ClearComputedFields();
+  void ResetComputedFields() { ClearComputedFields(); }
+
+  // Modern per?route position list
+  std::vector<WeatherPoint> Positions;
+
+  // Configuration & computed metrics
+  bool Filtered;
+  wxString BoatFilename;
+  wxString Start;
+  wxString UseCurrentTime;
+  wxString StartType;
+  wxString StartTime;
+  wxString End;
+  wxString EndTime;
+  wxString Time;
+  wxString Distance;
+  wxString AvgSpeed;
+  wxString MaxSpeed;
+  wxString AvgSpeedGround;
+  wxString MaxSpeedGround;
+  wxString AvgWind;
+  wxString MaxWind;
+  wxString MaxWindGust;
+  wxString AvgCurrent;
+  wxString MaxCurrent;
+  wxString AvgSwell;
+  wxString MaxSwell;
+  wxString UpwindPercentage;
+  wxString PortStarboard;
+  wxString Tacks;
+  wxString Jibes;
+  wxString SailPlanChanges;
+  wxString State;
+  bool StateChanged{false};
+  wxString Comfort;
+
+  // Back?pointers
+  WeatherRouting* m_parent;
+  RouteMapOverlay* routemapoverlay;
+
+  // Compatibility / visibility
+  bool visible{true};
+  wxString BoatName;
+
+  // Inline accessors
+  wxString StartTypeString() const { return StartType; }
+  wxString StartString() const { return Start; }
+  wxString StartTimeString() const { return StartTime; }
+  wxString EndString() const { return End; }
+  wxString EndTimeString() const { return EndTime; }
+  wxString DurationString() const { return Time; }
+  wxString DistanceString() const { return Distance; }
+  wxString StateString() const { return State; }
+
+  // Legacy route points (for overlay)
+  std::vector<Position> routepoints;
+ };
+
+  // Legacy members still required by WeatherRouting.cpp
+ RoutingTablePanel* m_RoutingTablePanel = nullptr;
+ bool m_disable_colpane = false;
+ bool m_shuttingDown = false;
+
+ std::list<RouteMapOverlay*> m_RouteMapOverlays;
+ wxMutex m_OverlayListMutex;
+
+
+
+public:
+
+// ============================================================
+// Column model (public API for UI) //
+// ============================================================
+
+enum Column {
+    VISIBLE = 0,
+    BOAT,
+    STARTTYPE,
+    START,
+    STARTTIME,
+    END,
+    ENDTIME,
+    TIME,
+    DISTANCE,
+    AVGSPEED,
+    MAXSPEED,
+    AVGSPEEDGROUND,
+    MAXSPEEDGROUND,
+    AVGWIND,
+    MAXWIND,
+    MAXWINDGUST,
+    AVGCURRENT,
+    MAXCURRENT,
+    AVGSWELL,
+    MAXSWELL,
+    UPWINDPERCENTAGE,
+    PORTSTARBOARD,
+    TACKS,
+    JIBES,
+    SAILPLANCHANGES,
+    COMFORT,
+    STATE,
+    NUM_COLS
+  };
+
+
+
+  static const wxString column_names[NUM_COLS];
+
+// Temporary compatibility stubs for legacy UI code.
+  // These will be removed once the UI is modernized.
+  void UpdateDisplaySettings() {}
+  void UpdateColumns() {}
+  void RebuildList() {}
+  void UpdateBoatFilename(const wxString& filename) {}  // takes 1 argument
+  void GenerateBatch() {}
+  void UpdateCursorPositionDialog() {}
+  std::vector<RouteMapOverlay*> GetSelectedOverlays() const {
+    return {};
+  }  // const
+
+  RouteMapOverlay* m_RouteMapOverlayNeedingGrib = nullptr;
+
+
+void AddPosition(double lat, double lon) {}
+  void AddPosition(double lat, double lon, const wxString& name,
+                   const wxString& guid) {}
+
+
+  void AddRoute(const wxString& name) {}
+  void ScheduleAutoSave() {}
+
+  void UpdateRoutePositionDialog() {}
+  void CursorRouteChanged() {}
+
+
+  void OnGotoRouting(wxCommandEvent& event);
+  void OnNewRouting(wxCommandEvent& event);
+  void OnBatchRouting(wxCommandEvent& event);
+  void OnResetRouting(wxCommandEvent& event);
+  void OnEditPositionClick(wxCommandEvent& event);
+  void OnEditConfigurationClick(wxCommandEvent& event);
+  void OnWeatherRouteSort(wxListEvent& event);
+  void OnWeatherRouteSelected(wxListEvent& event);
+  void OnComputationTimer(wxTimerEvent& event);
+  void OnHideConfigurationTimer(wxTimerEvent& event);
+  void OnRenderedTimer(wxTimerEvent& event);
+  void OnCollPaneChanged(wxCollapsiblePaneEvent& event);
+
+
+
+  // ------------------------------------------------------------------------
+  // Construction / destruction
+  // ------------------------------------------------------------------------
+  WeatherRouting(wxWindow* parent, weather_routing_pi& plugin);
+  ~WeatherRouting();
+
+  // ------------------------------------------------------------------------
+  // File operations (XML project load/save)
+  // ------------------------------------------------------------------------
+  void OnFileOpen(wxCommandEvent& event);
+  void OnFileSave(wxCommandEvent& event);
+  void OnFileSaveAs(wxCommandEvent& event);
+  void OnFileClose(wxCommandEvent& event);
+
+  bool OpenXML(wxString filename, bool reportfailure = true);
+  void SaveXML(wxString filename);
+  void AutoSaveXML();
+  void OnAutoSaveXMLTimer(wxTimerEvent& event);
+  void CopyDataFiles(wxString from, wxString to);
+
+  // ------------------------------------------------------------------------
+  // Routing actions & scheduler lifecycle
+  // ------------------------------------------------------------------------
+  void Start(RouteMapOverlay* routemapoverlay);
+  void StartAll();
+  void ComputeAllRoutes();
+  void Stop(RouteMapOverlay* routemapoverlay);
+  void StopAll();
+  void Reset(RouteMapOverlay* overlay);
+  void ResetAll();
+  void ResetSelected();
+  void DeleteRouteMaps(const std::list<RouteMapOverlay*>& overlays);
+  void DeleteRouteMap(RouteMapOverlay* ov);
+  void WaitForAllRoutesToStop();
+  void WaitForRoutesToStop(const std::list<RouteMapOverlay*>& overlays);
+  void OnRouteMapUpdate(wxThreadEvent& event);
+  bool IsWaiting(const RouteMapOverlay* rmo) const;
+
+  // Legacy route container, used directly by ReportDialog
+  std::list<WeatherRoute*> m_WeatherRoutes;
+
+  // ------------------------------------------------------------------------
+  // UI update pipeline (states, dialogs, table rows)
+  // ------------------------------------------------------------------------
+  void UpdateStates();
+  void UpdateDialogs();
+  void UpdateComputeState();
+  void UpdateCurrentConfigurations();
+  void UpdateRoutePositionDialog(RoutePositionDialog& dlg);
+
+  void UpdateItem(int index, bool changed);
+  void UpdateAllItems(bool changed);
+  void UpdateSelectedItems(bool changed);
+
+  void SetColumn(long index, int column, const wxString& value);
+  void ClearComputedColumns(long index);
+  void UpdateStaticColumns(long index, WeatherRoute* wr);
+  void UpdateComputedColumns(long index, WeatherRoute* wr);
+
+  // ------------------------------------------------------------------------
+  // Routing table management
+  // ------------------------------------------------------------------------
+  void AddRoutingPanel();
+  void AddRouteToList(WeatherRoute* wr);
+  void RemoveRouteFromList(long index);
+  void SelectRouteInList(WeatherRoute* wr);
+  void PopulateRoutes();
+  long GetRouteRow(WeatherRoute* wr) const;
+
+  // Return the first "current" RouteMapOverlay used by plotting/reporting
+  RouteMapOverlay* FirstCurrentRouteMap();
+
+  // ------------------------------------------------------------------------
+  // Position management (add/edit/delete/populate)
+  // ------------------------------------------------------------------------
+  void OnNewPosition(wxCommandEvent& event);
+  void OnEditPosition(wxCommandEvent& event);
+  void OnDeletePosition(wxCommandEvent& event);
+  void OnDeleteAllPositions(wxCommandEvent& event);
+
+  void PopulatePositions();
+  void AddPositionRow(size_t index);
+  void UpdatePositionRow(size_t index);
+
+  void AddPosition_GUID(WeatherRoute* wr, double lat, double lon,
+                        const wxString& name, const wxString& GUID);
+
+  void MarkRouteDirty(WeatherRoute* wr);
+  void UpdateBoat();
+
+  // ------------------------------------------------------------------------
+  // Export & save operations (tracks, routes, GPX)
+  // ------------------------------------------------------------------------
+  void OnSaveTrack(wxCommandEvent& event);
+  void OnSaveAllTracks(wxCommandEvent& event);
+  void OnSaveRoute(wxCommandEvent& event);
+  void OnExportRouteAsGPX(wxCommandEvent& event);
+
+  TiXmlElement* SaveSimplifiedRouteAsGPXFile(
+      const RouteMapOverlay& overlay, const std::list<Position*>& simplified);
+
+  // ------------------------------------------------------------------------
+  // Menu commands (settings, statistics, report, plot, help)
+  // ------------------------------------------------------------------------
+  void OnSettings(wxCommandEvent& event);
+  void OnStatistics(wxCommandEvent& event);
+  void OnReport(wxCommandEvent& event);
+  void OnPlot(wxCommandEvent& event);
+  void OnCursorPosition(wxCommandEvent& event);
+  void OnRoutePosition(wxCommandEvent& event);
+  void OnFilterRoutes(wxCommandEvent& event);
+
+  void OnInformation(wxCommandEvent& event);
+  void OnManual(wxCommandEvent& event);
+  void OnAbout(wxCommandEvent& event);
+
+  // ------------------------------------------------------------------------
+  // Visibility & selection
+  // ------------------------------------------------------------------------
+  void OnToggleVisibility(wxCommandEvent& event);
+  void OnRouteSelected(wxListEvent& event);
+  void OnPositionSelected(wxListEvent& event);
+
+  // ------------------------------------------------------------------------
+  // Sorting
+  // ------------------------------------------------------------------------
+  void OnSortColumn(wxListEvent& event);
+
+  // ------------------------------------------------------------------------
+  // Mouse & interaction events
+  // ------------------------------------------------------------------------
+  void OnLeftDown(wxMouseEvent& event);
+  void OnLeftUp(wxMouseEvent& event);
+  void OnDownTimer(wxTimerEvent& event);
+  void OnRightUp(wxMouseEvent& event);
+
+  // ------------------------------------------------------------------------
+  // Rendering & viewport integration
+  // ------------------------------------------------------------------------
+  void Render(piDC& dc, PlugIn_ViewPort& vp);
+
+  // ------------------------------------------------------------------------
+  // Dialog accessors & plugin hook
+  // ------------------------------------------------------------------------
+  ConfigurationDialog& GetConfigurationDialog() {
+    return m_ConfigurationDialog;
+  }
+  SettingsDialog& GetSettingsDialog() { return m_SettingsDialog; }
+  BoatDialog& GetBoatDialog() { return m_BoatDialog; }
+  weather_routing_pi& GetPlugin() { return m_weather_routing_pi; }
+
+private:
+
+  // Legacy members still required by WeatherRouting.cpp
+  RoutingTablePanel* m_RoutingTablePanel = nullptr;
+  bool m_disable_colpane = false;
+  bool m_shuttingDown = false;
+
+  std::list<RouteMapOverlay*> m_RouteMapOverlays;
+  wxMutex m_OverlayListMutex;
+
+
+  RouteMapOverlay* m_RouteMapOverlayNeedingGrib = nullptr;
+
+  // Legacy members still required by WeatherRouting.cpp
+  RoutingTablePanel* m_RoutingTablePanel = nullptr;
+  bool m_disable_colpane = false;
+  bool m_shuttingDown = false;
+
+  std::list<RouteMapOverlay*> m_RouteMapOverlays;
+  wxMutex m_OverlayListMutex;
+
+
+
+
+  // ------------------------------------------------------------------------
+  // Panels & core UI widgets
+  // ------------------------------------------------------------------------
+  WeatherRoutingPositionPanel* m_PositionPanel = nullptr;
+  RouteMapPanel* m_RouteMapPanel = nullptr;
+  RouteMapOverlay* m_pRouteMapOverlay = nullptr;
+  weather_routing_pi& m_weather_routing_pi;
+  WeatherRoutingPanel* m_panel = nullptr;
+  wxWindow* m_colpaneWindow = nullptr;
+  wxCollapsiblePane* m_colpane = nullptr;
+
+  // Button row
+  wxButton* m_btnCompute = nullptr;
+  wxButton* m_btnSaveTrack = nullptr;
+  wxButton* m_btnSaveRoute = nullptr;
+  wxButton* m_btnExportGPX = nullptr;
+  wxButton* m_btnReset = nullptr;
+  wxButton* m_btnGotoRouting = nullptr;
+
+  // Route list
+  // std::vector<WeatherRoute*> m_WeatherRoutes;
+  // 
+  // Route list (legacy list, used by ReportDialog and others) see public
+  // member declaration above for m_WeatherRoutes. This should eventually be
+  // removed.
+  // std::list<WeatherRoute*> m_WeatherRoutes;
+
+
+  // Timers
+  wxTimer m_tCompute;
+  wxTimer m_tHideConfiguration;
+  wxTimer m_tDownTimer;
+  wxTimer m_tAutoSaveXML;
+
+  // Scheduler containers
+  std::list<RouteMapOverlay*> m_RunningRouteMaps;
+  std::list<RouteMapOverlay*> m_WaitingRouteMaps;
+
+  // Dialog instances
+  ConfigurationDialog m_ConfigurationDialog;
+  ConfigurationBatchDialog m_ConfigurationBatchDialog;
+  CursorPositionDialog m_CursorPositionDialog;
+  RoutePositionDialog m_RoutePositionDialog;
+  BoatDialog m_BoatDialog;
+  SettingsDialog m_SettingsDialog;
+  StatisticsDialog m_StatisticsDialog;
+  ReportDialog m_ReportDialog;
+  PlotDialog m_PlotDialog;
+  FilterRoutesDialog m_FilterRoutesDialog;
+
+  // Dialog visibility flags
+  bool m_bShowConfiguration = false;
+  bool m_bShowConfigurationBatch = false;
+  bool m_bShowRoutePosition = false;
+  bool m_bShowSettings = false;
+  bool m_bShowStatistics = false;
+  bool m_bShowReport = false;
+  bool m_bShowPlot = false;
+  bool m_bShowFilter = false;
+
+  // Runtime state
+  bool m_bRunning = false;
+  wxTimeSpan m_RunTime;
+  wxDateTime m_StartTime;
+  int m_RoutesToRun = 0;
+  bool m_bSkipUpdateCurrentItems = false;
+  wxString m_default_configuration_path;
+
+  // Mouse state (drag / long?press)
+  wxPoint m_downPos;
+  wxPoint m_startPos;
+  wxPoint m_startMouse;
+
+  // Window state
+  wxSize m_size;
+  wxFileName m_FileName;
+
+#ifdef __WXMSW__
+  // Address space monitoring and compute gating
+  AddressSpaceMonitor* m_addressSpaceMonitor = nullptr;
+  std::atomic<bool> m_disableNewComputations{false};
+
+  void DisableNewComputations() { m_disableNewComputations.store(true); }
+  void EnableNewComputations() { m_disableNewComputations.store(false); }
+  bool AreNewComputationsDisabled() const {
+    return m_disableNewComputations.load();
+  }
+#endif
+
+  // Initialization & invariants
+  void LoadConfigurationAndData();
+  void InitializeUI();
+  void BindEvents();
+  void AssertAllInvariants();
+  void AssertSchedulerInvariants();
+  void AssertThreadLifecycleInvariants();
+
+  // Memory alert handlers
+  void OnMemoryAlertStop(wxCommandEvent& event);
+  void OnMemoryAutoReset(wxCommandEvent& event);
+};
+
+#endif  // _WEATHER_ROUTING_H_

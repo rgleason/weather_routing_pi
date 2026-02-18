@@ -31,8 +31,6 @@
 class AddressSpaceMonitor;
 #endif
 
-
-
 struct WeatherRoutingSettings {
   bool UseLocalTime;
   bool DisplayWindBarbs;

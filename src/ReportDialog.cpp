@@ -223,7 +223,8 @@ void ReportDialog::GenerateRoutesReport() {
            m_WeatherRouting.m_WeatherRoutes.begin();
        it != m_WeatherRouting.m_WeatherRoutes.end(); it++) {
     if (!(*it)->routemapoverlay->ReachedDestination()) continue;
-    wxString route_string = (*it)->Start + _T(" - ") + (*it)->End;
+//   wxString route_string = (*it)->Start + _T(" - ") + (*it)->End;
+    wxString route_string = wxString::Format("%p - %p", (*it)->Start, (*it)->End);
     std::list<RouteMapOverlay*> overlays = routes[route_string];
     overlays.push_back((*it)->routemapoverlay);
     routes[route_string] = overlays;
