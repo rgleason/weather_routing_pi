@@ -1,12 +1,12 @@
-#ifndef _WEATHER_ROUTING_CONFIG_DIALOG_H_
-#define _WEATHER_ROUTING_CONFIG_DIALOG_H_
+#ifndef _WR_CONFIG_DIALOG_H_
+#define _WR_CONFIG_DIALOG_H_
 
 #include <wx/wx.h>
 #include "WeatherRouting.h"
 
-class WeatherRoutingConfigDialog : public wxDialog {
+class WRConfigDialog : public wxDialog {
 public:
-  WeatherRoutingConfigDialog(wxWindow* parent, WeatherRoute* route);
+  WRConfigDialog(wxWindow* parent, WeatherRoute* route);
 
 private:
   WeatherRoute* m_route;

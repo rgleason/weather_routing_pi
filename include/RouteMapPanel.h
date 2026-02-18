@@ -1,6 +1,8 @@
 #ifndef _WEATHER_ROUTING_ROUTEMAP_PANEL_H_
 #define _WEATHER_ROUTING_ROUTEMAP_PANEL_H_
 
+class WeatherRouting;
+
 #include <wx/wx.h>
 #include <wx/listctrl.h>
 

@@ -20,18 +20,18 @@
 #ifndef _WEATHER_ROUTING_ROUTE_MAP_OVERLAY_H_
 #define _WEATHER_ROUTING_ROUTE_MAP_OVERLAY_H_
 
-#include <atomic>   
-#include "RouteMap.h"
-#include "LineBufferOverlay.h"
-#include "WeatherRouting.h"
-
-class PlugIn_ViewPort;
-class PlugIn_Route;
-
-class piDC;
+class WeatherRouting;
+class WeatherRoute;
 class RouteMapOverlay;
 class SettingsDialog;
-class WeatherRoute;
+class PlugIn_ViewPort;
+class PlugIn_Route;
+class piDC;
+
+
+#include <atomic>
+#include "RouteMap.h"
+#include "LineBufferOverlay.h"
 
 
 /**

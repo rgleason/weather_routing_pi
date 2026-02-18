@@ -35,7 +35,7 @@
 #include "RouteMapOverlay.h"
 #include "SettingsDialog.h"
 #include "georef.h"
-#include "WeatherRouting.h" 
+#include "WeatherRouting.h"
 
 void WR_GetCanvasPixLL(PlugIn_ViewPort* vp, wxPoint* pp, double lat,
                        double lon) {

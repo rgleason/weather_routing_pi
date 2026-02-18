@@ -81,8 +81,8 @@ set(VERSION_MAJOR "1")
 set(VERSION_MINOR "15")
 
 set(VERSION_PATCH "46")
-set(VERSION_TWEAK "27")
-set(VERSION_DATE "17/02/2026") # DD/MM/YYYY format
+set(VERSION_TWEAK "30")
+set(VERSION_DATE "18/02/2026") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov58")
 
 set(OCPN_API_VERSION_MAJOR "1")
@@ -183,6 +183,8 @@ add_definitions(-DUSE_S57)
 SET(SRCS
             src/weather_routing_pi.cpp
             src/WeatherRouting.cpp
+			src/WRpanel.cpp
+			src/WRConfigDialog.cpp
             src/SunCalculator.cpp
             src/ConfigurationDialog.cpp
             src/SettingsDialog.cpp
@@ -228,6 +230,8 @@ endif (WIN32)
 SET (HDRS
             include/weather_routing_pi.h
             include/WeatherRouting.h
+			include/WRpanel.h
+			include/WRConfigDialog.h
             include/SunCalculator.h
             include/ConfigurationDialog.h
             include/SettingsDialog.h

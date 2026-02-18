@@ -1,7 +1,7 @@
-#include "WeatherRoutingPositionPanel.h"
+#include "WRPositionPanel.h"
 #include "WeatherRouting.h"
 
-WeatherRoutingPositionPanel::WeatherRoutingPositionPanel(wxWindow* parent,
+WRPositionPanel::WRPositionPanel(wxWindow* parent,
                                                          WeatherRouting& wr)
     : wxPanel(parent), m_WR(wr) {
   wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
@@ -18,7 +18,7 @@ WeatherRoutingPositionPanel::WeatherRoutingPositionPanel(wxWindow* parent,
 }
 
 
-void WeatherRoutingPositionPanel::PopulatePositions() {
+void WRPositionPanel::PopulatePositions() {
   // Clear existing rows
   m_lPositions->DeleteAllItems();
 

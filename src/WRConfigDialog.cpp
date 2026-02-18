@@ -1,9 +1,9 @@
-#include "WeatherRoutingConfigDialog.h"
+#include "WRConfigDialog.h"
 
-wxBEGIN_EVENT_TABLE(WeatherRoutingConfigDialog, wxDialog)
-    EVT_BUTTON(wxID_OK, WeatherRoutingConfigDialog::OnOK) wxEND_EVENT_TABLE()
+wxBEGIN_EVENT_TABLE(WRConfigDialog, wxDialog)
+    EVT_BUTTON(wxID_OK, WRConfigDialog::OnOK) wxEND_EVENT_TABLE()
 
-        WeatherRoutingConfigDialog::WeatherRoutingConfigDialog(
+        WRConfigDialog::WRConfigDialog(
             wxWindow* parent, WeatherRoute* route)
     : wxDialog(parent, wxID_ANY, _("Edit Routing Configuration"),
                wxDefaultPosition, wxDefaultSize,
@@ -33,7 +33,7 @@ wxBEGIN_EVENT_TABLE(WeatherRoutingConfigDialog, wxDialog)
   SetSizerAndFit(top);
 }
 
-void WeatherRoutingConfigDialog::OnOK(wxCommandEvent& event) {
+void WRConfigDialog::OnOK(wxCommandEvent& event) {
   // Save changes back into the WeatherRoute
   m_route->BoatName = m_txtBoatName->GetValue();
   m_route->StartLat = wxAtof(m_txtStartLat->GetValue());
