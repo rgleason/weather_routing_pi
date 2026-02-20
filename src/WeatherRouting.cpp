@@ -980,7 +980,7 @@ void WeatherRouting::UpdateCursorPositionDialog() {
 
   RouteMapConfiguration configuration = rmo->GetConfiguration();
   auto latStr = toSDMM_PlugIn(NEflag::LAT, p->lat, Precision::HI);
-  auto lonStr = toSDMM_PlugIn(NEflag::LON, p->lon, Precision::HI);
+  auto lonStr = toSDMM_PlugIn(NEflag::LON, heading_resolve(p->lon), Precision::HI);
   dlg.m_stPosition->SetLabel(latStr + " " + lonStr);
 
   if (p->polar == -1)
