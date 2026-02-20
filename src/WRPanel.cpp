@@ -24,5 +24,8 @@ WRPanel::WRPanel(wxWindow* parent, WeatherRouting& wr)
 
   topSizer->Add(buttonSizer, 0, wxALIGN_LEFT);
 
+  // Event binding for route map updates
+  // Bind(EVT_ROUTEMAP_UPDATE, &WeatherRouting::OnRouteMapUpdate, this);
+
   SetSizer(topSizer);
 }

@@ -768,6 +768,8 @@ void weather_routing_pi::OnToolbarToolCallback(int id) {
 void weather_routing_pi::OnContextMenuItemCallback(int id) {
   if (!m_pWeather_Routing) NewWR();
 
+  // Commented out: Position and waypoint context menu handling
+  /*
   if (id == m_position_menu_id) {
     m_pWeather_Routing->AddPosition(m_cursor_lat, m_cursor_lon);
   } else if (id == m_waypoint_menu_id) {
@@ -778,7 +780,9 @@ void weather_routing_pi::OnContextMenuItemCallback(int id) {
     if (wp == nullptr) return;
     m_pWeather_Routing->AddPosition(wp->m_lat, wp->m_lon, wp->m_MarkName,
                                     wp->m_GUID);
-  } else if (id == m_route_menu_id) {
+  } else
+  */
+  if (id == m_route_menu_id) {
     wxString GUID = GetSelectedRouteGUID_Plugin();
 
     m_pWeather_Routing->AddRoute(GUID);

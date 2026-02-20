@@ -47,7 +47,9 @@ set "VCstr=Visual Studio 17"
 # WXWIN="/home/fcgle/source/wxWidgets-3.2.2"
 
 # build the plugin with cmake
-
+# Remove build dir and make a new one
+rm -rf build
+mkdir build
 cd build
 cmake -T v143 -A Win32 -DOCPN_TARGET=MSVC ..
 cmake --build . --target package --config relwithdebinfo >output.txt
