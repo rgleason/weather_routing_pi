@@ -145,12 +145,14 @@ private:
   void LoadFile(bool switched = false);
   void OnPolarSelected(wxListEvent& event) { OnPolarSelected(); }
   void OnPolarSelected();
-
+ 
+  // Legacy UI
   void OnUpPolar(wxCommandEvent& event);
   void OnDownPolar(wxCommandEvent& event);
   void OnEditPolar(wxCommandEvent& event);
   void OnAddPolar(wxCommandEvent& event);
   void OnRemovePolar(wxCommandEvent& event);
+  // Legacy UI down to here
 
   void GenerateCrossOverChart();
   void OnEvtThread(wxThreadEvent& event);

@@ -97,6 +97,8 @@ void ConfigurationDialog::EditBoat() {
   m_WeatherRouting.GetBoatDialog().LoadPolar(m_tBoat->GetValue());
   m_WeatherRouting.GetBoatDialog().Show();
 }
+
+// Unused: event handler not referenced by UI or logic.
 void ConfigurationDialog::OnGribTime(wxCommandEvent& event) {
   SetStartDateTime(m_GribTimelineTime);
   Update();

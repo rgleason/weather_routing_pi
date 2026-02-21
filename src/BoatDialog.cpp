@@ -1254,10 +1254,14 @@ void BoatDialog::SaveBoat() {
   }
 }
 
+// Unused: event handler not referenced by UI or logic.
+
 void BoatDialog::OnSaveAsBoat(wxCommandEvent& event) {
   m_boatpath.clear();
   SaveBoat();
 }
+
+// Unused: event handler not referenced by UI or logic.
 
 void BoatDialog::OnClose(wxCommandEvent& event) { EndModal(wxID_CANCEL); }
 
@@ -1282,8 +1286,8 @@ void BoatDialog::OnUpdatePlot() {
   m_cbFullPlot->Enable(!m_cPlotType->GetSelection());
   RefreshPlots();
 }
-
-void BoatDialog::OnUpPolar(wxCommandEvent& event) {
+// Legacy UI
+void BoatDialog:: (wxCommandEvent& event) {
   long index = SelectedPolar();
   if (index < 1) return;
 
@@ -1298,6 +1302,7 @@ void BoatDialog::OnUpPolar(wxCommandEvent& event) {
                           wxLIST_STATE_SELECTED);
 }
 
+// Legacy UI
 void BoatDialog::OnDownPolar(wxCommandEvent& event) {
   long index = SelectedPolar();
   if (index < 0 || index + 1 >= (long)m_Boat.Polars.size()) return;
@@ -1313,6 +1318,7 @@ void BoatDialog::OnDownPolar(wxCommandEvent& event) {
                           wxLIST_STATE_SELECTED);
 }
 
+// Legacy UI
 void BoatDialog::OnEditPolar(wxCommandEvent& event) {
   // m_EditPolarDialog.Show();
 
@@ -1339,6 +1345,7 @@ void BoatDialog::OnEditPolar(wxCommandEvent& event) {
   RefreshPlots();
 }
 
+// Legacy UI
 void BoatDialog::OnAddPolar(wxCommandEvent& event) {
   wxFileConfig* pConf = GetOCPNConfigObject();
   pConf->SetPath(_T( "/PlugIns/WeatherRouting/BoatDialog" ));
@@ -1400,6 +1407,7 @@ void BoatDialog::OnAddPolar(wxCommandEvent& event) {
   if (!existed) OnEditPolar(event);
 }
 
+// Legacy UI
 void BoatDialog::OnRemovePolar(wxCommandEvent& event) {
   long index = -1, lastindex = -1, count = 0;
 
@@ -1645,7 +1653,7 @@ void BoatDialog::UpdateBestVMGInfo() {
     double downwindVMG = downwindSpeed * cos(deg2rad(180.0 - downwindAngle));
 
     m_stBestVMGDownwindAngle->SetLabel(
-        wxString::Format(_("%.1f\u00B0"), downwindAngle));  // "°"
+        wxString::Format(_("%.1f\u00B0"), downwindAngle));  // "ï¿½"
     m_stBestVMGDownwindSpeed->SetLabel(
         wxString::Format(_("%.1f kts"), downwindSpeed));
     m_stBestVMGDownwindVMG->SetLabel(

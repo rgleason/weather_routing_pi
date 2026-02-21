@@ -1,6 +1,6 @@
 src/weather_routing_pi.cpp
 src/WeatherRouting.cpp
-src/WRpanel.cpp
+src/WRPanel.cpp
 src/WRConfigDialog.cpp
 src/SunCalculator.cpp
 src/ConfigurationDialog.cpp
@@ -38,7 +38,7 @@ src/AddressSpaceMonitor.cpp
 src/MemoryStatusDialog.cpp
 include/weather_routing_pi.h
 include/WeatherRouting.h
-include/WRpanel.h
+include/WRPanel.h
 include/WRConfigDialog.h
 include/SunCalculator.h
 include/ConfigurationDialog.h

@@ -8,6 +8,9 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
                                        long style)
     : wxPanel(parent, id, pos, size, style) {
 
+ // TEMPORARILY UNUSED: Menubar and all menu items.
+// Will be reactivated when full top-menu UI is restored.
+     
   this->SetSizeHints(wxSize(400, 300), wxDefaultSize);
   m_menubar3 = new wxMenuBar(0);
   m_mFile = new wxMenu();
@@ -233,8 +236,21 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
   m_mHelp->Append(m_mAbout);
 
   m_menubar3->Append(m_mHelp, _("&Help"));
+  // End temporarily unused
 
  // this->SetMenuBar(m_menubar3);
+
+// TEMPORARILY UNUSED: Context menus for routing and positions.
+// Will be reactivated when right-click UI is restored.
+
+
+// ======================================================================
+// TEMPORARILY UNUSED CONTEXT MENU BINDINGS
+// Right-click context menus are part of the legacy interaction model.
+// They will be reactivated when WeatherRouting restores full mouse
+// interaction (right-click, context actions, etc.).
+// ======================================================================
+
 
   m_mContextMenu = new wxMenu();
   wxMenuItem* m_mNew1;
@@ -278,10 +294,15 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
                             wxEmptyString, wxITEM_NORMAL);
   m_mContextMenu->Append(m_mStop1);
 
+ 
+   wxMenuItem* m_mBatch1;
+
   m_mBatch1 = new wxMenuItem(m_mContextMenu, wxID_ANY,
                              wxString(_("&Batch")) + wxT('\t') + wxT("Ctrl+B"),
                              wxEmptyString, wxITEM_NORMAL);
   m_mContextMenu->Append(m_mBatch1);
+
+   //END of CONTEXT MENU TEMPORARILY UNUSED
 
   wxMenuItem* m_mResetAll1;
   m_mResetAll1 =
@@ -346,6 +367,14 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
       wxEmptyString, wxITEM_NORMAL);
   m_mContextMenuPositions->Append(m_mDeletePosition1);
 
+  // End temporarily unused
+
+
+// TEMPORARILY UNUSED: Right-click handler for context menu.
+// Will be reactivated when context menus return.
+
+
+
   this->Connect(
       wxEVT_RIGHT_DOWN,
       wxMouseEventHandler(WeatherRoutingBase::WeatherRoutingBaseOnContextMenu),
@@ -353,10 +382,23 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
 
  // this->Centre(wxBOTH);
 
+
+
+
   // Connect Events
   this->Connect(wxEVT_CLOSE_WINDOW,
                 wxCloseEventHandler(WeatherRoutingBase::OnClose));
   this->Connect(wxEVT_SIZE, wxSizeEventHandler(WeatherRoutingBase::OnSize));
+
+// ======================================================================
+// TEMPORARILY UNUSED MENU BINDINGS
+// These Bind() calls are correct and fully functional, but the menubar
+// is not currently attached to any wxFrame. Once the WeatherRouting UI
+// restores a top-level menu (as in the legacy plugin), these bindings
+// will become active again.
+// ======================================================================
+
+
   m_mFile->Bind(wxEVT_COMMAND_MENU_SELECTED,
                 wxCommandEventHandler(WeatherRoutingBase::OnOpen), this,
                 m_mOpen->GetId());
@@ -517,6 +559,14 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
                 wxCommandEventHandler(WeatherRoutingBase::OnRoutePosition),
                 this, m_mRoutePosition1->GetId());
 
+ // ======================================================================
+// TEMPORARILY UNUSED CONTEXT MENU BINDINGS
+// Right-click context menus are part of the legacy interaction model.
+// They will be reactivated when WeatherRouting restores full mouse
+// interaction (right-click, context actions, etc.).
+// ======================================================================
+               
+
   m_mContextMenuPositions->Bind(
       wxEVT_COMMAND_MENU_SELECTED,
       wxCommandEventHandler(WeatherRoutingBase::OnNewPosition), this,
@@ -530,6 +580,16 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
       wxCommandEventHandler(WeatherRoutingBase::OnDeletePosition), this,
       m_mDeletePosition1->GetId());
 }
+
+// ======================================================================
+// TEMPORARILY UNUSED MENU BINDINGS - END
+// These Bind() calls are correct and fully functional, but the menubar
+// is not currently attached to any wxFrame. Once the WeatherRouting UI
+// restores a top-level menu (as in the legacy plugin), these bindings
+// will become active again.
+// ======================================================================
+
+
 
 WeatherRoutingBase::~WeatherRoutingBase() {
   // Disconnect Events
@@ -1736,6 +1796,8 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   m_staticText124->Wrap(-1);
   fgSizer951->Add(m_staticText124, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
+  // Unused: spin controls not referenced by current routing logic.
+
   m_sMaxSearchAngle = new wxSpinCtrl(
       sbConstraints1->GetStaticBox(), wxID_ANY, wxEmptyString,
       wxDefaultPosition, wxSize(140, -1), wxSP_ARROW_KEYS, 0, 180, 120);
@@ -2581,6 +2643,12 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   m_sMaxCourseAngle->Connect(
       wxEVT_COMMAND_SPINCTRL_UPDATED,
       wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
+
+// // UNUSED: m_sMaxSearchAngle is not referenced by routing logic.
+// These event bindings are therefore also unused.
+
+
+
   m_sMaxSearchAngle->Connect(
       wxEVT_LEFT_DOWN, wxMouseEventHandler(ConfigurationDialogBase::EnableSpin),
       NULL, this);
@@ -2641,6 +2709,9 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   m_sMaxSearchAngle->Connect(
       wxEVT_COMMAND_SPINCTRL_UPDATED,
       wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
+
+    // End Unused: spin controls not referenced by current routing logic.
+  
   m_cbAvoidCycloneTracks->Connect(
       wxEVT_COMMAND_CHECKBOX_CLICKED,
       wxCommandEventHandler(ConfigurationDialogBase::OnAvoidCyclones), NULL,
@@ -4799,12 +4870,14 @@ StatisticsDialogBase::StatisticsDialogBase(wxWindow* parent, wxWindowID id,
   m_stSkipPositions->Wrap(-1);
   fgSizer29->Add(m_stSkipPositions, 0, wxALL, 5);
 
+  // Legacy: Positions field not updated by current statistics logic.
   m_staticText49 =
       new wxStaticText(sbSizer10->GetStaticBox(), wxID_ANY, _("Positions"),
                        wxDefaultPosition, wxDefaultSize, 0);
   m_staticText49->Wrap(-1);
   fgSizer29->Add(m_staticText49, 0, wxALL, 5);
 
+  // Legacy: Positions field not updated by current statistics logic.
   m_stPositions = new wxStaticText(sbSizer10->GetStaticBox(), wxID_ANY, _("0"),
                                    wxDefaultPosition, wxDefaultSize, 0);
   m_stPositions->Wrap(-1);
@@ -4875,6 +4948,7 @@ ReportDialogBase::ReportDialogBase(wxWindow* parent, wxWindowID id,
   fgSizer99->SetFlexibleDirection(wxBOTH);
   fgSizer99->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
 
+  // Legacy: HTML routes report used only by deprecated report generator.
   m_htmlRoutesReport =
       new wxHtmlWindow(sbSizer32->GetStaticBox(), wxID_ANY, wxDefaultPosition,
                        wxDefaultSize, wxHW_SCROLLBAR_AUTO);
@@ -5177,6 +5251,9 @@ ConfigurationBatchDialogBase::ConfigurationBatchDialogBase(
   m_staticText131->Wrap(-1);
   fgSizer108->Add(m_staticText131, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
+  // Unused: wind strength controls not referenced by current configuration
+  // logic.
+
   m_sWindStrengthMin =
       new wxSpinCtrl(m_panel17, wxID_ANY, wxEmptyString, wxDefaultPosition,
                      wxDefaultSize, wxSP_ARROW_KEYS, 0, 999, 100);
@@ -5192,6 +5269,9 @@ ConfigurationBatchDialogBase::ConfigurationBatchDialogBase(
   m_staticText132->Wrap(-1);
   fgSizer108->Add(m_staticText132, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
+  // Unused: wind strength controls not referenced by current configuration
+  // logic.
+
   m_sWindStrengthMax =
       new wxSpinCtrl(m_panel17, wxID_ANY, wxEmptyString, wxDefaultPosition,
                      wxDefaultSize, wxSP_ARROW_KEYS, 0, 999, 100);
@@ -5206,6 +5286,9 @@ ConfigurationBatchDialogBase::ConfigurationBatchDialogBase(
                                      wxDefaultPosition, wxDefaultSize, 0);
   m_staticText133->Wrap(-1);
   fgSizer108->Add(m_staticText133, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
+
+  // Unused: wind strength controls not referenced by current configuration
+  // logic
 
   m_sWindStrengthStep =
       new wxSpinCtrl(m_panel17, wxID_ANY, wxEmptyString, wxDefaultPosition,
@@ -5520,7 +5603,8 @@ CursorPositionDialog::CursorPositionDialog(wxWindow* parent, wxWindowID id,
   m_stPosition->Wrap(120);
   fgSizer91->Add(m_stPosition, 0, wxALL | wxEXPAND, 5);
 
-  m_staticText124 = new wxStaticText(this, wxID_ANY, _("Polar"),
+  // Legacy: These fields are not populated by current routing logic.
+    m_staticText124 = new wxStaticText(this, wxID_ANY, _("Polar"),
                                      wxDefaultPosition, wxDefaultSize, 0);
   m_staticText124->Wrap(-1);
   fgSizer91->Add(m_staticText124, 0, wxALL, 5);
@@ -5770,6 +5854,9 @@ RoutePositionDialog::RoutePositionDialog(wxWindow* parent, wxWindowID id,
   m_stJibes->Wrap(-1);
   fgSizer91->Add(m_stJibes, 0, wxALL | wxEXPAND, 5);
 
+  // Legacy: Weather data fields are not populated by current route position
+  // logic.
+
   // Sail Plan Changes
   m_staticText129 = new wxStaticText(this, wxID_ANY, _("Sail Plan Changes"),
                                      wxDefaultPosition, wxDefaultSize, 0);
@@ -5780,6 +5867,9 @@ RoutePositionDialog::RoutePositionDialog(wxWindow* parent, wxWindowID id,
                                          wxDefaultPosition, wxDefaultSize, 0);
   m_stSailPlanChanges->Wrap(-1);
   fgSizer91->Add(m_stSailPlanChanges, 0, wxALL | wxEXPAND, 5);
+
+  // Legacy: Weather data fields are not populated by current route position
+  // logic.
 
   // Weather Data
   m_staticText122 = new wxStaticText(this, wxID_ANY, _("Weather Data"),
@@ -6208,11 +6298,15 @@ EditPolarDialogBase::EditPolarDialogBase(wxWindow* parent, wxWindowID id,
 
   m_panel17 = new wxPanel(m_panel23, wxID_ANY, wxDefaultPosition, wxDefaultSize,
                           wxTAB_TRAVERSAL);
-  wxFlexGridSizer* fgSizer1022;
+
+  // Unused: wxFormBuilder-generated sizer wrapper, not referenced by logic.
+    wxFlexGridSizer* fgSizer1022;
   fgSizer1022 = new wxFlexGridSizer(0, 2, 0, 0);
   fgSizer1022->SetFlexibleDirection(wxBOTH);
   fgSizer1022->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
 
+  // Legacy: Boat characteristics UI is not used in current WeatherRouting
+  // workflow.
   m_staticText139 =
       new wxStaticText(m_panel17, wxID_ANY,
                        _("Warning:  All of the below are currently not used"),
@@ -6406,6 +6500,8 @@ EditPolarDialogBase::EditPolarDialogBase(wxWindow* parent, wxWindowID id,
 
   m_panel221 = new wxPanel(m_panel23, wxID_ANY, wxDefaultPosition,
                            wxDefaultSize, wxTAB_TRAVERSAL);
+
+  // Unused: wxFormBuilder-generated sizer wrapper, not referenced by logic.
   wxFlexGridSizer* fgSizer109;
   fgSizer109 = new wxFlexGridSizer(0, 2, 0, 0);
   fgSizer109->AddGrowableCol(0);
@@ -6461,6 +6557,8 @@ EditPolarDialogBase::EditPolarDialogBase(wxWindow* parent, wxWindowID id,
                             wxDefaultPosition, wxDefaultSize, 0);
   fgSizer1131->Add(m_button45, 0, wxALL | wxEXPAND, 5);
 
+  // Legacy: leftover test button panel, unused in current WeatherRouting
+  // workflow.
   m_button461 = new wxButton(m_panel221, wxID_ANY, _("MyButton"),
                              wxDefaultPosition, wxDefaultSize, 0);
   fgSizer1131->Add(m_button461, 0, wxALL | wxEXPAND, 5);
