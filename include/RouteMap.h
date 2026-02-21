@@ -837,7 +837,7 @@ public:
     return time;
   }
 
-void RouteMap::SetConfiguration(const RouteMapConfiguration& o) {
+  void SetConfiguration(const RouteMapConfiguration& o) {
     Lock();
     m_Configuration = o;
     m_bValid = m_Configuration.Update();
