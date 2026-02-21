@@ -186,6 +186,13 @@ RouteMapOverlay::RouteMapOverlay(wxEvtHandler* parent)
 }
 
 
+RouteMapOverlay::RouteMapOverlay(wxEvtHandler* parent, WeatherRoute* route)
+    : RouteMapOverlay(parent)  // delegate to the existing constructor
+{
+  m_weatherRoute = route;
+}
+
+
 RouteMapOverlay::~RouteMapOverlay() {
   // First, ensure the worker is stopped and thread deleted
   //  Stop( safe to call even if no thread

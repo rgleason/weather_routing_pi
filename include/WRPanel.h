@@ -13,10 +13,18 @@ public:
   WRPanel(wxWindow* parent, WeatherRouting& wr);
  
   wxListCtrl* m_lWeatherRoutes;
-  wxButton* m_bCompute;
-  wxButton* m_bSaveAsTrack;
-  wxButton* m_bSaveAsRoute;
+
+  wxButton* m_bCompute = nullptr;
+  wxButton* m_bComputeAll = nullptr;
+  wxButton* m_bStop = nullptr;
+  wxButton* m_bReset = nullptr;
+  wxButton* m_bDelete = nullptr;
+  wxButton* m_bFilter = nullptr;
+
+  wxButton* m_bSaveAsTrack = nullptr;
+  wxButton* m_bSaveAsRoute = nullptr;
   wxButton* m_bExportRoute;
+
 
   void SetStopButtonEnabled(bool enabled);
   void SetStatusText(const wxString& text);
