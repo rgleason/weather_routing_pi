@@ -2016,6 +2016,15 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
 
   fgSizer113->Add(fgSizer1071, 1, wxEXPAND, 5);
 
+  m_cbUsePerformanceLoss =
+      new wxCheckBox(sbOptions1->GetStaticBox(), wxID_ANY, _("Use performance loss"),
+                     wxDefaultPosition, wxDefaultSize, wxCHK_3STATE);
+  m_cbUsePerformanceLoss->SetToolTip(
+      _("When enabled, calculates an averaged performance loss for maneuvers"
+        "(tacking, jibing, course change). This allows to create more realistic"
+        "routes if no specific data for the current boat exists."));
+  fgSizer113->Add(m_cbUsePerformanceLoss, 0, wxEXPAND, 5);
+
   // Begin Tacking time.
 
   wxFlexGridSizer* fgSizer1151;
@@ -2722,6 +2731,9 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   m_sWindStrength->Connect(
       wxEVT_COMMAND_SPINCTRL_UPDATED,
       wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
+  m_cbUsePerformanceLoss->Connect(
+      wxEVT_COMMAND_CHECKBOX_CLICKED,
+      wxCommandEventHandler(ConfigurationDialogBase::OnUsePerformanceLoss), NULL, this);
   m_sTackingTime->Connect(
       wxEVT_LEFT_DOWN, wxMouseEventHandler(ConfigurationDialogBase::EnableSpin),
       NULL, this);
@@ -3352,6 +3364,9 @@ ConfigurationDialogBase::~ConfigurationDialogBase() {
   m_sWindStrength->Disconnect(
       wxEVT_COMMAND_SPINCTRL_UPDATED,
       wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
+  m_cbUsePerformanceLoss->Disconnect(
+      wxEVT_COMMAND_CHECKBOX_CLICKED,
+      wxCommandEventHandler(ConfigurationDialogBase::OnUsePerformanceLoss), NULL, this);
   m_sTackingTime->Disconnect(
       wxEVT_LEFT_DOWN, wxMouseEventHandler(ConfigurationDialogBase::EnableSpin),
       NULL, this);

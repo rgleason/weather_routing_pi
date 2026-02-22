@@ -325,6 +325,12 @@ struct RouteMapConfiguration {
   double MaxLatitude;
 
   /**
+   * Whether to calculate an averaged performance loss instead of using
+   * specific data for tacking/jibing penalties.
+   */
+  bool UsePerformanceLoss;
+
+  /**
    * The penalty time to tack the boat, in seconds.
    *
    * The penalty time is added to the route calculation for each tack.

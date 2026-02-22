@@ -134,16 +134,16 @@ void ConfigurationDialog::OnUseMotor(wxCommandEvent& event) {
 }
 
 void ConfigurationDialog::OnUseOptimalAngles(wxCommandEvent& event) {
-    bool use_optimal_angles = m_cbUseOptimalAngles->IsChecked();
-    if (use_optimal_angles) {
-        m_sFromDegree->SetValue(0.0);
-        m_sToDegree->SetValue(180.0);
-        m_edited_controls.push_back(m_sFromDegree);
-        m_edited_controls.push_back(m_sToDegree);
-    }
-    m_sFromDegree->Enable(!use_optimal_angles);
-    m_sToDegree->Enable(!use_optimal_angles);
-    Update();
+  bool use_optimal_angles = m_cbUseOptimalAngles->IsChecked();
+  if (use_optimal_angles) {
+    m_sFromDegree->SetValue(0.0);
+    m_sToDegree->SetValue(180.0);
+    m_edited_controls.push_back(m_sFromDegree);
+    m_edited_controls.push_back(m_sToDegree);
+  }
+  m_sFromDegree->Enable(!use_optimal_angles);
+  m_sToDegree->Enable(!use_optimal_angles);
+  Update();
 }
 
 void ConfigurationDialog::OnBoatFilename(wxCommandEvent& event) {
@@ -421,6 +421,7 @@ void ConfigurationDialog::SetConfigurations(
 
   SET_SPIN_DOUBLE(MaxSwellMeters);
   SET_SPIN(MaxLatitude);
+  SET_CHECKBOX(UsePerformanceLoss);
   SET_SPIN(TackingTime);
   SET_SPIN(JibingTime);
   SET_SPIN(SailPlanChangeTime);
@@ -513,6 +514,7 @@ void ConfigurationDialog::OnResetAdvanced(wxCommandEvent& event) {
   m_sUpwindEfficiency->SetValue(100);
   m_sDownwindEfficiency->SetValue(100);
   m_sNightCumulativeEfficiency->SetValue(100);
+  m_cbUsePerformanceLoss->SetValue(false);
   m_sTackingTime->SetValue(0);
   m_sJibingTime->SetValue(0);
   m_sSailPlanChangeTime->SetValue(0);
@@ -550,6 +552,14 @@ void ConfigurationDialog::SetStartDateTime(wxDateTime datetime) {
                          wxString(_("Weather Routing"), wxOK | wxICON_WARNING));
     mdlg.ShowModal();
   }
+}
+
+void ConfigurationDialog::OnUsePerformanceLoss(wxCommandEvent& event) {
+  bool usePerformanceLoss = event.IsChecked();
+  m_sTackingTime->Enable(!usePerformanceLoss);
+  m_sJibingTime->Enable(!usePerformanceLoss);
+  m_sSailPlanChangeTime->Enable(!usePerformanceLoss);
+  Update();
 }
 
 #define GET_SPIN(FIELD)                                              \
@@ -704,6 +714,7 @@ void ConfigurationDialog::Update() {
 
     GET_SPIN(MaxSwellMeters);
     GET_SPIN(MaxLatitude);
+    GET_CHECKBOX(UsePerformanceLoss);
     GET_SPIN(TackingTime);
     GET_SPIN(JibingTime);
     GET_SPIN(SailPlanChangeTime);

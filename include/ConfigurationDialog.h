@@ -136,6 +136,7 @@ protected:
   void OnClearDegreeSteps(wxCommandEvent& event);
   void OnGenerateDegreeSteps(wxCommandEvent& event);
   void OnClose(wxCommandEvent& event) { Hide(); }
+  virtual void OnUsePerformanceLoss(wxCommandEvent& event) override;
 
 private:
   void UpdateCycloneControls();
