@@ -601,18 +601,30 @@ void WeatherRouting::CopyDataFiles(wxString from, wxString to) {
 }
 
 void WeatherRouting::Render(piDC& dc, PlugIn_ViewPort& vp) {
-  static int prevLocationFormat =
-      -1;  // Last time we rendered, which SDMM format was used
-  int currentLocationFormat;  // To determine whether preferred SDMM format has
-                              // changed.
-  bool locationFormatChanged = false;
+  // Last time we rendered, which SDMM format was used?
+  static auto prevLocationFormat{SDDMFORMAT::END_SDDMFORMATS};  
+  // To determine whether preferred SDMM format has changed.
+  auto currentLocationFormat = GetLatLonFormat();  
+  auto locationFormatChanged{prevLocationFormat != currentLocationFormat};
+
+  // Last time we rendered, which distance unit was used?
+  static auto prevDistanceUnit{std::string("invalid distance unit")}; 
+  // To determine whether preferred distance unit has changed.
+  auto currentDistanceUnit{getUsrDistanceUnit_Plugin().ToStdString()}; 
+  bool distanceUnitChanged{currentDistanceUnit != prevDistanceUnit};
+
+  static auto prevSpeedUnit{std::string("invalid speed unit ")};
+  auto currentSpeedUnit{getUsrSpeedUnit_Plugin().ToStdString()};
+  bool speedUnitChanged{currentSpeedUnit != prevSpeedUnit};
 
   if (vp.bValid == false) return;
 
-  currentLocationFormat = GetLatLonFormat();
-  if (currentLocationFormat != prevLocationFormat) {
-    prevLocationFormat = currentLocationFormat;
-    locationFormatChanged = true;
+  if (locationFormatChanged) prevLocationFormat = (SDDMFORMAT)currentLocationFormat;
+  if (distanceUnitChanged) prevDistanceUnit = currentDistanceUnit;
+  if (speedUnitChanged) prevSpeedUnit = currentSpeedUnit;
+  
+  if (distanceUnitChanged || speedUnitChanged) {
+    UpdateColumns();
   }
 
   // polling is bad
@@ -664,11 +676,11 @@ void WeatherRouting::Render(piDC& dc, PlugIn_ViewPort& vp) {
     }
   }
 
-  if (work || locationFormatChanged) {
+  if (work || locationFormatChanged || distanceUnitChanged) {
     GetParent()->Refresh();
   }
 
-  if (work) {
+  if (work || distanceUnitChanged) {
     UpdateConfigurations();
     Reset();
   }
@@ -885,8 +897,19 @@ void WeatherRouting::UpdateColumns() {
         else
           name += "UTC";
         name += ")";
+      } else if (i == DISTANCE) {
+        name += " (" + getUsrDistanceUnit_Plugin() + ")";
+      } else if ((i == AVGSPEED) || (i == MAXSPEED) || (i == AVGSPEEDGROUND) ||
+                 (i == MAXSPEEDGROUND)) {
+        name += " (" + getUsrSpeedUnit_Plugin() + ")";
+      } else if ((i == AVGWIND) || (i == MAXWIND) || (i == MAXWINDGUST) || (i == AVGCURRENT) ||
+                 (i == MAXCURRENT) ) {
+        // TODO: Quinton: In API20 getUsrWindSpeedUnit_Plugin() instead, possibly.
+        name += " (" + getUsrSpeedUnit_Plugin() + ")";
+      } else if ((i == AVGSWELL) || (i == MAXSWELL)) {
+        // TODO: Quinton: In API20 getUsrHeightUnit_Plugin() instead, possibly.
+        name += " (" + std::string("m") + ")";
       }
-
       m_panel->m_lWeatherRoutes->InsertColumn(columns[i], name);
       m_panel->m_lWeatherRoutes->SetColumnWidth(columns[i], wxLIST_AUTOSIZE);
     } else
@@ -957,7 +980,7 @@ void WeatherRouting::UpdateCursorPositionDialog() {
 
   RouteMapConfiguration configuration = rmo->GetConfiguration();
   auto latStr = toSDMM_PlugIn(NEflag::LAT, p->lat, Precision::HI);
-  auto lonStr = toSDMM_PlugIn(NEflag::LON, p->lon, Precision::HI);
+  auto lonStr = toSDMM_PlugIn(NEflag::LON, heading_resolve(p->lon), Precision::HI);
   dlg.m_stPosition->SetLabel(latStr + " " + lonStr);
 
   if (p->polar == -1)
@@ -1052,7 +1075,8 @@ void WeatherRouting::UpdateRoutePositionDialog() {
 
   // POSITION
   auto latStr = toSDMM_PlugIn(NEflag::LAT, data.lat, Precision::HI);
-  auto lonStr = toSDMM_PlugIn(NEflag::LON, data.lon, Precision::HI);
+  auto lonStr =
+      toSDMM_PlugIn(NEflag::LON, heading_resolve(data.lon), Precision::HI);
   dlg.m_stPosition->SetLabel(latStr + " " + lonStr);
 
   // POLAR
@@ -1293,8 +1317,6 @@ void WeatherRouting::OnEditPosition() {
   for (const auto& p : RouteMap::Positions) {
     if (p.Name == name) {
       dlg.m_tName->SetValue(p.Name);
-      double degrees;
-      double minutes = std::modf(p.lat, &degrees);
       dlg.m_tLatitude->SetValue(toSDMM_PlugIn(1, p.lat));
       dlg.m_tLongitude->SetValue(toSDMM_PlugIn(2, p.lon));
       break;
@@ -1329,9 +1351,8 @@ void WeatherRouting::OnGoTo(wxCommandEvent& event) {
 
   avg_lat /= total, avg_lonx /= total, avg_lony /= total;
   double avg_lon = rad2deg(atan2(avg_lony, avg_lonx));
-
   double max_distance = 0;
-  for (std::list<RouteMapOverlay*>::iterator it = currentroutemaps.begin();
+   for (std::list<RouteMapOverlay*>::iterator it = currentroutemaps.begin();
        it != currentroutemaps.end(); it++) {
     RouteMapConfiguration configuration = (*it)->GetConfiguration();
     if (std::isnan(configuration.StartLat)) continue;
@@ -2642,37 +2663,37 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
     Time = calculateTimeDelta(starttime, endtime);
 
     Distance = wxString::Format(
-        "%.0f/%.0f", routemapoverlay->RouteInfo(RouteMapOverlay::DISTANCE),
-        DistGreatCircle_Plugin(configuration.StartLat, configuration.StartLon,
-                               configuration.EndLat, configuration.EndLon));
+        "%.1f/%.1f", toUsrDistance_Plugin(routemapoverlay->RouteInfo(RouteMapOverlay::DISTANCE)),
+        toUsrDistance_Plugin(DistGreatCircle_Plugin(configuration.StartLat, configuration.StartLon,
+                               configuration.EndLat, configuration.EndLon)));
 
     AvgSpeed = wxString::Format(
-        "%.1f", routemapoverlay->RouteInfo(RouteMapOverlay::AVGSPEED));
+        "%.1f", toUsrSpeed_Plugin(routemapoverlay->RouteInfo(RouteMapOverlay::AVGSPEED)));
 
     MaxSpeed = wxString::Format(
-        "%.1f", routemapoverlay->RouteInfo(RouteMapOverlay::MAXSPEED));
+        "%.1f", toUsrSpeed_Plugin(routemapoverlay->RouteInfo(RouteMapOverlay::MAXSPEED)));
 
     AvgSpeedGround = wxString::Format(
-        "%.1f", routemapoverlay->RouteInfo(RouteMapOverlay::AVGSPEEDGROUND));
+        "%.1f", toUsrSpeed_Plugin(routemapoverlay->RouteInfo(RouteMapOverlay::AVGSPEEDGROUND)));
 
     MaxSpeedGround = wxString::Format(
-        "%.1f", routemapoverlay->RouteInfo(RouteMapOverlay::MAXSPEEDGROUND));
-
+        "%.1f", toUsrSpeed_Plugin(routemapoverlay->RouteInfo(RouteMapOverlay::MAXSPEEDGROUND)));
+    // TODO: Quinton: In API20, use toUsrWindSpeed_Plugin instead, perhaps
     AvgWind = wxString::Format(
-        "%.1f", routemapoverlay->RouteInfo(RouteMapOverlay::AVGWIND));
+        "%.1f", toUsrSpeed_Plugin(routemapoverlay->RouteInfo(RouteMapOverlay::AVGWIND)));
 
     MaxWind = wxString::Format(
-        "%.1f", routemapoverlay->RouteInfo(RouteMapOverlay::MAXWIND));
+        "%.1f", toUsrSpeed_Plugin(routemapoverlay->RouteInfo(RouteMapOverlay::MAXWIND)));
 
     MaxWindGust = wxString::Format(
-        "%.1f", routemapoverlay->RouteInfo(RouteMapOverlay::MAXWINDGUST));
+        "%.1f", toUsrSpeed_Plugin(routemapoverlay->RouteInfo(RouteMapOverlay::MAXWINDGUST)));
 
     AvgCurrent = wxString::Format(
-        "%.1f", routemapoverlay->RouteInfo(RouteMapOverlay::AVGCURRENT));
+        "%.1f", toUsrSpeed_Plugin(routemapoverlay->RouteInfo(RouteMapOverlay::AVGCURRENT)));
 
     MaxCurrent = wxString::Format(
-        "%.1f", routemapoverlay->RouteInfo(RouteMapOverlay::MAXCURRENT));
-
+        "%.1f", toUsrSpeed_Plugin(routemapoverlay->RouteInfo(RouteMapOverlay::MAXCURRENT)));
+    //TODO: Quinton: In API20, use toUsrHeight_Plugin, perhaps
     AvgSwell = wxString::Format(
         "%.1f", routemapoverlay->RouteInfo(RouteMapOverlay::AVGSWELL));
 

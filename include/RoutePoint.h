@@ -95,8 +95,10 @@ enum class DataMask : uint32_t {
 };
 
 inline DataMask operator|(DataMask a, DataMask b) {
+  // NOLINTBEGIN: Or'ing might generate values that are not listed in the enum
   return static_cast<DataMask>(static_cast<uint32_t>(a) |
                                static_cast<uint32_t>(b));
+  // NOLINTEND
 }
 inline DataMask& operator|=(DataMask& a, DataMask b) {
   a = a | b;

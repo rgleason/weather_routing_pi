@@ -66,17 +66,15 @@
 
 #include <stdlib.h>
 #include <math.h>
-#include <functional>
 #include <list>
 #include <map>
+#include <algorithm>
 
 #include "Utilities.h"
-#include "Boat.h"
 #include "ConstraintChecker.h"
 #include "RoutePoint.h"
 #include "IsoRoute.h"
 #include "RouteMap.h"
-#include "SunCalculator.h"
 #include "WeatherDataProvider.h"
 #include "weather_routing_pi.h"
 
@@ -138,6 +136,23 @@ bool RouteMapConfiguration::Update() {
       haveend = true;
     }
   }
+  wxArrayString waypoint_guids = GetWaypointGUIDArray();
+  PlugIn_Waypoint wp;
+
+  for (const auto& guid : waypoint_guids) {
+    GetSingleWaypoint(guid, &wp);
+
+    if (wp.m_MarkName == Start) {
+      StartLat = wp.m_lat;
+      StartLon = wp.m_lon;
+      havestart = true;
+    }
+    if (wp.m_MarkName == End) {
+      EndLat = wp.m_lat;
+      EndLon = wp.m_lon;
+      haveend = true;
+    }
+  }
   for (const auto& it : RouteMap::Positions) {
     if (StartType == RouteMapConfiguration::START_FROM_POSITION &&
         Start == it.Name) {
@@ -187,14 +202,17 @@ bool RouteMapConfiguration::Update() {
     if (FromDegree > ToDegree) FromDegree = ToDegree;
     ByDegrees = wxMax(wxMin(ByDegrees, 60), .1);
 
-    for (double step = FromDegree; step <= ToDegree; step += ByDegrees) {
+    double step = FromDegree;
+    while (step <= ToDegree + 1E-3) {  // Avoid missing the last step by a tiny
+                                       // fraction, due to rounding errors
       DegreeSteps.push_back(step);
-      if (step > 0 && step < 180) DegreeSteps.push_back(360 - step);
+      if (step > 0.0 && step < 180.0) DegreeSteps.push_back(-step);
+      step += ByDegrees;
     }
   } else {
     DegreeSteps.push_back(0.);
   }
-  DegreeSteps.sort();
+  std::sort(DegreeSteps.begin(), DegreeSteps.end());
 
   return true;
 }
@@ -215,7 +233,7 @@ std::list<RouteMapPosition> RouteMap::Positions;
 
 RouteMap::RouteMap() {}
 
-RouteMap::~RouteMap() { Clear(); }
+RouteMap::~RouteMap() { RouteMap::Clear(); }
 
 void RouteMap::PositionLatLon(wxString Name, double& lat, double& lon) {
   for (std::list<RouteMapPosition>::iterator it = Positions.begin();

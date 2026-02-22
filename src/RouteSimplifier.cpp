@@ -21,11 +21,8 @@
 
 #include "ocpn_plugin.h"
 #include "Utilities.h"
-#include "Boat.h"
-#include "GribRecordSet.h"
 #include "RouteSimplifier.h"
 #include "RouteMapOverlay.h"
-#include "georef.h"
 
 #include <algorithm>
 #include <cmath>
@@ -449,10 +446,6 @@ SimplificationResult RouteSimplifier::Simplify(
 
     // Update statistics.
     simplifiedTotalPoints += simplifiedSegment.size();
-
-    // Weight the time penalty by segment length.
-    double segmentWeight =
-        static_cast<double>(originalSegmentSize) / originalTotalPoints;
   }
 
   // Calculate final statistics.
@@ -588,9 +581,12 @@ bool RouteSimplifier::ValidateSegmentWithDetailedPropagation(
 
   // Generate degree steps
   tempConfig.DegreeSteps.clear();
-  for (double angle = tempConfig.FromDegree; angle <= tempConfig.ToDegree;
-       angle += tempConfig.ByDegrees) {
+  double angle = tempConfig.FromDegree;
+  while (angle <=
+         tempConfig.ToDegree + 1E-3) {  // Avoid missing the last step by a tiny
+                                        // fraction, due to rounding errors
     tempConfig.DegreeSteps.push_back(heading_resolve(angle));
+    angle += tempConfig.ByDegrees;
   }
 
   // Try propagation
@@ -1159,7 +1155,7 @@ RouteSimplifier::FindAlternateRoutesWithFewerManeuvers(
 
   // For each penalty factor, revisit isochrones to find an alternate route.
   for (double maneuverDuration : maneuverDurations) {
-    if (alternateRoutes.size() >= maxRoutes) break;
+    if (alternateRoutes.size() >= static_cast<std::size_t>(maxRoutes)) break;
 
     // Create a modified configuration with increased maneuver penalties
     RouteMapConfiguration routeConfig = m_configuration;

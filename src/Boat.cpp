@@ -238,15 +238,15 @@ void Boat::GenerateStandaloneRegion(int p, void* arg,
   int bi = 0;
   std::list<Segment> segments;
 
-  for (float H = 0; H <= 180; H += step) {
+  for (unsigned H = 0; H <= 180 * stepi; ++H) {
     for (int VWi = 0; VWi <= maxVW * stepi; VWi++) {
       float VW = VWi * step;
-      buffer[bi][VWi] = PolarCanSail(p, H, VW);
+      buffer[bi][VWi] = PolarCanSail(p, static_cast<float>(H) / stepi, VW);
 
       if (VWi > 0 && H > 0) {
         bool q[4] = {buffer[!bi][VWi - 1], buffer[bi][VWi - 1],
                      buffer[!bi][VWi], buffer[bi][VWi]};
-        GenerateSegments(H, VW, step, q, segments, p);
+        GenerateSegments(static_cast<float>(H) / stepi, VW, step, q, segments, p);
       }
     }
     bi = !bi;
@@ -299,15 +299,15 @@ void Boat::GenerateCrossOverChart(void* arg, void (*status)(void*, int, int)) {
     bool buffer[2][maxVW * stepi + 1];
     int bi = 0;
     std::list<Segment> segments;
-    for (float H = 0; H <= 180; H += step) {
+    for (unsigned H = 0; H <= 180 * stepi; ++H) {
       for (int VWi = 0; VWi <= maxVW * stepi; VWi++) {
         float VW = VWi * step;
-        buffer[bi][VWi] = FastestPolar(p, H, VW);
+        buffer[bi][VWi] = FastestPolar(p, static_cast<float>(H) / stepi, VW);
 
         if (VWi > 0 && H > 0) {
           bool q[4] = {buffer[!bi][VWi - 1], buffer[bi][VWi - 1],
                        buffer[!bi][VWi], buffer[bi][VWi]};
-          GenerateSegments(H, VW, step, q, segments, p);
+          GenerateSegments(static_cast<float>(H) / stepi, VW, step, q, segments, p);
         }
       }
       bi = !bi;

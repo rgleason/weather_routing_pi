@@ -957,7 +957,6 @@ void RoutingTablePanel::PopulateTable() {
       double apparentWindAngle = Polar::DirectionApparentWind(
           apparentWindSpeed, data.stw, data.twdOverWater - data.ctw,
           data.twsOverWater);
-
       if (!std::isnan(apparentWindSpeed)) {
         // Apply coloring to AWS cell based on apparent wind speed
         wxColor awsColor = GetWindSpeedColor(apparentWindSpeed);
@@ -977,9 +976,6 @@ void RoutingTablePanel::PopulateTable() {
         setCellWithColor(row, COL_AWA,
                          wxString::Format("%.0f\u00B0", apparentWindAngle),
                          awaColor);
-        wxGridCellAttr* attr = new wxGridCellAttr();
-        attr->SetTextColour(GetTextColorForBackground(awaColor));
-        m_gridWeatherTable->SetAttr(row, COL_AWA, attr);
       }
     }
 
@@ -1556,8 +1552,9 @@ void RoutingTablePanel::UpdateSummary() {
       useLocalTime ? summary.startTime.FromUTC() : summary.startTime;
   wxDateTime displayEndTime =
       useLocalTime ? summary.endTime.FromUTC() : summary.endTime;
-  m_departureText->SetLabel(displayStartTime.Format("%Y-%m-%d %H:%M %Z"));
-  m_arrivalText->SetLabel(displayEndTime.Format("%Y-%m-%d %H:%M %Z"));
+  std::string timeFormat = useLocalTime? "%Y-%m-%d %H:%M %Z" : "%Y-%m-%d %H:%M UTC"; 
+  m_departureText->SetLabel(displayStartTime.Format(timeFormat.c_str()));
+  m_arrivalText->SetLabel(displayEndTime.Format(timeFormat.c_str()));
 #endif
 
   m_distanceText->SetLabel(FormatDistance(summary.totalDistance));

@@ -21,8 +21,6 @@
 
 #include <functional>
 
-#include "json/json.h"
-
 #include "RoutePoint.h"
 #include "WeatherDataProvider.h"
 #include "RouteMap.h"
@@ -342,7 +340,7 @@ bool WeatherDataProvider::ReadWindAndCurrents(
               atlas.directions, speeds, atlas.storm, atlas.calm)) {
         /* compute wind speeds over water with the given current */
         for (int i = 0; i < windatlas_count; i++) {
-          double twd = i * 360 / windatlas_count;
+          double twd = static_cast<double>(i) * 360 / windatlas_count;
           double tws = speeds[i] * configuration.WindStrength;
           GroundToWaterFrame(twd, tws, currentDir, -currentSpeed, atlas.W[i],
                              atlas.VW[i]);
@@ -389,7 +387,10 @@ bool WeatherDataProvider::ReadWindAndCurrents(
     if (configuration.grib_is_data_deficient &&
         GetGribWind(configuration, position->lat, position->lon, twdOverGround,
                     twsOverGround)) {
+      // NOLINTBEGIN: data_mask might take the value 5, which is not listed
+      // in the enum
       data_mask |= DataMask::GRIB_WIND | DataMask::DATA_DEFICIENT_WIND;
+      // NOLINTEND
 
       break;
     }

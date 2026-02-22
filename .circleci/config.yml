@@ -452,8 +452,8 @@ jobs:
         - image: cimg/base:edge-22.04
         environment:
         - BUILD_GTK3: true
-        - WX_VER: 32
         - OCPN_TARGET: jammy
+        - WX_VER: 32
         - DEPLOY_USE_ORB: true
         - BUILD_ENV=ubuntu
         steps:
@@ -482,6 +482,7 @@ jobs:
         - OCPN_TARGET: MSVC
         - MSVC_VERSION: 2022
         - WX_VER: 31
+        - WX_VER_PATCH: 2
         - DEPLOY_USE_ORB: false
         steps:
         - checkout
