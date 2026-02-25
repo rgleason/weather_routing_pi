@@ -1,5 +1,6 @@
 {
   "name": "weather-routing-pi",
   "version-string": "0.0.0",
+  "builtin-baseline": "<PUT_A_REAL_VCPKG_COMMIT_SHA_HERE>",
   "dependencies": ["wxwidgets"]
 }
