@@ -1,0 +1,44 @@
+name: bldwin32-rdeb
+
+on:
+  workflow_dispatch:
+  push:
+  pull_request:
+
+jobs:
+  build-win32:
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: MSVC dev cmd (x86)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+
+      - name: Install wxWidgets via vcpkg (x86-windows)
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgTriplet: x86-windows
+          runVcpkgInstall: true
+          vcpkgJsonGlob: vcpkg.json
+
+      - name: Configure (CMake, Win32, RelWithDebInfo)
+        shell: pwsh
+        run: |
+          cmake -S . -B build `
+            -G "Visual Studio 17 2022" -A Win32 -T v143 `
+            -DOCPN_TARGET=MSVC `
+            -DwxWidgets_ROOT_DIR="${env:VCPKG_INSTALLED_DIR}\x86-windows" `
+            -DwxWidgets_LIB_DIR="${env:VCPKG_INSTALLED_DIR}\x86-windows\lib" `
+            -DCMAKE_TOOLCHAIN_FILE="${env:VCPKG_ROOT}\scripts\buildsystems\vcpkg.cmake"
+
+      - name: Build (RelWithDebInfo)
+        run: cmake --build build --target package --config RelWithDebInfo
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-win32-rdeb-package
+          path: build/**
