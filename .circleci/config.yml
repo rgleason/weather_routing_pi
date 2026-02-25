@@ -10,6 +10,7 @@ std-filters: &std-filters
     filters:
         branches:
             ignore:
+            = asm
             - devel
             - tmp
         tags:
