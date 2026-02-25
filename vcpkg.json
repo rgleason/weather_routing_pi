@@ -1,5 +1,6 @@
 {
   "name": "weather-routing-pi",
   "version-string": "0.0.0",
-  "builtin-baseline": "https://github.com/microsoft/vcpkg/commit/26283ac5e8a068561a718ce18b169bfad84c7dab"dependencies": ["wxwidgets"]
+  "builtin-baseline": "https://github.com/microsoft/vcpkg/commit/26283ac5e8a068561a718ce18b169bfad84c7dab",
+  "dependencies": ["wxwidgets"]
 }
