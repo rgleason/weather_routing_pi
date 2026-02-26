@@ -1,7 +1,0 @@
-{
-  "name": "weather_routing_pi",
-  "version-string": "1.0",
-  "dependencies": [
-    "wxwidgets"
-  ]
-}
