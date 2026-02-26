@@ -10,7 +10,7 @@ jobs:
     runs-on: windows-2022
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4 
 
       - name: MSVC dev cmd (x86)
         uses: ilammy/msvc-dev-cmd@v1
