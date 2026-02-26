@@ -24,15 +24,26 @@ jobs:
           runVcpkgInstall: true
           vcpkgJsonGlob: vcpkg.json
 
+      # Debug: show what vcpkg actually set
+      - name: Debug vcpkg env
+        shell: pwsh
+        run: |
+          echo "VCPKG_INSTALLATION_ROOT=$env:VCPKG_INSTALLATION_ROOT"
+          echo "Toolchain file:"
+          dir "$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems"
+
       - name: Configure (CMake, Win32, RelWithDebInfo)
         shell: pwsh
         run: |
+          $triplet = "x86-windows"
+          $root = "$env:VCPKG_INSTALLATION_ROOT\installed\$triplet"
+
           cmake -S . -B build `
             -G "Visual Studio 17 2022" -A Win32 -T v143 `
             -DOCPN_TARGET=MSVC `
-            -DwxWidgets_ROOT_DIR="${env:VCPKG_INSTALLED_DIR}\x86-windows" `
-            -DwxWidgets_LIB_DIR="${env:VCPKG_INSTALLED_DIR}\x86-windows\lib" `
-            -DCMAKE_TOOLCHAIN_FILE="${env:VCPKG_ROOT}\scripts\buildsystems\vcpkg.cmake"
+            -DwxWidgets_ROOT_DIR="$root" `
+            -DwxWidgets_LIB_DIR="$root\lib" `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake"
 
       - name: Build (RelWithDebInfo)
         run: cmake --build build --target package --config RelWithDebInfo
