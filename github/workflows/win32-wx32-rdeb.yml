@@ -1,0 +1,99 @@
+name: win32-wx32-rdeb
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ asm ]
+  pull_request:
+    branches: [ asm ]
+
+jobs:
+  build-win32:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout plugin repo (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: MSVC dev cmd (x86)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+
+      # --- Build wxWidgets (wx32) into lib\vc_dll like your existing build expects
+      - name: Checkout wxWidgets source
+        uses: actions/checkout@v4
+        with:
+          repository: wxWidgets/wxWidgets
+          ref: v3.2.5
+          path: wxWidgets
+
+      - name: Build wxWidgets (Win32, DLL, release)
+        shell: pwsh
+        run: |
+          cd "$env:GITHUB_WORKSPACE\wxWidgets\build\msw"
+          nmake /f makefile.vc BUILD=release SHARED=1 RUNTIME_LIBS=dynamic TARGET_CPU=X86
+
+      - name: Export wxWidgets paths
+        shell: pwsh
+        run: |
+          "WXWIN=$env:GITHUB_WORKSPACE\wxWidgets" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "wxWidgets_ROOT_DIR=$env:GITHUB_WORKSPACE\wxWidgets" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "wxWidgets_LIB_DIR=$env:GITHUB_WORKSPACE\wxWidgets\lib\vc_dll" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      # --- Fetch OpenCPN build artifacts like CircleCI does (needed by your CMakeLists)
+      - name: Download OpenCPN Windows build artifacts
+        shell: pwsh
+        run: |
+          cd $env:GITHUB_WORKSPACE
+
+          # opencpn.lib
+          Invoke-WebRequest -Uri "https://sourceforge.net/projects/opencpnplugins/files/opencpn.lib" -OutFile "opencpn.lib"
+
+          # OpenCPN_buildwin archive (contains buildwin/ tree used by packaging/linking)
+          Invoke-WebRequest -Uri "https://download.opencpn.org/s/oibxM3kzfzKcSc3/download/OpenCPN_buildwin-4.99a.7z" -OutFile "OpenCPN_buildwin-4.99a.7z"
+
+          7z x -y "OpenCPN_buildwin-4.99a.7z" "-o$env:GITHUB_WORKSPACE\buildwin"
+
+          # Put opencpn.lib somewhere predictable if needed
+          Copy-Item -Force ".\opencpn.lib" ".\buildwin\opencpn.lib"
+
+      # --- Install NSIS (required by CPack/package target)
+      - name: Install NSIS
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://download.opencpn.org/s/54HsBDLNzRZLL6i/download/nsis-3.04-setup.exe" -OutFile "nsis-3.04-setup.exe"
+          Start-Process -FilePath ".\nsis-3.04-setup.exe" -ArgumentList "/S" -Wait
+
+      # Optional: Gettext is required by PluginConfigure.cmake (find_package(Gettext REQUIRED)).
+      # On windows-2022 runner, gettext is typically available via MSYS2/Git, but not always.
+      # This installs it using chocolatey.
+      - name: Install gettext (msgfmt)
+        shell: pwsh
+        run: |
+          choco install -y gettext --no-progress
+
+      - name: Configure (CMake, Win32, RelWithDebInfo)
+        shell: pwsh
+        run: |
+          cmake -S . -B build `
+            -G "Visual Studio 17 2022" -A Win32 -T v143 `
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo `
+            -DOCPN_TARGET=MSVC `
+            -DwxWidgets_ROOT_DIR="$env:wxWidgets_ROOT_DIR" `
+            -DwxWidgets_LIB_DIR="$env:wxWidgets_LIB_DIR"
+
+      - name: Build package (RelWithDebInfo)
+        shell: pwsh
+        run: |
+          cmake --build build --target package --config RelWithDebInfo
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: weather_routing_pi-win32-RelWithDebInfo
+          path: |
+            build/**
+            buildwin/**
