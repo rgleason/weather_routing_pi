@@ -17,20 +17,19 @@ jobs:
         with:
           arch: x86
 
+      # Classic vcpkg mode — required for Win32/x86
       - name: Install wxWidgets via vcpkg (x86-windows)
         uses: lukka/run-vcpkg@v11
         with:
-          vcpkgTriplet: x86-windows
           runVcpkgInstall: true
-          vcpkgJsonGlob: vcpkg.json
+          runVcpkgFormatString: install wxwidgets:x86-windows
 
-      # Debug: show what vcpkg actually set
-      - name: Debug vcpkg env
+      - name: Debug vcpkg environment
         shell: pwsh
         run: |
           echo "VCPKG_INSTALLATION_ROOT=$env:VCPKG_INSTALLATION_ROOT"
-          echo "Toolchain file:"
-          dir "$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems"
+          echo "Installed triplets:"
+          dir "$env:VCPKG_INSTALLATION_ROOT\installed"
 
       - name: Configure (CMake, Win32, RelWithDebInfo)
         shell: pwsh
