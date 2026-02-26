@@ -8,6 +8,8 @@ on:
 jobs:
   build-win32:
     runs-on: windows-2022
+    env:
+       VCPKG_DEFAULT_TRIPLET: x86-windows
 
     steps:
       - uses: actions/checkout@v4
@@ -20,7 +22,6 @@ jobs:
       - name: Install wxWidgets via vcpkg (x86-windows)
         uses: lukka/run-vcpkg@v11
         with:
-          vcpkgTriplet: x86-windows
           runVcpkgInstall: true
           vcpkgJsonGlob: vcpkg.json
 
