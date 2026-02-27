@@ -256,13 +256,12 @@ bool Position::Propagate(IsoRouteList& routelist,
   if (configuration.UseOptimalAngles) {
     int polar_idx = polar;
     if (polar_idx < 0) {
-        // Find a reasonable polar for the first propagation
-        PolarSpeedStatus status;
-        polar_idx = configuration.boat.FindBestPolarForCondition(
-            polar, weather_data.twsOverWater, 90.0, weather_data.swell,
-            configuration.OptimizeTacking, &status);
-        if (polar_idx < 0 || status != POLAR_SPEED_SUCCESS)
-            polar_idx = 0;
+      // Find a reasonable polar for the first propagation
+      PolarSpeedStatus status;
+      polar_idx = configuration.boat.FindBestPolarForCondition(
+          polar, weather_data.twsOverWater, 90.0, weather_data.swell,
+          configuration.OptimizeTacking, &status);
+      if (polar_idx < 0 || status != POLAR_SPEED_SUCCESS) polar_idx = 0;
     }
     Polar& the_polar = configuration.boat.Polars[polar_idx];
 
@@ -272,8 +271,10 @@ bool Position::Propagate(IsoRouteList& routelist,
     opt_angles.values[SailingVMG::PORT_DOWNWIND] -= 360.0;
     opt_angles.values[SailingVMG::PORT_UPWIND] -= 360.0;
 
+    // If wind is too light etc. there may not be any optimal angles
     // Check sanity to avoid indexing beyond limits of DegreeSteps
-    if (configuration.DegreeSteps.front() <
+    if (opt_angles.values[SailingVMG::PORT_DOWNWIND] != NAN &&
+        configuration.DegreeSteps.front() <
             opt_angles.values[SailingVMG::PORT_DOWNWIND] &&
         configuration.DegreeSteps.back() >
             *std::max_element(opt_angles.values, opt_angles.values + 4)) {
@@ -314,6 +315,8 @@ bool Position::Propagate(IsoRouteList& routelist,
         points = rp;
         ++count;
       }
+    } else {
+      degree_steps = configuration.DegreeSteps;
     }
   } else
     degree_steps = configuration.DegreeSteps;
@@ -406,10 +409,19 @@ bool Position::Propagate(IsoRouteList& routelist,
 #endif
 
       if (configuration.positive_longitudes && dlon < 0) dlon += 360;
+      /**
+       * Check angle between course from route start to here and course from
+       * route start to route end. Uses rhumb line courses
+       * Determines the limits of the routing area
+       */
       if (!ConstraintChecker::CheckMaxCourseAngleConstraint(configuration, dlat,
                                                             dlon)) {
         continue;
       }
+      /**
+       * Check angle between course from route start to here and course from
+       * here to route end. Uses rhumb line courses
+       */
       if (!ConstraintChecker::CheckMaxDivertedCourse(configuration, dlat,
                                                      dlon)) {
         continue;
