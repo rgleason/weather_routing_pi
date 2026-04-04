@@ -2269,7 +2269,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   m_cbUseOptimalAngles =
       new wxCheckBox(sbCourses->GetStaticBox(), wxID_ANY,
                      _("Use optimal angles"), wxDefaultPosition,
-                     wxDefaultSize, wxCHK_3STATE);
+                     wxDefaultSize, wxCHK_2STATE);
   m_cbUseOptimalAngles->SetToolTip(
       _("When enabled, uses the optimal upwind and downwind angles "
         "calculated from the boat's polar instead of fixed values."));
