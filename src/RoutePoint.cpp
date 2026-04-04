@@ -690,6 +690,7 @@ bool RoutePoint::EntersBoundary(double dlat, double dlon) const {
     json["tacks"] = tacks;
     json["jibes"] = jibes;
     json["sail_plan_changes"] = sail_plan_changes;
+    json["performance"] = performance;
     json["grib_is_data_deficient"] = grib_is_data_deficient;
     json["data_mask"] = static_cast<uint32_t>(data_mask);
   }
