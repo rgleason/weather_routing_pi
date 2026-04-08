@@ -170,15 +170,12 @@ void ReportDialog::SetRouteMapOverlays(
   m_htmlConfigurationReport->SetPage(page);
 }
 
-wxDateTime ReportDialog::DisplayedTime(wxDateTime t) {
-  wxDateTime display_time = t;
-  if (m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue())
-    display_time = t.FromUTC();
-  return display_time;
+wxDateTime::TimeZone ReportDialog::DisplayedTimeZone() {
+  return m_WeatherRouting.m_SettingsDialog.GetTimeZone();
 }
 
 wxString ReportDialog::FormatTime(wxDateTime t) {
-  wxString r = DisplayedTime(t).Format(_T("%x %X"));
+  wxString r = t.Format(_T("%x %X"), DisplayedTimeZone());
 #if 0
     // XXX add this?
     if(m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue())
@@ -292,8 +289,8 @@ void ReportDialog::GenerateRoutesReport() {
         if (it == sort_by_start.end()) break;
 
         RouteMapOverlay* r = it->second;
-        wxDateTime s = DisplayedTime(r->StartTime());
-        wxDateTime e = DisplayedTime(r->EndTime());
+        wxDateTime s = r->StartTime();
+        wxDateTime e = r->EndTime();
         // merge downwind
         for (; it != sort_by_start.end(); it++) {
           RouteMapOverlay* r = it->second;
@@ -306,7 +303,8 @@ void ReportDialog::GenerateRoutesReport() {
           first_print = false;
         else
           page += _(" and ");
-        page += s.Format(_T("%d %B ")) + _("to") + e.Format(_T(" %d %B"));
+        page += s.Format(_T("%d %B "), DisplayedTimeZone()) + _("to") +
+                e.Format(_T(" %d %B"), DisplayedTimeZone());
       }
     }
 
@@ -400,7 +398,7 @@ void ReportDialog::GenerateRoutesReport() {
         if (!*it2) continue;
         if (!first) page += _(" and ");
         first = false;
-        page += DisplayedTime((*it2)->StartTime()).Format(_T("%x"));
+        page += ((*it2)->StartTime()).Format(_T("%x"), DisplayedTimeZone());
 
         if (++it2 == cyclone_safe_routes.end()) break;
 
@@ -409,7 +407,7 @@ void ReportDialog::GenerateRoutesReport() {
         while (*it2 && ++it2 != cyclone_safe_routes.end());
 
         it2--;
-        page += _(" to ") + DisplayedTime((*it2)->StartTime()).Format(_T("%x"));
+        page += _(" to ") + ((*it2)->StartTime()).Format(_T("%x"), DisplayedTimeZone());
       }
     }
   cyclonesfailed:;

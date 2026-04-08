@@ -72,6 +72,9 @@ public:
 
   static const wxString column_names[];
 
+  // Return UTC or local time, depending on m_cbUseLocalTime
+  wxDateTime::TimeZone GetTimeZone() const;
+
 
 #ifdef __WXMSW__
   // ========== Windows-Only: Address Space Monitoring ==========
@@ -114,4 +117,3 @@ public:
 };
 
 #endif
-

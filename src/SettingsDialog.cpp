@@ -708,3 +708,9 @@ if there are multiple processors\n");
                        wxOK | wxICON_INFORMATION);
   mdlg.ShowModal();
 }
+
+wxDateTime::TimeZone SettingsDialog::GetTimeZone() const {
+  return m_cbUseLocalTime->IsChecked()
+    ? wxDateTime::Local
+    : wxDateTime::UTC;
+}

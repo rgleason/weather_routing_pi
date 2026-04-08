@@ -791,8 +791,6 @@ void RoutingTablePanel::PopulateTable() {
 
   // Get configuration for formatting
   RouteMapConfiguration configuration = m_RouteMap->GetConfiguration();
-  bool useLocalTime =
-      m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue();
 
   // Fill the grid with data
   int row = 0;
@@ -817,14 +815,13 @@ void RoutingTablePanel::PopulateTable() {
 #else
     // Fallback for earlier API versions - format time with proper timezone
     // label
-    wxDateTime displayTime = data.time;
+    bool useLocalTime =
+      m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->IsChecked();
+
     if (useLocalTime) {
-      displayTime = data.time.FromUTC();
-    }
-    if (useLocalTime) {
-      timeString = displayTime.Format("%Y-%m-%d %H:%M %Z");
+      timeString = data.time.Format("%Y-%m-%d %H:%M %Z", wxDateTime::Local);
     } else {
-      timeString = displayTime.Format("%Y-%m-%d %H:%M UTC");
+      timeString = data.time.Format("%Y-%m-%d %H:%M UTC", wxDateTime::UTC);
     }
 #endif
     // ETA column with time-of-day background color
@@ -1539,22 +1536,21 @@ void RoutingTablePanel::UpdateSummary() {
     return;
   }
 
-  bool useLocalTime =
-      m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue();
-
   // Update summary text controls with calculated data
 #if OCPN_API_VERSION_MAJOR > 1 || \
     (OCPN_API_VERSION_MAJOR == 1 && OCPN_API_VERSION_MINOR >= 20)
   m_departureText->SetLabel(toUsrDateTimeFormat_Plugin(summary.startTime));
   m_arrivalText->SetLabel(toUsrDateTimeFormat_Plugin(summary.endTime));
 #else
-  wxDateTime displayStartTime =
-      useLocalTime ? summary.startTime.FromUTC() : summary.startTime;
-  wxDateTime displayEndTime =
-      useLocalTime ? summary.endTime.FromUTC() : summary.endTime;
-  std::string timeFormat = useLocalTime? "%Y-%m-%d %H:%M %Z" : "%Y-%m-%d %H:%M UTC"; 
-  m_departureText->SetLabel(displayStartTime.Format(timeFormat.c_str()));
-  m_arrivalText->SetLabel(displayEndTime.Format(timeFormat.c_str()));
+  bool useLocalTime =
+      m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->IsChecked();
+
+  std::string timeFormat =
+    useLocalTime? "%Y-%m-%d %H:%M %Z" : "%Y-%m-%d %H:%M UTC";
+  m_departureText->SetLabel(summary.startTime.Format(
+      timeFormat.c_str(), m_WeatherRouting.m_SettingsDialog.GetTimeZone()));
+  m_arrivalText->SetLabel(summary.endTime.Format(
+      timeFormat.c_str(), m_WeatherRouting.m_SettingsDialog.GetTimeZone()));
 #endif
 
   m_distanceText->SetLabel(FormatDistance(summary.totalDistance));
