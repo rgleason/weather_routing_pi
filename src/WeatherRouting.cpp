@@ -3102,7 +3102,8 @@ void WeatherRouting::SaveAsTrack(RouteMapOverlay& routemapoverlay) {
     PlugIn_Waypoint* newPoint = new PlugIn_Waypoint(
         it.lat, heading_resolve(it.lon), "circle", _("Weather Route Point"));
 
-    newPoint->m_CreateTime = it.time;
+    // TODO Remove ToUTC() as soon as bug #621 is fixed in main program
+    newPoint->m_CreateTime = it.time.ToUTC();
     newPath->pWaypointList->Append(newPoint);
   }
 
@@ -3112,7 +3113,8 @@ void WeatherRouting::SaveAsTrack(RouteMapOverlay& routemapoverlay) {
     PlugIn_Waypoint* newPoint =
         new PlugIn_Waypoint(p->lat, heading_resolve(p->lon), "circle",
                             _("Weather Route Destination"));
-    newPoint->m_CreateTime = routemapoverlay.EndTime();
+    // TODO Remove ToUTC() as soon as bug #621 is fixed in main program
+    newPoint->m_CreateTime = routemapoverlay.EndTime().ToUTC();
     newPath->pWaypointList->Append(newPoint);
   }
 
@@ -3158,7 +3160,8 @@ void WeatherRouting::SaveAsRoute(RouteMapOverlay& routemapoverlay) {
     PlugIn_Waypoint_Ex* newPoint = new PlugIn_Waypoint_Ex(
         it.lat, heading_resolve(it.lon), "circle", _("Weather Route Point"));
     // newPoint->m_PlannedSpeed = it.sog;
-    newPoint->m_CreateTime = it.time;
+    // TODO Remove ToUTC() as soon as bug #621 is fixed in main program
+    newPoint->m_CreateTime = it.time.ToUTC();
     newRoute->pWaypointList->Append(newPoint);
   }
 
@@ -3168,7 +3171,8 @@ void WeatherRouting::SaveAsRoute(RouteMapOverlay& routemapoverlay) {
     PlugIn_Waypoint_Ex* newPoint =
         new PlugIn_Waypoint_Ex(p->lat, heading_resolve(p->lon), "circle",
                                _("Weather Route Destination"));
-    newPoint->m_CreateTime = routemapoverlay.EndTime();
+    // TODO Remove ToUTC() as soon as bug #621 is fixed in main program
+    newPoint->m_CreateTime = routemapoverlay.EndTime().ToUTC();
     newRoute->pWaypointList->Append(newPoint);
   }
 
