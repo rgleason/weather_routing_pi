@@ -426,13 +426,13 @@ void weather_routing_pi::SetPluginMessage(wxString& message_id,
     if (v["Day"].asInt() != -1) {
       wxDateTime time;
 
+      // Assumes local time and converts to UTC
       time.Set(v["Day"].asInt(), (wxDateTime::Month)v["Month"].asInt(),
                v["Year"].asInt(), v["Hour"].asInt(), v["Minute"].asInt(),
                v["Second"].asInt());
 
       if (m_pWeather_Routing && time.IsValid()) {
-        m_pWeather_Routing->m_ConfigurationDialog.m_GribTimelineTime =
-            time.ToUTC();
+        m_pWeather_Routing->m_ConfigurationDialog.m_GribTimelineTime = time;
         //            m_pWeather_Routing->m_ConfigurationDialog.m_cbUseGrib->Enable();
         RequestRefresh(m_parent_window);
       }

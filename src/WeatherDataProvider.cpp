@@ -32,13 +32,11 @@
 extern Json::Value g_ReceivedJSONMsg;
 extern wxString g_ReceivedMessage;
 
-static Json::Value RequestGRIB(const wxDateTime& t, const wxString& what,
+static Json::Value RequestGRIB(const wxDateTime& time, const wxString& what,
                                double lat, double lon) {
   Json::Value error;
   Json::Value v;
   Json::FastWriter writer;
-  // brain dead wx is expecting time in local time
-  wxDateTime time = t.FromUTC();
   if (!time.IsValid()) return error;
 
   v["Day"] = time.GetDay();

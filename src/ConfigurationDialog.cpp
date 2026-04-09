@@ -82,7 +82,7 @@ void ConfigurationDialog::OnGribTime(wxCommandEvent& event) {
 }
 
 void ConfigurationDialog::OnCurrentTime(wxCommandEvent& event) {
-  SetStartDateTime(wxDateTime::Now().ToUTC());
+  SetStartDateTime(wxDateTime::Now());  // Local time converted to UTC
   Update();
 }
 
@@ -280,16 +280,17 @@ void ConfigurationDialog::SetConfigurations(
   std::list<RouteMapConfiguration>::iterator it = configurations.begin();
 
   const bool ult =
-      m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue();
-#define STARTTIME (ult ? it->StartTime.FromUTC() : it->StartTime)
+      m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->IsChecked();
 
   // Populate date/time from the first configuration safely
   if (it != configurations.end()) {
     // Date part: only set if valid (avoid MSW assert), otherwise set "none"
     // only when the control supports wxDP_ALLOWNONE
-    wxDateTime dateVal = STARTTIME.GetDateOnly();
+    wxDateTime dateVal = it->StartTime.GetDateOnly();  // No conversion here
     wxSize s(m_dpStartDate->GetSize());
     if (dateVal.IsValid()) {
+      // SetValue() assumes dateVal is UTC and converts to local time for GUI
+      if (!ult) dateVal = dateVal.ToUTC();  // Undo the FromUTC() in SetValue()
       m_dpStartDate->SetValue(dateVal);
       m_dpStartDate->SetForegroundColour(wxColour(0, 0, 0));
     } else if (m_dpStartDate->GetWindowStyle() & wxDP_ALLOWNONE) {
@@ -301,9 +302,11 @@ void ConfigurationDialog::SetConfigurations(
 
     // Time part: only set if valid (time control usually requires a valid
     // value)
-    wxDateTime timeVal = STARTTIME;
+    wxDateTime timeVal = it->StartTime;
     wxSize s2(m_tpTime->GetSize());
     if (timeVal.IsValid()) {
+      // SetValue() assumes timeVal is UTC and converts to local time for GUI
+      if (!ult) timeVal = timeVal.ToUTC();  // Undo the FromUTC() in SetValue()
       m_tpTime->SetValue(timeVal);
       m_tpTime->SetForegroundColour(wxColour(0, 0, 0));
     }  // else leave control unchanged
@@ -539,9 +542,12 @@ void ConfigurationDialog::OnResetAdvanced(wxCommandEvent& event) {
 }
 
 void ConfigurationDialog::SetStartDateTime(wxDateTime datetime) {
+  // datetime is passed as UTC
   if (datetime.IsValid()) {
-    if (m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue())
-      datetime = datetime.FromUTC();
+    // SetValue() for both pickers assumes that datetime is UTC and converts
+    // to local time for display in the GUI
+    if (!m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->IsChecked())
+      datetime = datetime.ToUTC();  // Undo the FromUTC() in SetValue()
 
     m_dpStartDate->SetValue(datetime);
     m_tpTime->SetValue(datetime);
@@ -612,77 +618,42 @@ void ConfigurationDialog::Update() {
 
     if (NO_EDITED_CONTROLS ||
         std::find(m_edited_controls.begin(), m_edited_controls.end(),
-                  (wxObject*)m_dpStartDate) != m_edited_controls.end()) {
-      if (!m_dpStartDate->GetDateCtrlValue().IsValid()) continue;
-      // We must preserve the time in case only date but not time, is being
-      // changed by the user... configuration.StartTime is UTC, m_dpStartDate
-      // Local or UTC so adjust
-	// Replace each occurrence of:
-	//    wxDateTime time = configuration.StartTime;
-	// with the defensive version below.
-	
-	wxDateTime time = configuration.StartTime;
-	if (!time.IsValid())
-	{
-		// Defensive fallback: avoid passing an invalid wxDateTime to SetValue().
-		// Policy choices:
-		//  - Use current time to keep UI populated: time = wxDateTime::Now();
-		//  - Skip calling SetValue() for invalid dates (requires branch at call site)
-		//  - Use SetStartDateTime(time) which shows a warning (not ideal in bulk updates)
-		//
-		// Here we choose to fall back to now to avoid the wxCHECK abort.
-		time = wxDateTime::Now();
-	}
-      if (m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue())
-        time = time.FromUTC();
-
-      wxDateTime date = m_dpStartDate->GetDateCtrlValue();
-      // ... and add it afterwards
-      date.SetHour(time.GetHour());
-      date.SetMinute(time.GetMinute());
-      date.SetSecond(time.GetSecond());
-
-      if (m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue())
-        date = date.ToUTC();
-
-      configuration.StartTime = date;
-      m_dpStartDate->SetForegroundColour(wxColour(0, 0, 0));
-    }
-
-    if (NO_EDITED_CONTROLS ||
+                  (wxObject*)m_dpStartDate) != m_edited_controls.end() ||
         std::find(m_edited_controls.begin(), m_edited_controls.end(),
                   (wxObject*)m_tpTime) != m_edited_controls.end()) {
-      // must use correct data on UTC conversion to preserve Daylight Savings
-      // Time changes across dates
+      if (!m_dpStartDate->GetDateCtrlValue().IsValid()) continue;
 
-	// Replace each occurrence of:
-	//    wxDateTime time = configuration.StartTime;
-	// with the defensive version below.
-
-	wxDateTime time = configuration.StartTime;
-	if (!time.IsValid())
-	{
-		// Defensive fallback: avoid passing an invalid wxDateTime to SetValue().
-		// Policy choices:
-		//  - Use current time to keep UI populated: time = wxDateTime::Now();
-		//  - Skip calling SetValue() for invalid dates (requires branch at call site)
-		//  - Use SetStartDateTime(time) which shows a warning (not ideal in bulk updates)
-		//
-		// Here we choose to fall back to now to avoid the wxCHECK abort.
-		time = wxDateTime::Now();
-}
-      if (m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue())
-        time = time.FromUTC();
-
-      time.SetHour(m_tpTime->GetTimeCtrlValue().GetHour());
-      time.SetMinute(m_tpTime->GetTimeCtrlValue().GetMinute());
-      time.SetSecond(m_tpTime->GetTimeCtrlValue().GetSecond());
-
-      if (m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue())
-        time = time.ToUTC();
+      /*
+       * GetDateCtrlValue() and GetTimeCtrlValue() assume that the entered time
+       * is local time and convert to UTC for internal storage
+       * GetHour() etc. convert internal UTC value to local time
+       * wxDateTime() constructor assumes input in local time and converts to
+       * UTC for internal storage
+       * Therefore we must undo one ToUTC() conversion if the GUI option has
+       * been set to use UTC
+       * Note: There will be one hour error if the switch to/from DST happens
+       * in between these calls
+       * Note: GetTimeCtrlValue() sets the date part to Jan 1st of the current
+       *       year, therefore calling ToUTC() on it is not DST-safe
+       */
+      wxDateTime ctrl_date = m_dpStartDate->GetDateCtrlValue();
+      wxDateTime ctrl_time = m_tpTime->GetTimeCtrlValue();
+      wxDateTime time(ctrl_date.GetDay(), ctrl_date.GetMonth(),
+                      ctrl_date.GetYear(), ctrl_time.GetHour(),
+                      ctrl_time.GetMinute(), ctrl_time.GetSecond());
+      if (!time.IsValid())
+        time = wxDateTime::Now();  // Local time converted to UTC
+      else if (!m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->IsChecked())
+        time = time.FromUTC();  // Undo extra conversion
 
       configuration.StartTime = time;
-      m_tpTime->SetForegroundColour(wxColour(0, 0, 0));
+
+      if (std::find(m_edited_controls.begin(), m_edited_controls.end(),
+                    (wxObject*)m_dpStartDate) != m_edited_controls.end())
+        m_dpStartDate->SetForegroundColour(wxColour(0, 0, 0));
+      else if (std::find(m_edited_controls.begin(), m_edited_controls.end(),
+                         (wxObject*)m_tpTime) != m_edited_controls.end())
+        m_tpTime->SetForegroundColour(wxColour(0, 0, 0));
     }
 
     if (!m_tBoat->GetValue().empty()) {

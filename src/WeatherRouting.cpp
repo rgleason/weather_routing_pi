@@ -860,7 +860,7 @@ void WeatherRouting::AddRoute(wxString& GUID) {
     configuration = DefaultConfiguration();
 
   configuration.RouteGUID = GUID;
-  configuration.StartTime = wxDateTime::Now();
+  configuration.StartTime = wxDateTime::Now();  // Local time converted to UTC
   configuration.DeltaTime = 3600;
 
   if (!AddConfiguration(configuration)) return;
@@ -2269,8 +2269,10 @@ bool WeatherRouting::OpenXML(wxString filename, bool reportfailure) {
             AttributeBool(e, "UseCurrentTime", false);
         if (configuration.UseCurrentTime) {
           // The current time will be overridden when the route is computed.
-          configuration.StartTime = wxDateTime::Now().ToUTC();
+          configuration.StartTime =
+              wxDateTime::Now();  // Local time converted to UTC
         } else {
+          // Note: StartDate and StartTime are stored as UTC
           wxDateTime date;
           date.ParseISODate(wxString::FromUTF8(e->Attribute("StartDate")));
           wxDateTime time;
@@ -3352,7 +3354,7 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
   }
   if (configuration.UseCurrentTime) {
     // Use the current time
-    configuration.StartTime = wxDateTime::Now().ToUTC();
+    configuration.StartTime = wxDateTime::Now();  // Local time converted to UTC
     configUpdated = true;
   }
   if (configUpdated) {
@@ -3548,7 +3550,7 @@ RouteMapConfiguration WeatherRouting::DefaultConfiguration() {
   } else
     configuration.StartLat = 0, configuration.StartLon = 0;
 
-  configuration.StartTime = wxDateTime::Now();
+  configuration.StartTime = wxDateTime::Now();  // Local time converted to UTC
   configuration.DeltaTime = 3600;
 
   if (RouteMap::Positions.size() >= 2) {
