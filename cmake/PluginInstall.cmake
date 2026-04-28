@@ -11,25 +11,25 @@ if (OCPN_FLATPAK_CONFIG)
 endif (OCPN_FLATPAK_CONFIG)
 
 if (NOT APPLE)
-  target_link_libraries(${PACKAGE_NAME} ${wxWidgets_LIBRARIES} ${EXTRA_LIBS})
-endif (NOT APPLE)
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ${wxWidgets_LIBRARIES} ${EXTRA_LIBS})
+endif ()
 
 if (WIN32)
   if (MSVC)
     # TARGET_LINK_LIBRARIES(${PACKAGE_NAME} gdiplus.lib glu32.lib)
-    target_link_libraries(${PACKAGE_NAME} ${OPENGL_LIBRARIES})
+    target_link_libraries(${PACKAGE_NAME} PRIVATE ${OPENGL_LIBRARIES})
     # add_subdirectory(libs/ocpn-api) target_link_libraries(${PACKAGE_NAME}
     # ocpn::api) message(STATUS "${CMLOC}Added ocpn-api for MSVC")
-  endif (MSVC)
+  endif ()
 
   if (MINGW)
+    add_definitions(" -DUNICODE")
     # assuming wxwidgets is compiled with unicode, this is needed for mingw
     # headers
-    add_definitions(" -DUNICODE")
-    target_link_libraries(${PACKAGE_NAME} ${OPENGL_LIBRARIES})
-    set(CMAKE_SHARED_LINKER_FLAGS "-L../buildwin")
+    target_link_libraries(${PACKAGE_NAME} PRIVATE ${OPENGL_LIBRARIES})
     # add_subdirectory(libs/ocpn-api) target_link_libraries(${PACKAGE_NAME}
     # ocpn::api) message(STATUS "${CMLOC}Added ocpn-api for MINGW")
+    set(CMAKE_SHARED_LINKER_FLAGS "-L../buildwin")
   endif (MINGW)
 endif (WIN32)
 
@@ -40,25 +40,18 @@ if (UNIX)
       NAMES gcov
       PATHS /usr/lib/gcc/i686-pc-linux-gnu/4.7
     )
-
     set(EXTRA_LIBS ${EXTRA_LIBS} ${GCOV_LIBRARY})
   endif (PROFILING)
 endif (UNIX)
 
-if (UNIX
-    AND NOT APPLE
-    AND NOT QT_ANDROID
-)
+
+if (UNIX AND NOT APPLE AND NOT QT_ANDROID)
   find_package(BZip2 REQUIRED)
   include_directories(${BZIP2_INCLUDE_DIR})
   find_package(ZLIB REQUIRED)
   include_directories(${ZLIB_INCLUDE_DIR})
-  target_link_libraries(${PACKAGE_NAME} ${BZIP2_LIBRARIES} ${ZLIB_LIBRARY})
-endif (
-  UNIX
-  AND NOT APPLE
-  AND NOT QT_ANDROID
-)
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ${BZIP2_LIBRARIES} ${ZLIB_LIBRARY})
+endif ()
 
 set(PARENT opencpn)
 
@@ -139,7 +132,7 @@ if (APPLE)
   )
 
   find_package(ZLIB REQUIRED)
-  target_link_libraries(${PACKAGE_NAME} ${ZLIB_LIBRARIES})
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ${ZLIB_LIBRARIES})
 
   # For Apple build, we need to copy the "data" directory contents to the build
   # directory, so that the packager can pick them up.

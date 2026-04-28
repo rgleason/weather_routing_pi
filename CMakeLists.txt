@@ -67,7 +67,6 @@ set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
 # set(OCPN_SOURCE_DIR "C:/Users/fcgle/source/OpenCPN")
 # set(OCPN_BUILD_DIR  "C:/Users/fcgle/source/OpenCPN/build")
 
-
 # define plugin name, owner and versions
 set(VERBOSE_NAME "WeatherRouting")
 set(COMMON_NAME "WeatherRouting")  # Search "getcommonname"in <plugin_pi>.cpp
@@ -79,7 +78,6 @@ set(LONG_DESCRIPTION "WR features include: optimal routing subject to various co
 
 set(VERSION_MAJOR "1")
 set(VERSION_MINOR "15")
-
 set(VERSION_PATCH "45")
 set(VERSION_TWEAK "7")
 set(VERSION_DATE "21/02/2026") # DD/MM/YYYY format
@@ -94,7 +92,7 @@ set(PARENT "opencpn")
 # Use to set up a local webserver with git installed. Default is github.com.
 # Now set in PluginSetup.cmake set(GIT_REPOSITORY_SERVER "github.com")
 
-## Specifies Cloudsmith upload repository suffix for each catalog
+## Cloudsmith upload repository suffix for each catalog
 set(PROD "prod")   #Standard Repos
 set(BETA "beta")   #Standard Repos
 set(ALPHA "alpha") #Standard Repos
@@ -141,7 +139,7 @@ set_property(
 )
 message(STATUS "${CMLOC}Build type: ${CMAKE_BUILD_TYPE}")
 
-# ----- Statements below used to setup standard variables required by the CMAKE  -##
+# ----- Statements below used to setup standard variables required by the CMAKE---##
 # ----- process -- Do not remove -##
 
 project(${PACKAGE})
@@ -177,7 +175,7 @@ include("PluginConfigure")
 
 add_definitions(-DUSE_S57)
 
-## ---- Section Below - Add your project SET(SRCS and SET(HDRS  etc..
+## ---- Sources and Headers  - Add your project SET(SRCS and SET(HDRS  etc..
 
 
 SET(SRCS
@@ -256,7 +254,6 @@ SET (HDRS
 			include/AddressSpaceMonitor.h
 )
 
-add_definitions(-DPLUGIN_USE_SVG)
 
 ## ----- Section above - Add your project SET(SRCS and SET(HDRS  etc.-------##
 ## ----- If using JSON validation in plugin section below is needed --------##
@@ -277,58 +274,91 @@ set(SRC ${SRCS} ${HDRS} )
 ## Modify/configure 'Include' Directories below for the Plugin
 ##=============================================================
 
-include_directories(BEFORE ${PROJECT_SOURCE_DIR}/include)
+# causes failure for wxWidgets config builds
+# /I C:/Users/fcgle/source/weather_routing_pi/include   ← WRONG
+# /I C:/Users/fcgle/source/wxWidgets/lib/vc_dll/mswud  ← CORRECT
+#
+# include_directories(BEFORE ${PROJECT_SOURCE_DIR}/include)
+
+target_include_directories(${PACKAGE_NAME} PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+)
+
+# This ensures:
+# Only your plugin’s own headers are added
+# They are added after wxWidgets CONFIG‑mode include dirs
+# They do not override wxWidgets include paths
+#  _DC_UTILS does not inherit them
+
 
 # Ensure the plugin compiles against the same headers and libraries as your OpenCPN MSVC build.
 # include_directories(${OCPN_SOURCE_DIR}/include)
 # link_directories(${OCPN_BUILD_DIR}/lib)
 
 
-# Change target_sources to match your project needs.
-# ==============================================================
+##=============================================================
+## Attach sources to the target
+##=============================================================
 
 target_sources(${PACKAGE_NAME} PUBLIC ${SRC} )
 
+##=============================================================
+## Linking
+##=============================================================
 
 if (NOT OCPN_FLATPAK_CONFIG)
   # Build environment not available when flatpak is being configured so
   # following statements will not work
   message(STATUS "${CMLOC}Adding target link libraries to ${PACKAGE_NAME}")
-
-  if (WIN32)
-    add_subdirectory(opencpn-libs/WindowsHeaders)
-    target_link_libraries(${PACKAGE_NAME} windows::headers)
-  endif (WIN32)
-
-  add_subdirectory(opencpn-libs/api-${OCPN_API_VERSION_MINOR})
-  target_link_libraries(${PACKAGE_NAME} ocpn::api)
-
-  add_subdirectory(opencpn-libs/tinyxml)
-  target_link_libraries(${PACKAGE_NAME} ocpn::tinyxml)
-
-  add_subdirectory(opencpn-libs/odapi)
-  target_link_libraries(${PACKAGE_NAME} ocpn::odapi)
-
-  add_subdirectory(opencpn-libs/jsonlib)
-  target_link_libraries(${PACKAGE_NAME} ocpn::jsonlib)
-
-  add_subdirectory(opencpn-libs/plugin_dc)
-  target_link_libraries(${PACKAGE_NAME} ocpn::plugin-dc)
-
-  add_subdirectory(opencpn-libs/pugixml)
-  target_link_libraries(${PACKAGE_NAME} ocpn::pugixml)
-
-  # @todo Why would this not be required on UNIX?  
-  # @todo@ On macos the build fails without it, and macos is UNIX
-  # @todo See https://cmake.org/cmake/help/latest/variable/UNIX.html
   
-  add_subdirectory(opencpn-libs/bzip2)
-  target_link_libraries(${PACKAGE_NAME} ocpn::bzip2)
+# Zlib for zuFile.cpp (MSVC) to create Tarball
+  if (WIN32 AND MSVC)
+    target_link_libraries(${PACKAGE_NAME} PRIVATE
+        "${PROJECT_SOURCE_DIR}/buildwin/zlib1.lib"
+    )
+  endif()
  
-  add_subdirectory(opencpn-libs/libtess2)
-  target_link_libraries(${PACKAGE_NAME} ocpn::libtess2)
+# Modern linking section for OpenCPN plugins
+# Compatible with wxWidgets CONFIG-mode and imported OCPN targets
+
+# Add plugin sources
+target_sources(${PACKAGE_NAME} PUBLIC ${SRC})
+
+# Windows-specific headers (imported target)
+if (WIN32)
+    add_subdirectory(opencpn-libs/WindowsHeaders)
+    target_link_libraries(${PACKAGE_NAME} PRIVATE windows::headers)
+endif()
+
+# Core OpenCPN imported libraries
+add_subdirectory(opencpn-libs/api-${OCPN_API_VERSION_MINOR})
+target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::api)
+
+add_subdirectory(opencpn-libs/tinyxml)
+target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::tinyxml)
+
+add_subdirectory(opencpn-libs/odapi)
+target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::odapi)
+
+add_subdirectory(opencpn-libs/jsonlib)
+target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::jsonlib)
+
+add_subdirectory(opencpn-libs/plugin_dc)
+target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::plugin-dc)
+
+add_subdirectory(opencpn-libs/pugixml)
+target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::pugixml)
+
+add_subdirectory(opencpn-libs/bzip2)
+target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::bzip2)
+
+add_subdirectory(opencpn-libs/libtess2)
+target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::libtess2)
+
 
 endif(NOT OCPN_FLATPAK_CONFIG)
+
+add_definitions(-DPLUGIN_USE_SVG)
 
 add_definitions(-DTIXML_USE_STL)
 
@@ -338,18 +368,6 @@ add_definitions(-DTIXML_USE_STL)
 
 # Do not need Json Schema Validation
 
-
-##------- Change below to match project requirements --------------------##
-
-IF(WIN32)
-    IF(MSVC)
-        #include_directories(${PROJECT_SOURCE_DIR}/buildwin/include)
-        target_link_libraries(${PACKAGE_NAME} "${PROJECT_SOURCE_DIR}/buildwin/zlib1.lib")
-    ELSE()
-        # MINGW
-        target_link_libraries(${PACKAGE_NAME} "-lz")
-    ENDIF()
-ENDIF()
 
 ##------- Change below to match project requirements --------------
 
@@ -366,7 +384,8 @@ include("PluginLocalization")
 include("PluginPackage")
 
 ##================================================================
-## ----- Do not change section above - needed to configure build process --##
+## Diagnostics
+##================================================================
 
 message(STATUS "${CMLOC}include directories: ")
 get_property(
