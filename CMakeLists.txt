@@ -343,8 +343,39 @@ target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::odapi)
 add_subdirectory(opencpn-libs/jsonlib)
 target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::jsonlib)
 
+# ----------
+# Inject link dependencies from the plugin using INTERFACE targets
+# Correct CMake pattern for extending a library plugin does not own
+# -----------
+
+add_library(dc_utils_ext INTERFACE)
+
+target_link_libraries(dc_utils_ext INTERFACE
+    ocpn::api
+    ocpn::pluginglu
+    wx::core
+    wx::base
+)
+
+# Windows-only include override for MSVC legacy wxWidgets
+if (WIN32 AND MSVC AND DEFINED wxWidgets_ROOT_DIR)
+    target_include_directories(dc_utils_ext INTERFACE
+        "${wxWidgets_ROOT_DIR}/lib/vc_dll/mswud"
+    )
+endif()
+
+# Add plugin_dc (this creates _DC_UTILS)
 add_subdirectory(opencpn-libs/plugin_dc)
+
+# Attach extension to dc_utils
+target_link_libraries(_DC_UTILS PRIVATE dc_utils_ext)
+
+# Link plugin against plugin_dc
 target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::plugin-dc)
+
+# -----------
+# End of inject link dependencies 
+# -----------
 
 add_subdirectory(opencpn-libs/pugixml)
 target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::pugixml)
