@@ -657,7 +657,7 @@ View > Settings “Alternates for all isochrones” is unchecked and there are s
 
 Create a new position with the same name to replace it. There is then a prompt to overwrite the old location. This works from the context menu on the chart also.
 
-=== What are the Comfort Level parameters used? ===
+=== How are Comfort Levels defined? ===
 
 1. Three levels of comfort are defined: Green ("Good"), Orange ("Bumpy"), Red ("Difficult").
 2. The comfort levels are based on wind speed, apparent wind direction and wave height.
@@ -687,6 +687,9 @@ The "best" comfort calculation would consider:
 - Wind hardly affects it at all, excepting that higher wind means the other factors will get worse in the future if they haven't already.
 - To really figure it, you would do two comfort calculations, one relative to the beam, and one relative to the bow, and add them.
 - The calculations are not easy.
+
+=== Is percentage upwind calculated? ===
+Percentage upwind is calculated as the percentage of points on the route where the apparent wind is less than 90 degrees. Because points on the route are equally spaced in time, that means the percentage of time sailing upwind relative to apparent wind, which makes good sense.
 
 == Supplemental Hardware and Software
 * Voyage Recordings to create polars: Use Opencpn VDR_pi RPI3 or Yacht Devices Voyage Recorder
