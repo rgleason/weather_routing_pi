@@ -1,44 +1,48 @@
-name: bldwin32-rdeb
+name: Windows Win32 Build (rdeb)
 
 on:
   workflow_dispatch:
   push:
+    branches: [ master ]
   pull_request:
 
 jobs:
   build-win32:
-    runs-on: windows-2022
+    runs-on: windows-latest
+
+    env:
+      VCPKG_ROOT: C:\vcpkg
+      TRIPLET: x86-windows
 
     steps:
-      - uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
 
-      - name: MSVC dev cmd (x86)
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x86
+    - name: Install vcpkg
+      run: |
+        git clone https://github.com/microsoft/vcpkg %VCPKG_ROOT%
+        %VCPKG_ROOT%\bootstrap-vcpkg.bat
 
-      - name: Install wxWidgets via vcpkg (x86-windows)
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgTriplet: x86-windows
-          runVcpkgInstall: true
-          vcpkgJsonGlob: vcpkg.json
+    - name: Install wxWidgets 3.2.5 (Win32, pinned)
+      run: |
+        %VCPKG_ROOT%\vcpkg.exe install wxwidgets:%TRIPLET% --x-wxwidgets-version=3.2.5
 
-      - name: Configure (CMake, Win32, RelWithDebInfo)
-        shell: pwsh
-        run: |
-          cmake -S . -B build `
-            -G "Visual Studio 17 2022" -A Win32 -T v143 `
-            -DOCPN_TARGET=MSVC `
-            -DwxWidgets_ROOT_DIR="${env:VCPKG_INSTALLED_DIR}\x86-windows" `
-            -DwxWidgets_LIB_DIR="${env:VCPKG_INSTALLED_DIR}\x86-windows\lib" `
-            -DCMAKE_TOOLCHAIN_FILE="${env:VCPKG_ROOT}\scripts\buildsystems\vcpkg.cmake"
+    - name: Configure CMake (Win32)
+      run: |
+        cmake -S . -B build-win32 ^
+          -A Win32 ^
+          -DCMAKE_TOOLCHAIN_FILE=%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake ^
+          -DVCPKG_TARGET_TRIPLET=%TRIPLET% ^
+          -DCMAKE_BUILD_TYPE=Release ^
+          -DwxWidgets_USE_STATIC=ON
 
-      - name: Build (RelWithDebInfo)
-        run: cmake --build build --target package --config RelWithDebInfo
+    - name: Build (Win32)
+      run: cmake --build build-win32 --config Release --parallel
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-win32-rdeb-package
-          path: build/**
+    - name: Package artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: weather_routing_win32
+        path: build-win32/Release
