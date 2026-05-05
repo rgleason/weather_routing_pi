@@ -3074,6 +3074,15 @@ void WeatherRouting::RebuildList() {
   }
 }
 
+void add_waypoint_to_track(PlugIn_Track* ptrack, const double lat,
+                           const double lon, const wxDateTime time) {
+  PlugIn_Waypoint* newPoint =
+      new PlugIn_Waypoint(lat, lon, "circle", _("Weather Route Point"));
+  // TODO Remove ToUTC() as soon as bug #621 is fixed in main program
+  newPoint->m_CreateTime = time.ToUTC();
+  ptrack->pWaypointList->Append(newPoint);
+}
+
 void WeatherRouting::SaveAsTrack(RouteMapOverlay& routemapoverlay) {
   std::list<PlotData> plotdata = routemapoverlay.GetPlotData(false);
 
@@ -3096,25 +3105,18 @@ void WeatherRouting::SaveAsTrack(RouteMapOverlay& routemapoverlay) {
   newPath->m_EndString = c.End;
   newPath->m_GUID = GetNewGUID();
 
-  for (auto const& it : plotdata) {
-    PlugIn_Waypoint* newPoint = new PlugIn_Waypoint(
-        it.lat, heading_resolve(it.lon), "circle", _("Weather Route Point"));
+  // Why does plotdata not contain the start point of the track?
+  add_waypoint_to_track(
+      newPath, c.StartLat, heading_resolve(c.StartLon), c.StartTime);
 
-    // TODO Remove ToUTC() as soon as bug #621 is fixed in main program
-    newPoint->m_CreateTime = it.time.ToUTC();
-    newPath->pWaypointList->Append(newPoint);
-  }
+  for (auto const& it : plotdata)
+    add_waypoint_to_track(newPath, it.lat, heading_resolve(it.lon), it.time);
 
   // last point, missing if config didn't succeed
   Position* p = routemapoverlay.GetDestination();
-  if (p) {
-    PlugIn_Waypoint* newPoint =
-        new PlugIn_Waypoint(p->lat, heading_resolve(p->lon), "circle",
-                            _("Weather Route Destination"));
-    // TODO Remove ToUTC() as soon as bug #621 is fixed in main program
-    newPoint->m_CreateTime = routemapoverlay.EndTime().ToUTC();
-    newPath->pWaypointList->Append(newPoint);
-  }
+  if (p)
+    add_waypoint_to_track(newPath, p->lat, heading_resolve(p->lon),
+                          routemapoverlay.EndTime());
 
   AddPlugInTrack(newPath);
   // not done PlugIn_Track DTOR
