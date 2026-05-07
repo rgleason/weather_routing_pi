@@ -17,22 +17,32 @@ jobs:
         with:
           arch: x86
 
+      # Classic vcpkg mode — required for Win32/x86
       - name: Install wxWidgets via vcpkg (x86-windows)
         uses: lukka/run-vcpkg@v11
         with:
-          vcpkgTriplet: x86-windows
           runVcpkgInstall: true
-          vcpkgJsonGlob: vcpkg.json
+          runVcpkgFormatString: install wxwidgets:x86-windows
+
+      - name: Debug vcpkg environment
+        shell: pwsh
+        run: |
+          echo "VCPKG_INSTALLATION_ROOT=$env:VCPKG_INSTALLATION_ROOT"
+          echo "Installed triplets:"
+          dir "$env:VCPKG_INSTALLATION_ROOT\installed"
 
       - name: Configure (CMake, Win32, RelWithDebInfo)
         shell: pwsh
         run: |
+          $triplet = "x86-windows"
+          $root = "$env:VCPKG_INSTALLATION_ROOT\installed\$triplet"
+
           cmake -S . -B build `
             -G "Visual Studio 17 2022" -A Win32 -T v143 `
             -DOCPN_TARGET=MSVC `
-            -DwxWidgets_ROOT_DIR="${env:VCPKG_INSTALLED_DIR}\x86-windows" `
-            -DwxWidgets_LIB_DIR="${env:VCPKG_INSTALLED_DIR}\x86-windows\lib" `
-            -DCMAKE_TOOLCHAIN_FILE="${env:VCPKG_ROOT}\scripts\buildsystems\vcpkg.cmake"
+            -DwxWidgets_ROOT_DIR="$root" `
+            -DwxWidgets_LIB_DIR="$root\lib" `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake"
 
       - name: Build (RelWithDebInfo)
         run: cmake --build build --target package --config RelWithDebInfo
