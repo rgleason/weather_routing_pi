@@ -30,6 +30,7 @@
 #include <wx/stattext.h>
 #include <wx/clrpicker.h>
 #include <wx/spinctrl.h>
+#include <wx/slider.h>
 #include <wx/checkbox.h>
 #include <wx/scrolwin.h>
 #include <wx/checklst.h>
@@ -470,6 +471,11 @@ protected:
   wxStaticText* m_staticText241;
   wxSpinCtrlDouble* m_sSafetyMarginLand;
   wxStaticText* m_staticText1211;
+  wxStaticText* m_staticText242;
+  wxCheckBox* m_cbAdaptiveTimestep;
+  wxSlider* m_sMinimumTimestep;
+  wxStaticText* m_tMinimumTimestep;
+  wxStaticText* m_staticText1212;
   wxStaticText* m_staticText113;
   wxStaticText* m_staticText115;
   wxStaticText* m_staticText117;
