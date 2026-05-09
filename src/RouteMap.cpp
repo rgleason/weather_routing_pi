@@ -90,6 +90,7 @@ weather_routing_pi* RouteMapConfiguration::s_plugin_instance = nullptr;
 
 RouteMapConfiguration::RouteMapConfiguration()
     : StartType(START_FROM_POSITION),
+      MinReductionFactor(0.1),
       UpwindEfficiency(1.),
       DownwindEfficiency(1.),
       NightCumulativeEfficiency(1.),
@@ -426,8 +427,7 @@ double RouteMap::DetermineDeltaTime() {
   double maxDistFromStart = -INFINITY;
 
   const double proximityThreshold = 40.0;  // nautical miles
-  const double minReductionFactor =
-      0.1;  // Minimum reduction factor (10% of normal time step)
+  const double& minReductionFactor = m_Configuration.MinReductionFactor;
   // Will be adjusted based on distances
   double startReductionFactor = 1.0;
   double endReductionFactor = 1.0;
@@ -468,17 +468,19 @@ double RouteMap::DetermineDeltaTime() {
     // Calculate gradual reduction factors
 
     // For starting point: gradually increase from minReductionFactor to 1.0
-    if (maxDistFromStart < proximityThreshold) {
+    if (minReductionFactor < 1.0 && maxDistFromStart < proximityThreshold) {
       // As we move away from the start, the time step increases.
       startReductionFactor =
-          minReductionFactor + (0.9 * maxDistFromStart / proximityThreshold);
+          minReductionFactor +
+          ((1.0 - minReductionFactor) * maxDistFromStart / proximityThreshold);
     }
 
     // For destination: gradually decrease from 1.0 to minReductionFactor
-    if (minDistToEnd < proximityThreshold) {
+    if (minReductionFactor < 1.0 && minDistToEnd < proximityThreshold) {
       // As we get closer to the destination, the time step decreases.
       endReductionFactor =
-          minReductionFactor + (0.9 * minDistToEnd / proximityThreshold);
+          minReductionFactor +
+          ((1.0 - minReductionFactor) * minDistToEnd / proximityThreshold);
     }
 
     // Apply the minimum of both reduction factors.

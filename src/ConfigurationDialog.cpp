@@ -433,6 +433,7 @@ void ConfigurationDialog::SetConfigurations(
   SET_SPIN(CycloneMonths);
   SET_SPIN(CycloneDays);
   SET_SPIN_DOUBLE(SafetyMarginLand);
+  SET_SPIN_VALUE(MinReductionPercent, (int)((*it).MinReductionFactor * 100));
 
   SET_CHECKBOX(DetectLand);
   SET_CHECKBOX(DetectBoundary);
@@ -520,6 +521,7 @@ void ConfigurationDialog::OnResetAdvanced(wxCommandEvent& event) {
   m_sJibingTime->SetValue(0);
   m_sSailPlanChangeTime->SetValue(0);
   m_sSafetyMarginLand->SetValue(0.);
+  m_sMinReductionPercent->SetValue(10);
 
   m_sFromDegree->SetValue(0);
   m_sToDegree->SetValue(180);
@@ -696,6 +698,9 @@ void ConfigurationDialog::Update() {
     GET_SPIN(CycloneMonths);
     GET_SPIN(CycloneDays);
     GET_SPIN(SafetyMarginLand);
+    if (m_sMinReductionPercent->IsEnabled())
+      configuration.MinReductionFactor =
+          m_sMinReductionPercent->GetValue() / 100.0;
 
     GET_CHECKBOX(DetectLand);
     GET_CHECKBOX(DetectBoundary);

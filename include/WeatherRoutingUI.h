@@ -470,6 +470,9 @@ protected:
   wxStaticText* m_staticText241;
   wxSpinCtrlDouble* m_sSafetyMarginLand;
   wxStaticText* m_staticText1211;
+  wxStaticText* m_staticText242;
+  wxSpinCtrl* m_sMinReductionPercent;
+  wxStaticText* m_staticText1212;
   wxStaticText* m_staticText113;
   wxStaticText* m_staticText115;
   wxStaticText* m_staticText117;

@@ -257,6 +257,13 @@ struct RouteMapConfiguration {
   double DeltaTime;
   /** Time in seconds between propagations. */
   double UsedDeltaTime;
+  /**
+   * A reduction factor is applied when leaving source or approaching
+   * destination. The time step will be multiplied by this factor.
+   * This is the minimum value, which the reduction factor will have
+   * exactly at the source and just before the destination.
+   */
+  double MinReductionFactor;
 
   /** The polars of the boat, used for the route calculation. */
   Boat boat;
