@@ -2291,6 +2291,8 @@ bool WeatherRouting::OpenXML(wxString filename, bool reportfailure) {
 
         configuration.End = wxString::FromUTF8(e->Attribute("End"));
         configuration.DeltaTime = AttributeDouble(e, "dt", 0);
+        configuration.MinReductionFactor =
+            AttributeDouble(e, "MinReductionFactor", 0.1);
 
         configuration.boatFileName = wxString::FromUTF8(e->Attribute("Boat"));
         if (!wxFileName::FileExists(configuration.boatFileName)) {
@@ -2448,6 +2450,7 @@ void WeatherRouting::SaveXML(wxString filename) {
     }
     c->SetAttribute("End", configuration.End.mb_str());
     c->SetAttribute("dt", configuration.DeltaTime);
+    c->SetAttribute("MinReductionFactor", configuration.MinReductionFactor);
 
     c->SetAttribute("Boat", configuration.boatFileName.ToUTF8());
 

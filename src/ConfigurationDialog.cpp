@@ -434,6 +434,18 @@ void ConfigurationDialog::SetConfigurations(
   SET_SPIN(CycloneDays);
   SET_SPIN_DOUBLE(SafetyMarginLand);
 
+  if ((*it).MinReductionFactor < 1.0 && (*it).MinReductionFactor >= 0.1) {
+    m_cbAdaptiveTimestep->SetValue(true);
+    m_sMinimumTimestep->SetRange(10,
+                                 100);  // Allow 90 steps between min and max
+    double mins = (*it).DeltaTime / 60 * (*it).MinReductionFactor;
+    m_sMinimumTimestep->SetValue(std::round((*it).MinReductionFactor * 100.0));
+    m_tMinimumTimestep->SetLabel(wxString::FromDouble(mins, 2));
+  } else {
+    m_cbAdaptiveTimestep->SetValue(false);
+  }
+  m_sMinimumTimestep->Enable(m_cbAdaptiveTimestep->GetValue());
+
   SET_CHECKBOX(DetectLand);
   SET_CHECKBOX(DetectBoundary);
   SET_CHECKBOX(Currents);
@@ -520,6 +532,8 @@ void ConfigurationDialog::OnResetAdvanced(wxCommandEvent& event) {
   m_sJibingTime->SetValue(0);
   m_sSailPlanChangeTime->SetValue(0);
   m_sSafetyMarginLand->SetValue(0.);
+  m_cbAdaptiveTimestep->SetValue(false);
+  m_sMinimumTimestep->Enable(false);
 
   m_sFromDegree->SetValue(0);
   m_sToDegree->SetValue(180);
@@ -696,6 +710,16 @@ void ConfigurationDialog::Update() {
     GET_SPIN(CycloneMonths);
     GET_SPIN(CycloneDays);
     GET_SPIN(SafetyMarginLand);
+    if (m_cbAdaptiveTimestep->IsChecked()) {
+      m_sMinimumTimestep->SetRange(10, 100);  // Allow 90 steps from min to max
+      configuration.MinReductionFactor = m_sMinimumTimestep->GetValue() / 100.0;
+      m_tMinimumTimestep->SetLabel(wxString::FromDouble(
+          configuration.DeltaTime / 60.0 * configuration.MinReductionFactor,
+          2));
+    } else {
+      configuration.MinReductionFactor = 1.0;
+    }
+    m_sMinimumTimestep->Enable(m_cbAdaptiveTimestep->IsChecked());
 
     GET_CHECKBOX(DetectLand);
     GET_CHECKBOX(DetectBoundary);
