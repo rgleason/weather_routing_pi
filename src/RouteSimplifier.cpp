@@ -19,6 +19,7 @@
 
 #include <wx/wx.h>
 
+#include <cstdint>
 #include "ocpn_plugin.h"
 #include "Utilities.h"
 #include "Boat.h"

@@ -26,6 +26,7 @@
 #include <math.h>
 #include <time.h>
 
+#include <cstdint>
 #include "ocpn_plugin.h"
 
 #include "Utilities.h"

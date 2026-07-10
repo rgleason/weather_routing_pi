@@ -1287,7 +1287,7 @@ void BoatDialog::OnUpdatePlot() {
   RefreshPlots();
 }
 // Legacy UI
-void BoatDialog:: (wxCommandEvent& event) {
+void BoatDialog::OnUpPolar(wxCommandEvent& event) {
   long index = SelectedPolar();
   if (index < 1) return;
 

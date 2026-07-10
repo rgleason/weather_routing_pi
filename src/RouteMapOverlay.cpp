@@ -27,6 +27,7 @@
 #include <chrono>
 #include <string>
 
+#include <cstdint>
 #include "ocpn_plugin.h"
 #include "pidc.h"
 #include "json/json.h"

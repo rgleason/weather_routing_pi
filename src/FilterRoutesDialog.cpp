@@ -94,7 +94,7 @@ void FilterRoutesDialog::ApplyFilters() {
           // wxDateTime ? string
           value = (*it)->StartTime.IsValid()
                       ? (*it)->StartTime.FormatISOCombined(' ')
-                      : wxEmptyString;
+                      : wxString();
           break;
 
         case END:

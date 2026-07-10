@@ -24,6 +24,7 @@
 #include <map>
 
 #include "WeatherRoutingUI.h"
+#include <cstdint>
 #include "ocpn_plugin.h"
 
 class WeatherRouting;

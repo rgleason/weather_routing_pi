@@ -24,6 +24,7 @@
 #include "RouteMap.h"
 #include "Utilities.h"
 #include "SunCalculator.h"
+#include <cstdint>
 #include "ocpn_plugin.h"
 #include "georef.h"
 

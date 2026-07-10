@@ -37,6 +37,7 @@
 #include "Utilities.h"
 
 #include "georef.h"
+#include <cstdint>
 #include "ocpn_plugin.h"
 
 // Quantize to 1e-5 deg (about 1m)

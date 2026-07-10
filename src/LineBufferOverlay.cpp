@@ -20,6 +20,7 @@
 #include <wx/wx.h>
 #include <wx/glcanvas.h>
 
+#include <cstdint>
 #include "ocpn_plugin.h"
 #include "LineBufferOverlay.h"
 
