@@ -77,6 +77,7 @@
 
 #define ABOUT_AUTHOR_URL "http://seandepagnier.users.sourceforge.net"
 
+#include <cstdint>
 #include "ocpn_plugin.h"
 #include "pidc.h"
 #include "qtstylesheet.h"

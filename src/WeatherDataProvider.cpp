@@ -27,6 +27,7 @@
 #include "WeatherDataProvider.h"
 #include "RouteMap.h"
 #include "Utilities.h"
+#include <cstdint>
 #include "ocpn_plugin.h"
 
 #define distance(X, Y) sqrt((X) * (X) + (Y) * (Y))  // much faster than hypot
