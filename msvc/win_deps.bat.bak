@@ -50,7 +50,7 @@ if errorlevel 1 (
 
 :: Install choco poedit and add it's persistent user path element
 ::
-set "POEDIT_HOME=C:\Program Files\Poedit\GettextTools"
+set "POEDIT_HOME=C:\Program Files (x86)\Poedit\GettextTools"
 if not exist "%POEDIT_HOME%" (choco install -y poedit)
 dir "%POEDIT_HOME%"
 set "EXTRA_PATH=%POEDIT_HOME%\bin;%EXTRA_PATH%"
@@ -102,7 +102,7 @@ if not exist "%WXWIN%" (
       7z x -o%SCRIPTDIR%..\cache\wxWidgets-3.2.1 wxWidgets-3.2.1-headers.7z
   ) else (
       echo Downloading 3.1.2
-      wget -O wxWidgets-3.1.2.7z -nv --no-check-certificate ^
+      wget -O --no-check-certificate wxWidgets-3.1.2.7z -nv ^
         https://download.opencpn.org/s/E2p4nLDzeqx4SdX/download
       7z i > nul 2>&1 || choco install -y 7zip
       7z x wxWidgets-3.1.2.7z -o%WXWIN%

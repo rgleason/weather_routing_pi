@@ -19,7 +19,7 @@
 # - xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx,                                       *
 # - xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx                                       *
 # -----------------------------------------------------------------------------
-# Frontend2 Author: Jon Gough Testplugin(TP) v1.0.358.0 18/01/2026 DD/MM/YYYY
+# Frontend2 Author: Jon Gough Testplugin(TP)  v1.0.362.0 19/06/2026 DD/MM/YYYY
 # format buildCI:yes useODAPI:no validateJSON:no
 # ---------------------------------------------------------------------------
 ## -- When changing this file do NOT change the order of the sections.    -- ##
@@ -87,6 +87,10 @@ set(OCPN_MIN_VERSION "ov58")
 
 set(OCPN_API_VERSION_MAJOR "1")
 set(OCPN_API_VERSION_MINOR "18")
+
+set(WX_VER "32")
+set(WX_VER_PATCH "8")
+
 set(TP_COMMENT "  * Release using CI")
 
 set(PARENT "opencpn")
