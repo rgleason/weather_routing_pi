@@ -286,7 +286,7 @@ void ConfigurationDialog::SetConfigurations(
   if (it != configurations.end()) {
     // Date part: only set if valid (avoid MSW assert), otherwise set "none"
     // only when the control supports wxDP_ALLOWNONE
-    wxDateTime dateVal = it->StartTime.GetDateOnly();  // No conversion here
+    wxDateTime dateVal = it->StartTime;  // No conversion here
     wxSize s(m_dpStartDate->GetSize());
     if (dateVal.IsValid()) {
       // SetValue() assumes dateVal is UTC and converts to local time for GUI
