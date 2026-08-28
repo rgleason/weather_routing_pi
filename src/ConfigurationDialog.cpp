@@ -135,19 +135,21 @@ ConfigurationDialog::ConfigurationDialog(WeatherRouting& weatherrouting)
         "depth in metres. Zero disables the depth constraint. A positive "
         "value requires enabled and enforced chart-aware safety."));
   m_cbUseExperimentalChartSafety->SetToolTip(
-      _("Use OpenCPN chart-backed land checks for Detect Land diagnostics. "
-        "Route rejection uses these checks when chart-aware land avoidance is "
-        "enabled."));
+      _("Inspect the highest-priority loaded chart, including supported "
+        "o-charts, for land and depth diagnostics. Leave the requirement "
+        "below off to compare a GSHHS route; that comparison is not "
+        "depth-validated."));
   m_cbEnforceExperimentalChartSafety->SetToolTip(
-      _("Allow chart-backed land checks to reject route candidates and fail "
-        "completed routes whose final track crosses chart land."));
+      _("Reject route candidates which fail loaded-chart land, drying or "
+        "configured minimum-depth checks. For a manual GSHHS comparison, "
+        "uncheck this and set Minimum Depth to 0 m."));
 
   wxFileConfig* pConf = GetOCPNConfigObject();
   pConf->SetPath(_T( "/PlugIns/WeatherRouting" ));
   m_cbUseExperimentalChartSafety->SetValue(
-      (bool)pConf->Read(_T("UseExperimentalChartSafety"), 0L));
+      (bool)pConf->Read(_T("UseExperimentalChartSafety"), 1L));
   m_cbEnforceExperimentalChartSafety->SetValue(
-      (bool)pConf->Read(_T("EnforceExperimentalChartSafety"), 0L));
+      (bool)pConf->Read(_T("EnforceExperimentalChartSafety"), 1L));
   if (!m_WeatherRouting.HasEnhancedChartSafety()) {
     const wxString unavailable =
         _("The optional chart-backed safety service is not available in this "

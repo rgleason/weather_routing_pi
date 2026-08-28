@@ -1646,22 +1646,23 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
 
   m_cbUseExperimentalChartSafety = new wxCheckBox(
       sbOptions->GetStaticBox(), wxID_ANY,
-      _("Use chart-aware land checks"),
+      _("Check loaded charts (o-charts/vector/CM93)"),
       wxDefaultPosition,
       wxDefaultSize, 0);
   m_cbUseExperimentalChartSafety->SetToolTip(
-      _("Use loaded vector/CM93 chart geometry for Detect Land diagnostics. "
-        "Route rejection uses these checks when chart-aware land avoidance is "
-        "enabled."));
+      _("Inspect the best loaded chart for land and depth diagnostics. Leave "
+        "the requirement below off to compare a GSHHS-routed result without "
+        "treating it as depth-validated."));
   fgSizer23->Add(m_cbUseExperimentalChartSafety, 1, wxALL | wxEXPAND, 5);
 
   m_cbEnforceExperimentalChartSafety = new wxCheckBox(
       sbOptions->GetStaticBox(), wxID_ANY,
-      _("Enforce chart-aware land avoidance"), wxDefaultPosition,
+      _("Require chart/depth checks for routing"), wxDefaultPosition,
       wxDefaultSize, 0);
   m_cbEnforceExperimentalChartSafety->SetToolTip(
-      _("Allow chart-backed checks to reject route candidates and fail "
-        "completed routes whose final track crosses chart land."));
+      _("Reject candidates which fail loaded-chart land, drying or configured "
+        "minimum-depth checks. Uncheck this for a clearly non-depth-validated "
+        "GSHHS comparison route."));
   fgSizer23->Add(m_cbEnforceExperimentalChartSafety, 1, wxALL | wxEXPAND, 5);
 
   m_cbDetectBoundary =

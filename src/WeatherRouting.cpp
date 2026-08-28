@@ -341,13 +341,16 @@ static void EnsureRuntimePosition(const wxString& name, double lat,
 
 static void ReadExperimentalChartSafetySettings(bool& use_chart_safety,
                                                 bool& enforce_chart_safety) {
-  use_chart_safety = false;
-  enforce_chart_safety = false;
+  // On a compatible host the safe first-run policy is to inspect and enforce
+  // the best loaded chart.  Explicit saved choices continue to win, and the
+  // availability guard below disables both options on an unchanged host.
+  use_chart_safety = true;
+  enforce_chart_safety = true;
   wxFileConfig* pConf = GetOCPNConfigObject();
   pConf->SetPath(_T( "/PlugIns/WeatherRouting" ));
-  pConf->Read(_T("UseExperimentalChartSafety"), &use_chart_safety, false);
+  pConf->Read(_T("UseExperimentalChartSafety"), &use_chart_safety, true);
   pConf->Read(_T("EnforceExperimentalChartSafety"), &enforce_chart_safety,
-              false);
+              true);
   wxString use_override = EnvString("WR_HEADLESS_CHART_SAFETY_USE");
   wxString enforce_override = EnvString("WR_HEADLESS_CHART_SAFETY_ENFORCE");
   if (!use_override.IsEmpty())
@@ -10384,13 +10387,21 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
         configuration.DepartureTimeOptimizationOffsetMinutes,
         configuration.MultiLegLegIndex, configuration.MultiLegLegCount));
     PlugIn_GSHHS_CrossesLand(0, 0, 0, 0);
-    PrewarmExperimentalChartSafetyForConfiguration(
-        configuration, _("route start"),
-        [this](const wxString& stage, const wxString& detail, int value,
-               int range) {
-          if (m_RoutingProgressDialog && m_RoutingProgressDialog->IsShown())
-            UpdateRoutingProgress(stage, detail, value, range);
-        });
+    if (prewarm_authoritative_chart_search) {
+      PrewarmExperimentalChartSafetyForConfiguration(
+          configuration, _("route start"),
+          [this](const wxString& stage, const wxString& detail, int value,
+                 int range) {
+            if (m_RoutingProgressDialog && m_RoutingProgressDialog->IsShown())
+              UpdateRoutingProgress(stage, detail, value, range);
+          });
+    } else if (use_experimental_chart_safety &&
+               enforce_experimental_chart_safety) {
+      wxLogMessage(
+          "WR_ROUTE_MASK_PREWARM_DEFERRED context=route start "
+          "route=\"%s to %s\" policy=fast-search-then-candidate-corridor",
+          configuration.Start, configuration.End);
+    }
     if (!s_loggedDetectLandGshhsWarning) {
       wxLogMessage(
           use_experimental_chart_safety
