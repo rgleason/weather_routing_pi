@@ -6226,9 +6226,6 @@ bool WeatherRouting::ComputeDepartureTimeOptimization(
   wxString groupId = NewDepartureOptimizationGroupId();
   wxDateTime nominalStartTime = base.StartTime;
   std::vector<RouteMapOverlay*> candidate_routes;
-  bool use_chart_safety = false;
-  bool enforce_chart_safety = false;
-  ReadExperimentalChartSafetySettings(use_chart_safety, enforce_chart_safety);
   for (auto offset : offsets) {
     RouteMapConfiguration candidate = base;
     candidate.DepartureTimeOptimizationEnabled = false;
@@ -6237,11 +6234,11 @@ bool WeatherRouting::ComputeDepartureTimeOptimization(
     candidate.DepartureTimeOptimizationOffsetMinutes = offset;
     candidate.DepartureTimeOptimizationGroupId = groupId;
     candidate.StartTime = nominalStartTime + wxTimeSpan::Minutes(offset);
-    const bool authoritative_chart_search =
-        candidate.DetectLand && use_chart_safety && enforce_chart_safety;
-    candidate.UseChartSafetyForPropagation = authoritative_chart_search;
-    candidate.ChartSafetyPropagationFallbackTried =
-        authoritative_chart_search;
+    // Departure candidates follow the same two-stage policy as a single
+    // route: cheap shoreline search, authoritative candidate replay, then a
+    // detailed propagation retry only if replay rejects the candidate.
+    candidate.UseChartSafetyForPropagation = false;
+    candidate.ChartSafetyPropagationFallbackTried = false;
     candidate.chart_safety_missing_tile_retry_count = 0;
     candidate.chart_safety_missing_tile_rejections = 0;
     candidate.chart_safety_missing_tile_first_lat_tile = 0;
@@ -10244,18 +10241,6 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
         use_chart_safety ? 1 : 0, enforce_chart_safety ? 1 : 0);
     return;
   }
-  if (configuration.DetectLand && use_chart_safety && enforce_chart_safety &&
-      !configuration.chart_safety_scout_preview) {
-    // An enforced OpenCPN route must ultimately use authoritative chart
-    // semantics. Starting with the cheaper shoreline and repeating the whole
-    // solve after final replay rejects a coastal departure duplicated most of
-    // the canonical-route runtime. The bounded scout below remains useful for
-    // weather priming and chart-tile preparation; the deliverable search starts
-    // directly in detailed chart mode.
-    configuration.UseChartSafetyForPropagation = true;
-    configuration.ChartSafetyPropagationFallbackTried = true;
-    routemapoverlay->SetConfiguration(configuration);
-  }
   const double route_distance_nm =
       DistGreatCircle_Plugin(configuration.StartLat, configuration.StartLon,
                              configuration.EndLat, configuration.EndLon);
@@ -10280,6 +10265,11 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
         configuration.UseChartSafetyForPropagation ? 1 : 0);
     routemapoverlay->SetConfiguration(configuration);
   }
+  const bool prewarm_authoritative_chart_search =
+      weather_routing::ShouldPrewarmAuthoritativeChartSearch(
+          configuration.DetectLand, use_chart_safety, enforce_chart_safety,
+          configuration.UseChartSafetyForPropagation,
+          configuration.chart_safety_missing_tile_retry_count);
   wxString routeStartLog = wxString::Format(
       "WR_ROUTE_START route=\"%s -> %s\" group=\"%s\" candidate=%d "
       "candidate_offset=%d time_mode=%s start_time=\"%s\" "
@@ -10320,10 +10310,7 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
       enforce_chart_safety ? 1 : 0,
       configuration.UseChartSafetyForPropagation ? 1 : 0,
       configuration.UseReverseReachabilityRecovery ? 1 : 0,
-      configuration.DetectLand && use_chart_safety && enforce_chart_safety &&
-              configuration.chart_safety_missing_tile_retry_count == 0
-          ? 1
-          : 0,
+      prewarm_authoritative_chart_search ? 1 : 0,
       configuration.SafetyMarginLand, configuration.MinimumDepthMeters,
       configuration.DeltaTime);
   routeStartLog += wxString::Format(
@@ -10343,8 +10330,7 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
       m_SettingsDialog.m_sConcurrentThreads->GetValue());
   wxLogMessage("%s", routeStartLog);
 
-  if (configuration.DetectLand && use_chart_safety && enforce_chart_safety &&
-      configuration.chart_safety_missing_tile_retry_count == 0 &&
+  if (prewarm_authoritative_chart_search &&
       s_chartSafetySharedPrewarmScopes.find(ChartSafetySharedPrewarmScopeKey(
           configuration)) == s_chartSafetySharedPrewarmScopes.end() &&
       s_chartSafetyPreparedScoutScopes.find(ChartSafetySharedPrewarmScopeKey(

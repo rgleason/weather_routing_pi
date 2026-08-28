@@ -42,3 +42,17 @@ TEST(ChartSafetyPolicy, FinalRouteRequiresAuthoritativeFineChartEvidence) {
   EXPECT_EQ(options.allow_gshhs_fallback, 0);
   EXPECT_EQ(options.force_authoritative_fine_validation, 1);
 }
+
+TEST(ChartSafetyPolicy, InitialFastSearchDoesNotPrewarmAuthoritativeCorridor) {
+  EXPECT_FALSE(weather_routing::ShouldPrewarmAuthoritativeChartSearch(
+      true, true, true, false, 0));
+}
+
+TEST(ChartSafetyPolicy, DetailedFallbackPrewarmsAuthoritativeCorridorOnce) {
+  EXPECT_TRUE(weather_routing::ShouldPrewarmAuthoritativeChartSearch(
+      true, true, true, true, 0));
+  EXPECT_FALSE(weather_routing::ShouldPrewarmAuthoritativeChartSearch(
+      true, true, true, true, 1));
+  EXPECT_FALSE(weather_routing::ShouldPrewarmAuthoritativeChartSearch(
+      true, false, true, true, 0));
+}

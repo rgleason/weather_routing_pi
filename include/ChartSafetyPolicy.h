@@ -45,6 +45,18 @@ inline PlugInSegmentSafetyOptions MakeFinalRouteSegmentSafetyOptions(
   return options;
 }
 
+/**
+ * Broad chart-tile prewarming belongs only to the explicit detailed-search
+ * fallback.  The normal route search uses the cheap shoreline and prepares
+ * authoritative tiles narrowly around each deliverable candidate.
+ */
+inline bool ShouldPrewarmAuthoritativeChartSearch(
+    bool detect_land, bool use_chart_safety, bool enforce_chart_safety,
+    bool use_chart_safety_for_propagation, int missing_tile_retry_count) {
+  return detect_land && use_chart_safety && enforce_chart_safety &&
+         use_chart_safety_for_propagation && missing_tile_retry_count == 0;
+}
+
 }  // namespace weather_routing
 
 #endif  // WEATHER_ROUTING_CHART_SAFETY_POLICY_H
