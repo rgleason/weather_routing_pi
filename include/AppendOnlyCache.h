@@ -40,6 +40,7 @@ public:
             std::size_t maximum_entries, std::string* error = nullptr);
   bool PutBatch(const std::vector<AppendOnlyCacheRecord>& records,
                 std::string* error = nullptr);
+  bool Erase(const std::string& key, std::string* error = nullptr);
   bool Get(const std::string& key, std::vector<unsigned char>* value,
            std::string* error = nullptr);
   bool Compact(std::string* error = nullptr);

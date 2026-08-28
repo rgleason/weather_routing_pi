@@ -334,6 +334,20 @@ bool AppendOnlyCache::Get(const std::string& key,
   return true;
 }
 
+bool AppendOnlyCache::Erase(const std::string& key, std::string* error) {
+  if (!opened_) {
+    SetError(error, "cache is not open");
+    return false;
+  }
+  const auto found = index_.find(key);
+  if (found == index_.end()) return true;
+  const IndexEntry previous = found->second;
+  index_.erase(found);
+  if (AppendTombstones({key}, error)) return true;
+  index_[key] = previous;
+  return false;
+}
+
 bool AppendOnlyCache::AppendTombstones(
     const std::vector<std::string>& keys, std::string* error) {
   if (keys.empty()) return true;

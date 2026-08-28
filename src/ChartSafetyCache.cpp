@@ -29,7 +29,10 @@
 
 namespace {
 
-constexpr std::uint32_t kTilePayloadVersion = 1;
+// Version 2 invalidates tiles created before provider-priority-aware chart
+// selection.  Those records could contain CM93 evidence for cells now covered
+// by a preferred licensed/plugin vector chart.
+constexpr std::uint32_t kTilePayloadVersion = 2;
 constexpr std::size_t kMaximumPersistentTiles = 65536;
 constexpr std::size_t kFlushDirtyTiles = 512;
 constexpr std::uint64_t kCompactThresholdBytes =
@@ -392,7 +395,7 @@ bool ChartSafetyCache::OpenStoreLocked() {
   if (!persistent_enabled_ || path_.empty() || identity_.empty()) return false;
   last_error_.clear();
   const std::string store_identity =
-      "weather-routing-chart-tile-v1:" + identity_;
+      "weather-routing-chart-tile-v2:" + identity_;
   store_open_ = store_.Open(path_, store_identity, kMaximumPersistentTiles,
                             &last_error_);
   UpdateStoreStatsLocked();
@@ -553,6 +556,16 @@ void ChartSafetyCache::Store(const PlugInSegmentSafetyTile* tile) {
     // o-chart safety tiles are derived from a licensed protected chart.  Keep
     // them in RAM for the active session, but do not persist them unless the
     // chart provider grows an explicit derived-cache permission contract.
+    // If this tile replaces older CM93/native evidence, tombstone that disk
+    // record so it cannot reappear on the next launch.
+    if (incoming.source == PI_SEGMENT_SAFETY_SOURCE_PLUGIN_VECTOR) {
+      dirty_.erase(key);
+      if (persistent_enabled_ && store_open_) {
+        last_error_.clear();
+        if (!store_.Erase(key, &last_error_)) ++stats_.rejected_records;
+        UpdateStoreStatsLocked();
+      }
+    }
     if (persistent_enabled_ &&
         incoming.source != PI_SEGMENT_SAFETY_SOURCE_PLUGIN_VECTOR) {
       dirty_[key] = {key, std::move(bytes)};

@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "AppendOnlyCache.h"
 #include "ChartSafetyCache.h"
 
 namespace {
@@ -120,6 +121,31 @@ TEST_F(ChartSafetyCacheTest, LicensedPluginVectorTilesRemainRamOnly) {
   EXPECT_FALSE(reopened.Lookup(100, -20, true, &output));
 }
 
+TEST_F(ChartSafetyCacheTest,
+       LicensedPluginVectorTileEvictsOlderPersistentProviderForSameCell) {
+  weather_routing::ChartSafetyCache cache;
+  cache.Configure(path_.string(), 256, true);
+  cache.SetIdentity("chart-set-a");
+  cache.Store(&tile_);
+  ASSERT_TRUE(cache.Flush());
+
+  tile_.source = PI_SEGMENT_SAFETY_SOURCE_PLUGIN_VECTOR;
+  cache.Store(&tile_);
+  ASSERT_TRUE(cache.Flush());
+
+  weather_routing::ChartSafetyCache reopened;
+  reopened.Configure(path_.string(), 256, true);
+  reopened.SetIdentity("chart-set-a");
+  std::vector<unsigned short> hazards(9);
+  std::vector<unsigned char> has_depth(9);
+  std::vector<float> depths(9);
+  PlugInSegmentSafetyTile output = tile_;
+  output.hazard_flags = hazards.data();
+  output.has_depth = has_depth.data();
+  output.min_depth_m = depths.data();
+  EXPECT_FALSE(reopened.Lookup(100, -20, true, &output));
+}
+
 TEST_F(ChartSafetyCacheTest, ChartIdentityChangeFailsClosed) {
   weather_routing::ChartSafetyCache cache;
   cache.Configure(path_.string(), 256, true);
@@ -136,6 +162,30 @@ TEST_F(ChartSafetyCacheTest, ChartIdentityChangeFailsClosed) {
   output.has_depth = has_depth.data();
   output.min_depth_m = depths.data();
   EXPECT_FALSE(cache.Lookup(100, -20, true, &output));
+}
+
+TEST_F(ChartSafetyCacheTest, ProviderPriorityUpgradeInvalidatesVersionOneStore) {
+  weather_routing::AppendOnlyCache legacy;
+  std::string error;
+  ASSERT_TRUE(legacy.Open(path_.string(),
+                          "weather-routing-chart-tile-v1:chart-set-a", 16,
+                          &error));
+  const weather_routing::AppendOnlyCacheRecord stale = {
+      "100:-20", std::vector<unsigned char>{1, 2, 3}};
+  ASSERT_TRUE(legacy.PutBatch({stale}, &error));
+
+  weather_routing::ChartSafetyCache upgraded;
+  upgraded.Configure(path_.string(), 256, true);
+  upgraded.SetIdentity("chart-set-a");
+  std::vector<unsigned short> hazards(9);
+  std::vector<unsigned char> has_depth(9);
+  std::vector<float> depths(9);
+  PlugInSegmentSafetyTile output = tile_;
+  output.hazard_flags = hazards.data();
+  output.has_depth = has_depth.data();
+  output.min_depth_m = depths.data();
+  EXPECT_FALSE(upgraded.Lookup(100, -20, true, &output));
+  EXPECT_EQ(upgraded.Stats().disk_entries, 0U);
 }
 
 TEST_F(ChartSafetyCacheTest, IncompleteDepthTileCannotSatisfyDepthRequest) {
