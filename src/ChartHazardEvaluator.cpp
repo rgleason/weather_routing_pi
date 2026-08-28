@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <mutex>
 #include <utility>
 
 #include "ChartSafetyCache.h"
@@ -137,13 +138,13 @@ ChartHazardEvaluator::GetMask(
     const PlugInSegmentSafetyOptions& options) {
   const std::string key = MaskKey(lat_tile, lon_tile, options);
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::shared_lock<std::shared_mutex> lock(mutex_);
     const auto found = masks_.find(key);
     if (found != masks_.end()) return found->second;
   }
   const auto built = BuildMask(lat_tile, lon_tile, options);
   if (!built) return nullptr;
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::unique_lock<std::shared_mutex> lock(mutex_);
   if (masks_.size() >= 4096) masks_.clear();
   return masks_.emplace(key, built).first->second;
 }
@@ -340,10 +341,19 @@ bool ChartHazardEvaluator::CheckSegment(
 
   long x = x0;
   long y = y0;
+  long current_lat_tile = std::numeric_limits<long>::min();
+  long current_lon_tile = std::numeric_limits<long>::min();
+  std::shared_ptr<const DerivedMask> current_mask;
   for (long sample = 0; sample < steps; ++sample) {
     const long lat_tile = FloorTileIndex(y, cells_per_tile);
     const long lon_tile = FloorTileIndex(x, cells_per_tile);
-    const auto mask = GetMask(lat_tile, lon_tile, options);
+    if (!current_mask || lat_tile != current_lat_tile ||
+        lon_tile != current_lon_tile) {
+      current_mask = GetMask(lat_tile, lon_tile, options);
+      current_lat_tile = lat_tile;
+      current_lon_tile = lon_tile;
+    }
+    const auto& mask = current_mask;
     if (!mask) return false;
     const int row = static_cast<int>(y - lat_tile * cells_per_tile);
     const int col = static_cast<int>(x - lon_tile * cells_per_tile);
@@ -380,12 +390,12 @@ bool ChartHazardEvaluator::CheckSegment(
 }
 
 void ChartHazardEvaluator::ClearDerivedMasks() {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::unique_lock<std::shared_mutex> lock(mutex_);
   masks_.clear();
 }
 
 std::size_t ChartHazardEvaluator::DerivedMaskCount() const {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::shared_lock<std::shared_mutex> lock(mutex_);
   return masks_.size();
 }
 

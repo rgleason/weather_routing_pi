@@ -43,12 +43,48 @@ TEST(ChartSafetyPolicy, FinalRouteRequiresAuthoritativeFineChartEvidence) {
   EXPECT_EQ(options.force_authoritative_fine_validation, 1);
 }
 
-TEST(ChartSafetyPolicy, InitialFastSearchDoesNotPrewarmAuthoritativeCorridor) {
+TEST(ChartSafetyPolicy, ProductionSearchUsesAuthoritativeChartsImmediately) {
+  EXPECT_TRUE(weather_routing::ShouldUseAuthoritativeChartSearch(
+      true, true, true, false));
+  EXPECT_FALSE(weather_routing::ShouldUseAuthoritativeChartSearch(
+      true, true, true, true));
+  EXPECT_FALSE(weather_routing::ShouldUseAuthoritativeChartSearch(
+      true, true, false, false));
+  EXPECT_FALSE(weather_routing::ShouldUseAuthoritativeChartSearch(
+      true, false, true, false));
+  EXPECT_FALSE(weather_routing::ShouldUseAuthoritativeChartSearch(
+      false, true, true, false));
+}
+
+TEST(ChartSafetyPolicy, PartialScoutProvidesBroadAdvisoryArrivalWindow) {
+  const weather_routing::ScoutArrivalWindowHours window =
+      weather_routing::EstimatePartialScoutArrivalWindowHours(2.0, 10.0,
+                                                               100.0);
+
+  ASSERT_TRUE(window.valid);
+  EXPECT_DOUBLE_EQ(window.earliest, 14.0);
+  EXPECT_DOUBLE_EQ(window.latest, 37.0);
+}
+
+TEST(ChartSafetyPolicy, PartialScoutArrivalWindowRejectsSpuriousInputs) {
+  EXPECT_FALSE(weather_routing::EstimatePartialScoutArrivalWindowHours(
+                   0.0, 10.0, 100.0)
+                   .valid);
+  EXPECT_FALSE(weather_routing::EstimatePartialScoutArrivalWindowHours(
+                   2.0, 0.0, 100.0)
+                   .valid);
+  EXPECT_FALSE(weather_routing::EstimatePartialScoutArrivalWindowHours(
+                   2.0, 10.0,
+                   std::numeric_limits<double>::quiet_NaN())
+                   .valid);
+}
+
+TEST(ChartSafetyPolicy, ScoutDoesNotPrewarmAuthoritativeCorridor) {
   EXPECT_FALSE(weather_routing::ShouldPrewarmAuthoritativeChartSearch(
       true, true, true, false, 0));
 }
 
-TEST(ChartSafetyPolicy, DetailedFallbackPrewarmsAuthoritativeCorridorOnce) {
+TEST(ChartSafetyPolicy, ProductionSearchPrewarmsAuthoritativeCorridorOnce) {
   EXPECT_TRUE(weather_routing::ShouldPrewarmAuthoritativeChartSearch(
       true, true, true, true, 0));
   EXPECT_FALSE(weather_routing::ShouldPrewarmAuthoritativeChartSearch(

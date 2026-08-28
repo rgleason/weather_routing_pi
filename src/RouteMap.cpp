@@ -164,6 +164,8 @@ RouteMapConfiguration::RouteMapConfiguration()
       NightCumulativeEfficiency(1.),
       UseChartSafetyForPropagation(false),
       ChartSafetyPropagationFallbackTried(false),
+      chart_safety_runtime_available(false),
+      chart_safety_runtime_enforced(false),
       UseReverseReachabilityRecovery(false),
       ReverseReachabilitySearchBackIsochrones(6),
       ReverseReachabilityHorizonHours(0.0),

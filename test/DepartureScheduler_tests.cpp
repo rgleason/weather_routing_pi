@@ -48,6 +48,21 @@ TEST(DepartureScheduler, ExplicitModeHonoursRouteGlobalAndSafetyBounds) {
   EXPECT_EQ(weather_routing::EffectiveRouteWorkerLimit(20, false, 6, 20), 20);
 }
 
+TEST(DepartureScheduler, AuthoritativeChartSearchCapsExplicitConcurrency) {
+  EXPECT_EQ(weather_routing::EffectiveRouteWorkerLimit(
+                20, true, 8, 20, false, true),
+            4);
+  EXPECT_EQ(weather_routing::EffectiveRouteWorkerLimit(
+                20, true, 3, 20, false, true),
+            3);
+  EXPECT_EQ(weather_routing::EffectiveRouteWorkerLimit(
+                20, true, 8, 20, false, false),
+            8);
+  EXPECT_EQ(weather_routing::EffectiveRouteWorkerLimit(
+                20, false, 8, 20, false, true),
+            20);
+}
+
 TEST(DepartureScheduler,
      NativeAuthoritativeCandidatesUseDeterministicHostServiceLane) {
   EXPECT_EQ(weather_routing::EffectiveRouteWorkerLimit(20, true, 0, 20, true),

@@ -554,12 +554,10 @@ public:
 
   bool segmentForbiddenAt(wr::GeoPoint start, wr::GeoPoint end,
                           wr::TimePoint time, double margin) const override {
-    // Speculative forward/reverse/graph edges use the fast shoreline. Every
-    // deliverable candidate is batch-prepared and independently replayed
-    // against authoritative OpenCPN charts below; a rejection can then invoke
-    // full chart-aware propagation. Chart-checking exploratory endpoint fans
-    // here repeats the expensive raster work for paths which are never
-    // candidates.
+    // A scout keeps this flag false and uses GSHHS solely to discover a broad
+    // spatial/temporal envelope. Every production forward, reverse and graph
+    // edge has the flag true and is rejected immediately by the shared
+    // authoritative raster when it enters land, margin or unsafe depth.
     return segmentForbiddenAtImpl(start, end, time, margin,
                                   configuration_.UseChartSafetyForPropagation);
   }
@@ -568,9 +566,9 @@ public:
                                                  wr::GeoPoint end,
                                                  wr::TimePoint time,
                                                  double margin) const override {
-    // Scouts only describe/prewarm a corridor and are never deliverable
-    // routes. All production candidates, including those found with the fast
-    // shoreline search, are replayed against authoritative OpenCPN charts.
+    // Scouts only describe/prewarm a corridor and are never deliverable.
+    // Production routes receive a second dense authoritative replay even
+    // though their propagation was already chart-aware.
     return segmentForbiddenAtImpl(start, end, time, margin,
                                   !configuration_.chart_safety_scout_preview);
   }
@@ -905,12 +903,19 @@ bool ModernNativeRouteRequiresSerialHostServices(
 bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
   const auto started = std::chrono::steady_clock::now();
   const RouteMapConfiguration configuration = overlay.GetConfiguration();
-  const bool enforceChartSafety =
+  // Runtime availability/enforcement is independent from the phase-specific
+  // propagation flag.  In particular, a GSHHS scout keeps propagation false,
+  // while a production validation copy can turn it on and must then actually
+  // reach the authoritative evaluator.  Deriving these switches from the
+  // original propagation flag made the former "authoritative" dense replay
+  // silently execute GSHHS instead.
+  const bool useChartSafety =
       configuration.DetectLand &&
-      (configuration.UseChartSafetyForPropagation ||
-       configuration.ChartSafetyPropagationFallbackTried);
-  ConstraintChecker::ResetSegmentSafetyDiagnostics(enforceChartSafety,
-                                                   enforceChartSafety);
+      configuration.chart_safety_runtime_available;
+  const bool enforceChartSafety =
+      useChartSafety && configuration.chart_safety_runtime_enforced;
+  ConstraintChecker::ResetSegmentSafetyDiagnostics(useChartSafety,
+                                                    enforceChartSafety);
   ConstraintChecker::SetSegmentSafetyDiagnosticContext(wxString::Format(
       "native route=\"%s to %s\" group=%s candidate_offset=%d",
       configuration.Start, configuration.End,

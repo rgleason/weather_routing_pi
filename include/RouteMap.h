@@ -570,6 +570,10 @@ struct RouteMapConfiguration {
   bool UseChartSafetyForPropagation;
   /** Runtime-only guard so a route retries chart propagation at most once. */
   bool ChartSafetyPropagationFallbackTried;
+  /** Runtime snapshot of optional host chart-safety availability. */
+  bool chart_safety_runtime_available;
+  /** Runtime snapshot of the user's fail-closed chart-safety policy. */
+  bool chart_safety_runtime_enforced;
 
   /**
    * Experimental recovery: when the normal forward search reaches the
@@ -804,6 +808,11 @@ struct RouteMapConfiguration {
   // endpoint relaxation is confined to these zones; zero means disabled.
   double chart_safety_start_endpoint_reach_nm;
   double chart_safety_end_endpoint_reach_nm;
+  // Candidate-specific temporal envelope estimated by the GSHHS scout.  It
+  // seeds reverse reachability without turning scout geometry into safety
+  // evidence.
+  wxDateTime chart_safety_scout_arrival_earliest;
+  wxDateTime chart_safety_scout_arrival_latest;
   // Internal hint-only solve used solely to discover a chart prewarm
   // footprint. It may use preview search limits, but can never be displayed or
   // accepted as the final route.

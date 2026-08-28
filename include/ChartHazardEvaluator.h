@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
-#include <mutex>
+#include <shared_mutex>
 #include <string>
 #include <vector>
 
@@ -63,7 +63,7 @@ private:
       const PlugInSegmentSafetyOptions& options) const;
 
   ChartSafetyCache& cache_;
-  mutable std::mutex mutex_;
+  mutable std::shared_mutex mutex_;
   std::map<std::string, std::shared_ptr<const DerivedMask>> masks_;
 };
 

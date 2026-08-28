@@ -440,9 +440,9 @@ bool SegmentSafetyRejectsLand(RouteMapConfiguration* configuration,
       wxLogMessage(
           s_useExperimentalChartSafety && s_enforceExperimentalChartSafety &&
                   configuration && !configuration->UseChartSafetyForPropagation
-              ? "WeatherRouting Detect Land: using fast GSHHS shoreline "
-                "checks during propagation; chart-backed checks will validate "
-                "final route alternatives."
+              ? "WeatherRouting Detect Land: using GSHHS for a non-deliverable "
+                "search-envelope scout; production routes require "
+                "authoritative chart propagation."
               : "WeatherRouting Detect Land: using GSHHS shoreline checks. "
                 "Experimental chart-based land checks are disabled.");
       s_loggedGshhsDefault = true;

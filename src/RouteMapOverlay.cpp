@@ -2684,6 +2684,24 @@ bool RouteMapOverlay::TryReverseReachabilityRecovery(
   double horizon_hours = configuration.ReverseReachabilityHorizonHours;
   wxDateTime destination_time = origin.back()->time;
   if (!destination_time.IsValid()) destination_time = configuration.time;
+  if (configuration.chart_safety_scout_arrival_earliest.IsValid() &&
+      configuration.chart_safety_scout_arrival_latest.IsValid() &&
+      configuration.chart_safety_scout_arrival_latest >=
+          configuration.chart_safety_scout_arrival_earliest) {
+    const wxTimeSpan scout_window =
+        configuration.chart_safety_scout_arrival_latest -
+        configuration.chart_safety_scout_arrival_earliest;
+    destination_time = configuration.chart_safety_scout_arrival_earliest +
+                       wxTimeSpan::Seconds(static_cast<long>(
+                           scout_window.GetSeconds().ToDouble() / 2.0));
+    wxLogMessage(
+        "WR_REVERSE_REACHABILITY_SCOUT_WINDOW route=\"%s -> %s\" "
+        "earliest=\"%s\" latest=\"%s\" seed=\"%s\"",
+        configuration.Start, configuration.End,
+        configuration.chart_safety_scout_arrival_earliest.FormatISOCombined(),
+        configuration.chart_safety_scout_arrival_latest.FormatISOCombined(),
+        destination_time.FormatISOCombined());
+  }
   ReverseEtaEstimate eta_estimate =
       EstimateReverseDestinationTime(origin, configuration, max_layers);
   if (eta_estimate.valid && eta_estimate.destination_time.IsValid() &&
@@ -3069,6 +3087,24 @@ bool RouteMapOverlay::AnalyzeReverseReachabilityForFrontierCollapse(
   wxDateTime destination_time = configuration.time;
   if (!destination_time.IsValid() && !origin.empty())
     destination_time = origin.back()->time;
+  if (configuration.chart_safety_scout_arrival_earliest.IsValid() &&
+      configuration.chart_safety_scout_arrival_latest.IsValid() &&
+      configuration.chart_safety_scout_arrival_latest >=
+          configuration.chart_safety_scout_arrival_earliest) {
+    const wxTimeSpan scout_window =
+        configuration.chart_safety_scout_arrival_latest -
+        configuration.chart_safety_scout_arrival_earliest;
+    destination_time = configuration.chart_safety_scout_arrival_earliest +
+                       wxTimeSpan::Seconds(static_cast<long>(
+                           scout_window.GetSeconds().ToDouble() / 2.0));
+    wxLogMessage(
+        "WR_REVERSE_FRONTIER_SCOUT_WINDOW route=\"%s -> %s\" "
+        "earliest=\"%s\" latest=\"%s\" seed=\"%s\"",
+        configuration.Start, configuration.End,
+        configuration.chart_safety_scout_arrival_earliest.FormatISOCombined(),
+        configuration.chart_safety_scout_arrival_latest.FormatISOCombined(),
+        destination_time.FormatISOCombined());
+  }
   ReverseEtaEstimate eta_estimate =
       EstimateReverseDestinationTime(origin, configuration, max_layers);
   if (eta_estimate.valid && eta_estimate.destination_time.IsValid() &&
