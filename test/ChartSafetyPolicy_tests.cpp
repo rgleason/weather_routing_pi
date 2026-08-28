@@ -29,3 +29,16 @@ TEST(ChartSafetyPolicy, ZeroNegativeAndInvalidMinimumDisableDepth) {
     EXPECT_DOUBLE_EQ(options.minimum_depth_m, 0.0);
   }
 }
+
+TEST(ChartSafetyPolicy, FinalRouteRequiresAuthoritativeFineChartEvidence) {
+  const PlugInSegmentSafetyOptions options =
+      weather_routing::MakeFinalRouteSegmentSafetyOptions(0.4, 5.0);
+
+  EXPECT_EQ(options.struct_size, sizeof(options));
+  EXPECT_DOUBLE_EQ(options.safety_margin_nm, 0.4);
+  EXPECT_EQ(options.check_land, 1);
+  EXPECT_EQ(options.check_depth, 1);
+  EXPECT_DOUBLE_EQ(options.minimum_depth_m, 5.0);
+  EXPECT_EQ(options.allow_gshhs_fallback, 0);
+  EXPECT_EQ(options.force_authoritative_fine_validation, 1);
+}

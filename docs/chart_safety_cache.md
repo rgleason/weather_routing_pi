@@ -10,6 +10,15 @@ format, invalidation and recovery.
 - On an enhanced OpenCPN host, Weather Routing registers its cache callbacks
   and uses the highest-detail applicable chart selected by the host safety
   service.
+- The enhanced host accepts native S57/CM93 charts and vector charts supplied
+  by a chart plugin. This includes o-charts when their licensed plugin is
+  installed, enabled and the chart is in the active OpenCPN chart group. The
+  host uses the normal plugin object-query API, so decryption and licence
+  enforcement remain inside the chart plugin and its helper process.
+- Applicable official/native and plugin vector charts rank ahead of CM93;
+  within that provider tier the smallest scale denominator wins, followed by
+  the newest chart edition and file timestamp. The selected chart path, scale
+  and source are returned in safety diagnostics.
 - On stock OpenCPN, the same plugin binary loads without unresolved enhanced
   API symbols and retains standard GSHHS land checking.
 - On a stock host, saved enhanced-safety preferences are inactive and both
@@ -40,6 +49,17 @@ chart file metadata, chart group or safety-grid format change invalidates
 stored tiles rather than risking a stale safety answer. Cached payloads retain
 the exact hazard flags, depth availability and minimum depths produced by the
 host.
+
+Tiles derived from licensed plugin-vector charts are the exception: they are
+kept only in the bounded RAM cache for the current OpenCPN session and are not
+written to either the plugin or legacy host disk cache. This keeps the safety
+integration within the chart provider's normal runtime access contract.
+
+Land areas and permanently dry objects reject a segment. Drying and awash
+objects are classified from `WATLEV`; dredged areas (`DRGARE`) are treated as
+depth areas rather than drying areas. `DEPARE`/`DRGARE` use `DRVAL1`, while
+isolated `WRECKS`, `UWTROC` and `OBSTRN` dangers use `VALSOU`. A required-depth
+check fails closed when an isolated danger has no usable depth.
 
 ## Long-passage prewarm
 

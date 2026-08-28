@@ -32,6 +32,19 @@ inline void ApplyMinimumDepthPolicy(PlugInSegmentSafetyOptions& options,
   options.minimum_depth_m = enabled ? minimum_depth_m : 0.0;
 }
 
+/** Build the fail-closed request used before a route is shown or exported. */
+inline PlugInSegmentSafetyOptions MakeFinalRouteSegmentSafetyOptions(
+    double safety_margin_nm, double minimum_depth_m) {
+  PlugInSegmentSafetyOptions options = {};
+  options.struct_size = sizeof(options);
+  options.safety_margin_nm = safety_margin_nm;
+  options.check_land = 1;
+  ApplyMinimumDepthPolicy(options, minimum_depth_m);
+  options.allow_gshhs_fallback = 0;
+  options.force_authoritative_fine_validation = 1;
+  return options;
+}
+
 }  // namespace weather_routing
 
 #endif  // WEATHER_ROUTING_CHART_SAFETY_POLICY_H

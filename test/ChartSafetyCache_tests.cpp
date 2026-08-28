@@ -88,6 +88,38 @@ TEST_F(ChartSafetyCacheTest, FlushPersistsAcrossPluginInstances) {
   EXPECT_EQ(reopened.Stats().disk_hits, 1U);
 }
 
+TEST_F(ChartSafetyCacheTest, LicensedPluginVectorTilesRemainRamOnly) {
+  tile_.source = PI_SEGMENT_SAFETY_SOURCE_PLUGIN_VECTOR;
+  {
+    weather_routing::ChartSafetyCache cache;
+    cache.Configure(path_.string(), 256, true);
+    cache.SetIdentity("chart-set-a");
+    cache.Store(&tile_);
+
+    std::vector<unsigned short> hazards(9);
+    std::vector<unsigned char> has_depth(9);
+    std::vector<float> depths(9);
+    PlugInSegmentSafetyTile output = tile_;
+    output.hazard_flags = hazards.data();
+    output.has_depth = has_depth.data();
+    output.min_depth_m = depths.data();
+    EXPECT_TRUE(cache.Lookup(100, -20, true, &output));
+    EXPECT_TRUE(cache.Flush());
+  }
+
+  weather_routing::ChartSafetyCache reopened;
+  reopened.Configure(path_.string(), 256, true);
+  reopened.SetIdentity("chart-set-a");
+  std::vector<unsigned short> hazards(9);
+  std::vector<unsigned char> has_depth(9);
+  std::vector<float> depths(9);
+  PlugInSegmentSafetyTile output = tile_;
+  output.hazard_flags = hazards.data();
+  output.has_depth = has_depth.data();
+  output.min_depth_m = depths.data();
+  EXPECT_FALSE(reopened.Lookup(100, -20, true, &output));
+}
+
 TEST_F(ChartSafetyCacheTest, ChartIdentityChangeFailsClosed) {
   weather_routing::ChartSafetyCache cache;
   cache.Configure(path_.string(), 256, true);

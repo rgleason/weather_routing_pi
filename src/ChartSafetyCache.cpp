@@ -58,7 +58,7 @@ bool ReadValue(const std::vector<unsigned char>& input, std::size_t* offset,
 
 bool IsValidSource(int source) {
   return source >= PI_SEGMENT_SAFETY_SOURCE_NONE &&
-         source <= PI_SEGMENT_SAFETY_SOURCE_GSHHS_FALLBACK;
+         source <= PI_SEGMENT_SAFETY_SOURCE_PLUGIN_VECTOR;
 }
 
 }  // namespace
@@ -477,6 +477,7 @@ bool ChartSafetyCache::Lookup(long lat_tile, long lon_tile,
   TileData persistent;
   if (!Deserialize(bytes, &persistent) ||
       persistent.lat_tile != lat_tile || persistent.lon_tile != lon_tile ||
+      persistent.source == PI_SEGMENT_SAFETY_SOURCE_PLUGIN_VECTOR ||
       (require_depth && !persistent.depth_complete)) {
     ++stats_.rejected_records;
     ++stats_.misses;
@@ -549,7 +550,11 @@ void ChartSafetyCache::Store(const PlugInSegmentSafetyTile* tile) {
     const std::string key = TileKey(incoming.lat_tile, incoming.lon_tile);
     InsertRamLocked(key, incoming);
     ++stats_.stores;
-    if (persistent_enabled_) {
+    // o-chart safety tiles are derived from a licensed protected chart.  Keep
+    // them in RAM for the active session, but do not persist them unless the
+    // chart provider grows an explicit derived-cache permission contract.
+    if (persistent_enabled_ &&
+        incoming.source != PI_SEGMENT_SAFETY_SOURCE_PLUGIN_VECTOR) {
       dirty_[key] = {key, std::move(bytes)};
       stats_.dirty_entries = dirty_.size();
       should_flush = dirty_.size() >= kFlushDirtyTiles;

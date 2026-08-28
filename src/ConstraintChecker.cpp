@@ -518,6 +518,7 @@ bool SegmentSafetyRejectsLand(RouteMapConfiguration* configuration,
       s_loggedGshhsSegmentSafetyFallback = true;
     }
   } else if (result.source == PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART ||
+             result.source == PI_SEGMENT_SAFETY_SOURCE_PLUGIN_VECTOR ||
              result.source == PI_SEGMENT_SAFETY_SOURCE_CM93) {
     ++s_chartAvailableChecks;
     if (!s_loggedChartSegmentSafety) {
@@ -602,6 +603,7 @@ bool SegmentSafetyRejectsLand(RouteMapConfiguration* configuration,
     ++s_chartLandRejections;
   else if (!chart_rejects && !result.used_fallback &&
            (result.source == PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART ||
+            result.source == PI_SEGMENT_SAFETY_SOURCE_PLUGIN_VECTOR ||
             result.source == PI_SEGMENT_SAFETY_SOURCE_CM93))
     ++s_chartAcceptedSegments;
 
@@ -659,14 +661,12 @@ bool FinalRouteSegmentSafetyRejectsLand(RouteMapConfiguration* configuration,
     return rejects;
   }
 
-  PlugInSegmentSafetyOptions options = {};
-  options.struct_size = sizeof(options);
-  options.safety_margin_nm = safety_margin_nm;
-  options.check_land = true;
-  weather_routing::ApplyMinimumDepthPolicy(options,
-                                           configuration->MinimumDepthMeters);
-  options.allow_gshhs_fallback = true;
-  options.force_authoritative_fine_validation = true;
+  // This is the final gate before a route is displayed, applied or exported.
+  // GSHHS may guide the cheap search, but it cannot turn unavailable official
+  // vector evidence into an authoritative SAFE result.
+  PlugInSegmentSafetyOptions options =
+      weather_routing::MakeFinalRouteSegmentSafetyOptions(
+          safety_margin_nm, configuration->MinimumDepthMeters);
 
   PlugInSegmentSafetyResult result = {};
   result.struct_size = sizeof(result);

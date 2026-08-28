@@ -105,15 +105,18 @@ penalties retain their existing meanings.
 
 Every candidate segment and every final replay segment uses the working
 OpenCPN build's semantic chart-safety service when enabled. These calls retain
-S57/CM93 object semantics, drying/minimum-depth policy, exclusion boundaries
-and time-aware cyclone-track checks; GSHHS is only the explicit stock fallback.
+native S57/CM93 and licensed plugin-vector (including o-chart) object
+semantics, drying/minimum-depth policy, exclusion boundaries and time-aware
+cyclone-track checks; GSHHS is only the explicit stock fallback.
 Isochrone contour drawing uses the cheaper shoreline test because a contour
 edge is an inspection graphic, not vessel motion. This prevents visualization
 from consuming the bounded semantic-query budget needed by the route itself.
 
 The final route is still passed through the plugin's main-thread plotted-route
-chart validation before display/export. Search acceptance never relies on an
-isochrone contour or inspection trace.
+chart validation before display/export. This last gate requires fine
+authoritative vector evidence and fails closed instead of accepting a GSHHS
+fallback. Search acceptance never relies on an isochrone contour or inspection
+trace.
 
 ## Runtime behaviour
 
