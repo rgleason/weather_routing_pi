@@ -45,6 +45,7 @@
 #include "WeatherRouting.h"
 #include "AboutDialog.h"
 #include "ConstraintChecker.h"
+#include "ChartSafetyAtlas.h"
 #include "ChartSafetyHost.h"
 #include "ChartSafetyPolicy.h"
 #include "OceanPrewarmPolicy.h"
@@ -933,6 +934,7 @@ const wxString WeatherRouting::column_names[NUM_COLS] = {_("Visible"),
                                                          _("Jibes"),
                                                          _("Sail Plan Changes"),
                                                          _("Comfort"),
+                                                         _("Wx"),
                                                          _("State")};
 
 static int sortcol, sortorder = 1;
@@ -1186,6 +1188,9 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
   m_panel->m_lPositions->InsertColumn(POSITION_NAME, _("Name"));
   m_panel->m_lPositions->InsertColumn(POSITION_LAT, _("Lat"));
   m_panel->m_lPositions->InsertColumn(POSITION_LON, _("Lon"));
+  m_panel->m_lWeatherRoutes->SetToolTip(
+      _("Wx reports wind sources used by the accepted route. Orange route "
+        "wind barbs mark climatology-sourced legs."));
 
   wxImageList* imglist = new wxImageList(20, 20, true, 1);
   imglist->Add(wxBitmap(eye));
@@ -2143,6 +2148,8 @@ void WeatherRouting::ShowRoutingStatus(RouteMapOverlay* selectedRoute) {
     }
     text += wxString::Format(_("Time: %s\n"), display.Time);
     text += wxString::Format(_("Distance: %s\n"), display.Distance);
+    text += wxString::Format(_("Weather: %s\n"),
+                             display.WeatherSourceDetail);
   };
 
   RouteMapConfiguration selected = selectedRoute->GetConfiguration();
@@ -3928,6 +3935,9 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
         if (scenario_loaded) {
           configuration.UseReverseReachabilityRecovery =
               scenario.reverseReachability.enabled;
+          if (scenario.reverseReachability.hasTargetTime)
+            configuration.PlannedArrivalTime =
+                scenario.reverseReachability.targetTime;
           if (scenario.reverseReachability.hasSearchBackIsochrones)
             configuration.ReverseReachabilitySearchBackIsochrones =
                 wxMax(1, scenario.reverseReachability.searchBackIsochrones);
@@ -5211,9 +5221,13 @@ public:
         _("Best"),        _("Offset"),   _("Departure"), _("ETA"),
         _("Elapsed"),     _("Distance"), _("Avg Speed"), _("Avg SOG"),
         _("Max SOG"),     _("Avg Wind"), _("Max Wind"),  _("Avg Current"),
-        _("Max Current"), _("Tacks"),    _("Comfort"),   _("State")};
+        _("Max Current"), _("Tacks"),    _("Comfort"),   _("Wx"),
+        _("State")};
     for (unsigned int i = 0; i < WXSIZEOF(columns); i++)
       m_List->InsertColumn(i, columns[i]);
+    m_List->SetToolTip(
+        _("Wx reports wind sources used by the accepted route. Orange route "
+          "wind barbs mark climatology-sourced legs."));
 
     topSizer->Add(m_List, 1, wxEXPAND | wxALL, 5);
 
@@ -5493,7 +5507,9 @@ private:
       SetCell(row, 12, MetricOrNA(weatherroute->MaxCurrent, complete));
       SetCell(row, 13, MetricOrNA(weatherroute->Tacks, complete));
       SetCell(row, 14, MetricOrNA(weatherroute->Comfort, complete));
-      SetCell(row, 15, weatherroute->State);
+      SetCell(row, 15,
+              complete ? weatherroute->WeatherSource : wxString(_("N/A")));
+      SetCell(row, 16, weatherroute->State);
       if (routemap == selectedRoute)
         m_List->SetItemState(row, wxLIST_STATE_SELECTED, wxLIST_STATE_SELECTED);
       ++routeIndex;
@@ -6905,9 +6921,146 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
   top->Add(capability, 0, wxALL | wxEXPAND, 10);
 
   wxCheckBox* persistent = new wxCheckBox(
-      &dialog, wxID_ANY, _("Use Persistent Certified Safe-Area Cache"));
+      &dialog, wxID_ANY, _("Keep authoritative chart-safety tiles on disk"));
   persistent->SetValue(m_weather_routing_pi.UsePersistentChartSafeCache());
   top->Add(persistent, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
+
+  wxStaticBoxSizer* atlas_box = new wxStaticBoxSizer(
+      wxVERTICAL, &dialog, _("Optional prebuilt semantic atlas"));
+  wxCheckBox* atlas_enabled = new wxCheckBox(
+      &dialog, wxID_ANY,
+      _("Prebuild selected charts when OpenCPN is idle"));
+  atlas_enabled->SetValue(
+      m_weather_routing_pi.ChartSafetyAtlasEnabled());
+  atlas_enabled->SetToolTip(
+      _("This is a performance option. Routes may still request any other "
+        "authoritative tile when required."));
+  atlas_box->Add(atlas_enabled, 0, wxALL | wxEXPAND, 5);
+
+  wxBoxSizer* quota_row = new wxBoxSizer(wxHORIZONTAL);
+  quota_row->Add(new wxStaticText(
+                     &dialog, wxID_ANY,
+                     _("Maximum semantic tile cache / atlas (MiB):")),
+                 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+  wxSpinCtrl* atlas_quota = new wxSpinCtrl(&dialog, wxID_ANY);
+  atlas_quota->SetRange(256, 16384);
+  atlas_quota->SetIncrement(256);
+  atlas_quota->SetValue(
+      m_weather_routing_pi.ChartSafetyAtlasMaxDiskMiB());
+  quota_row->Add(atlas_quota, 1, wxEXPAND);
+  atlas_box->Add(quota_row, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 5);
+
+  std::vector<weather_routing::ChartSafetyAtlasChart> atlas_charts =
+      weather_routing::chart_safety_host::AtlasCharts();
+  std::sort(atlas_charts.begin(), atlas_charts.end(),
+            [](const auto& first, const auto& second) {
+              return first.path < second.path;
+            });
+  const std::set<std::string>& saved_atlas_paths =
+      m_weather_routing_pi.ChartSafetyAtlasSelectedPaths();
+  wxCheckBox* atlas_all = new wxCheckBox(
+      &dialog, wxID_ANY, _("Prebuild all applicable charts"));
+  atlas_all->SetValue(
+      m_weather_routing_pi.ChartSafetyAtlasAllCharts());
+  atlas_box->Add(atlas_all, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 5);
+
+  wxArrayString atlas_labels;
+  for (const auto& chart : atlas_charts) {
+    wxFileName filename(wxString::FromUTF8(chart.path.c_str()));
+    atlas_labels.Add(wxString::Format(
+        _("%s  (1:%d)"), filename.GetFullName(), chart.chart_scale));
+  }
+  wxCheckListBox* atlas_list = new wxCheckListBox(
+      &dialog, wxID_ANY, wxDefaultPosition, wxSize(540, 180), atlas_labels);
+  for (unsigned int index = 0; index < atlas_charts.size(); ++index) {
+    const bool checked =
+        m_weather_routing_pi.ChartSafetyAtlasAllCharts() ||
+        saved_atlas_paths.count(atlas_charts[index].path) != 0;
+    atlas_list->Check(index, checked);
+  }
+  atlas_list->Enable(!atlas_all->GetValue());
+  atlas_box->Add(atlas_list, 1, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 5);
+
+  wxBoxSizer* atlas_actions = new wxBoxSizer(wxHORIZONTAL);
+  wxButton* atlas_select_all =
+      new wxButton(&dialog, wxID_ANY, _("Select all"));
+  wxButton* atlas_select_none =
+      new wxButton(&dialog, wxID_ANY, _("Select none"));
+  wxButton* atlas_estimate =
+      new wxButton(&dialog, wxID_ANY, _("Estimate size"));
+  atlas_actions->Add(atlas_select_all, 0, wxRIGHT, 5);
+  atlas_actions->Add(atlas_select_none, 0, wxRIGHT, 5);
+  atlas_actions->AddStretchSpacer();
+  atlas_actions->Add(atlas_estimate, 0);
+  atlas_box->Add(atlas_actions, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND,
+                 5);
+
+  wxStaticText* atlas_size = new wxStaticText(
+      &dialog, wxID_ANY, _("Size has not yet been estimated."));
+  atlas_size->Wrap(520);
+  atlas_box->Add(atlas_size, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 5);
+  wxStaticText* atlas_note = new wxStaticText(
+      &dialog, wxID_ANY,
+      _("Selection controls proactive generation only. A route outside the "
+        "atlas remains eligible and requests authoritative tiles on demand. "
+        "The estimate is a conservative chart-bounds upper limit."));
+  atlas_note->Wrap(520);
+  atlas_box->Add(atlas_note, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 5);
+  top->Add(atlas_box, 1, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
+
+  const auto selected_atlas_paths = [&]() {
+    std::set<std::string> selected;
+    if (atlas_all->GetValue()) return selected;
+    for (unsigned int index = 0; index < atlas_charts.size(); ++index)
+      if (atlas_list->IsChecked(index))
+        selected.insert(atlas_charts[index].path);
+    return selected;
+  };
+  const auto update_atlas_estimate = [&]() {
+    const weather_routing::ChartSafetyAtlasEstimate estimate =
+        weather_routing::EstimateChartSafetyAtlas(
+            atlas_charts, selected_atlas_paths(), atlas_all->GetValue());
+    const double compact_mib =
+        estimate.compact_bytes / (1024.0 * 1024.0);
+    const double recommended_mib =
+        estimate.recommended_quota_bytes / (1024.0 * 1024.0);
+    const bool fits = estimate.complete &&
+                      estimate.recommended_quota_bytes <=
+                          static_cast<std::uint64_t>(atlas_quota->GetValue()) *
+                              1024ULL * 1024ULL;
+    atlas_size->SetLabel(wxString::Format(
+        _("%lu of %lu charts; at most %llu tiles, approximately %.0f MiB "
+          "compact (recommended quota %.0f MiB). %s"),
+        static_cast<unsigned long>(estimate.selected_charts),
+        static_cast<unsigned long>(estimate.available_charts),
+        static_cast<unsigned long long>(estimate.upper_bound_tiles),
+        compact_mib, recommended_mib,
+        !estimate.complete
+            ? _("Estimate exceeded its safety limit.")
+            : fits ? _("Fits the configured quota.")
+                   : _("Does not fit the configured quota.")));
+    atlas_size->Wrap(520);
+    dialog.Layout();
+    dialog.Fit();
+  };
+
+  atlas_all->Bind(wxEVT_CHECKBOX, [=](wxCommandEvent&) {
+    atlas_list->Enable(!atlas_all->GetValue());
+  });
+  atlas_select_all->Bind(wxEVT_BUTTON, [=](wxCommandEvent&) {
+    atlas_all->SetValue(false);
+    atlas_list->Enable(true);
+    for (unsigned int index = 0; index < atlas_list->GetCount(); ++index)
+      atlas_list->Check(index, true);
+  });
+  atlas_select_none->Bind(wxEVT_BUTTON, [=](wxCommandEvent&) {
+    atlas_all->SetValue(false);
+    atlas_list->Enable(true);
+    for (unsigned int index = 0; index < atlas_list->GetCount(); ++index)
+      atlas_list->Check(index, false);
+  });
+  atlas_estimate->Bind(wxEVT_BUTTON,
+                       [=](wxCommandEvent&) { update_atlas_estimate(); });
 
   wxBoxSizer* ram_row = new wxBoxSizer(wxHORIZONTAL);
   ram_row->Add(new wxStaticText(&dialog, wxID_ANY,
@@ -6940,11 +7093,12 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
       &dialog, wxID_ANY,
       wxString::Format(
           _("Cache: %lu RAM tiles (%.1f MiB), %lu disk tiles "
-            "(%.1f MiB); hits RAM=%llu disk=%llu, misses=%llu"),
+            "(%.1f of %.0f MiB); hits RAM=%llu disk=%llu, misses=%llu"),
           static_cast<unsigned long>(cache_stats.ram_entries),
           cache_stats.ram_bytes / (1024.0 * 1024.0),
           static_cast<unsigned long>(cache_stats.disk_entries),
           cache_stats.disk_file_bytes / (1024.0 * 1024.0),
+          cache_stats.disk_budget_bytes / (1024.0 * 1024.0),
           static_cast<unsigned long long>(cache_stats.ram_hits),
           static_cast<unsigned long long>(cache_stats.disk_hits),
           static_cast<unsigned long long>(cache_stats.misses)));
@@ -6955,7 +7109,8 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
       &dialog, wxID_ANY,
       _("Disk caching retains permission-approved semantic hazard/depth "
         "tiles and areas proven safe for matching chart and safety "
-        "settings. Chart changes invalidate both automatically."));
+        "settings. A chart update selectively rebuilds affected semantic "
+        "tiles and invalidates the derived proofs which depend on them."));
   note->Wrap(420);
   top->Add(note, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
 
@@ -6977,9 +7132,14 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
   });
 
   dialog.SetSizerAndFit(top);
+  update_atlas_estimate();
   if (dialog.ShowModal() == wxID_OK) {
     m_weather_routing_pi.SetUsePersistentChartSafeCache(persistent->GetValue());
     m_weather_routing_pi.SetChartSafetyRamCacheMiB(ram->GetValue());
+    m_weather_routing_pi.SetChartSafetyAtlasSettings(
+        atlas_enabled->GetValue(), atlas_quota->GetValue(),
+        atlas_all->GetValue(),
+        selected_atlas_paths());
     wxLogMessage("WR_CERT_SAFE_CACHE ui_set enabled=%d",
                  persistent->GetValue() ? 1 : 0);
   }
@@ -8209,6 +8369,62 @@ static wxString BuildRouteFailureState(RouteMapOverlay* routemapoverlay) {
   return state;
 }
 
+struct FinalRouteWeatherSourceSummary {
+  bool grib{false};
+  bool climatology{false};
+  long climatologySeconds{0};
+};
+
+static FinalRouteWeatherSourceSummary FinalRouteWeatherSources(
+    RouteMapOverlay* route) {
+  FinalRouteWeatherSourceSummary summary;
+  if (!route || !route->Finished() || !route->ReachedDestination())
+    return summary;
+
+  for (const PlotData& point : route->GetPlotData(false)) {
+    const bool grib = point.data_mask & Position::GRIB_WIND;
+    const bool climatology = point.data_mask & Position::CLIMATOLOGY_WIND;
+    summary.grib = summary.grib || grib;
+    summary.climatology = summary.climatology || climatology;
+    if (climatology && std::isfinite(point.delta) && point.delta > 0.0)
+      summary.climatologySeconds +=
+          static_cast<long>(std::llround(point.delta));
+  }
+  return summary;
+}
+
+static wxString CompactWeatherDuration(long seconds) {
+  const long minutes = std::max(1L, (seconds + 30L) / 60L);
+  if (minutes < 60) return wxString::Format(_("%ldm"), minutes);
+  const long hours = minutes / 60;
+  const long remainder = minutes % 60;
+  if (!remainder) return wxString::Format(_("%ldh"), hours);
+  return wxString::Format(_("%ldh%02ld"), hours, remainder);
+}
+
+static void FormatFinalRouteWeatherSources(
+    const FinalRouteWeatherSourceSummary& summary, wxString& compact,
+    wxString& detail) {
+  if (summary.climatology) {
+    const wxString duration =
+        CompactWeatherDuration(summary.climatologySeconds);
+    if (summary.grib) {
+      compact = wxString::Format(_("GRIB+Clim %s"), duration);
+      detail = wxString::Format(
+          _("GRIB + climatology (%s using climatology)"), duration);
+    } else {
+      compact = wxString::Format(_("Clim %s"), duration);
+      detail = wxString::Format(_("Climatology (%s)"), duration);
+    }
+  } else if (summary.grib) {
+    compact = _("GRIB");
+    detail = _("GRIB forecast only");
+  } else {
+    compact = _("N/A");
+    detail = _("Weather source unavailable");
+  }
+}
+
 /* we could speed this up more with another flag for when we need to update
    parameters but not computed route information */
 void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
@@ -8317,6 +8533,9 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
     } else {
       Comfort = _("N/A");
     }
+
+    FormatFinalRouteWeatherSources(FinalRouteWeatherSources(routemapoverlay),
+                                   WeatherSource, WeatherSourceDetail);
   }
 
   if (!routemapoverlay->Valid()) {
@@ -8530,6 +8749,13 @@ void WeatherRouting::UpdateItem(long index, bool stateonly) {
       m_panel->m_lWeatherRoutes->SetItem(index, columns[COMFORT],
                                          weatherroute->Comfort);
       m_panel->m_lWeatherRoutes->SetColumnWidth(columns[COMFORT],
+                                                wxLIST_AUTOSIZE);
+    }
+
+    if (columns[WEATHER_SOURCE] >= 0) {
+      m_panel->m_lWeatherRoutes->SetItem(index, columns[WEATHER_SOURCE],
+                                         weatherroute->WeatherSource);
+      m_panel->m_lWeatherRoutes->SetColumnWidth(columns[WEATHER_SOURCE],
                                                 wxLIST_AUTOSIZE);
     }
   }

@@ -961,6 +961,57 @@ TEST(ModernNativeEngine, UsesRecoveryCascadeAndIndependentValidation) {
   EXPECT_GT(result.diagnostics.validationSamples, 0U);
 }
 
+TEST(ModernNativeEngine,
+     ReverseRecoveryReplaysForwardWithChronologicalEnvironmentTimes) {
+  auto request = TestRequest();
+  request.options.forceForwardFailureForTesting = true;
+  request.options.useReverseRecovery = true;
+  request.options.useFrontierRecovery = false;
+  request.options.useGraphFallback = false;
+  request.options.retryStages = 6;
+  request.limits.maximumForwardGeneratedStates = 500000;
+  request.limits.maximumReverseCandidates = 512;
+  request.limits.maximumReverseBridgeAttempts = 4096;
+  auto boundaries = std::make_shared<RecordingTimedBoundaryProvider>();
+
+  const auto result =
+      RoutingEngine{}.route(request, TestEnvironment(boundaries));
+
+  ASSERT_EQ(result.status, RoutingStatus::CompleteUsingReverseRecovery)
+      << result.message;
+  EXPECT_EQ(result.solverPath, SolverPath::ReverseRecovery);
+  EXPECT_TRUE(result.validation.passed) << result.validation.failureReason;
+  EXPECT_GT(result.diagnostics.reverseNodes, 0U);
+  EXPECT_GT(result.diagnostics.reverseCandidateBridges, 0U);
+  ASSERT_FALSE(result.legs.empty());
+  EXPECT_EQ(ChronoTicks(result.legs.front().startTime),
+            ChronoTicks(request.departure));
+  for (std::size_t index = 0; index < result.legs.size(); ++index) {
+    const RouteLeg& leg = result.legs[index];
+    EXPECT_LT(ChronoTicks(leg.startTime), ChronoTicks(leg.endTime));
+    if (index > 0) {
+      EXPECT_EQ(ChronoTicks(result.legs[index - 1].endTime),
+                ChronoTicks(leg.startTime));
+    }
+  }
+  EXPECT_LE(ChronoTicks(result.legs.back().endTime),
+            ChronoTicks(request.departure +
+                        request.limits.maximumRouteDuration));
+  ASSERT_FALSE(boundaries->observedTimes.empty());
+  EXPECT_TRUE(std::all_of(boundaries->observedTimes.begin(),
+                          boundaries->observedTimes.end(),
+                          [&](TimePoint time) {
+                            return time >= request.departure &&
+                                   time <= request.departure +
+                                               request.limits.maximumRouteDuration;
+                          }));
+  EXPECT_TRUE(std::any_of(boundaries->observedTimes.begin(),
+                          boundaries->observedTimes.end(),
+                          [&](TimePoint time) {
+                            return time > request.departure;
+                          }));
+}
+
 TEST(ModernNativeEngine, BoundsReverseRecoveryIndependently) {
   auto request = TestRequest();
   request.options.forceForwardFailureForTesting = true;

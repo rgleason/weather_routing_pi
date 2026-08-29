@@ -144,6 +144,8 @@ struct RoutingScenarioSafety {
 
 struct RoutingScenarioReverseReachability {
   bool enabled;
+  wxDateTime targetTime;
+  bool hasTargetTime;
   int searchBackIsochrones;
   bool hasSearchBackIsochrones;
   double horizonHours;
@@ -153,6 +155,7 @@ struct RoutingScenarioReverseReachability {
 
   RoutingScenarioReverseReachability()
       : enabled(false),
+        hasTargetTime(false),
         searchBackIsochrones(6),
         hasSearchBackIsochrones(false),
         horizonHours(0.0),

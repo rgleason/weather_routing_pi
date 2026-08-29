@@ -173,6 +173,12 @@ public:
   /** Comfort/safety metrics for the route conditions. */
   wxString Comfort;
 
+  /** Compact final-route wind source summary for result lists. */
+  wxString WeatherSource;
+
+  /** Expanded final-route wind source summary for route status details. */
+  wxString WeatherSourceDetail;
+
   /** Pointer to the actual route calculation and display overlay. */
   RouteMapOverlay* routemapoverlay;
 };
@@ -248,6 +254,7 @@ public:
     JIBES,              //!< Number of jibes performed
     SAIL_PLAN_CHANGES,  //!< Number of sail plan changes performed
     COMFORT,            //!< Comfort/safety metrics for conditions
+    WEATHER_SOURCE,     //!< Accepted route wind source (GRIB/climatology)
     STATE,              //!< Current computation state of route
     NUM_COLS            //!< Total number of display columns
   };

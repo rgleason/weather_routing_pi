@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -32,6 +33,8 @@ protected:
     tile_.chart_scale = 50000;
     tile_.source = PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART;
     tile_.depth_complete = 1;
+    std::strncpy(tile_.dependency_identity, "tile-v1-test-dependency",
+                 sizeof(tile_.dependency_identity) - 1);
     tile_.hazard_flags = hazards_.data();
     tile_.has_depth = has_depth_.data();
     tile_.min_depth_m = depths_.data();
@@ -63,6 +66,7 @@ TEST_F(ChartSafetyCacheTest, WarmRamLookupReturnsExactAuthoritativePayload) {
   output.min_depth_m = depths.data();
   ASSERT_TRUE(cache.Lookup(100, -20, true, &output));
   EXPECT_EQ(output.chart_db_index, 7);
+  EXPECT_STREQ(output.dependency_identity, "tile-v1-test-dependency");
   EXPECT_EQ(depths, depths_);
   EXPECT_EQ(cache.Stats().ram_hits, 1U);
 }
@@ -86,6 +90,7 @@ TEST_F(ChartSafetyCacheTest, FlushPersistsAcrossPluginInstances) {
   output.has_depth = has_depth.data();
   output.min_depth_m = depths.data();
   ASSERT_TRUE(reopened.Lookup(100, -20, true, &output));
+  EXPECT_STREQ(output.dependency_identity, "tile-v1-test-dependency");
   EXPECT_EQ(reopened.Stats().disk_hits, 1U);
 }
 

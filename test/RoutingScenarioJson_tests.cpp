@@ -113,6 +113,23 @@ TEST(RoutingScenarioJson, LoadsRoutingEffortForHardRouteRegression) {
   EXPECT_EQ(400, scenario.route.routingEffortPercent);
 }
 
+TEST(RoutingScenarioJson, LoadsReverseReachabilityTargetTime) {
+  weather_routing_engine::RoutingScenario scenario;
+  wxString error;
+  const wxString path = wxString(WEATHER_ROUTING_SOURCE_DIR) +
+                        "/testdata/scenarios/"
+                        "holyhead_lough_foyle_5m_effort200_20260829.json";
+  ASSERT_TRUE(
+      weather_routing_headless::LoadRoutingScenarioJson(path, scenario, error))
+      << error;
+  ASSERT_TRUE(scenario.reverseReachability.hasTargetTime);
+  ASSERT_TRUE(scenario.reverseReachability.targetTime.IsValid());
+  EXPECT_EQ("2026-08-29T16:42:32Z",
+            scenario.reverseReachability.targetTime.ToUTC()
+                    .FormatISOCombined('T') +
+                "Z");
+}
+
 TEST(RoutingScenarioJson, LoadsMinimumDepthAcceptanceSettings) {
   weather_routing_engine::RoutingScenario scenario;
   wxString error;

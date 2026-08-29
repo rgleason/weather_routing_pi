@@ -63,6 +63,7 @@ const wxString SettingsDialog::column_names[] = {"",  // "Visible" column
                                                  "Jibes",
                                                  "Sail Plan Changes",
                                                  "Sailing Comfort",
+                                                 "Wx",
                                                  "State"};
 
 SettingsDialog::SettingsDialog(wxWindow* parent)
@@ -149,7 +150,9 @@ void SettingsDialog::LoadSettings() {
   bool columns[WeatherRouting::NUM_COLS];
   for (int i = 0; i < WeatherRouting::NUM_COLS; i++)
     columns[i] = i != WeatherRouting::BOAT &&
-                 (i <= WeatherRouting::DISTANCE || i == WeatherRouting::STATE);
+                 (i <= WeatherRouting::DISTANCE ||
+                  i == WeatherRouting::WEATHER_SOURCE ||
+                  i == WeatherRouting::STATE);
 
   for (int i = 0; i < WeatherRouting::NUM_COLS; i++) {
     if (i == 0)

@@ -1158,6 +1158,23 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
       static_cast<unsigned long long>(
           request.limits.maximumGraphGeneratedStates));
   wxLogMessage(
+      "WR_MODERN_NATIVE_ENVIRONMENT route=\"%s -> %s\" "
+      "candidate_offset=%d grib_wind_s=%lld climatology_wind_s=%lld "
+      "grib_current_s=%lld xtd_current_s=%lld assumed_zero_current_s=%lld "
+      "grib_wave_s=%lld missing_wave_s=%lld source_transitions=%llu",
+      configuration.Start, configuration.End,
+      configuration.DepartureTimeOptimizationOffsetMinutes,
+      static_cast<long long>(result.environment.gribWindDuration.count()),
+      static_cast<long long>(
+          result.environment.climatologyWindDuration.count()),
+      static_cast<long long>(result.environment.gribCurrentDuration.count()),
+      static_cast<long long>(result.environment.xtdCurrentDuration.count()),
+      static_cast<long long>(
+          result.environment.currentAssumedZeroDuration.count()),
+      static_cast<long long>(result.environment.gribWaveDuration.count()),
+      static_cast<long long>(result.environment.missingWaveDuration.count()),
+      static_cast<unsigned long long>(result.sourceTransitions.size()));
+  wxLogMessage(
       "WR_MODERN_WEATHER_CACHE route=\"%s -> %s\" calls=%llu "
       "immediate_hits=%llu local_hits=%llu shared_hits=%llu misses=%llu "
       "waits=%llu "

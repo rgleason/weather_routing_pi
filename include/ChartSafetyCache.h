@@ -38,6 +38,7 @@ struct ChartSafetyCacheStats {
   std::uint64_t disk_bytes_read{0};
   std::uint64_t disk_bytes_written{0};
   std::uint64_t disk_file_bytes{0};
+  std::uint64_t disk_budget_bytes{0};
   std::size_t ram_entries{0};
   std::size_t disk_entries{0};
   std::size_t dirty_entries{0};
@@ -82,6 +83,8 @@ public:
   void SetProvisionalIdentity(const std::string& identity);
   void SetPersistentEnabled(bool enabled);
   void SetRequestedRamMiB(int requested_ram_mib);
+  /** Limit the logical persistent semantic cache, including atlas tiles. */
+  void SetMaximumDiskMiB(int maximum_disk_mib);
 
   int RequestedRamMiB() const;
   int EffectiveRamMiB() const;
@@ -120,6 +123,7 @@ private:
     std::uint32_t hazard_summary_flags{0};
     bool depth_complete{false};
     std::string chart_path;
+    std::string dependency_identity;
     std::vector<unsigned short> hazard_flags;
     std::vector<unsigned char> has_depth;
     std::vector<float> min_depth_m;
@@ -157,6 +161,7 @@ private:
   int requested_ram_mib_;
   int effective_ram_mib_;
   bool persistent_enabled_;
+  int maximum_disk_mib_;
   bool configured_;
   bool identity_confirmed_;
   bool store_open_;

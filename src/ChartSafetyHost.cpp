@@ -65,6 +65,8 @@ using ReleaseFn = void (*)();
 using SetPersistentFn = bool (*)(int);
 using SavePersistentFn = bool (*)();
 using ClearPersistentFn = bool (*)();
+using ChartInfoCountFn = int (*)();
+using ChartInfoFn = bool (*)(int, PlugInSegmentSafetyChartInfoV1*);
 
 struct HostFunctions {
   RegisterFn register_cache{nullptr};
@@ -77,6 +79,8 @@ struct HostFunctions {
   SetPersistentFn set_persistent{nullptr};
   SavePersistentFn save_persistent{nullptr};
   ClearPersistentFn clear_persistent{nullptr};
+  ChartInfoCountFn chart_info_count{nullptr};
+  ChartInfoFn chart_info{nullptr};
   bool available{false};
   bool registered{false};
 };
@@ -319,6 +323,12 @@ bool PrewarmRawTiles(
 namespace weather_routing {
 namespace chart_safety_host {
 
+namespace {
+void DependenciesChangedCallback(void*) {
+  if (g_evaluator) g_evaluator->ClearDerivedMasks();
+}
+}  // namespace
+
 bool Initialize(ChartSafetyCache* cache) {
   Shutdown();
   g_cache = cache;
@@ -341,6 +351,10 @@ bool Initialize(ChartSafetyCache* cache) {
       "PlugIn_SaveSegmentSafetyPersistentCache");
   g_host.clear_persistent = Resolve<ClearPersistentFn>(
       "PlugIn_ClearSegmentSafetyPersistentCache");
+  g_host.chart_info_count = Resolve<ChartInfoCountFn>(
+      "PlugIn_GetSegmentSafetyChartInfoCount");
+  g_host.chart_info = Resolve<ChartInfoFn>(
+      "PlugIn_GetSegmentSafetyChartInfo");
 
   g_host.available =
       cache && g_host.register_cache && g_host.get_identity && g_host.check &&
@@ -353,6 +367,7 @@ bool Initialize(ChartSafetyCache* cache) {
   callbacks.lookup = &ChartSafetyCache::LookupCallback;
   callbacks.store = &ChartSafetyCache::StoreCallback;
   callbacks.identity_changed = &ChartSafetyCache::IdentityCallback;
+  callbacks.dependencies_changed = &DependenciesChangedCallback;
   if (!g_host.register_cache(&callbacks)) {
     g_host.available = false;
     return false;
@@ -377,6 +392,40 @@ void Shutdown() {
 }
 
 bool Available() { return g_host.available; }
+
+std::string ConfirmedIdentity() {
+  if (!ConfirmHostIdentity() || !g_cache) return std::string();
+  return g_cache->Identity();
+}
+
+std::vector<ChartSafetyAtlasChart> AtlasCharts() {
+  std::vector<ChartSafetyAtlasChart> charts;
+  if (!g_host.chart_info_count || !g_host.chart_info) return charts;
+  const int count = g_host.chart_info_count();
+  if (count <= 0 || count > 1000000) return charts;
+  charts.reserve(static_cast<std::size_t>(count));
+  for (int ordinal = 0; ordinal < count; ++ordinal) {
+    PlugInSegmentSafetyChartInfoV1 info = {};
+    info.struct_size = sizeof(info);
+    if (!g_host.chart_info(ordinal, &info) ||
+        info.abi_version != PI_SEGMENT_SAFETY_CHART_INFO_ABI_V1 ||
+        !info.available || !info.in_active_group || !info.chart_path[0])
+      continue;
+    ChartSafetyAtlasChart chart;
+    chart.db_index = info.db_index;
+    chart.chart_scale = info.chart_scale;
+    chart.source = info.source;
+    chart.edition_time = info.edition_time;
+    chart.file_time = info.file_time;
+    chart.min_lat = info.min_lat;
+    chart.min_lon = info.min_lon;
+    chart.max_lat = info.max_lat;
+    chart.max_lon = info.max_lon;
+    chart.path = info.chart_path;
+    charts.push_back(std::move(chart));
+  }
+  return charts;
+}
 
 std::string Status() {
   return Available()
@@ -564,6 +613,16 @@ bool PrewarmReachabilityEnvelope(
     }
   }
   return RequestRawTiles(tiles, options, result);
+}
+
+bool PrewarmAtlasTiles(
+    const std::vector<std::pair<long, long>>& tiles,
+    const PlugInSegmentSafetyOptions* options,
+    PlugInSegmentSafetyResult* result) {
+  if (tiles.empty()) return true;
+  return RequestRawTiles(
+      std::set<std::pair<long, long>>(tiles.begin(), tiles.end()), options,
+      result);
 }
 
 bool PrewarmRouteMaskForPolylinesWithTileHalo(

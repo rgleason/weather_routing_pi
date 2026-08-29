@@ -12,7 +12,9 @@
 
 #include <atomic>
 #include <string>
+#include <vector>
 
+#include "ChartSafetyAtlas.h"
 #include "ocpn_plugin.h"
 #include "OptionalChartSafetyApi.h"
 
@@ -27,11 +29,15 @@ bool Initialize(ChartSafetyCache* cache);
 void Shutdown();
 bool Available();
 std::string Status();
+/** Confirm and return the post-provider-load global semantic ABI identity. */
+std::string ConfirmedIdentity();
 bool FlushCache();
 bool SetPersistentCacheEnabled(bool enabled);
 bool SavePersistentCache();
 bool ClearPersistentCache();
 void InvalidateDerivedMasks();
+/** Return applicable chart metadata without opening/decrypting chart data. */
+std::vector<ChartSafetyAtlasChart> AtlasCharts();
 
 /**
  * Install a non-owning cancellation flag for an externally controlled
@@ -55,6 +61,11 @@ bool PrewarmRouteMaskForSegment(
 bool PrewarmReachabilityEnvelope(
     double start_lat, double start_lon, double end_lat, double end_lon,
     double maximum_path_length_nm,
+    const PlugInSegmentSafetyOptions* options,
+    PlugInSegmentSafetyResult* result);
+/** Prebuild an exact, bounded set of 0.05-degree semantic base tiles. */
+bool PrewarmAtlasTiles(
+    const std::vector<std::pair<long, long>>& tiles,
     const PlugInSegmentSafetyOptions* options,
     PlugInSegmentSafetyResult* result);
 bool PrewarmRouteMaskForPolylinesWithTileHalo(

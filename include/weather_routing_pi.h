@@ -92,6 +92,10 @@
 #include <json/json.h>
 
 #include <memory>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
 
 class ExternalPlanningProvider;
 
@@ -176,6 +180,21 @@ public:
     return m_chart_safety_cache.EffectiveRamMiB();
   }
   void SetChartSafetyRamCacheMiB(int ram_mib);
+  bool ChartSafetyAtlasEnabled() const {
+    return m_chart_safety_atlas_enabled;
+  }
+  int ChartSafetyAtlasMaxDiskMiB() const {
+    return m_chart_safety_atlas_max_disk_mib;
+  }
+  bool ChartSafetyAtlasAllCharts() const {
+    return m_chart_safety_atlas_all_charts;
+  }
+  const std::set<std::string>& ChartSafetyAtlasSelectedPaths() const {
+    return m_chart_safety_atlas_selected_paths;
+  }
+  void SetChartSafetyAtlasSettings(bool enabled, int max_disk_mib,
+                                   bool all_charts,
+                                   std::set<std::string> selected_paths);
   bool ClearChartSafetyCache();
   bool FlushChartSafetyCache();
   bool HasEnhancedChartSafety() const;
@@ -202,6 +221,9 @@ private:
   void RequestOcpnDrawSetting();
   void NewWR();
   void MaybeStartHeadlessRouteTest();
+  void ScheduleChartSafetyAtlas(bool rebuild_plan, int delay_ms = 1000);
+  void OnChartSafetyAtlasTimer(wxTimerEvent&);
+  void ResetChartSafetyAtlasPlan();
 
   bool LoadConfig();
   bool SaveConfig();
@@ -209,6 +231,18 @@ private:
   bool b_in_boundary_reply;
   bool m_use_persistent_chart_safe_cache;
   int m_chart_safety_ram_cache_mib;
+  bool m_chart_safety_atlas_enabled;
+  int m_chart_safety_atlas_max_disk_mib;
+  bool m_chart_safety_atlas_all_charts;
+  std::set<std::string> m_chart_safety_atlas_selected_paths;
+  std::string m_chart_safety_atlas_completed_identity;
+  std::string m_chart_safety_atlas_plan_identity;
+  std::vector<std::pair<long, long>> m_chart_safety_atlas_tiles;
+  std::size_t m_chart_safety_atlas_cursor{0};
+  int m_chart_safety_atlas_metadata_attempts{0};
+  int m_chart_safety_atlas_batch_retries{0};
+  std::size_t m_chart_safety_atlas_failed_batches{0};
+  bool m_chart_safety_atlas_logged_route_pause{false};
   weather_routing::ChartSafetyCache m_chart_safety_cache;
   std::unique_ptr<ExternalPlanningProvider> m_external_planning_provider;
 
@@ -226,6 +260,7 @@ private:
   int m_route_multileg_menu_id;
 
   wxTimer m_tCursorLatLon;
+  wxTimer m_chart_safety_atlas_timer;
 };
 
 #endif

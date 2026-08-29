@@ -675,6 +675,9 @@ private:
   /** Line buffer for wind barbs along the route. */
   LineBuffer wind_barb_route_cache;
 
+  /** Line buffer for climatology-sourced wind barbs along the route. */
+  LineBuffer climatology_wind_barb_route_cache;
+
   /** Current sailing comfort level. */
   int m_sailingComfort;
 

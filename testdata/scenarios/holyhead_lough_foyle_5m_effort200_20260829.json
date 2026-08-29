@@ -21,7 +21,8 @@
   },
   "environment": {
     "useGrib": true,
-    "useCurrents": true
+    "useCurrents": true,
+    "allowClimatologyFallback": true
   },
   "route": {
     "boatFile": "~/.opencpn/plugins/weather_routing/boats/Nicholson_35_conservative.xml",
@@ -49,6 +50,7 @@
   },
   "reverseReachability": {
     "enabled": true,
+    "targetTime": "2026-08-29T16:42:32Z",
     "searchBackIsochrones": 6,
     "horizonHours": 0,
     "diagnostics": true

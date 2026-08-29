@@ -159,6 +159,7 @@ struct PlugInSegmentSafetyTile {
   unsigned int hazard_summary_flags;
   int depth_complete;
   char chart_path[256];
+  char dependency_identity[80];
   unsigned short* hazard_flags;
   unsigned char* has_depth;
   float* min_depth_m;
@@ -172,6 +173,8 @@ typedef void (*PlugInSegmentSafetyTileCacheStoreFn)(
     void* context, const PlugInSegmentSafetyTile* tile);
 typedef void (*PlugInSegmentSafetyTileCacheIdentityFn)(
     void* context, const char* identity);
+typedef void (*PlugInSegmentSafetyTileCacheDependenciesChangedFn)(
+    void* context);
 
 struct PlugInSegmentSafetyTileCacheCallbacks {
   int struct_size;
@@ -179,6 +182,28 @@ struct PlugInSegmentSafetyTileCacheCallbacks {
   PlugInSegmentSafetyTileCacheLookupFn lookup;
   PlugInSegmentSafetyTileCacheStoreFn store;
   PlugInSegmentSafetyTileCacheIdentityFn identity_changed;
+  PlugInSegmentSafetyTileCacheDependenciesChangedFn dependencies_changed;
+};
+
+#define PI_SEGMENT_SAFETY_CHART_INFO_ABI_V1 1
+
+struct PlugInSegmentSafetyChartInfoV1 {
+  int struct_size;
+  int abi_version;
+  int db_index;
+  int chart_type;
+  int chart_family;
+  int chart_scale;
+  int source;
+  int available;
+  int in_active_group;
+  long long edition_time;
+  long long file_time;
+  double min_lat;
+  double min_lon;
+  double max_lat;
+  double max_lon;
+  char chart_path[512];
 };
 
 #endif  // XWEATHER_ROUTING_DECLARE_OPTIONAL_CHART_SAFETY_ABI

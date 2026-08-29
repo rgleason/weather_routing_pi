@@ -28,6 +28,7 @@
 #include <wx/timer.h>
 #include <wx/treectrl.h>
 #include <wx/fileconf.h>
+#include <cmath>
 #include <cstring>
 
 #include "Utilities.h"
@@ -114,9 +115,16 @@ weather_routing_pi::weather_routing_pi(void* ppimgr)
   b_in_boundary_reply = false;
   m_use_persistent_chart_safe_cache = true;
   m_chart_safety_ram_cache_mib = 0;
+  m_chart_safety_atlas_enabled = false;
+  m_chart_safety_atlas_max_disk_mib = 2048;
+  m_chart_safety_atlas_all_charts = true;
   m_tCursorLatLon.Connect(
       wxEVT_TIMER, wxTimerEventHandler(weather_routing_pi::OnCursorLatLonTimer),
       NULL, this);
+  m_chart_safety_atlas_timer.Connect(
+      wxEVT_TIMER,
+      wxTimerEventHandler(weather_routing_pi::OnChartSafetyAtlasTimer), NULL,
+      this);
   m_pWeather_Routing = NULL;
 }
 
@@ -199,6 +207,9 @@ int weather_routing_pi::Init() {
   m_external_planning_provider->RegisterIfSupported();
 
   MaybeStartHeadlessRouteTest();
+  // Chart providers finish registering after plugin Init().  Atlas work is
+  // deliberately delayed and only runs while the route engine is idle.
+  ScheduleChartSafetyAtlas(true, 15000);
 
   return (WANTS_OVERLAY_CALLBACK | WANTS_OPENGL_OVERLAY_CALLBACK |
           WANTS_TOOLBAR_CALLBACK | WANTS_CONFIG | WANTS_CURSOR_LATLON |
@@ -206,6 +217,7 @@ int weather_routing_pi::Init() {
 }
 
 bool weather_routing_pi::DeInit() {
+  m_chart_safety_atlas_timer.Stop();
   if (m_external_planning_provider &&
       !m_external_planning_provider->Unregister())
     return false;
@@ -702,6 +714,26 @@ bool weather_routing_pi::LoadConfig() {
   pConf->Read(_T("ChartSafetyRamCacheMiB"), &ram_mib, 0L);
   m_chart_safety_ram_cache_mib =
       static_cast<int>(wxMax(0L, wxMin(8192L, ram_mib)));
+  pConf->Read(_T("ChartSafetyAtlasEnabled"),
+              &m_chart_safety_atlas_enabled, false);
+  long atlas_mib = 2048;
+  pConf->Read(_T("ChartSafetyAtlasMaxDiskMiB"), &atlas_mib, 2048L);
+  m_chart_safety_atlas_max_disk_mib =
+      static_cast<int>(wxMax(256L, wxMin(16384L, atlas_mib)));
+  pConf->Read(_T("ChartSafetyAtlasAllCharts"),
+              &m_chart_safety_atlas_all_charts, true);
+  wxString atlas_paths;
+  pConf->Read(_T("ChartSafetyAtlasSelectedPaths"), &atlas_paths, wxEmptyString);
+  wxString completed_atlas_identity;
+  pConf->Read(_T("ChartSafetyAtlasCompletedIdentity"),
+              &completed_atlas_identity, wxEmptyString);
+  m_chart_safety_atlas_completed_identity =
+      completed_atlas_identity.ToStdString();
+  m_chart_safety_atlas_selected_paths.clear();
+  for (const wxString& path : wxSplit(atlas_paths, '\n')) {
+    if (!path.IsEmpty())
+      m_chart_safety_atlas_selected_paths.insert(path.ToStdString());
+  }
 
   const bool had_use_setting =
       pConf->HasEntry(_T("UseExperimentalChartSafety"));
@@ -712,6 +744,8 @@ bool weather_routing_pi::LoadConfig() {
   m_chart_safety_cache.Configure(
       cache_file.GetFullPath().ToStdString(), m_chart_safety_ram_cache_mib,
       m_use_persistent_chart_safe_cache);
+  m_chart_safety_cache.SetMaximumDiskMiB(
+      m_chart_safety_atlas_max_disk_mib);
   const bool enhanced =
       weather_routing::chart_safety_host::Initialize(&m_chart_safety_cache);
   if (enhanced) {
@@ -762,6 +796,21 @@ bool weather_routing_pi::SaveConfig() {
                m_use_persistent_chart_safe_cache);
   pConf->Write(_T("ChartSafetyRamCacheMiB"),
                static_cast<long>(m_chart_safety_ram_cache_mib));
+  pConf->Write(_T("ChartSafetyAtlasEnabled"),
+               m_chart_safety_atlas_enabled);
+  pConf->Write(_T("ChartSafetyAtlasMaxDiskMiB"),
+               static_cast<long>(m_chart_safety_atlas_max_disk_mib));
+  pConf->Write(_T("ChartSafetyAtlasAllCharts"),
+               m_chart_safety_atlas_all_charts);
+  wxString atlas_paths;
+  for (const auto& path : m_chart_safety_atlas_selected_paths) {
+    if (!atlas_paths.IsEmpty()) atlas_paths += '\n';
+    atlas_paths += wxString::FromUTF8(path.c_str());
+  }
+  pConf->Write(_T("ChartSafetyAtlasSelectedPaths"), atlas_paths);
+  pConf->Write(_T("ChartSafetyAtlasCompletedIdentity"),
+               wxString::FromUTF8(
+                   m_chart_safety_atlas_completed_identity.c_str()));
   return true;
 }
 
@@ -771,6 +820,7 @@ void weather_routing_pi::SetUsePersistentChartSafeCache(bool enabled,
   m_chart_safety_cache.SetPersistentEnabled(enabled);
   weather_routing::chart_safety_host::SetPersistentCacheEnabled(enabled);
   if (save) SaveConfig();
+  ScheduleChartSafetyAtlas(false);
 }
 
 void weather_routing_pi::SetChartSafetyRamCacheMiB(int ram_mib) {
@@ -779,11 +829,200 @@ void weather_routing_pi::SetChartSafetyRamCacheMiB(int ram_mib) {
   SaveConfig();
 }
 
+void weather_routing_pi::SetChartSafetyAtlasSettings(
+    bool enabled, int max_disk_mib, bool all_charts,
+    std::set<std::string> selected_paths) {
+  m_chart_safety_atlas_enabled = enabled;
+  m_chart_safety_atlas_max_disk_mib =
+      wxMax(256, wxMin(16384, max_disk_mib));
+  m_chart_safety_atlas_all_charts = all_charts;
+  m_chart_safety_atlas_selected_paths = std::move(selected_paths);
+  m_chart_safety_cache.SetMaximumDiskMiB(
+      m_chart_safety_atlas_max_disk_mib);
+  SaveConfig();
+  ScheduleChartSafetyAtlas(true);
+}
+
+void weather_routing_pi::ResetChartSafetyAtlasPlan() {
+  m_chart_safety_atlas_tiles.clear();
+  m_chart_safety_atlas_cursor = 0;
+  m_chart_safety_atlas_metadata_attempts = 0;
+  m_chart_safety_atlas_batch_retries = 0;
+  m_chart_safety_atlas_failed_batches = 0;
+  m_chart_safety_atlas_plan_identity.clear();
+  m_chart_safety_atlas_logged_route_pause = false;
+}
+
+void weather_routing_pi::ScheduleChartSafetyAtlas(bool rebuild_plan,
+                                                   int delay_ms) {
+  m_chart_safety_atlas_timer.Stop();
+  if (rebuild_plan) ResetChartSafetyAtlasPlan();
+  if (!m_chart_safety_atlas_enabled ||
+      !m_use_persistent_chart_safe_cache ||
+      !weather_routing::chart_safety_host::Available())
+    return;
+  m_chart_safety_atlas_timer.StartOnce(wxMax(100, delay_ms));
+}
+
+void weather_routing_pi::OnChartSafetyAtlasTimer(wxTimerEvent&) {
+  if (!m_chart_safety_atlas_enabled ||
+      !m_use_persistent_chart_safe_cache ||
+      !weather_routing::chart_safety_host::Available())
+    return;
+
+  // Route computations have absolute priority.  The timer performs no chart
+  // work until all running/waiting/headless route state has drained.
+  if (m_pWeather_Routing &&
+      !m_pWeather_Routing->CanStartExternalPlanningScenario()) {
+    if (!m_chart_safety_atlas_logged_route_pause) {
+      wxLogMessage("WR_CHART_ATLAS paused reason=route_active");
+      m_chart_safety_atlas_logged_route_pause = true;
+    }
+    ScheduleChartSafetyAtlas(false, 1000);
+    return;
+  }
+  if (m_chart_safety_atlas_logged_route_pause) {
+    wxLogMessage("WR_CHART_ATLAS resumed reason=route_idle");
+    m_chart_safety_atlas_logged_route_pause = false;
+  }
+
+  if (m_chart_safety_atlas_tiles.empty() &&
+      m_chart_safety_atlas_cursor == 0) {
+    const auto charts = weather_routing::chart_safety_host::AtlasCharts();
+    if (charts.empty()) {
+      if (++m_chart_safety_atlas_metadata_attempts <= 8)
+        ScheduleChartSafetyAtlas(false, 15000);
+      else
+        wxLogWarning("WR_CHART_ATLAS stopped reason=no_chart_metadata");
+      return;
+    }
+
+    const std::uint64_t quota_bytes =
+        static_cast<std::uint64_t>(m_chart_safety_atlas_max_disk_mib) *
+        1024ULL * 1024ULL;
+    // Include the estimator's 25% journal/metadata headroom in the gate.  A
+    // scope which cannot fit is never partly generated in arbitrary tile
+    // order; the user must narrow the selection or raise the quota.
+    const std::uint64_t maximum_tiles = std::max<std::uint64_t>(
+        1, (quota_bytes * 4ULL / 5ULL) /
+               weather_routing::kChartSafetyAtlasEstimatedBytesPerTile);
+    const auto estimate = weather_routing::EstimateChartSafetyAtlas(
+        charts, m_chart_safety_atlas_selected_paths,
+        m_chart_safety_atlas_all_charts, maximum_tiles);
+    if (!estimate.complete || estimate.recommended_quota_bytes > quota_bytes) {
+      wxLogWarning(
+          "WR_CHART_ATLAS stopped reason=quota_too_small selected_charts=%llu "
+          "estimated_tiles_at_least=%llu quota_mib=%d",
+          static_cast<unsigned long long>(estimate.selected_charts),
+          static_cast<unsigned long long>(estimate.upper_bound_tiles),
+          m_chart_safety_atlas_max_disk_mib);
+      return;
+    }
+    m_chart_safety_atlas_plan_identity =
+        weather_routing::ChartSafetyAtlasIdentity(
+            charts, m_chart_safety_atlas_selected_paths,
+            m_chart_safety_atlas_all_charts);
+    const std::string host_identity =
+        weather_routing::chart_safety_host::ConfirmedIdentity();
+    if (host_identity.empty()) {
+      wxLogWarning("WR_CHART_ATLAS stopped reason=identity_unavailable");
+      return;
+    }
+    m_chart_safety_atlas_plan_identity += ":" + host_identity;
+    if (m_chart_safety_atlas_plan_identity ==
+        m_chart_safety_atlas_completed_identity) {
+      wxLogMessage("WR_CHART_ATLAS already_complete identity=%s",
+                   m_chart_safety_atlas_plan_identity.c_str());
+      return;
+    }
+    bool complete = true;
+    m_chart_safety_atlas_tiles = weather_routing::ChartSafetyAtlasTiles(
+        charts, m_chart_safety_atlas_selected_paths,
+        m_chart_safety_atlas_all_charts, maximum_tiles, &complete);
+    if (!complete || m_chart_safety_atlas_tiles.empty()) {
+      wxLogWarning("WR_CHART_ATLAS stopped reason=empty_or_incomplete_plan");
+      ResetChartSafetyAtlasPlan();
+      return;
+    }
+    wxLogMessage(
+        "WR_CHART_ATLAS started charts=%llu tiles=%llu estimate_mib=%.1f "
+        "quota_mib=%d",
+        static_cast<unsigned long long>(estimate.selected_charts),
+        static_cast<unsigned long long>(m_chart_safety_atlas_tiles.size()),
+        estimate.compact_bytes / (1024.0 * 1024.0),
+        m_chart_safety_atlas_max_disk_mib);
+  }
+
+  constexpr std::size_t kIdleAtlasBatchTiles = 36;
+  std::vector<std::pair<long, long>> batch;
+  batch.reserve(kIdleAtlasBatchTiles);
+  const auto batch_bucket = [](long tile) {
+    return static_cast<long>(std::floor(static_cast<double>(tile) / 6.0));
+  };
+  while (m_chart_safety_atlas_cursor < m_chart_safety_atlas_tiles.size() &&
+         batch.size() < kIdleAtlasBatchTiles) {
+    const auto tile =
+        m_chart_safety_atlas_tiles[m_chart_safety_atlas_cursor];
+    if (!batch.empty() &&
+        (batch_bucket(tile.first) != batch_bucket(batch.front().first) ||
+         batch_bucket(tile.second) != batch_bucket(batch.front().second)))
+      break;
+    batch.push_back(tile);
+    ++m_chart_safety_atlas_cursor;
+  }
+
+  PlugInSegmentSafetyOptions options = {};
+  options.struct_size = sizeof(options);
+  options.check_land = 1;
+  options.check_depth = 1;
+  options.allow_gshhs_fallback = 0;
+  PlugInSegmentSafetyResult result = {};
+  result.struct_size = sizeof(result);
+  const bool ok = weather_routing::chart_safety_host::PrewarmAtlasTiles(
+      batch, &options, &result);
+  wxLogMessage(
+      "WR_CHART_ATLAS batch_ok=%d batch_tiles=%llu completed=%llu total=%llu "
+      "build_ms=%d",
+      ok ? 1 : 0, static_cast<unsigned long long>(batch.size()),
+      static_cast<unsigned long long>(m_chart_safety_atlas_cursor),
+      static_cast<unsigned long long>(m_chart_safety_atlas_tiles.size()),
+      result.grid_build_ms);
+
+  if (!ok && m_chart_safety_atlas_batch_retries < 2) {
+    m_chart_safety_atlas_cursor -= batch.size();
+    ++m_chart_safety_atlas_batch_retries;
+    ScheduleChartSafetyAtlas(false, 1000);
+    return;
+  }
+  if (!ok) ++m_chart_safety_atlas_failed_batches;
+  m_chart_safety_atlas_batch_retries = 0;
+
+  if (m_chart_safety_atlas_cursor >= m_chart_safety_atlas_tiles.size()) {
+    FlushChartSafetyCache();
+    if (m_chart_safety_atlas_failed_batches == 0) {
+      m_chart_safety_atlas_completed_identity =
+          m_chart_safety_atlas_plan_identity;
+      SaveConfig();
+    }
+    wxLogMessage("WR_CHART_ATLAS complete tiles=%llu failed_batches=%llu",
+                 static_cast<unsigned long long>(
+                     m_chart_safety_atlas_tiles.size()),
+                 static_cast<unsigned long long>(
+                     m_chart_safety_atlas_failed_batches));
+    return;
+  }
+  ScheduleChartSafetyAtlas(false,
+                           result.prewarm_base_tiles_built == 0 ? 10 : 100);
+}
+
 bool weather_routing_pi::ClearChartSafetyCache() {
   weather_routing::chart_safety_host::InvalidateDerivedMasks();
   const bool plugin_ok = m_chart_safety_cache.Clear();
   const bool host_ok =
       weather_routing::chart_safety_host::ClearPersistentCache();
+  m_chart_safety_atlas_completed_identity.clear();
+  SaveConfig();
+  ScheduleChartSafetyAtlas(true, 1000);
   return plugin_ok && host_ok;
 }
 

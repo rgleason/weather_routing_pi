@@ -1,5 +1,6 @@
 src/AppendOnlyCache.cpp
 src/ChartSafetyCache.cpp
+src/ChartSafetyAtlas.cpp
 src/ChartHazardEvaluator.cpp
 src/ChartSafetyHost.cpp
 src/OceanPrewarmPolicy.cpp
@@ -87,6 +88,7 @@ include/EditPolarDialog.h
 include/AboutDialog.h
 include/Polar.h
 include/Boat.h
+include/ChartSafetyAtlas.h
 include/RouteMap.h
 include/RouteMapOverlay.h
 include/DepartureScheduler.h

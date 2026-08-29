@@ -188,6 +188,7 @@ add_definitions(-DUSE_S57)
 SET(SRCS
             src/AppendOnlyCache.cpp
             src/ChartSafetyCache.cpp
+            src/ChartSafetyAtlas.cpp
             src/ChartHazardEvaluator.cpp
             src/ChartSafetyHost.cpp
             src/OceanPrewarmPolicy.cpp
@@ -278,6 +279,7 @@ SET (HDRS
             include/AboutDialog.h
             include/Polar.h
             include/Boat.h
+            include/ChartSafetyAtlas.h
             include/RouteMap.h
             include/RouteMapOverlay.h
             include/DepartureScheduler.h

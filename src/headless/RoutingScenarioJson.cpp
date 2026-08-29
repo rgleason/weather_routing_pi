@@ -51,6 +51,16 @@ wxString TimeToJson(const wxDateTime& time) {
   return time.ToUTC().FormatISOCombined('T') + "Z";
 }
 
+bool ParseScenarioTime(const wxString& text, wxDateTime& parsed) {
+  if (text.IsEmpty()) return false;
+  wxString normalized = text;
+  const bool is_utc = normalized.EndsWith("Z");
+  if (is_utc) normalized.RemoveLast();
+  if (!parsed.ParseISOCombined(normalized, 'T')) return false;
+  if (is_utc) parsed.MakeFromTimezone(wxDateTime::UTC);
+  return true;
+}
+
 void AddOptionalLong(Json::Value& parent, const char* key, long value) {
   if (value >= 0) parent[key] = Json::Int64(value);
 }
@@ -103,18 +113,10 @@ bool LoadRoutingScenarioJson(const wxString& path,
 
   wxString start_time = JsonString(root, "startTime");
   if (!start_time.IsEmpty()) {
-    wxString normalized = start_time;
-    const bool is_utc = normalized.EndsWith("Z");
-    if (is_utc) normalized.RemoveLast();
-    if (!scenario.startTime.ParseISOCombined(normalized, 'T')) {
+    if (!ParseScenarioTime(start_time, scenario.startTime)) {
       error = wxString::Format("invalid scenario startTime: %s", start_time);
       return false;
     }
-    // ParseISOCombined interprets a timezone-less value in the process-local
-    // timezone. A trailing Z is an explicit UTC contract, so convert the
-    // parsed wall-clock fields from UTC instead of silently treating them as
-    // local time (which shifted summer scenarios by one hour under BST).
-    if (is_utc) scenario.startTime.MakeFromTimezone(wxDateTime::UTC);
   }
 
   const Json::Value& opt = root["departureOptimization"];
@@ -254,6 +256,16 @@ bool LoadRoutingScenarioJson(const wxString& path,
     double double_value = 0.0;
     if (JsonBool(reverse, "enabled", bool_value))
       scenario.reverseReachability.enabled = bool_value;
+    const wxString target_time = JsonString(reverse, "targetTime");
+    if (!target_time.IsEmpty()) {
+      if (!ParseScenarioTime(target_time,
+                             scenario.reverseReachability.targetTime)) {
+        error = wxString::Format(
+            "invalid reverseReachability targetTime: %s", target_time);
+        return false;
+      }
+      scenario.reverseReachability.hasTargetTime = true;
+    }
     if (JsonInt(reverse, "searchBackIsochrones", int_value)) {
       scenario.reverseReachability.searchBackIsochrones = int_value;
       scenario.reverseReachability.hasSearchBackIsochrones = true;

@@ -32,8 +32,8 @@ namespace {
 // Version 2 invalidates tiles created before provider-priority-aware chart
 // selection.  Those records could contain CM93 evidence for cells now covered
 // by a preferred licensed/plugin vector chart.
-constexpr std::uint32_t kTilePayloadVersion = 2;
-constexpr std::size_t kMaximumPersistentTiles = 65536;
+constexpr std::uint32_t kTilePayloadVersion = 3;
+constexpr std::uint64_t kEstimatedPersistentBytesPerTile = 12288;
 constexpr std::size_t kFlushDirtyTiles = 512;
 constexpr std::uint64_t kCompactThresholdBytes =
     1024ULL * 1024ULL * 1024ULL;
@@ -72,11 +72,14 @@ ChartSafetyCache::ChartSafetyCache()
     : requested_ram_mib_(0),
       effective_ram_mib_(ResolveEffectiveRamMiB(0)),
       persistent_enabled_(true),
+      maximum_disk_mib_(2048),
       configured_(false),
       identity_confirmed_(false),
       store_open_(false) {
   stats_.ram_budget_bytes =
       static_cast<std::uint64_t>(effective_ram_mib_) * 1024ULL * 1024ULL;
+  stats_.disk_budget_bytes =
+      static_cast<std::uint64_t>(maximum_disk_mib_) * 1024ULL * 1024ULL;
 }
 
 ChartSafetyCache::~ChartSafetyCache() { Flush(true); }
@@ -183,6 +186,18 @@ void ChartSafetyCache::SetRequestedRamMiB(int requested_ram_mib) {
   EnforceBudgetLocked();
 }
 
+void ChartSafetyCache::SetMaximumDiskMiB(int maximum_disk_mib) {
+  // Preserve pending records before reopening the index with its new logical
+  // entry limit.  The append-only store will evict least-recently-used keys
+  // if the reduced capacity no longer fits.
+  Flush(false);
+  std::lock_guard<std::mutex> lock(mutex_);
+  maximum_disk_mib_ = std::clamp(maximum_disk_mib, 256, 16384);
+  stats_.disk_budget_bytes =
+      static_cast<std::uint64_t>(maximum_disk_mib_) * 1024ULL * 1024ULL;
+  store_open_ = false;
+}
+
 int ChartSafetyCache::RequestedRamMiB() const {
   std::lock_guard<std::mutex> lock(mutex_);
   return requested_ram_mib_;
@@ -226,6 +241,7 @@ std::string ChartSafetyCache::TileKey(long lat_tile, long lon_tile) {
 std::size_t ChartSafetyCache::TileBytes(const std::string& key,
                                         const TileData& tile) {
   return sizeof(RamEntry) + key.capacity() + tile.chart_path.capacity() +
+         tile.dependency_identity.capacity() +
          tile.hazard_flags.capacity() * sizeof(tile.hazard_flags[0]) +
          tile.has_depth.capacity() * sizeof(tile.has_depth[0]) +
          tile.min_depth_m.capacity() * sizeof(tile.min_depth_m[0]) + 96;
@@ -256,6 +272,7 @@ bool ChartSafetyCache::ReadExternalTile(
   result.hazard_summary_flags = source->hazard_summary_flags;
   result.depth_complete = source->depth_complete != 0;
   result.chart_path = source->chart_path;
+  result.dependency_identity = source->dependency_identity;
   result.hazard_flags.assign(source->hazard_flags,
                              source->hazard_flags + cells);
   result.has_depth.assign(source->has_depth, source->has_depth + cells);
@@ -295,6 +312,12 @@ bool ChartSafetyCache::WriteExternalTile(const TileData& source,
       std::min(source.chart_path.size(), sizeof(tile->chart_path) - 1);
   memcpy(tile->chart_path, source.chart_path.data(), chart_path_size);
   tile->chart_path[chart_path_size] = '\0';
+  const std::size_t dependency_size = std::min(
+      source.dependency_identity.size(),
+      sizeof(tile->dependency_identity) - 1);
+  memcpy(tile->dependency_identity, source.dependency_identity.data(),
+         dependency_size);
+  tile->dependency_identity[dependency_size] = '\0';
   std::copy(source.hazard_flags.begin(), source.hazard_flags.end(),
             tile->hazard_flags);
   std::copy(source.has_depth.begin(), source.has_depth.end(),
@@ -307,7 +330,7 @@ bool ChartSafetyCache::WriteExternalTile(const TileData& source,
 bool ChartSafetyCache::Serialize(const TileData& tile,
                                  std::vector<unsigned char>* bytes) {
   if (!bytes || tile.rows <= 0 || tile.cols <= 0 ||
-      tile.chart_path.size() > 4096)
+      tile.chart_path.size() > 4096 || tile.dependency_identity.size() > 256)
     return false;
   const std::uint32_t cells =
       static_cast<std::uint32_t>(tile.rows * tile.cols);
@@ -337,6 +360,11 @@ bool ChartSafetyCache::Serialize(const TileData& tile,
       static_cast<std::uint32_t>(tile.chart_path.size());
   AppendValue(bytes, path_size);
   bytes->insert(bytes->end(), tile.chart_path.begin(), tile.chart_path.end());
+  const std::uint32_t dependency_size =
+      static_cast<std::uint32_t>(tile.dependency_identity.size());
+  AppendValue(bytes, dependency_size);
+  bytes->insert(bytes->end(), tile.dependency_identity.begin(),
+                tile.dependency_identity.end());
   AppendValue(bytes, cells);
   const unsigned char* hazards =
       reinterpret_cast<const unsigned char*>(tile.hazard_flags.data());
@@ -360,6 +388,7 @@ bool ChartSafetyCache::Deserialize(const std::vector<unsigned char>& bytes,
   std::int64_t lon_tile = 0;
   std::uint8_t depth_complete = 0;
   std::uint32_t path_size = 0;
+  std::uint32_t dependency_size = 0;
   std::uint32_t cells = 0;
   if (!ReadValue(bytes, &offset, &version) ||
       version != kTilePayloadVersion ||
@@ -383,6 +412,13 @@ bool ChartSafetyCache::Deserialize(const std::vector<unsigned char>& bytes,
   result.chart_path.assign(
       reinterpret_cast<const char*>(bytes.data() + offset), path_size);
   offset += path_size;
+  if (!ReadValue(bytes, &offset, &dependency_size) ||
+      dependency_size > 256 || offset > bytes.size() ||
+      bytes.size() - offset < dependency_size)
+    return false;
+  result.dependency_identity.assign(
+      reinterpret_cast<const char*>(bytes.data() + offset), dependency_size);
+  offset += dependency_size;
   if (!ReadValue(bytes, &offset, &cells) || result.rows <= 0 ||
       result.cols <= 0 || result.rows > 256 || result.cols > 256 ||
       cells != static_cast<std::uint32_t>(result.rows * result.cols) ||
@@ -417,8 +453,13 @@ bool ChartSafetyCache::OpenStoreLocked() {
   last_error_.clear();
   const std::string store_identity =
       "weather-routing-chart-tile-v2:" + identity_;
-  store_open_ = store_.Open(path_, store_identity, kMaximumPersistentTiles,
-                            &last_error_);
+  const std::uint64_t budget_bytes =
+      static_cast<std::uint64_t>(maximum_disk_mib_) * 1024ULL * 1024ULL;
+  const std::size_t maximum_entries = static_cast<std::size_t>(
+      std::max<std::uint64_t>(1, budget_bytes /
+                                    kEstimatedPersistentBytesPerTile));
+  store_open_ =
+      store_.Open(path_, store_identity, maximum_entries, &last_error_);
   UpdateStoreStatsLocked();
   return store_open_;
 }
@@ -611,7 +652,10 @@ bool ChartSafetyCache::Flush(bool allow_compaction) {
   }
   dirty_.clear();
   ++stats_.flushes;
-  if (allow_compaction && store_.FileBytes() > kCompactThresholdBytes)
+  const std::uint64_t disk_budget_bytes =
+      static_cast<std::uint64_t>(maximum_disk_mib_) * 1024ULL * 1024ULL;
+  if ((allow_compaction && store_.FileBytes() > kCompactThresholdBytes) ||
+      store_.FileBytes() > disk_budget_bytes)
     store_.Compact(&last_error_);
   UpdateStoreStatsLocked();
   return last_error_.empty();

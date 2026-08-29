@@ -424,8 +424,32 @@ void RouteMapOverlay::InstallModernNativeResult(
       data.jibes = jibes;
       data.sail_plan_changes = sailChanges;
       data.polar = leg.sailPlan;
-      data.data_mask = Position::GRIB_WIND;
-      if (data.currentSpeed > 0.0) data.data_mask |= Position::GRIB_CURRENT;
+      data.data_mask = 0;
+      switch (leg.windSource.source) {
+        case wr::EnvironmentalSource::GribForecast:
+          data.data_mask |= Position::GRIB_WIND;
+          break;
+        case wr::EnvironmentalSource::Climatology:
+          data.data_mask |= Position::CLIMATOLOGY_WIND;
+          break;
+        default:
+          data.data_mask |= Position::DATA_DEFICIENT_WIND;
+          break;
+      }
+      switch (leg.currentSource.source) {
+        case wr::EnvironmentalSource::GribForecast:
+          data.data_mask |= Position::GRIB_CURRENT;
+          break;
+        case wr::EnvironmentalSource::XtdCurrentPrediction:
+          data.data_mask |= Position::CLIMATOLOGY_CURRENT;
+          break;
+        case wr::EnvironmentalSource::NoDataAssumedZero:
+        case wr::EnvironmentalSource::Missing:
+          data.data_mask |= Position::DATA_DEFICIENT_CURRENT;
+          break;
+        default:
+          break;
+      }
       if (leg.propulsionMode != wr::PropulsionMode::Sail)
         data.data_mask |= Position::MOTOR_USED;
       last_destination_plotdata.push_back(data);
@@ -1266,6 +1290,7 @@ void RouteMapOverlay::RenderWindBarbsOnRoute(piDC& dc, PlugIn_ViewPort& vp,
   // then stops the method.
   if (plot.empty()) return;
 
+  g_barbsOnRoute_LineBufferOverlay.setLineWidth(lineWidth);
   for (std::list<PlotData>::iterator it = plot.begin(); it != plot.end();
        it++) {
     wxPoint p;
@@ -1297,12 +1322,16 @@ void RouteMapOverlay::RenderWindBarbsOnRoute(piDC& dc, PlugIn_ViewPort& vp,
     }
 
     // Draw barbs
-    g_barbsOnRoute_LineBufferOverlay.setLineWidth(lineWidth);
+    LineBuffer& target =
+        (it->data_mask & Position::CLIMATOLOGY_WIND)
+            ? climatology_wind_barb_route_cache
+            : wind_barb_route_cache;
     g_barbsOnRoute_LineBufferOverlay.pushWindArrowWithBarbs(
-        wind_barb_route_cache, p.x, p.y, finalWindSpeed,
+        target, p.x, p.y, finalWindSpeed,
         deg2rad(finalWindDirection) + nvp.rotation, it->lat < 0, true);
   }
   wind_barb_route_cache.Finalize();
+  climatology_wind_barb_route_cache.Finalize();
 
   // Draw the wind barbs
   wxPoint point;
@@ -1317,11 +1346,8 @@ void RouteMapOverlay::RenderWindBarbsOnRoute(piDC& dc, PlugIn_ViewPort& vp,
     colour = purple;
   }
 
-  if (dc.GetDC()) {
-    dc.SetPen(wxPen(colour, 2));
-  }
 #if defined(ocpnUSE_GL) && !defined(__OCPN__ANDROID__)
-  else {
+  if (!dc.GetDC()) {
     // Mandatory to avoid display issue when moving map
     // (map disappear to show a gray background...)
     glPushMatrix();
@@ -1333,13 +1359,27 @@ void RouteMapOverlay::RenderWindBarbsOnRoute(piDC& dc, PlugIn_ViewPort& vp,
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
 
-    glColor3ub(colour.Red(), colour.Green(), colour.Blue());
     glLineWidth(lineWidth);
     glEnableClientState(GL_VERTEX_ARRAY);
   }
 #endif
 
-  wind_barb_route_cache.draw(dc.GetDC());
+  const auto drawBarbs = [&](LineBuffer& buffer, const wxColour& drawColour) {
+    if (dc.GetDC())
+      dc.SetPen(wxPen(drawColour, lineWidth));
+#if defined(ocpnUSE_GL) && !defined(__OCPN__ANDROID__)
+    else
+      glColor3ub(drawColour.Red(), drawColour.Green(), drawColour.Blue());
+#endif
+    buffer.draw(dc.GetDC());
+  };
+
+  drawBarbs(wind_barb_route_cache, colour);
+  // Orange is deliberately distinct from both the normal purple true-wind
+  // barbs and blue apparent-wind barbs, and remains legible on day/night chart
+  // palettes. The route table and cursor detail provide the textual source.
+  const wxColour climatologyColour(255, 80, 0);
+  drawBarbs(climatology_wind_barb_route_cache, climatologyColour);
 
 #if defined(ocpnUSE_GL) && !defined(__OCPN__ANDROID__)
   if (!dc.GetDC()) {
