@@ -63,37 +63,6 @@ inline bool ShouldUseAuthoritativeChartSearch(bool detect_land,
          !scout_preview;
 }
 
-struct ScoutArrivalWindowHours {
-  bool valid{false};
-  double earliest{0.0};
-  double latest{0.0};
-};
-
-/**
- * Project a deliberately broad arrival window from a partial scout frontier.
- * The result is an advisory reverse-search seed, never a feasibility bound.
- */
-inline ScoutArrivalWindowHours EstimatePartialScoutArrivalWindowHours(
-    double elapsed_hours, double progress_nm, double leg_nm) {
-  ScoutArrivalWindowHours result;
-  if (!std::isfinite(elapsed_hours) || !std::isfinite(progress_nm) ||
-      !std::isfinite(leg_nm) || elapsed_hours <= 0.0 || progress_nm <= 0.0 ||
-      leg_nm <= 0.0)
-    return result;
-
-  const double observed_sog =
-      std::fmax(0.5, std::fmin(15.0, progress_nm / elapsed_hours));
-  const double projected_hours =
-      std::fmax(elapsed_hours, std::fmin(30.0 * 24.0, leg_nm / observed_sog));
-  result.earliest = std::fmax(elapsed_hours, projected_hours * 0.70);
-  result.latest =
-      std::fmax(result.earliest + 1.0, projected_hours * 1.75 + 2.0);
-  result.valid = std::isfinite(result.earliest) &&
-                 std::isfinite(result.latest) &&
-                 result.latest > result.earliest;
-  return result;
-}
-
 /**
  * Broad chart-tile prewarming belongs to an authoritative production search.
  * Scouts remain cheap and chart-free, but their union is prepared before any

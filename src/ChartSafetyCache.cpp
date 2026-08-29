@@ -73,6 +73,7 @@ ChartSafetyCache::ChartSafetyCache()
       effective_ram_mib_(ResolveEffectiveRamMiB(0)),
       persistent_enabled_(true),
       configured_(false),
+      identity_confirmed_(false),
       store_open_(false) {
   stats_.ram_budget_bytes =
       static_cast<std::uint64_t>(effective_ram_mib_) * 1024ULL * 1024ULL;
@@ -122,18 +123,22 @@ void ChartSafetyCache::Configure(const std::string& path,
   effective_ram_mib_ = ResolveEffectiveRamMiB(requested_ram_mib_);
   persistent_enabled_ = persistent_enabled;
   configured_ = true;
+  identity_confirmed_ = false;
   store_open_ = false;
   last_error_.clear();
   stats_.ram_budget_bytes =
       static_cast<std::uint64_t>(effective_ram_mib_) * 1024ULL * 1024ULL;
   EnforceBudgetLocked();
-  if (!identity_.empty() && persistent_enabled_) OpenStoreLocked();
 }
 
 void ChartSafetyCache::SetIdentity(const std::string& identity) {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (identity == identity_ && (store_open_ || !persistent_enabled_)) return;
+  if (identity == identity_) {
+    identity_confirmed_ = !identity.empty();
+    return;
+  }
   identity_ = identity;
+  identity_confirmed_ = !identity.empty();
   ram_.clear();
   lru_.clear();
   dirty_.clear();
@@ -141,8 +146,24 @@ void ChartSafetyCache::SetIdentity(const std::string& identity) {
   stats_.ram_entries = 0;
   store_open_ = false;
   last_error_.clear();
-  if (configured_ && persistent_enabled_ && !identity_.empty())
-    OpenStoreLocked();
+}
+
+void ChartSafetyCache::SetProvisionalIdentity(const std::string& identity) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  // A refresh notification for the already-confirmed identity is harmless.
+  // This is the normal sequence when the core refreshes its identity at the
+  // start of a raw-tile prewarm.
+  if (identity == identity_) return;
+  identity_ = identity;
+  identity_confirmed_ = false;
+  ram_.clear();
+  lru_.clear();
+  dirty_.clear();
+  stats_.ram_bytes = 0;
+  stats_.ram_entries = 0;
+  stats_.dirty_entries = 0;
+  store_open_ = false;
+  last_error_.clear();
 }
 
 void ChartSafetyCache::SetPersistentEnabled(bool enabled) {
@@ -150,8 +171,6 @@ void ChartSafetyCache::SetPersistentEnabled(bool enabled) {
   std::lock_guard<std::mutex> lock(mutex_);
   persistent_enabled_ = enabled;
   if (!enabled) store_open_ = false;
-  if (enabled && configured_ && !identity_.empty() && !store_open_)
-    OpenStoreLocked();
 }
 
 void ChartSafetyCache::SetRequestedRamMiB(int requested_ram_mib) {
@@ -181,7 +200,7 @@ bool ChartSafetyCache::PersistentEnabled() const {
 
 bool ChartSafetyCache::Ready() const {
   std::lock_guard<std::mutex> lock(mutex_);
-  return configured_ && !identity_.empty() &&
+  return configured_ && identity_confirmed_ && !identity_.empty() &&
          (!persistent_enabled_ || store_open_);
 }
 
@@ -392,7 +411,9 @@ bool ChartSafetyCache::Deserialize(const std::vector<unsigned char>& bytes,
 }
 
 bool ChartSafetyCache::OpenStoreLocked() {
-  if (!persistent_enabled_ || path_.empty() || identity_.empty()) return false;
+  if (!persistent_enabled_ || !identity_confirmed_ || path_.empty() ||
+      identity_.empty())
+    return false;
   last_error_.clear();
   const std::string store_identity =
       "weather-routing-chart-tile-v2:" + identity_;
@@ -462,6 +483,15 @@ bool ChartSafetyCache::Lookup(long lat_tile, long lon_tile,
       return WriteExternalTile(found->second.tile, tile);
     }
   }
+  // Open lazily on the first real tile request.  During OpenCPN startup the
+  // host initially reports a provisional identity before later-loaded chart
+  // providers (notably o-charts) are registered.  Opening an append-only
+  // store for that provisional identity would reset an otherwise valid file
+  // belonging to the final chart/provider identity before the provider gets
+  // a chance to announce it.
+  if (persistent_enabled_ && identity_confirmed_ && !store_open_ &&
+      configured_ && !identity_.empty())
+    OpenStoreLocked();
   if (!persistent_enabled_ || !store_open_) {
     ++stats_.misses;
     return false;
@@ -480,7 +510,6 @@ bool ChartSafetyCache::Lookup(long lat_tile, long lon_tile,
   TileData persistent;
   if (!Deserialize(bytes, &persistent) ||
       persistent.lat_tile != lat_tile || persistent.lon_tile != lon_tile ||
-      persistent.source == PI_SEGMENT_SAFETY_SOURCE_PLUGIN_VECTOR ||
       (require_depth && !persistent.depth_complete)) {
     ++stats_.rejected_records;
     ++stats_.misses;
@@ -553,21 +582,10 @@ void ChartSafetyCache::Store(const PlugInSegmentSafetyTile* tile) {
     const std::string key = TileKey(incoming.lat_tile, incoming.lon_tile);
     InsertRamLocked(key, incoming);
     ++stats_.stores;
-    // o-chart safety tiles are derived from a licensed protected chart.  Keep
-    // them in RAM for the active session, but do not persist them unless the
-    // chart provider grows an explicit derived-cache permission contract.
-    // If this tile replaces older CM93/native evidence, tombstone that disk
-    // record so it cannot reappear on the next launch.
-    if (incoming.source == PI_SEGMENT_SAFETY_SOURCE_PLUGIN_VECTOR) {
-      dirty_.erase(key);
-      if (persistent_enabled_ && store_open_) {
-        last_error_.clear();
-        if (!store_.Erase(key, &last_error_)) ++stats_.rejected_records;
-        UpdateStoreStatsLocked();
-      }
-    }
-    if (persistent_enabled_ &&
-        incoming.source != PI_SEGMENT_SAFETY_SOURCE_PLUGIN_VECTOR) {
+    // The chart-provider contract permits derived semantic safety tiles to be
+    // retained.  Plugin-vector evidence therefore follows the same durable,
+    // identity-scoped policy as native vector and CM93 evidence.
+    if (persistent_enabled_ && identity_confirmed_) {
       dirty_[key] = {key, std::move(bytes)};
       stats_.dirty_entries = dirty_.size();
       should_flush = dirty_.size() >= kFlushDirtyTiles;
@@ -578,7 +596,7 @@ void ChartSafetyCache::Store(const PlugInSegmentSafetyTile* tile) {
 
 bool ChartSafetyCache::Flush(bool allow_compaction) {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (!persistent_enabled_ || dirty_.empty()) {
+  if (!persistent_enabled_ || !identity_confirmed_ || dirty_.empty()) {
     UpdateStoreStatsLocked();
     return true;
   }
@@ -607,7 +625,7 @@ bool ChartSafetyCache::Clear() {
   stats_.ram_bytes = 0;
   stats_.ram_entries = 0;
   stats_.dirty_entries = 0;
-  if (!persistent_enabled_) {
+  if (!store_open_) {
     store_open_ = false;
     last_error_.clear();
     std::error_code error;
@@ -621,7 +639,6 @@ bool ChartSafetyCache::Clear() {
     stats_.disk_file_bytes = 0;
     return true;
   }
-  if (!store_open_ && !OpenStoreLocked()) return false;
   last_error_.clear();
   const bool result = store_.Clear(&last_error_);
   UpdateStoreStatsLocked();
@@ -645,7 +662,7 @@ void ChartSafetyCache::StoreCallback(void* context,
 
 void ChartSafetyCache::IdentityCallback(void* context, const char* identity) {
   ChartSafetyCache* cache = static_cast<ChartSafetyCache*>(context);
-  if (cache) cache->SetIdentity(identity ? identity : "");
+  if (cache) cache->SetProvisionalIdentity(identity ? identity : "");
 }
 
 }  // namespace weather_routing

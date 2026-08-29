@@ -555,7 +555,7 @@ public:
   bool segmentForbiddenAt(wr::GeoPoint start, wr::GeoPoint end,
                           wr::TimePoint time, double margin) const override {
     // A scout keeps this flag false and uses GSHHS solely to discover a broad
-    // spatial/temporal envelope. Every production forward, reverse and graph
+    // spatial prefetch footprint. Every production forward, reverse and graph
     // edge has the flag true and is rejected immediately by the shared
     // authoritative raster when it enters land, margin or unsafe depth.
     return segmentForbiddenAtImpl(start, end, time, margin,

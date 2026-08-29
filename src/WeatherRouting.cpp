@@ -48,6 +48,7 @@
 #include "ChartSafetyHost.h"
 #include "ChartSafetyPolicy.h"
 #include "OceanPrewarmPolicy.h"
+#include "ReachabilityPrewarmPolicy.h"
 #include "DepartureScheduler.h"
 #include "RoutingResourcePolicy.h"
 #include "WeatherDataProvider.h"
@@ -416,8 +417,8 @@ static void ApplyHeadlessRouteSafetyOverrides(
 static const int kDefaultMaxChartSafetyMissingTileRetries = 16;
 // Scouts stop at a deterministic generated-state limit configured by the
 // native adapter. This watchdog is only a deadlock/stall escape hatch. If it
-// fires, a meaningful partial frontier is retained as a broad preparation and
-// temporal hint. It never becomes route-safety evidence.
+// fires, a meaningful partial frontier is retained only as a broad spatial
+// preparation hint. It never becomes route-safety evidence.
 // The scout is only a chart-cache hint.  Keep its synchronous wait short: a
 // long wait delays the authoritative solve, and yielding the wx event loop
 // here is unsafe because callers already run from GUI event handlers.
@@ -3600,8 +3601,6 @@ bool WeatherRouting::ComputeMultiLegDepartureOptimizationNow(
       leg.StartTime = candidate.departureTime;
       leg.UseCurrentTime = false;
       leg.ChartSafetyPropagationFallbackTried = false;
-      leg.chart_safety_scout_arrival_earliest = wxDateTime();
-      leg.chart_safety_scout_arrival_latest = wxDateTime();
       ApplyAuthoritativeChartSearchPolicy(leg);
       if (!AddConfiguration(leg)) continue;
       RouteMapOverlay* route = m_WeatherRoutes.back()->routemapoverlay;
@@ -4314,8 +4313,6 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
       started = ComputeDepartureTimeOptimization(selected_route);
     } else {
       selected_config.ChartSafetyPropagationFallbackTried = false;
-      selected_config.chart_safety_scout_arrival_earliest = wxDateTime();
-      selected_config.chart_safety_scout_arrival_latest = wxDateTime();
       ApplyAuthoritativeChartSearchPolicy(selected_config);
       selected_config.chart_safety_missing_tile_retry_count = 0;
       selected_config.chart_safety_missing_tile_rejections = 0;
@@ -6286,8 +6283,6 @@ bool WeatherRouting::ComputeDepartureTimeOptimization(
     // Every deliverable candidate starts against the shared authoritative
     // chart raster; a scout result is never treated as a navigable route.
     candidate.ChartSafetyPropagationFallbackTried = false;
-    candidate.chart_safety_scout_arrival_earliest = wxDateTime();
-    candidate.chart_safety_scout_arrival_latest = wxDateTime();
     ApplyAuthoritativeChartSearchPolicy(candidate);
     candidate.chart_safety_missing_tile_retry_count = 0;
     candidate.chart_safety_missing_tile_rejections = 0;
@@ -6352,8 +6347,6 @@ void WeatherRouting::StartCurrentRouteComputations() {
       showOptimizationResults = true;
     } else {
       configuration.ChartSafetyPropagationFallbackTried = false;
-      configuration.chart_safety_scout_arrival_earliest = wxDateTime();
-      configuration.chart_safety_scout_arrival_latest = wxDateTime();
       ApplyAuthoritativeChartSearchPolicy(configuration);
       configuration.chart_safety_missing_tile_retry_count = 0;
       configuration.chart_safety_missing_tile_rejections = 0;
@@ -6384,8 +6377,6 @@ void WeatherRouting::StartAllRouteComputations() {
     RouteMapConfiguration configuration =
         weatherroute->routemapoverlay->GetConfiguration();
     configuration.ChartSafetyPropagationFallbackTried = false;
-    configuration.chart_safety_scout_arrival_earliest = wxDateTime();
-    configuration.chart_safety_scout_arrival_latest = wxDateTime();
     ApplyAuthoritativeChartSearchPolicy(configuration);
     configuration.chart_safety_missing_tile_retry_count = 0;
     configuration.chart_safety_missing_tile_rejections = 0;
@@ -6903,7 +6894,8 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
       m_weather_routing_pi.HasEnhancedChartSafety()
           ? _("Full chart-aware safety is available and enabled by default. "
               "OpenCPN remains the chart-classification authority; this "
-              "plugin owns its RAM and persistent tile cache.")
+              "plugin caches permission-approved semantic tiles, while "
+              "OpenCPN caches certified safe-area proofs.")
           : _("This OpenCPN build does not provide the optional enhanced "
               "chart-safety capability. The plugin remains usable with "
               "standard GSHHS land checks. If chart safety is explicitly "
@@ -6961,8 +6953,9 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
 
   wxStaticText* note = new wxStaticText(
       &dialog, wxID_ANY,
-      _("The cache stores only areas previously proven chart-safe by OpenCPN "
-        "for matching chart and safety settings."));
+      _("Disk caching retains permission-approved semantic hazard/depth "
+        "tiles and areas proven safe for matching chart and safety "
+        "settings. Chart changes invalidate both automatically."));
   note->Wrap(420);
   top->Add(note, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
 
@@ -8757,13 +8750,10 @@ bool WeatherRouting::CollectChartSafetyScoutGeometry(
     RouteMapOverlay* routemapoverlay,
     std::vector<std::pair<double, double> >* geometry,
     std::vector<RouteMapFrontierSegment>* retained_segments,
-    bool* reached_destination, wxDateTime* estimated_arrival_earliest,
-    wxDateTime* estimated_arrival_latest) {
+    bool* reached_destination) {
   if (geometry) geometry->clear();
   if (retained_segments) retained_segments->clear();
   if (reached_destination) *reached_destination = false;
-  if (estimated_arrival_earliest) *estimated_arrival_earliest = wxDateTime();
-  if (estimated_arrival_latest) *estimated_arrival_latest = wxDateTime();
   if (!routemapoverlay || !geometry) return false;
 
   RouteMapConfiguration original = routemapoverlay->GetConfiguration();
@@ -8846,7 +8836,7 @@ bool WeatherRouting::CollectChartSafetyScoutGeometry(
   if (watchdog_expired) {
     wxLogMessage(
         "WR_SCOUT_ROUTE watchdog route=\"%s to %s\" status=timeout "
-        "scout_time_ms=%ld action=retain-partial-frontier-and-eta-range.",
+        "scout_time_ms=%ld action=retain-partial-frontier-for-prefetch.",
         original.Start, original.End, timer.Time());
   }
 
@@ -8889,54 +8879,6 @@ bool WeatherRouting::CollectChartSafetyScoutGeometry(
       original.StartLat, original.StartLon, original.EndLat, original.EndLon);
   const double meaningful_progress_nm = wxMin(10.0, wxMax(2.0, 0.05 * leg_nm));
   if (!complete && progress_nm < meaningful_progress_nm) geometry->clear();
-
-  wxDateTime earliest_arrival;
-  wxDateTime latest_arrival;
-  if (complete && routemapoverlay->EndTime().IsValid()) {
-    const long uncertainty_seconds =
-        static_cast<long>(wxMax(60.0, scout.DeltaTime));
-    earliest_arrival = routemapoverlay->EndTime() -
-                       wxTimeSpan::Seconds(uncertainty_seconds);
-    latest_arrival = routemapoverlay->EndTime() +
-                     wxTimeSpan::Seconds(uncertainty_seconds);
-  } else if (!geometry->empty() && original.StartTime.IsValid()) {
-    wxDateTime frontier_time = routemapoverlay->NewTime();
-    if (!frontier_time.IsValid() || frontier_time <= original.StartTime)
-      frontier_time = original.StartTime + wxTimeSpan::Seconds(
-                                               static_cast<long>(
-                                                   wxMax(60.0,
-                                                         scout.DeltaTime)));
-    const double elapsed_hours = wxMax(
-        1.0 / 6.0,
-        (frontier_time - original.StartTime).GetSeconds().ToDouble() / 3600.0);
-    // A partial coarse scout supplies a deliberately broad temporal seed.
-    // It guides reverse reachability but never constrains the production
-    // solver or proves that the destination can be reached.
-    const weather_routing::ScoutArrivalWindowHours window =
-        weather_routing::EstimatePartialScoutArrivalWindowHours(
-            elapsed_hours, progress_nm, leg_nm);
-    if (window.valid) {
-      earliest_arrival = original.StartTime + wxTimeSpan::Seconds(
-                                                  static_cast<long>(
-                                                      window.earliest * 3600.0));
-      latest_arrival = original.StartTime + wxTimeSpan::Seconds(
-                                                static_cast<long>(
-                                                    window.latest * 3600.0));
-    }
-  }
-
-  if (estimated_arrival_earliest)
-    *estimated_arrival_earliest = earliest_arrival;
-  if (estimated_arrival_latest) *estimated_arrival_latest = latest_arrival;
-  if (earliest_arrival.IsValid() && latest_arrival.IsValid())
-    wxLogMessage(
-        "WR_SCOUT_ARRIVAL_WINDOW route=\"%s to %s\" candidate_offset=%d "
-        "complete=%d earliest=\"%s\" latest=\"%s\" source=%s",
-        original.Start, original.End,
-        original.DepartureTimeOptimizationOffsetMinutes, complete ? 1 : 0,
-        earliest_arrival.FormatISOCombined(),
-        latest_arrival.FormatISOCombined(),
-        complete ? "complete-gshhs-scout" : "partial-frontier-projection");
 
   if (!complete) {
     wxString reason = routemapoverlay->GetFailureReason();
@@ -9112,14 +9054,6 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
           reusable->second.configuration.chart_safety_start_endpoint_reach_nm;
       configuration.chart_safety_end_endpoint_reach_nm =
           reusable->second.configuration.chart_safety_end_endpoint_reach_nm;
-      configuration.chart_safety_scout_arrival_earliest =
-          reusable->second.configuration.chart_safety_scout_arrival_earliest;
-      configuration.chart_safety_scout_arrival_latest =
-          reusable->second.configuration.chart_safety_scout_arrival_latest;
-      configuration.ReverseReachabilityHorizonHours =
-          wxMax(configuration.ReverseReachabilityHorizonHours,
-                reusable->second.configuration
-                    .ReverseReachabilityHorizonHours);
       (*route)->SetConfiguration(configuration);
       (*route)->Reset();
       wxLogMessage(
@@ -9139,11 +9073,7 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
     envelope.scope = scope;
     if (!CollectChartSafetyScoutGeometry(*route, &envelope.points,
                                          &envelope.retained_segments,
-                                         &envelope.complete,
-                                         &envelope.configuration
-                                              .chart_safety_scout_arrival_earliest,
-                                         &envelope.configuration
-                                              .chart_safety_scout_arrival_latest)) {
+                                         &envelope.complete)) {
       envelope.points.push_back(
           std::make_pair(configuration.StartLat, configuration.StartLon));
       envelope.points.push_back(
@@ -9158,20 +9088,6 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
     SetChartSafetyScoutEndpointReach(&envelope.configuration, envelope.points,
                                      envelope.retained_segments,
                                      envelope.complete);
-    if (envelope.configuration.chart_safety_scout_arrival_latest.IsValid() &&
-        envelope.configuration.StartTime.IsValid()) {
-      const double estimated_horizon_hours =
-          (envelope.configuration.chart_safety_scout_arrival_latest -
-           envelope.configuration.StartTime)
-              .GetSeconds()
-              .ToDouble() /
-          3600.0;
-      if (std::isfinite(estimated_horizon_hours) &&
-          estimated_horizon_hours > 0.0)
-        envelope.configuration.ReverseReachabilityHorizonHours = wxMax(
-            envelope.configuration.ReverseReachabilityHorizonHours,
-            estimated_horizon_hours);
-    }
     (*route)->SetConfiguration(envelope.configuration);
     (*route)->Reset();
     s_chartSafetyPreparedScoutScopes.insert(scope);
@@ -9293,30 +9209,77 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
     if (m_RoutingProgressDialog && m_RoutingProgressDialog->IsShown()) {
       UpdateRoutingProgress(
           _("Building chart safety grid"),
-          wxString::Format(
-              _("%s: building route-shaped safety grid from %lu scout routes"),
-              context, static_cast<unsigned long>(group->second.size())),
+          wxString::Format(_("Preparing from %lu route scouts"),
+                           static_cast<unsigned long>(group->second.size())),
           -1, -1);
     }
 
     PlugInSegmentSafetyOptions options =
         ChartSafetyRouteMaskOptions(representative);
+    PlugInSegmentSafetyOptions search_options =
+        ChartSafetySearchRouteMaskOptions(representative);
+    const bool search_mask_differs = std::fabs(search_options.safety_margin_nm -
+                                               options.safety_margin_nm) > 1e-9;
     PlugInSegmentSafetyResult result = {};
     result.struct_size = sizeof(result);
     wxStopWatch timer;
     const bool prewarm_full_corridor =
         representative.UseChartSafetyForPropagation;
+
+    // Union the scout footprint with a filled geodesic reachability envelope.
+    // For the logged maximum path length, every possible route point obeys
+    // d(start, point) + d(point, end) <= maximum_path_length. This is only
+    // proactive cache coverage: routes outside the budget remain eligible and
+    // use the existing fail-closed on-demand expansion path.
+    const double direct_distance_nm = DistGreatCircle_Plugin(
+        representative.StartLat, representative.StartLon,
+        representative.EndLat, representative.EndLon);
+    const weather_routing::ReachabilityPrewarmPlan reachability =
+        weather_routing::BuildReachabilityPrewarmPlan(direct_distance_nm);
+    PlugInSegmentSafetyResult reachability_result = {};
+    reachability_result.struct_size = sizeof(reachability_result);
+    bool reachability_ok = true;
+    if (prewarm_full_corridor && reachability.enabled) {
+      if (m_RoutingProgressDialog && m_RoutingProgressDialog->IsShown())
+        UpdateRoutingProgress(_("Building chart safety grid"),
+                              _("Prewarming wider chart area"), -1, -1);
+      PlugInSegmentSafetyOptions reachability_options = options;
+      reachability_options.safety_margin_nm =
+          std::max(options.safety_margin_nm, search_options.safety_margin_nm);
+      reachability_ok = weather_routing::chart_safety_host::
+          PrewarmReachabilityEnvelope(
+              representative.StartLat, representative.StartLon,
+              representative.EndLat, representative.EndLon,
+              reachability.maximum_path_length_nm, &reachability_options,
+              &reachability_result);
+      wxLogMessage(
+          "WR_ROUTE_MASK_REACHABILITY_PREWARM context=%s scope=%s ok=%d "
+          "direct_nm=%.3f maximum_path_nm=%.3f cross_track_nm=%.3f "
+          "safety_margin_nm=%.3f requested_tiles=%d base_built=%d "
+          "base_reused=%d build_ms=%d solver_bound=0",
+          context, group->first, reachability_ok ? 1 : 0,
+          reachability.direct_distance_nm,
+          reachability.maximum_path_length_nm,
+          reachability.maximum_cross_track_nm,
+          reachability_options.safety_margin_nm,
+          reachability_result.prewarm_requested_tiles,
+          reachability_result.prewarm_base_tiles_built,
+          reachability_result.prewarm_base_tiles_reused,
+          reachability_result.grid_build_ms);
+    }
+
+    if (m_RoutingProgressDialog && m_RoutingProgressDialog->IsShown())
+      UpdateRoutingProgress(
+          _("Building chart safety grid"),
+          wxString::Format(_("Preparing from %lu route scouts"),
+                           static_cast<unsigned long>(group->second.size())),
+          -1, -1);
     bool ok = !prewarm_full_corridor ||
               weather_routing::chart_safety_host::
                   PrewarmRouteMaskForPolylinesWithTileHalo(
                   latitudes.data(), longitudes.data(), point_counts.data(),
                   (int)point_counts.size(), footprint_dilation_nm,
                   footprint_fine_tile_halo, &options, &result);
-
-    PlugInSegmentSafetyOptions search_options =
-        ChartSafetySearchRouteMaskOptions(representative);
-    const bool search_mask_differs = std::fabs(search_options.safety_margin_nm -
-                                               options.safety_margin_nm) > 1e-9;
     PlugInSegmentSafetyResult search_result = {};
     search_result.struct_size = sizeof(search_result);
     const bool search_ok =

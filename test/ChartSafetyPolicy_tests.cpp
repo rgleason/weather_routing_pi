@@ -56,29 +56,6 @@ TEST(ChartSafetyPolicy, ProductionSearchUsesAuthoritativeChartsImmediately) {
       false, true, true, false));
 }
 
-TEST(ChartSafetyPolicy, PartialScoutProvidesBroadAdvisoryArrivalWindow) {
-  const weather_routing::ScoutArrivalWindowHours window =
-      weather_routing::EstimatePartialScoutArrivalWindowHours(2.0, 10.0,
-                                                               100.0);
-
-  ASSERT_TRUE(window.valid);
-  EXPECT_DOUBLE_EQ(window.earliest, 14.0);
-  EXPECT_DOUBLE_EQ(window.latest, 37.0);
-}
-
-TEST(ChartSafetyPolicy, PartialScoutArrivalWindowRejectsSpuriousInputs) {
-  EXPECT_FALSE(weather_routing::EstimatePartialScoutArrivalWindowHours(
-                   0.0, 10.0, 100.0)
-                   .valid);
-  EXPECT_FALSE(weather_routing::EstimatePartialScoutArrivalWindowHours(
-                   2.0, 0.0, 100.0)
-                   .valid);
-  EXPECT_FALSE(weather_routing::EstimatePartialScoutArrivalWindowHours(
-                   2.0, 10.0,
-                   std::numeric_limits<double>::quiet_NaN())
-                   .valid);
-}
-
 TEST(ChartSafetyPolicy, ScoutDoesNotPrewarmAuthoritativeCorridor) {
   EXPECT_FALSE(weather_routing::ShouldPrewarmAuthoritativeChartSearch(
       true, true, true, false, 0));

@@ -13,8 +13,9 @@ format, invalidation and recovery.
 - The enhanced host accepts native S57/CM93 charts and vector charts supplied
   by a chart plugin. This includes o-charts when their licensed plugin is
   installed, enabled and the chart is in the active OpenCPN chart group. The
-  host uses the normal plugin object-query API, so decryption and licence
-  enforcement remain inside the chart plugin and its helper process.
+  host prefers the optional bounded semantic-grid batch API and retains the
+  existing object-query path as a compatibility fallback. Decryption and
+  licence enforcement remain inside the chart plugin and its helper process.
 - Applicable official/native and plugin vector charts rank ahead of CM93;
   within that provider tier the smallest scale denominator wins, followed by
   the newest chart edition and file timestamp. The selected chart path, scale
@@ -50,10 +51,39 @@ stored tiles rather than risking a stale safety answer. Cached payloads retain
 the exact hazard flags, depth availability and minimum depths produced by the
 host.
 
-Tiles derived from licensed plugin-vector charts are the exception: they are
-kept only in the bounded RAM cache for the current OpenCPN session and are not
-written to either the plugin or legacy host disk cache. This keeps the safety
-integration within the chart provider's normal runtime access contract.
+OpenCPN's startup identity is treated as provisional until all chart-provider
+plugins have loaded. Provisional identity notifications may populate the hot
+RAM cache, but they cannot open, reset or write the persistent store. The
+first main-thread chart prewarm confirms the post-load identity; only then may
+the matching disk store answer requests. This prevents plugin load order from
+destroying a valid warm o-chart cache.
+
+Where the chart-provider contract explicitly permits derived semantic safety
+data to be retained, plugin-vector tiles use the same identity-scoped disk
+cache as native vector and CM93 tiles. The cache contains only the classified
+hazard/depth raster returned through the safety API, not a decrypted chart or
+chart object stream. A provider/chart identity change invalidates it before it
+can answer another route.
+
+The semantic tile store is xWeatherRouting's expanding long-term safety mask.
+It is the cache which prevents repeated chart-object extraction when later
+routes revisit the same area, and a route outside its current extent extends
+it safely on demand.
+
+The enhanced host can additionally keep sparse certified-safe proofs. Each
+entry represents a 0.2-degree coarse cell for one exact combination of chart
+identity, active chart group, safety margin, depth-check state and minimum
+depth. A cell is stored only after every required fine cell and margin halo is
+authoritatively clear. This auxiliary proof store is opportunistic: it can
+remain absent when no complete coarse cell is eligible, without reducing
+semantic-tile persistence or causing o-chart objects to be extracted again.
+
+Disk growth is bounded independently: the semantic tile store retains at most
+65,536 live fine tiles and the host retains at most 32,768 certified coarse
+cells. These are deliberately conservative implementation caps rather than
+route-search boundaries. The RAM budget remains user-configurable in Advanced
+settings; changing a disk cap should wait for benchmark evidence that the
+current bounds are unsuitable.
 
 Land areas and permanently dry objects reject a segment. Drying and awash
 objects are classified from `WATLEV`; dredged areas (`DRGARE`) are treated as
@@ -61,11 +91,22 @@ depth areas rather than drying areas. `DEPARE`/`DRGARE` use `DRVAL1`, while
 isolated `WRECKS`, `UWTROC` and `OBSTRN` dangers use `VALSOU`. A required-depth
 check fails closed when an isolated danger has no usable depth.
 
-## Long-passage prewarm
+## Reachability and long-passage prewarm
 
 Prewarm geometry is a performance hint only. It never bounds the weather
 solver, certifies unexamined water, or changes the fail-closed authoritative
 segment checks made as a route expands.
+
+For a coastal or medium passage shorter than 600 NM, prewarm first requests a
+filled geodesic reachability envelope. If `S` and `G` are the endpoints and
+`L` is the logged maximum path length, every point `P` on a route whose total
+sailed length is no more than `L` satisfies
+`d(S,P) + d(P,G) <= L`. Tiles intersecting that ellipse, plus the configured
+safety margin, are requested in provider-sized batches. The envelope uses a
+cross-track semi-axis of 45% of direct distance, bounded to 12–75 NM, and is
+unioned with all retained scout/frontier geometry. Its path-length value is an
+explicit cache-coverage guarantee, not a routing horizon: longer or wider
+routes remain eligible and extend the mask on demand.
 
 For an ocean passage of at least 600 NM, fallback prewarm uses five narrow
 route-shaped corridors: the great-circle centreline plus symmetric inner and

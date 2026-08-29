@@ -76,7 +76,10 @@ public:
 
   void Configure(const std::string& path, int requested_ram_mib,
                  bool persistent_enabled);
+  /** Confirm an identity obtained after all chart providers are loaded. */
   void SetIdentity(const std::string& identity);
+  /** Record a startup/provider notification without opening disk storage. */
+  void SetProvisionalIdentity(const std::string& identity);
   void SetPersistentEnabled(bool enabled);
   void SetRequestedRamMiB(int requested_ram_mib);
 
@@ -155,6 +158,7 @@ private:
   int effective_ram_mib_;
   bool persistent_enabled_;
   bool configured_;
+  bool identity_confirmed_;
   bool store_open_;
   AppendOnlyCache store_;
   std::map<std::string, RamEntry> ram_;

@@ -653,8 +653,7 @@ private:
       RouteMapOverlay* routemapoverlay,
       std::vector<std::pair<double, double> >* geometry,
       std::vector<RouteMapFrontierSegment>* retained_segments,
-      bool* reached_destination, wxDateTime* estimated_arrival_earliest,
-      wxDateTime* estimated_arrival_latest);
+      bool* reached_destination);
   void PrepareChartSafetyScoutEnvelopes(
       const std::vector<RouteMapOverlay*>& routemapoverlays,
       const wxString& context);

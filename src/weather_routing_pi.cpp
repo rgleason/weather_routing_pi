@@ -210,7 +210,7 @@ bool weather_routing_pi::DeInit() {
       !m_external_planning_provider->Unregister())
     return false;
   m_external_planning_provider.reset();
-  m_chart_safety_cache.Flush(true);
+  FlushChartSafetyCache();
   weather_routing::chart_safety_host::Shutdown();
   m_tCursorLatLon.Stop();
   if (m_pWeather_Routing) m_pWeather_Routing->Close();
@@ -729,7 +729,7 @@ bool weather_routing_pi::LoadConfig() {
 
   const char* clear_cache = getenv("WR_HEADLESS_CLEAR_CERT_SAFE_CACHE");
   if (clear_cache && !strcmp(clear_cache, "1"))
-    m_chart_safety_cache.Clear();
+    ClearChartSafetyCache();
   const char* cache_override = getenv("WR_HEADLESS_PERSISTENT_CERT_SAFE_CACHE");
   if (cache_override) {
     wxString value(cache_override);
@@ -746,6 +746,8 @@ bool weather_routing_pi::LoadConfig() {
   }
   m_chart_safety_cache.SetRequestedRamMiB(m_chart_safety_ram_cache_mib);
   m_chart_safety_cache.SetPersistentEnabled(
+      m_use_persistent_chart_safe_cache);
+  weather_routing::chart_safety_host::SetPersistentCacheEnabled(
       m_use_persistent_chart_safe_cache);
   return true;
 }
@@ -767,6 +769,7 @@ void weather_routing_pi::SetUsePersistentChartSafeCache(bool enabled,
                                                         bool save) {
   m_use_persistent_chart_safe_cache = enabled;
   m_chart_safety_cache.SetPersistentEnabled(enabled);
+  weather_routing::chart_safety_host::SetPersistentCacheEnabled(enabled);
   if (save) SaveConfig();
 }
 
@@ -778,11 +781,16 @@ void weather_routing_pi::SetChartSafetyRamCacheMiB(int ram_mib) {
 
 bool weather_routing_pi::ClearChartSafetyCache() {
   weather_routing::chart_safety_host::InvalidateDerivedMasks();
-  return m_chart_safety_cache.Clear();
+  const bool plugin_ok = m_chart_safety_cache.Clear();
+  const bool host_ok =
+      weather_routing::chart_safety_host::ClearPersistentCache();
+  return plugin_ok && host_ok;
 }
 
 bool weather_routing_pi::FlushChartSafetyCache() {
-  return m_chart_safety_cache.Flush(false);
+  const bool plugin_ok = m_chart_safety_cache.Flush(false);
+  const bool host_ok = weather_routing::chart_safety_host::SavePersistentCache();
+  return plugin_ok && host_ok;
 }
 
 bool weather_routing_pi::HasEnhancedChartSafety() const {

@@ -28,6 +28,9 @@ void Shutdown();
 bool Available();
 std::string Status();
 bool FlushCache();
+bool SetPersistentCacheEnabled(bool enabled);
+bool SavePersistentCache();
+bool ClearPersistentCache();
 void InvalidateDerivedMasks();
 
 /**
@@ -48,6 +51,11 @@ bool PrewarmHazardSnapshot(double min_lat, double min_lon, double max_lat,
 bool PrewarmRouteMaskForSegment(
     double lat1, double lon1, double lat2, double lon2,
     double corridor_margin_nm, const PlugInSegmentSafetyOptions* options,
+    PlugInSegmentSafetyResult* result);
+bool PrewarmReachabilityEnvelope(
+    double start_lat, double start_lon, double end_lat, double end_lon,
+    double maximum_path_length_nm,
+    const PlugInSegmentSafetyOptions* options,
     PlugInSegmentSafetyResult* result);
 bool PrewarmRouteMaskForPolylinesWithTileHalo(
     const double* latitudes, const double* longitudes,
