@@ -58,6 +58,13 @@ ChartSafetyAtlasEstimate EstimateChartSafetyAtlas(
     bool all_charts = true,
     std::uint64_t maximum_estimate_tiles = 2000000);
 
+/** Estimate storage from a host-produced, coverage-polygon tile plan. */
+ChartSafetyAtlasEstimate EstimateChartSafetyAtlasCoverage(
+    const std::vector<ChartSafetyAtlasChart>& charts,
+    const std::vector<std::pair<long, long>>& coverage_tiles,
+    const std::set<std::string>& selected_paths = {},
+    bool all_charts = true, bool complete = true);
+
 /** Stable identity of the selected chart metadata and atlas tile semantics. */
 std::string ChartSafetyAtlasIdentity(
     const std::vector<ChartSafetyAtlasChart>& charts,
@@ -70,6 +77,10 @@ std::vector<std::pair<long, long>> ChartSafetyAtlasTiles(
     const std::set<std::string>& selected_paths = {},
     bool all_charts = true,
     std::uint64_t maximum_tiles = 2000000, bool* complete = nullptr);
+
+/** Order an exact sparse tile set into provider-sized 6x6 buckets. */
+std::vector<std::pair<long, long>> OrderChartSafetyAtlasTiles(
+    const std::vector<std::pair<long, long>>& tiles);
 
 }  // namespace weather_routing
 

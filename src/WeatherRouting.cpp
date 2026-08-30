@@ -7003,7 +7003,7 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
       &dialog, wxID_ANY,
       _("Selection controls proactive generation only. A route outside the "
         "atlas remains eligible and requests authoritative tiles on demand. "
-        "The estimate is a conservative chart-bounds upper limit."));
+        "The estimate uses the charts' actual coverage polygons."));
   atlas_note->Wrap(520);
   atlas_box->Add(atlas_note, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 5);
   top->Add(atlas_box, 1, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
@@ -7017,9 +7017,15 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
     return selected;
   };
   const auto update_atlas_estimate = [&]() {
+    bool coverage_complete = false;
+    const auto coverage_tiles =
+        weather_routing::chart_safety_host::AtlasCoverageTiles(
+            atlas_charts, selected_atlas_paths(), atlas_all->GetValue(),
+            2000000, &coverage_complete);
     const weather_routing::ChartSafetyAtlasEstimate estimate =
-        weather_routing::EstimateChartSafetyAtlas(
-            atlas_charts, selected_atlas_paths(), atlas_all->GetValue());
+        weather_routing::EstimateChartSafetyAtlasCoverage(
+            atlas_charts, coverage_tiles, selected_atlas_paths(),
+            atlas_all->GetValue(), coverage_complete);
     const double compact_mib =
         estimate.compact_bytes / (1024.0 * 1024.0);
     const double recommended_mib =
@@ -7029,7 +7035,7 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
                           static_cast<std::uint64_t>(atlas_quota->GetValue()) *
                               1024ULL * 1024ULL;
     atlas_size->SetLabel(wxString::Format(
-        _("%lu of %lu charts; at most %llu tiles, approximately %.0f MiB "
+        _("%lu of %lu charts; %llu coverage tiles, approximately %.0f MiB "
           "compact (recommended quota %.0f MiB). %s"),
         static_cast<unsigned long>(estimate.selected_charts),
         static_cast<unsigned long>(estimate.available_charts),

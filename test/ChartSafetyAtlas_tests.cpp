@@ -8,6 +8,7 @@ using weather_routing::ChartSafetyAtlasChart;
 using weather_routing::ChartSafetyAtlasTiles;
 using weather_routing::ChartSafetyAtlasIdentity;
 using weather_routing::EstimateChartSafetyAtlas;
+using weather_routing::EstimateChartSafetyAtlasCoverage;
 using weather_routing::kChartSafetyAtlasEstimatedBytesPerTile;
 
 ChartSafetyAtlasChart Chart(std::string path, double min_lat, double min_lon,
@@ -80,6 +81,20 @@ TEST(ChartSafetyAtlas, IdentityChangesOnlyForSelectedChartMetadata) {
   EXPECT_NE(identity,
             ChartSafetyAtlasIdentity({selected, unrelated}, {"selected"},
                                      false));
+}
+
+TEST(ChartSafetyAtlas, ExactCoverageEstimateDoesNotUseChartRectangle) {
+  const std::vector<ChartSafetyAtlasChart> charts = {
+      Chart("broad-metadata", 30.0, -12.0, 61.0, 3.0)};
+  const std::vector<std::pair<long, long>> actual_coverage = {
+      {1060, -100}, {1060, -99}, {1061, -100}};
+  const auto estimate =
+      EstimateChartSafetyAtlasCoverage(charts, actual_coverage);
+
+  EXPECT_TRUE(estimate.complete);
+  EXPECT_EQ(estimate.upper_bound_tiles, 3u);
+  EXPECT_EQ(estimate.compact_bytes,
+            3u * kChartSafetyAtlasEstimatedBytesPerTile);
 }
 
 }  // namespace

@@ -67,6 +67,8 @@ using SavePersistentFn = bool (*)();
 using ClearPersistentFn = bool (*)();
 using ChartInfoCountFn = int (*)();
 using ChartInfoFn = bool (*)(int, PlugInSegmentSafetyChartInfoV1*);
+using CoverageTilesFn = bool (*)(const int*, int, double, long*, long*, int,
+                                 int*, int*);
 
 struct HostFunctions {
   RegisterFn register_cache{nullptr};
@@ -81,6 +83,7 @@ struct HostFunctions {
   ClearPersistentFn clear_persistent{nullptr};
   ChartInfoCountFn chart_info_count{nullptr};
   ChartInfoFn chart_info{nullptr};
+  CoverageTilesFn coverage_tiles{nullptr};
   bool available{false};
   bool registered{false};
 };
@@ -355,6 +358,8 @@ bool Initialize(ChartSafetyCache* cache) {
       "PlugIn_GetSegmentSafetyChartInfoCount");
   g_host.chart_info = Resolve<ChartInfoFn>(
       "PlugIn_GetSegmentSafetyChartInfo");
+  g_host.coverage_tiles = Resolve<CoverageTilesFn>(
+      "PlugIn_GetSegmentSafetyChartCoverageTiles");
 
   g_host.available =
       cache && g_host.register_cache && g_host.get_identity && g_host.check &&
@@ -425,6 +430,42 @@ std::vector<ChartSafetyAtlasChart> AtlasCharts() {
     charts.push_back(std::move(chart));
   }
   return charts;
+}
+
+std::vector<std::pair<long, long>> AtlasCoverageTiles(
+    const std::vector<ChartSafetyAtlasChart>& charts,
+    const std::set<std::string>& selected_paths, bool all_charts,
+    std::uint64_t maximum_tiles, bool* complete) {
+  if (complete) *complete = false;
+  std::vector<std::pair<long, long>> result;
+  if (!g_host.coverage_tiles || maximum_tiles == 0 ||
+      maximum_tiles > 2000000)
+    return result;
+  std::vector<int> indexes;
+  indexes.reserve(charts.size());
+  for (const auto& chart : charts)
+    if (all_charts || selected_paths.count(chart.path))
+      indexes.push_back(chart.db_index);
+  if (indexes.empty()) {
+    if (complete) *complete = true;
+    return result;
+  }
+  std::vector<long> lat_tiles(static_cast<std::size_t>(maximum_tiles));
+  std::vector<long> lon_tiles(static_cast<std::size_t>(maximum_tiles));
+  int tile_count = 0;
+  int host_complete = 0;
+  if (!g_host.coverage_tiles(
+          indexes.data(), static_cast<int>(indexes.size()),
+          kChartSafetyAtlasTileDegrees, lat_tiles.data(), lon_tiles.data(),
+          static_cast<int>(maximum_tiles), &tile_count, &host_complete) ||
+      tile_count < 0 ||
+      static_cast<std::uint64_t>(tile_count) > maximum_tiles)
+    return result;
+  result.reserve(static_cast<std::size_t>(tile_count));
+  for (int index = 0; index < tile_count; ++index)
+    result.emplace_back(lat_tiles[index], lon_tiles[index]);
+  if (complete) *complete = host_complete != 0;
+  return OrderChartSafetyAtlasTiles(result);
 }
 
 std::string Status() {

@@ -29,6 +29,7 @@
 #include <wx/treectrl.h>
 #include <wx/fileconf.h>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 
 #include "Utilities.h"
@@ -906,9 +907,15 @@ void weather_routing_pi::OnChartSafetyAtlasTimer(wxTimerEvent&) {
     const std::uint64_t maximum_tiles = std::max<std::uint64_t>(
         1, (quota_bytes * 4ULL / 5ULL) /
                weather_routing::kChartSafetyAtlasEstimatedBytesPerTile);
-    const auto estimate = weather_routing::EstimateChartSafetyAtlas(
-        charts, m_chart_safety_atlas_selected_paths,
-        m_chart_safety_atlas_all_charts, maximum_tiles);
+    bool coverage_complete = false;
+    auto coverage_tiles =
+        weather_routing::chart_safety_host::AtlasCoverageTiles(
+            charts, m_chart_safety_atlas_selected_paths,
+            m_chart_safety_atlas_all_charts, maximum_tiles,
+            &coverage_complete);
+    const auto estimate = weather_routing::EstimateChartSafetyAtlasCoverage(
+        charts, coverage_tiles, m_chart_safety_atlas_selected_paths,
+        m_chart_safety_atlas_all_charts, coverage_complete);
     if (!estimate.complete || estimate.recommended_quota_bytes > quota_bytes) {
       wxLogWarning(
           "WR_CHART_ATLAS stopped reason=quota_too_small selected_charts=%llu "
@@ -916,6 +923,18 @@ void weather_routing_pi::OnChartSafetyAtlasTimer(wxTimerEvent&) {
           static_cast<unsigned long long>(estimate.selected_charts),
           static_cast<unsigned long long>(estimate.upper_bound_tiles),
           m_chart_safety_atlas_max_disk_mib);
+      return;
+    }
+    if (const char* estimate_only =
+            std::getenv("WR_CHART_ATLAS_ESTIMATE_ONLY");
+        estimate_only && std::strcmp(estimate_only, "0") != 0) {
+      wxLogMessage(
+          "WR_CHART_ATLAS estimate_only charts=%llu tiles=%llu "
+          "compact_mib=%.1f recommended_mib=%.1f",
+          static_cast<unsigned long long>(estimate.selected_charts),
+          static_cast<unsigned long long>(estimate.upper_bound_tiles),
+          estimate.compact_bytes / (1024.0 * 1024.0),
+          estimate.recommended_quota_bytes / (1024.0 * 1024.0));
       return;
     }
     m_chart_safety_atlas_plan_identity =
@@ -935,11 +954,8 @@ void weather_routing_pi::OnChartSafetyAtlasTimer(wxTimerEvent&) {
                    m_chart_safety_atlas_plan_identity.c_str());
       return;
     }
-    bool complete = true;
-    m_chart_safety_atlas_tiles = weather_routing::ChartSafetyAtlasTiles(
-        charts, m_chart_safety_atlas_selected_paths,
-        m_chart_safety_atlas_all_charts, maximum_tiles, &complete);
-    if (!complete || m_chart_safety_atlas_tiles.empty()) {
+    m_chart_safety_atlas_tiles = std::move(coverage_tiles);
+    if (!coverage_complete || m_chart_safety_atlas_tiles.empty()) {
       wxLogWarning("WR_CHART_ATLAS stopped reason=empty_or_incomplete_plan");
       ResetChartSafetyAtlasPlan();
       return;

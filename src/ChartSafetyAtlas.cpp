@@ -105,6 +105,13 @@ std::vector<std::pair<long, long>> ChartSafetyAtlasTiles(
     if (!all_added) break;
   }
   if (complete) *complete = all_added;
+  return OrderChartSafetyAtlasTiles(
+      std::vector<Tile>(tiles.begin(), tiles.end()));
+}
+
+std::vector<std::pair<long, long>> OrderChartSafetyAtlasTiles(
+    const std::vector<std::pair<long, long>>& input) {
+  const std::set<Tile> tiles(input.begin(), input.end());
   // Provider extraction is most efficient for compact rectangular blocks.
   // Preserve the exact sparse tile set but order it into canonical 6x6
   // buckets, including correct floor semantics west/south of zero.
@@ -145,6 +152,25 @@ ChartSafetyAtlasEstimate EstimateChartSafetyAtlas(
   return result;
 }
 
+ChartSafetyAtlasEstimate EstimateChartSafetyAtlasCoverage(
+    const std::vector<ChartSafetyAtlasChart>& charts,
+    const std::vector<std::pair<long, long>>& coverage_tiles,
+    const std::set<std::string>& selected_paths, bool all_charts,
+    bool complete) {
+  ChartSafetyAtlasEstimate result;
+  result.available_charts = charts.size();
+  for (const auto& chart : charts)
+    if (Selected(chart, selected_paths, all_charts))
+      ++result.selected_charts;
+  result.upper_bound_tiles = coverage_tiles.size();
+  result.compact_bytes =
+      result.upper_bound_tiles * kChartSafetyAtlasEstimatedBytesPerTile;
+  result.recommended_quota_bytes =
+      result.compact_bytes + result.compact_bytes / 4;
+  result.complete = complete;
+  return result;
+}
+
 std::string ChartSafetyAtlasIdentity(
     const std::vector<ChartSafetyAtlasChart>& charts,
     const std::set<std::string>& selected_paths, bool all_charts) {
@@ -156,7 +182,7 @@ std::string ChartSafetyAtlasIdentity(
     return first->path < second->path;
   });
   std::uint64_t hash = 1469598103934665603ULL;
-  HashAdd(&hash, "semantic-atlas-v1:tile=0.05:cells=40");
+  HashAdd(&hash, "semantic-atlas-v2:coverage-polygons:tile=0.05:cells=40");
   for (const auto* chart : selected) {
     HashAdd(&hash, chart->path);
     std::ostringstream metadata;
@@ -168,7 +194,7 @@ std::string ChartSafetyAtlasIdentity(
     HashAdd(&hash, metadata.str());
   }
   std::ostringstream result;
-  result << "atlas-v1-" << std::hex << hash;
+  result << "atlas-v2-" << std::hex << hash;
   return result.str();
 }
 

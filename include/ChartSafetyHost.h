@@ -38,6 +38,11 @@ bool ClearPersistentCache();
 void InvalidateDerivedMasks();
 /** Return applicable chart metadata without opening/decrypting chart data. */
 std::vector<ChartSafetyAtlasChart> AtlasCharts();
+/** Return exact coverage-polygon tiles for the selected chart metadata. */
+std::vector<std::pair<long, long>> AtlasCoverageTiles(
+    const std::vector<ChartSafetyAtlasChart>& charts,
+    const std::set<std::string>& selected_paths, bool all_charts,
+    std::uint64_t maximum_tiles, bool* complete);
 
 /**
  * Install a non-owning cancellation flag for an externally controlled
