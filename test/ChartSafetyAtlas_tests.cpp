@@ -7,6 +7,8 @@ namespace {
 using weather_routing::ChartSafetyAtlasChart;
 using weather_routing::ChartSafetyAtlasTiles;
 using weather_routing::ChartSafetyAtlasIdentity;
+using weather_routing::ChartSafetyAtlasIdleDecision;
+using weather_routing::DecideChartSafetyAtlasIdleWork;
 using weather_routing::EstimateChartSafetyAtlas;
 using weather_routing::EstimateChartSafetyAtlasCoverage;
 using weather_routing::kChartSafetyAtlasEstimatedBytesPerTile;
@@ -20,6 +22,19 @@ ChartSafetyAtlasChart Chart(std::string path, double min_lat, double min_lon,
   chart.max_lat = max_lat;
   chart.max_lon = max_lon;
   return chart;
+}
+
+TEST(ChartSafetyAtlas, BackgroundWorkAlwaysPausesForActiveRoute) {
+  EXPECT_EQ(DecideChartSafetyAtlasIdleWork(true, true, true, false),
+            ChartSafetyAtlasIdleDecision::PauseForRoute);
+  EXPECT_EQ(DecideChartSafetyAtlasIdleWork(true, true, true, true),
+            ChartSafetyAtlasIdleDecision::Run);
+  EXPECT_EQ(DecideChartSafetyAtlasIdleWork(false, true, true, true),
+            ChartSafetyAtlasIdleDecision::Disabled);
+  EXPECT_EQ(DecideChartSafetyAtlasIdleWork(true, false, true, true),
+            ChartSafetyAtlasIdleDecision::Disabled);
+  EXPECT_EQ(DecideChartSafetyAtlasIdleWork(true, true, false, true),
+            ChartSafetyAtlasIdleDecision::Disabled);
 }
 
 TEST(ChartSafetyAtlas, OverlappingChartBoundsAreCountedOnce) {

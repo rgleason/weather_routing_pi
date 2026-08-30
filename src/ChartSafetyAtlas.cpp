@@ -17,6 +17,17 @@
 #include <set>
 
 namespace weather_routing {
+
+ChartSafetyAtlasIdleDecision DecideChartSafetyAtlasIdleWork(
+    bool atlas_enabled, bool persistent_cache_enabled,
+    bool chart_provider_available, bool route_idle) {
+  if (!atlas_enabled || !persistent_cache_enabled ||
+      !chart_provider_available)
+    return ChartSafetyAtlasIdleDecision::Disabled;
+  return route_idle ? ChartSafetyAtlasIdleDecision::Run
+                    : ChartSafetyAtlasIdleDecision::PauseForRoute;
+}
+
 namespace {
 
 using Tile = std::pair<long, long>;

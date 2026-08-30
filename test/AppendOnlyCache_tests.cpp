@@ -68,6 +68,22 @@ TEST_F(AppendOnlyCacheTest, LatestRecordWinsWithoutSnapshotRewrite) {
   EXPECT_EQ(reopened.EntryCount(), 1U);
 }
 
+TEST_F(AppendOnlyCacheTest, ContainsTracksOnlyLiveValidatedRecords) {
+  weather_routing::AppendOnlyCache cache;
+  std::string error;
+  ASSERT_TRUE(cache.Open(path_.string(), "charts-v1", 100, &error)) << error;
+  ASSERT_TRUE(cache.PutBatch({Record("tile", "safe")}, &error)) << error;
+  EXPECT_TRUE(cache.Contains("tile"));
+  EXPECT_FALSE(cache.Contains("missing"));
+  ASSERT_TRUE(cache.Erase("tile", &error)) << error;
+  EXPECT_FALSE(cache.Contains("tile"));
+
+  weather_routing::AppendOnlyCache reopened;
+  ASSERT_TRUE(reopened.Open(path_.string(), "charts-v1", 100, &error))
+      << error;
+  EXPECT_FALSE(reopened.Contains("tile"));
+}
+
 TEST_F(AppendOnlyCacheTest, IgnoresTruncatedTailAndKeepsEarlierRecords) {
   weather_routing::AppendOnlyCache cache;
   std::string error;

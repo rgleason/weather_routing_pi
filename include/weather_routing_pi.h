@@ -237,6 +237,7 @@ private:
   std::set<std::string> m_chart_safety_atlas_selected_paths;
   std::string m_chart_safety_atlas_completed_identity;
   std::string m_chart_safety_atlas_plan_identity;
+  std::vector<std::pair<long, long>> m_chart_safety_atlas_coverage_tiles;
   std::vector<std::pair<long, long>> m_chart_safety_atlas_tiles;
   std::size_t m_chart_safety_atlas_cursor{0};
   int m_chart_safety_atlas_metadata_attempts{0};

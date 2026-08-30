@@ -334,6 +334,10 @@ bool AppendOnlyCache::Get(const std::string& key,
   return true;
 }
 
+bool AppendOnlyCache::Contains(const std::string& key) const {
+  return opened_ && index_.find(key) != index_.end();
+}
+
 bool AppendOnlyCache::Erase(const std::string& key, std::string* error) {
   if (!opened_) {
     SetError(error, "cache is not open");

@@ -45,6 +45,17 @@ constexpr int kChartSafetyAtlasCellsPerTile = 40;
 // compact record metadata and an average chart dependency identifier.
 constexpr std::uint64_t kChartSafetyAtlasEstimatedBytesPerTile = 12288;
 
+enum class ChartSafetyAtlasIdleDecision {
+  Disabled,
+  PauseForRoute,
+  Run,
+};
+
+/** Pure lifecycle gate used to guarantee that route work owns priority. */
+ChartSafetyAtlasIdleDecision DecideChartSafetyAtlasIdleWork(
+    bool atlas_enabled, bool persistent_cache_enabled,
+    bool chart_provider_available, bool route_idle);
+
 /**
  * Estimate a composite atlas from chart-table bounds without opening charts.
  *

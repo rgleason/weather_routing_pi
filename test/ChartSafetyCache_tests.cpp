@@ -43,6 +43,15 @@ protected:
 
   void TearDown() override { std::filesystem::remove_all(directory_); }
 
+  void StoreTile(weather_routing::ChartSafetyCache* cache, long latitude,
+                 long longitude, bool depth_complete = true) {
+    ASSERT_NE(cache, nullptr);
+    tile_.lat_tile = latitude;
+    tile_.lon_tile = longitude;
+    tile_.depth_complete = depth_complete ? 1 : 0;
+    cache->Store(&tile_);
+  }
+
   std::filesystem::path directory_;
   std::filesystem::path path_;
   std::vector<unsigned short> hazards_;
@@ -332,6 +341,154 @@ TEST_F(ChartSafetyCacheTest, ClearRemovesDiskCacheWhilePersistenceDisabled) {
   ASSERT_TRUE(cache.Clear());
   EXPECT_FALSE(std::filesystem::exists(path_));
   EXPECT_EQ(cache.Stats().disk_file_bytes, 0U);
+}
+
+TEST_F(ChartSafetyCacheTest,
+       AtlasCompletionSurvivesRestartAndProvesFullReuse) {
+  const std::vector<std::pair<long, long>> atlas = {
+      {100, -20}, {100, -19}, {101, -20}};
+  {
+    weather_routing::ChartSafetyCache cache;
+    cache.Configure(path_.string(), 256, true);
+    cache.SetIdentity("chart-set-a");
+    for (const auto& tile : atlas)
+      StoreTile(&cache, tile.first, tile.second);
+    ASSERT_TRUE(cache.CommitAtlasCompletion("atlas-plan-a", atlas))
+        << cache.LastError();
+  }
+
+  weather_routing::ChartSafetyCache reopened;
+  reopened.Configure(path_.string(), 256, true);
+  reopened.SetIdentity("chart-set-a");
+  const auto status = reopened.InspectAtlasCoverage("atlas-plan-a", atlas);
+  EXPECT_TRUE(status.store_ready) << status.error;
+  EXPECT_TRUE(status.completion_marker_matches);
+  EXPECT_TRUE(status.complete);
+  EXPECT_EQ(status.present_tiles, atlas.size());
+  EXPECT_TRUE(status.missing_tiles.empty());
+}
+
+TEST_F(ChartSafetyCacheTest,
+       AtlasRestartFindsOnlyMissingTilesAndRepairsCompletion) {
+  const std::vector<std::pair<long, long>> atlas = {
+      {100, -20}, {100, -19}, {101, -20}};
+  {
+    weather_routing::ChartSafetyCache cache;
+    cache.Configure(path_.string(), 256, true);
+    cache.SetIdentity("chart-set-a");
+    StoreTile(&cache, 100, -20);
+    StoreTile(&cache, 100, -19);
+    ASSERT_TRUE(cache.Flush()) << cache.LastError();
+  }
+
+  {
+    weather_routing::ChartSafetyCache resumed;
+    resumed.Configure(path_.string(), 256, true);
+    resumed.SetIdentity("chart-set-a");
+    const auto partial =
+        resumed.InspectAtlasCoverage("atlas-plan-a", atlas);
+    ASSERT_TRUE(partial.store_ready) << partial.error;
+    ASSERT_EQ(partial.present_tiles, 2U);
+    ASSERT_EQ(partial.missing_tiles,
+              (std::vector<std::pair<long, long>>{{101, -20}}));
+    StoreTile(&resumed, partial.missing_tiles.front().first,
+              partial.missing_tiles.front().second);
+    ASSERT_TRUE(resumed.CommitAtlasCompletion("atlas-plan-a", atlas))
+        << resumed.LastError();
+  }
+
+  weather_routing::ChartSafetyCache verified;
+  verified.Configure(path_.string(), 256, true);
+  verified.SetIdentity("chart-set-a");
+  EXPECT_TRUE(verified.InspectAtlasCoverage("atlas-plan-a", atlas).complete);
+}
+
+TEST_F(ChartSafetyCacheTest,
+       AtlasDetectsEvictedTileDespiteMarkerThenRepairsOnlyThatTile) {
+  const std::vector<std::pair<long, long>> atlas = {
+      {100, -20}, {100, -19}, {101, -20}};
+  {
+    weather_routing::ChartSafetyCache cache;
+    cache.Configure(path_.string(), 256, true);
+    cache.SetIdentity("chart-set-a");
+    for (const auto& tile : atlas)
+      StoreTile(&cache, tile.first, tile.second);
+    ASSERT_TRUE(cache.CommitAtlasCompletion("atlas-plan-a", atlas))
+        << cache.LastError();
+  }
+  {
+    weather_routing::AppendOnlyCache raw;
+    std::string error;
+    ASSERT_TRUE(raw.Open(path_.string(),
+                         "weather-routing-chart-tile-v2:chart-set-a", 21845,
+                         &error))
+        << error;
+    ASSERT_TRUE(raw.Erase("100:-19", &error)) << error;
+  }
+
+  {
+    weather_routing::ChartSafetyCache resumed;
+    resumed.Configure(path_.string(), 256, true);
+    resumed.SetIdentity("chart-set-a");
+    const auto damaged =
+        resumed.InspectAtlasCoverage("atlas-plan-a", atlas);
+    EXPECT_FALSE(damaged.complete);
+    EXPECT_TRUE(damaged.completion_marker_matches);
+    ASSERT_EQ(damaged.missing_tiles,
+              (std::vector<std::pair<long, long>>{{100, -19}}));
+    StoreTile(&resumed, 100, -19);
+    ASSERT_TRUE(resumed.CommitAtlasCompletion("atlas-plan-a", atlas))
+        << resumed.LastError();
+  }
+
+  weather_routing::ChartSafetyCache verified;
+  verified.Configure(path_.string(), 256, true);
+  verified.SetIdentity("chart-set-a");
+  EXPECT_TRUE(verified.InspectAtlasCoverage("atlas-plan-a", atlas).complete);
+}
+
+TEST_F(ChartSafetyCacheTest, ChartSetUpdateInvalidatesAtlasTilesAndMarker) {
+  const std::vector<std::pair<long, long>> atlas = {
+      {100, -20}, {100, -19}, {101, -20}};
+  {
+    weather_routing::ChartSafetyCache cache;
+    cache.Configure(path_.string(), 256, true);
+    cache.SetIdentity("chart-set-a");
+    for (const auto& tile : atlas)
+      StoreTile(&cache, tile.first, tile.second);
+    ASSERT_TRUE(cache.CommitAtlasCompletion("atlas-plan-a", atlas));
+  }
+
+  weather_routing::ChartSafetyCache changed;
+  changed.Configure(path_.string(), 256, true);
+  changed.SetIdentity("chart-set-b");
+  const auto status =
+      changed.InspectAtlasCoverage("atlas-plan-b", atlas);
+  EXPECT_TRUE(status.store_ready) << status.error;
+  EXPECT_FALSE(status.completion_marker_matches);
+  EXPECT_FALSE(status.complete);
+  EXPECT_EQ(status.present_tiles, 0U);
+  EXPECT_EQ(status.missing_tiles, atlas);
+}
+
+TEST_F(ChartSafetyCacheTest, IncompleteDepthTileIsNeverAtlasDurable) {
+  const std::vector<std::pair<long, long>> atlas = {{100, -20}};
+  {
+    weather_routing::ChartSafetyCache cache;
+    cache.Configure(path_.string(), 256, true);
+    cache.SetIdentity("chart-set-a");
+    StoreTile(&cache, 100, -20, false);
+    ASSERT_TRUE(cache.Flush()) << cache.LastError();
+  }
+
+  weather_routing::ChartSafetyCache reopened;
+  reopened.Configure(path_.string(), 256, true);
+  reopened.SetIdentity("chart-set-a");
+  const auto status =
+      reopened.InspectAtlasCoverage("atlas-plan-a", atlas);
+  EXPECT_EQ(status.present_tiles, 0U);
+  EXPECT_EQ(status.missing_tiles, atlas);
+  EXPECT_FALSE(status.complete);
 }
 
 }  // namespace

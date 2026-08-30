@@ -33,6 +33,8 @@ namespace {
 // selection.  Those records could contain CM93 evidence for cells now covered
 // by a preferred licensed/plugin vector chart.
 constexpr std::uint32_t kTilePayloadVersion = 3;
+constexpr std::uint32_t kAtlasCompletionVersion = 1;
+constexpr char kAtlasCompletionKey[] = "@atlas-completion-v1";
 constexpr std::uint64_t kEstimatedPersistentBytesPerTile = 12288;
 constexpr std::size_t kFlushDirtyTiles = 512;
 constexpr std::uint64_t kCompactThresholdBytes =
@@ -62,6 +64,20 @@ bool ReadValue(const std::vector<unsigned char>& input, std::size_t* offset,
 bool IsValidSource(int source) {
   return source >= PI_SEGMENT_SAFETY_SOURCE_NONE &&
          source <= PI_SEGMENT_SAFETY_SOURCE_PLUGIN_VECTOR;
+}
+
+void HashBytes(std::uint64_t* hash, const void* data, std::size_t size) {
+  if (!hash || (!data && size)) return;
+  const auto* bytes = static_cast<const unsigned char*>(data);
+  for (std::size_t index = 0; index < size; ++index) {
+    *hash ^= bytes[index];
+    *hash *= 1099511628211ULL;
+  }
+}
+
+template <typename T>
+void HashValue(std::uint64_t* hash, const T& value) {
+  HashBytes(hash, &value, sizeof(value));
 }
 
 }  // namespace
@@ -446,6 +462,64 @@ bool ChartSafetyCache::Deserialize(const std::vector<unsigned char>& bytes,
   return true;
 }
 
+std::uint64_t ChartSafetyCache::AtlasCoverageDigest(
+    const std::string& atlas_identity,
+    const std::vector<std::pair<long, long>>& expected_tiles) {
+  std::uint64_t hash = 1469598103934665603ULL;
+  HashBytes(&hash, atlas_identity.data(), atlas_identity.size());
+  const std::uint64_t count = expected_tiles.size();
+  HashValue(&hash, count);
+  for (const auto& tile : expected_tiles) {
+    const std::int64_t latitude = tile.first;
+    const std::int64_t longitude = tile.second;
+    HashValue(&hash, latitude);
+    HashValue(&hash, longitude);
+  }
+  return hash;
+}
+
+bool ChartSafetyCache::SerializeAtlasCompletion(
+    const std::string& atlas_identity,
+    const std::vector<std::pair<long, long>>& expected_tiles,
+    std::vector<unsigned char>* bytes) {
+  if (!bytes || atlas_identity.empty() || atlas_identity.size() > 65536)
+    return false;
+  bytes->clear();
+  const std::uint64_t count = expected_tiles.size();
+  const std::uint64_t digest =
+      AtlasCoverageDigest(atlas_identity, expected_tiles);
+  const std::uint32_t identity_size =
+      static_cast<std::uint32_t>(atlas_identity.size());
+  AppendValue(bytes, kAtlasCompletionVersion);
+  AppendValue(bytes, count);
+  AppendValue(bytes, digest);
+  AppendValue(bytes, identity_size);
+  bytes->insert(bytes->end(), atlas_identity.begin(), atlas_identity.end());
+  return true;
+}
+
+bool ChartSafetyCache::AtlasCompletionMatches(
+    const std::vector<unsigned char>& bytes,
+    const std::string& atlas_identity,
+    const std::vector<std::pair<long, long>>& expected_tiles) {
+  std::size_t offset = 0;
+  std::uint32_t version = 0;
+  std::uint64_t count = 0;
+  std::uint64_t digest = 0;
+  std::uint32_t identity_size = 0;
+  if (!ReadValue(bytes, &offset, &version) ||
+      version != kAtlasCompletionVersion ||
+      !ReadValue(bytes, &offset, &count) ||
+      !ReadValue(bytes, &offset, &digest) ||
+      !ReadValue(bytes, &offset, &identity_size) ||
+      offset > bytes.size() || bytes.size() - offset != identity_size)
+    return false;
+  const std::string stored_identity(
+      reinterpret_cast<const char*>(bytes.data() + offset), identity_size);
+  return stored_identity == atlas_identity && count == expected_tiles.size() &&
+         digest == AtlasCoverageDigest(atlas_identity, expected_tiles);
+}
+
 bool ChartSafetyCache::OpenStoreLocked() {
   if (!persistent_enabled_ || !identity_confirmed_ || path_.empty() ||
       identity_.empty())
@@ -626,7 +700,11 @@ void ChartSafetyCache::Store(const PlugInSegmentSafetyTile* tile) {
     // The chart-provider contract permits derived semantic safety tiles to be
     // retained.  Plugin-vector evidence therefore follows the same durable,
     // identity-scoped policy as native vector and CM93 evidence.
-    if (persistent_enabled_ && identity_confirmed_) {
+    // Only depth-complete records belong in the durable semantic atlas. A
+    // later land-only query must never downgrade an authoritative depth tile
+    // which was already proven complete and persisted.
+    if (persistent_enabled_ && identity_confirmed_ &&
+        incoming.depth_complete) {
       dirty_[key] = {key, std::move(bytes)};
       stats_.dirty_entries = dirty_.size();
       should_flush = dirty_.size() >= kFlushDirtyTiles;
@@ -685,6 +763,102 @@ bool ChartSafetyCache::Clear() {
   }
   last_error_.clear();
   const bool result = store_.Clear(&last_error_);
+  UpdateStoreStatsLocked();
+  return result;
+}
+
+ChartSafetyAtlasCacheStatus ChartSafetyCache::InspectAtlasCoverage(
+    const std::string& atlas_identity,
+    const std::vector<std::pair<long, long>>& expected_tiles) {
+  ChartSafetyAtlasCacheStatus status;
+  status.expected_tiles = expected_tiles.size();
+  if (!Flush(false)) {
+    status.error = LastError();
+    return status;
+  }
+
+  std::lock_guard<std::mutex> lock(mutex_);
+  if ((!store_open_ && !OpenStoreLocked()) || !persistent_enabled_ ||
+      !identity_confirmed_) {
+    status.error = last_error_.empty() ? "persistent tile store unavailable"
+                                       : last_error_;
+    return status;
+  }
+  status.store_ready = true;
+  status.missing_tiles.reserve(expected_tiles.size());
+  for (const auto& tile : expected_tiles) {
+    const std::string key = TileKey(tile.first, tile.second);
+    if (store_.Contains(key))
+      ++status.present_tiles;
+    else
+      status.missing_tiles.push_back(tile);
+  }
+
+  std::vector<unsigned char> marker;
+  std::string marker_error;
+  if (store_.Get(kAtlasCompletionKey, &marker, &marker_error))
+    status.completion_marker_matches = AtlasCompletionMatches(
+        marker, atlas_identity, expected_tiles);
+  else if (!marker_error.empty())
+    status.error = marker_error;
+
+  status.complete = status.completion_marker_matches &&
+                    status.missing_tiles.empty();
+  if (status.completion_marker_matches && !status.complete) {
+    std::string erase_error;
+    if (!store_.Erase(kAtlasCompletionKey, &erase_error) &&
+        status.error.empty())
+      status.error = erase_error;
+  }
+  UpdateStoreStatsLocked();
+  return status;
+}
+
+bool ChartSafetyCache::CommitAtlasCompletion(
+    const std::string& atlas_identity,
+    const std::vector<std::pair<long, long>>& expected_tiles) {
+  if (!Flush(false)) return false;
+  std::lock_guard<std::mutex> lock(mutex_);
+  if ((!store_open_ && !OpenStoreLocked()) || !persistent_enabled_ ||
+      !identity_confirmed_)
+    return false;
+  for (const auto& tile : expected_tiles)
+    if (!store_.Contains(TileKey(tile.first, tile.second))) {
+      last_error_ = "atlas completion refused: expected tile is missing";
+      return false;
+    }
+
+  std::vector<unsigned char> marker;
+  if (!SerializeAtlasCompletion(atlas_identity, expected_tiles, &marker)) {
+    last_error_ = "unable to serialize atlas completion";
+    return false;
+  }
+  AppendOnlyCacheRecord record{kAtlasCompletionKey, std::move(marker)};
+  if (!store_.PutBatch({record}, &last_error_)) {
+    UpdateStoreStatsLocked();
+    return false;
+  }
+
+  // The completion record itself counts against the logical entry limit.
+  // Refuse completion if adding it displaced an expected tile.
+  for (const auto& tile : expected_tiles)
+    if (!store_.Contains(TileKey(tile.first, tile.second))) {
+      std::string erase_error;
+      store_.Erase(kAtlasCompletionKey, &erase_error);
+      last_error_ = "atlas completion exceeded persistent cache capacity";
+      UpdateStoreStatsLocked();
+      return false;
+    }
+  UpdateStoreStatsLocked();
+  return true;
+}
+
+bool ChartSafetyCache::ClearAtlasCompletion() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if ((!store_open_ && !OpenStoreLocked()) || !persistent_enabled_ ||
+      !identity_confirmed_)
+    return false;
+  const bool result = store_.Erase(kAtlasCompletionKey, &last_error_);
   UpdateStoreStatsLocked();
   return result;
 }

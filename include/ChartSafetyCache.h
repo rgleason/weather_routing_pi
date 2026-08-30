@@ -17,6 +17,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "AppendOnlyCache.h"
@@ -42,6 +43,16 @@ struct ChartSafetyCacheStats {
   std::size_t ram_entries{0};
   std::size_t disk_entries{0};
   std::size_t dirty_entries{0};
+};
+
+struct ChartSafetyAtlasCacheStatus {
+  bool store_ready{false};
+  bool completion_marker_matches{false};
+  bool complete{false};
+  std::size_t expected_tiles{0};
+  std::size_t present_tiles{0};
+  std::vector<std::pair<long, long>> missing_tiles;
+  std::string error;
 };
 
 /** Immutable plugin-owned chart classification tile used by route workers. */
@@ -102,6 +113,25 @@ public:
   bool Flush(bool allow_compaction = false);
   bool Clear();
 
+  /**
+   * Compare an atlas plan with the durable tile index and its in-store
+   * completion record. This never treats a config-only marker as proof.
+   */
+  ChartSafetyAtlasCacheStatus InspectAtlasCoverage(
+      const std::string& atlas_identity,
+      const std::vector<std::pair<long, long>>& expected_tiles);
+
+  /**
+   * Atomically append completion metadata after every expected tile has been
+   * flushed to the identity-scoped persistent store.
+   */
+  bool CommitAtlasCompletion(
+      const std::string& atlas_identity,
+      const std::vector<std::pair<long, long>>& expected_tiles);
+
+  /** Remove only the atlas completion proof, retaining reusable tiles. */
+  bool ClearAtlasCompletion();
+
   static int LookupCallback(void* context, long lat_tile, long lon_tile,
                             int require_depth,
                             PlugInSegmentSafetyTile* tile);
@@ -147,6 +177,17 @@ private:
                         std::vector<unsigned char>* bytes);
   static bool Deserialize(const std::vector<unsigned char>& bytes,
                           TileData* tile);
+  static std::uint64_t AtlasCoverageDigest(
+      const std::string& atlas_identity,
+      const std::vector<std::pair<long, long>>& expected_tiles);
+  static bool SerializeAtlasCompletion(
+      const std::string& atlas_identity,
+      const std::vector<std::pair<long, long>>& expected_tiles,
+      std::vector<unsigned char>* bytes);
+  static bool AtlasCompletionMatches(
+      const std::vector<unsigned char>& bytes,
+      const std::string& atlas_identity,
+      const std::vector<std::pair<long, long>>& expected_tiles);
 
   bool OpenStoreLocked();
   void InsertRamLocked(const std::string& key, TileData tile);

@@ -43,6 +43,8 @@ public:
   bool Erase(const std::string& key, std::string* error = nullptr);
   bool Get(const std::string& key, std::vector<unsigned char>* value,
            std::string* error = nullptr);
+  /** Return whether a CRC-validated live record is present in the index. */
+  bool Contains(const std::string& key) const;
   bool Compact(std::string* error = nullptr);
   bool Clear(std::string* error = nullptr);
 

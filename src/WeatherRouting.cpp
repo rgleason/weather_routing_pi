@@ -82,6 +82,18 @@ static std::set<wxString> s_chartSafetyPreparedScoutScopes;
 
 namespace {
 
+class ScopedRoutePreparation {
+public:
+  explicit ScopedRoutePreparation(int& depth) : depth_(depth) { ++depth_; }
+  ~ScopedRoutePreparation() { --depth_; }
+
+  ScopedRoutePreparation(const ScopedRoutePreparation&) = delete;
+  ScopedRoutePreparation& operator=(const ScopedRoutePreparation&) = delete;
+
+private:
+  int& depth_;
+};
+
 wxString NewDepartureOptimizationGroupId() {
   // FormatISOCombined() has only one-second resolution. A second optimisation
   // started quickly enough could otherwise reuse the retained weather cache
@@ -992,6 +1004,7 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
       m_PlotDialog(*this),
       m_FilterRoutesDialog(this),
       m_bRunning(false),
+      m_RoutePreparationDepth(0),
       m_RoutesToRun(0),
       m_bSkipUpdateCurrentItems(false),
       m_ActiveMultiLegCurrentLegIndex(0),
@@ -9235,6 +9248,7 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
     const std::vector<RouteMapOverlay*>& routemapoverlays,
     const wxString& context) {
   if (routemapoverlays.empty()) return;
+  ScopedRoutePreparation route_preparation(m_RoutePreparationDepth);
 
   bool use_chart_safety = false;
   bool enforce_chart_safety = false;
@@ -10490,6 +10504,7 @@ void WeatherRouting::ExportRoute(RouteMapOverlay& routemapoverlay) {
 
 void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
   if (!routemapoverlay) return;
+  ScopedRoutePreparation route_preparation(m_RoutePreparationDepth);
 
   RouteMapConfiguration configuration = routemapoverlay->GetConfiguration();
   bool boatHasMoved = false;

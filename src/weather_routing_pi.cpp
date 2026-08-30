@@ -845,6 +845,7 @@ void weather_routing_pi::SetChartSafetyAtlasSettings(
 }
 
 void weather_routing_pi::ResetChartSafetyAtlasPlan() {
+  m_chart_safety_atlas_coverage_tiles.clear();
   m_chart_safety_atlas_tiles.clear();
   m_chart_safety_atlas_cursor = 0;
   m_chart_safety_atlas_metadata_attempts = 0;
@@ -866,15 +867,22 @@ void weather_routing_pi::ScheduleChartSafetyAtlas(bool rebuild_plan,
 }
 
 void weather_routing_pi::OnChartSafetyAtlasTimer(wxTimerEvent&) {
-  if (!m_chart_safety_atlas_enabled ||
-      !m_use_persistent_chart_safe_cache ||
-      !weather_routing::chart_safety_host::Available())
+  const bool provider_available =
+      weather_routing::chart_safety_host::Available();
+  const bool route_idle =
+      !m_pWeather_Routing ||
+      m_pWeather_Routing->CanStartExternalPlanningScenario();
+  const auto idle_decision = weather_routing::DecideChartSafetyAtlasIdleWork(
+      m_chart_safety_atlas_enabled, m_use_persistent_chart_safe_cache,
+      provider_available, route_idle);
+  if (idle_decision ==
+      weather_routing::ChartSafetyAtlasIdleDecision::Disabled)
     return;
 
   // Route computations have absolute priority.  The timer performs no chart
   // work until all running/waiting/headless route state has drained.
-  if (m_pWeather_Routing &&
-      !m_pWeather_Routing->CanStartExternalPlanningScenario()) {
+  if (idle_decision ==
+      weather_routing::ChartSafetyAtlasIdleDecision::PauseForRoute) {
     if (!m_chart_safety_atlas_logged_route_pause) {
       wxLogMessage("WR_CHART_ATLAS paused reason=route_active");
       m_chart_safety_atlas_logged_route_pause = true;
@@ -948,22 +956,92 @@ void weather_routing_pi::OnChartSafetyAtlasTimer(wxTimerEvent&) {
       return;
     }
     m_chart_safety_atlas_plan_identity += ":" + host_identity;
-    if (m_chart_safety_atlas_plan_identity ==
-        m_chart_safety_atlas_completed_identity) {
-      wxLogMessage("WR_CHART_ATLAS already_complete identity=%s",
-                   m_chart_safety_atlas_plan_identity.c_str());
-      return;
-    }
-    m_chart_safety_atlas_tiles = std::move(coverage_tiles);
-    if (!coverage_complete || m_chart_safety_atlas_tiles.empty()) {
+    if (!coverage_complete || coverage_tiles.empty()) {
       wxLogWarning("WR_CHART_ATLAS stopped reason=empty_or_incomplete_plan");
       ResetChartSafetyAtlasPlan();
       return;
     }
+
+    // The config value is only a user-visible hint.  Durable completion is
+    // proved by an identity-bound record in the same append-only store as the
+    // tiles, and by checking that every planned tile is still indexed.  This
+    // catches stale config values, quota eviction and interrupted/cache-reset
+    // builds after a restart.
+    const auto cache_status = m_chart_safety_cache.InspectAtlasCoverage(
+        m_chart_safety_atlas_plan_identity, coverage_tiles);
     wxLogMessage(
-        "WR_CHART_ATLAS started charts=%llu tiles=%llu estimate_mib=%.1f "
-        "quota_mib=%d",
+        "WR_CHART_ATLAS inspected expected=%llu present=%llu missing=%llu "
+        "marker_matches=%d store_ready=%d",
+        static_cast<unsigned long long>(cache_status.expected_tiles),
+        static_cast<unsigned long long>(cache_status.present_tiles),
+        static_cast<unsigned long long>(cache_status.missing_tiles.size()),
+        cache_status.completion_marker_matches ? 1 : 0,
+        cache_status.store_ready ? 1 : 0);
+    if (!cache_status.store_ready) {
+      wxLogWarning("WR_CHART_ATLAS stopped reason=cache_unavailable error=%s",
+                   cache_status.error.c_str());
+      ResetChartSafetyAtlasPlan();
+      return;
+    }
+    if (cache_status.complete) {
+      if (m_chart_safety_atlas_completed_identity !=
+          m_chart_safety_atlas_plan_identity) {
+        m_chart_safety_atlas_completed_identity =
+            m_chart_safety_atlas_plan_identity;
+        SaveConfig();
+      }
+      wxLogMessage(
+          "WR_CHART_ATLAS already_complete identity=%s verified_tiles=%llu",
+          m_chart_safety_atlas_plan_identity.c_str(),
+          static_cast<unsigned long long>(cache_status.present_tiles));
+      return;
+    }
+    if (m_chart_safety_atlas_completed_identity ==
+        m_chart_safety_atlas_plan_identity) {
+      wxLogWarning(
+          "WR_CHART_ATLAS stale_config_marker identity=%s missing=%llu",
+          m_chart_safety_atlas_plan_identity.c_str(),
+          static_cast<unsigned long long>(cache_status.missing_tiles.size()));
+      m_chart_safety_atlas_completed_identity.clear();
+      SaveConfig();
+    }
+    if (const char* inspect_only =
+            std::getenv("WR_CHART_ATLAS_INSPECT_ONLY");
+        inspect_only && std::strcmp(inspect_only, "0") != 0) {
+      wxLogMessage(
+          "WR_CHART_ATLAS inspect_only expected=%llu present=%llu "
+          "missing=%llu",
+          static_cast<unsigned long long>(cache_status.expected_tiles),
+          static_cast<unsigned long long>(cache_status.present_tiles),
+          static_cast<unsigned long long>(cache_status.missing_tiles.size()));
+      return;
+    }
+    if (cache_status.missing_tiles.empty()) {
+      if (!m_chart_safety_cache.CommitAtlasCompletion(
+              m_chart_safety_atlas_plan_identity, coverage_tiles)) {
+        wxLogWarning(
+            "WR_CHART_ATLAS stopped reason=completion_commit_failed error=%s",
+            m_chart_safety_cache.LastError().c_str());
+        ResetChartSafetyAtlasPlan();
+        return;
+      }
+      m_chart_safety_atlas_completed_identity =
+          m_chart_safety_atlas_plan_identity;
+      SaveConfig();
+      wxLogMessage(
+          "WR_CHART_ATLAS completion_repaired identity=%s verified_tiles=%llu",
+          m_chart_safety_atlas_plan_identity.c_str(),
+          static_cast<unsigned long long>(cache_status.present_tiles));
+      return;
+    }
+    m_chart_safety_atlas_coverage_tiles = coverage_tiles;
+    m_chart_safety_atlas_tiles = cache_status.missing_tiles;
+    wxLogMessage(
+        "WR_CHART_ATLAS started charts=%llu expected_tiles=%llu "
+        "present_tiles=%llu missing_tiles=%llu estimate_mib=%.1f quota_mib=%d",
         static_cast<unsigned long long>(estimate.selected_charts),
+        static_cast<unsigned long long>(coverage_tiles.size()),
+        static_cast<unsigned long long>(cache_status.present_tiles),
         static_cast<unsigned long long>(m_chart_safety_atlas_tiles.size()),
         estimate.compact_bytes / (1024.0 * 1024.0),
         m_chart_safety_atlas_max_disk_mib);
@@ -1015,16 +1093,37 @@ void weather_routing_pi::OnChartSafetyAtlasTimer(wxTimerEvent&) {
 
   if (m_chart_safety_atlas_cursor >= m_chart_safety_atlas_tiles.size()) {
     FlushChartSafetyCache();
-    if (m_chart_safety_atlas_failed_batches == 0) {
+    const bool completion_committed =
+        m_chart_safety_atlas_failed_batches == 0 &&
+        m_chart_safety_cache.CommitAtlasCompletion(
+            m_chart_safety_atlas_plan_identity,
+            m_chart_safety_atlas_coverage_tiles);
+    if (completion_committed) {
       m_chart_safety_atlas_completed_identity =
           m_chart_safety_atlas_plan_identity;
       SaveConfig();
+    } else if (m_chart_safety_atlas_failed_batches == 0) {
+      wxLogWarning(
+          "WR_CHART_ATLAS completion_unverified error=%s",
+          m_chart_safety_cache.LastError().c_str());
     }
-    wxLogMessage("WR_CHART_ATLAS complete tiles=%llu failed_batches=%llu",
+    wxLogMessage(
+        "WR_CHART_ATLAS complete built_tiles=%llu expected_tiles=%llu "
+        "failed_batches=%llu committed=%d",
                  static_cast<unsigned long long>(
                      m_chart_safety_atlas_tiles.size()),
                  static_cast<unsigned long long>(
-                     m_chart_safety_atlas_failed_batches));
+                     m_chart_safety_atlas_coverage_tiles.size()),
+                 static_cast<unsigned long long>(
+                     m_chart_safety_atlas_failed_batches),
+                 completion_committed ? 1 : 0);
+    if (!completion_committed) {
+      // Re-audit after a quiet interval.  The next plan is reconstructed from
+      // the durable index, so successful tiles are retained and only the
+      // genuinely missing subset is retried.
+      ResetChartSafetyAtlasPlan();
+      ScheduleChartSafetyAtlas(false, 60000);
+    }
     return;
   }
   ScheduleChartSafetyAtlas(false,

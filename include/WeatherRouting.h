@@ -723,6 +723,7 @@ public:
   bool CanStartExternalPlanningScenario() const {
     return !m_HeadlessRouteTestState && m_RunningRouteMaps.empty() &&
            m_WaitingRouteMaps.empty() && !m_bRunning &&
+           m_RoutePreparationDepth == 0 &&
            !m_ActiveMultiLegSequence && !m_ActiveMultiLegDepartureOptimization;
   }
   void CancelExternalPlanningScenario() { StopAll(); }
@@ -852,6 +853,7 @@ private:
       m_tDeferredRoutingStart;
 
   bool m_bRunning;
+  int m_RoutePreparationDepth;
   wxTimeSpan m_RunTime;
   wxDateTime m_StartTime;
 
