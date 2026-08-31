@@ -124,6 +124,7 @@ TEST_F(AppendOnlyCacheTest, IdentityMismatchInvalidatesAllEntries) {
       << error;
   EXPECT_TRUE(changed.IdentityWasReset());
   EXPECT_EQ(changed.EntryCount(), 0U);
+  EXPECT_TRUE(std::filesystem::exists(path_.string() + ".incompatible"));
   std::vector<unsigned char> value;
   EXPECT_FALSE(changed.Get("tile", &value, &error));
 }

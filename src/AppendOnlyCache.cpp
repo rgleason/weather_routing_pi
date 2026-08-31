@@ -89,6 +89,29 @@ bool ReplacePathWithFile(const std::string& replacement,
 #endif
 }
 
+bool PreserveIncompatibleFile(const std::string& path, std::string* error) {
+  std::error_code exists_error;
+  if (!std::filesystem::exists(path, exists_error)) return true;
+  if (exists_error) {
+    SetError(error, "unable to inspect incompatible cache file: " +
+                        exists_error.message());
+    return false;
+  }
+
+  std::string preserved = path + ".incompatible";
+  for (unsigned int suffix = 1; std::filesystem::exists(preserved); ++suffix)
+    preserved = path + ".incompatible." + std::to_string(suffix);
+
+  std::error_code rename_error;
+  std::filesystem::rename(path, preserved, rename_error);
+  if (rename_error) {
+    SetError(error, "refusing to overwrite incompatible cache file: " +
+                        rename_error.message());
+    return false;
+  }
+  return true;
+}
+
 bool WriteRecord(std::ostream& output, const std::string& key,
                  const std::vector<unsigned char>* value,
                  std::uint64_t* value_offset, std::uint32_t* crc_out,
@@ -219,6 +242,7 @@ bool AppendOnlyCache::Open(const std::string& path,
   if (!basic_header || !input.good() || stored_identity != identity_) {
     identity_was_reset_ = true;
     input.close();
+    if (!PreserveIncompatibleFile(path_, error)) return false;
     return Reset(error);
   }
 
