@@ -80,6 +80,8 @@
 #include "pidc.h"
 #include "qtstylesheet.h"
 
+#include <wx/eventfilter.h>
+
 /* make some warnings go away */
 #ifdef MIN
 #undef MIN
@@ -91,6 +93,8 @@
 
 #include <json/json.h>
 
+#include <atomic>
+#include <future>
 #include <memory>
 #include <set>
 #include <string>
@@ -115,7 +119,9 @@ class WeatherRouting;
  * weather routing capabilities to OpenCPN. It handles initialization,
  * UI management, and interactions with the OpenCPN application.
  */
-class weather_routing_pi : public wxEvtHandler, public opencpn_plugin_121 {
+class weather_routing_pi : public wxEvtHandler,
+                           public wxEventFilter,
+                           public opencpn_plugin_121 {
 public:
   weather_routing_pi(void* ppimgr);
   ~weather_routing_pi();
@@ -167,6 +173,7 @@ public:
   void OnContextMenuItemCallback(int id);
 
   void SetColorScheme(PI_ColorScheme cs);
+  int FilterEvent(wxEvent& event) override;
   static wxString StandardPath();
   void ShowMenuItems(bool show);
   bool UsePersistentChartSafeCache() const {
@@ -224,6 +231,8 @@ private:
   void ScheduleChartSafetyAtlas(bool rebuild_plan, int delay_ms = 1000);
   void OnChartSafetyAtlasTimer(wxTimerEvent&);
   void ResetChartSafetyAtlasPlan();
+  bool ChartSafetyAtlasGuiIdle() const;
+  void WaitForChartSafetyAtlasInspection();
 
   bool LoadConfig();
   bool SaveConfig();
@@ -244,6 +253,15 @@ private:
   int m_chart_safety_atlas_batch_retries{0};
   std::size_t m_chart_safety_atlas_failed_batches{0};
   bool m_chart_safety_atlas_logged_route_pause{false};
+  bool m_chart_safety_atlas_logged_user_pause{false};
+  bool m_chart_safety_atlas_plan_ready{false};
+  bool m_chart_safety_atlas_filter_installed{false};
+  std::size_t m_chart_safety_atlas_batch_limit{1};
+  std::size_t m_chart_safety_atlas_selected_charts{0};
+  double m_chart_safety_atlas_estimate_mib{0.0};
+  std::atomic<long long> m_chart_safety_atlas_last_input_ms{0};
+  std::future<weather_routing::ChartSafetyAtlasCacheStatus>
+      m_chart_safety_atlas_inspection;
   weather_routing::ChartSafetyCache m_chart_safety_cache;
   std::unique_ptr<ExternalPlanningProvider> m_external_planning_provider;
 

@@ -20,12 +20,34 @@ namespace weather_routing {
 
 ChartSafetyAtlasIdleDecision DecideChartSafetyAtlasIdleWork(
     bool atlas_enabled, bool persistent_cache_enabled,
-    bool chart_provider_available, bool route_idle) {
+    bool chart_provider_available, bool route_idle, bool gui_idle) {
   if (!atlas_enabled || !persistent_cache_enabled ||
       !chart_provider_available)
     return ChartSafetyAtlasIdleDecision::Disabled;
-  return route_idle ? ChartSafetyAtlasIdleDecision::Run
-                    : ChartSafetyAtlasIdleDecision::PauseForRoute;
+  if (!route_idle) return ChartSafetyAtlasIdleDecision::PauseForRoute;
+  return gui_idle ? ChartSafetyAtlasIdleDecision::Run
+                  : ChartSafetyAtlasIdleDecision::PauseForUser;
+}
+
+std::size_t NextChartSafetyAtlasBatchSize(std::size_t current_batch_size,
+                                          long elapsed_ms,
+                                          int newly_built_tiles) {
+  constexpr std::size_t kMaximumBatchTiles = 36;
+  current_batch_size = std::clamp<std::size_t>(
+      current_batch_size, 1, kMaximumBatchTiles);
+  if (elapsed_ms >= 250) return 1;
+  if (elapsed_ms >= 75)
+    return std::max<std::size_t>(1, current_batch_size / 2);
+  if (elapsed_ms <= 25 || newly_built_tiles == 0)
+    return std::min(kMaximumBatchTiles, current_batch_size * 2);
+  return current_batch_size;
+}
+
+int ChartSafetyAtlasBatchDelayMs(long elapsed_ms) {
+  if (elapsed_ms >= 1000) return 5000;
+  if (elapsed_ms >= 250) return 2000;
+  if (elapsed_ms >= 75) return 500;
+  return 100;
 }
 
 namespace {

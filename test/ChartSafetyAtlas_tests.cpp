@@ -8,9 +8,11 @@ using weather_routing::ChartSafetyAtlasChart;
 using weather_routing::ChartSafetyAtlasTiles;
 using weather_routing::ChartSafetyAtlasIdentity;
 using weather_routing::ChartSafetyAtlasIdleDecision;
+using weather_routing::ChartSafetyAtlasBatchDelayMs;
 using weather_routing::DecideChartSafetyAtlasIdleWork;
 using weather_routing::EstimateChartSafetyAtlas;
 using weather_routing::EstimateChartSafetyAtlasCoverage;
+using weather_routing::NextChartSafetyAtlasBatchSize;
 using weather_routing::kChartSafetyAtlasEstimatedBytesPerTile;
 
 ChartSafetyAtlasChart Chart(std::string path, double min_lat, double min_lon,
@@ -35,6 +37,21 @@ TEST(ChartSafetyAtlas, BackgroundWorkAlwaysPausesForActiveRoute) {
             ChartSafetyAtlasIdleDecision::Disabled);
   EXPECT_EQ(DecideChartSafetyAtlasIdleWork(true, true, false, true),
             ChartSafetyAtlasIdleDecision::Disabled);
+  EXPECT_EQ(DecideChartSafetyAtlasIdleWork(true, true, true, true, false),
+            ChartSafetyAtlasIdleDecision::PauseForUser);
+}
+
+TEST(ChartSafetyAtlas, ExtractionBatchAdaptsToGuiLatency) {
+  EXPECT_EQ(NextChartSafetyAtlasBatchSize(1, 10, 1), 2u);
+  EXPECT_EQ(NextChartSafetyAtlasBatchSize(18, 10, 18), 36u);
+  EXPECT_EQ(NextChartSafetyAtlasBatchSize(36, 90, 36), 18u);
+  EXPECT_EQ(NextChartSafetyAtlasBatchSize(36, 250, 36), 1u);
+  EXPECT_EQ(NextChartSafetyAtlasBatchSize(4, 20, 0), 8u);
+
+  EXPECT_EQ(ChartSafetyAtlasBatchDelayMs(10), 100);
+  EXPECT_EQ(ChartSafetyAtlasBatchDelayMs(100), 500);
+  EXPECT_EQ(ChartSafetyAtlasBatchDelayMs(500), 2000);
+  EXPECT_EQ(ChartSafetyAtlasBatchDelayMs(1500), 5000);
 }
 
 TEST(ChartSafetyAtlas, OverlappingChartBoundsAreCountedOnce) {

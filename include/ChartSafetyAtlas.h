@@ -48,13 +48,22 @@ constexpr std::uint64_t kChartSafetyAtlasEstimatedBytesPerTile = 12288;
 enum class ChartSafetyAtlasIdleDecision {
   Disabled,
   PauseForRoute,
+  PauseForUser,
   Run,
 };
 
-/** Pure lifecycle gate used to guarantee that route work owns priority. */
+/** Pure lifecycle gate used to guarantee that route and GUI work own priority. */
 ChartSafetyAtlasIdleDecision DecideChartSafetyAtlasIdleWork(
     bool atlas_enabled, bool persistent_cache_enabled,
-    bool chart_provider_available, bool route_idle);
+    bool chart_provider_available, bool route_idle, bool gui_idle = true);
+
+/** Adapt the next main-thread extraction slice to the last observed latency. */
+std::size_t NextChartSafetyAtlasBatchSize(std::size_t current_batch_size,
+                                          long elapsed_ms,
+                                          int newly_built_tiles);
+
+/** Recovery delay before another extraction slice is allowed to run. */
+int ChartSafetyAtlasBatchDelayMs(long elapsed_ms);
 
 /**
  * Estimate a composite atlas from chart-table bounds without opening charts.
