@@ -49,6 +49,22 @@
 
 namespace {
 
+constexpr int kDefaultConfigurationWidthDip = 1320;
+constexpr int kDefaultConfigurationHeightDip = 900;
+constexpr int kConfigurationScreenMarginDip = 40;
+
+wxSize DefaultConfigurationDialogSize(wxWindow* window) {
+  const wxSize best = window->GetBestSize();
+  const wxSize preferred = window->FromDIP(
+      wxSize(kDefaultConfigurationWidthDip, kDefaultConfigurationHeightDip));
+  const int margin = window->FromDIP(kConfigurationScreenMarginDip);
+  const wxSize display = wxGetClientDisplayRect().GetSize();
+  const wxSize available(std::max(1, display.x - margin),
+                         std::max(1, display.y - margin));
+  return wxSize(std::min(available.x, std::max(best.x, preferred.x)),
+                std::min(available.y, std::max(best.y, preferred.y)));
+}
+
 bool GetWaypointByGuid(const wxString& guid, PlugIn_Waypoint* waypoint) {
   return !guid.IsEmpty() && GetSingleWaypoint(guid, waypoint);
 }
@@ -182,6 +198,16 @@ ConfigurationDialog::ConfigurationDialog(WeatherRouting& weatherrouting)
   wxSize sz = ::wxGetDisplaySize();
   SetSize(0, 0, sz.x, sz.y - 40);
 #else
+  const wxSize default_size = DefaultConfigurationDialogSize(this);
+  long width = default_size.x;
+  long height = default_size.y;
+  pConf->Read(_T("ConfigurationWidth"), &width,
+              static_cast<long>(default_size.x));
+  pConf->Read(_T("ConfigurationHeight"), &height,
+              static_cast<long>(default_size.y));
+  if (width > 0 && height > 0)
+    SetSize(wxSize(static_cast<int>(width), static_cast<int>(height)));
+
   wxPoint p = GetPosition();
   pConf->Read(_T ( "ConfigurationX" ), &p.x, p.x);
   pConf->Read(_T ( "ConfigurationY" ), &p.y, p.y);
@@ -215,6 +241,9 @@ ConfigurationDialog::~ConfigurationDialog() {
   wxPoint p = GetPosition();
   pConf->Write(_T ( "ConfigurationX" ), p.x);
   pConf->Write(_T ( "ConfigurationY" ), p.y);
+  const wxSize size = GetSize();
+  pConf->Write(_T("ConfigurationWidth"), size.x);
+  pConf->Write(_T("ConfigurationHeight"), size.y);
 }
 
 void ConfigurationDialog::EditBoat() {
@@ -349,8 +378,12 @@ void ConfigurationDialog::UpdateRoutingTimeModeControls() {
   m_sArrivalSafetyMarginMinutes->Show(arrival);
   m_staticTextArrivalSafetyMarginMinutes->Show(arrival);
   m_tArrivalPlanningHint->Show(arrival);
+  const wxSize current_size = GetSize();
   Layout();
   Fit();
+  const wxSize fitted_size = GetSize();
+  SetSize(wxSize(std::max(current_size.x, fitted_size.x),
+                 std::max(current_size.y, fitted_size.y)));
 }
 
 void ConfigurationDialog::OnStartFromBoat(wxCommandEvent& event) {
