@@ -84,6 +84,22 @@ static std::set<wxString> s_chartSafetyPreparedScoutScopes;
 
 namespace {
 
+constexpr int kDefaultWeatherRoutingWidthDip = 1260;
+constexpr int kDefaultWeatherRoutingHeightDip = 500;
+constexpr int kWeatherRoutingScreenMarginDip = 40;
+
+wxSize DefaultWeatherRoutingDialogSize(wxWindow* window) {
+  const wxSize best = window->GetBestSize();
+  const wxSize preferred = window->FromDIP(
+      wxSize(kDefaultWeatherRoutingWidthDip, kDefaultWeatherRoutingHeightDip));
+  const int margin = window->FromDIP(kWeatherRoutingScreenMarginDip);
+  const wxSize display = wxGetClientDisplayRect().GetSize();
+  const wxSize available(std::max(1, display.x - margin),
+                         std::max(1, display.y - margin));
+  return wxSize(std::min(available.x, std::max(best.x, preferred.x)),
+                std::min(available.y, std::max(best.y, preferred.y)));
+}
+
 class ScopedRoutePreparation {
 public:
   explicit ScopedRoutePreparation(int& depth) : depth_(depth) { ++depth_; }
@@ -1293,9 +1309,9 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
   pConf->Read(_T ( "DialogX" ), &p.x, p.x);
   pConf->Read(_T ( "DialogY" ), &p.y, p.y);
 
-  m_size = GetSize();
-  pConf->Read(_T ( "DialogWidth" ), &m_size.x, wxMax(m_size.x, 100));
-  pConf->Read(_T ( "DialogHeight" ), &m_size.y, wxMax(m_size.y, 100));
+  m_size = DefaultWeatherRoutingDialogSize(this);
+  pConf->Read(_T("DialogWidth"), &m_size.x, m_size.x);
+  pConf->Read(_T("DialogHeight"), &m_size.y, m_size.y);
 #ifdef __OCPN__ANDROID__
   wxSize sz = ::wxGetDisplaySize();
   m_size.x = sz.x * 3 / 5;
