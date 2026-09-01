@@ -342,6 +342,14 @@ public:
   wxCheckBox* m_cbDisplayComfort;
   wxSpinCtrl* m_sConcurrentThreads;
   wxCheckListBox* m_cblFields;
+#ifdef __WXMSW__
+  wxStaticText* m_staticText166;
+  wxSpinCtrlDouble* m_spinThreshold;
+  wxCheckBox* m_checkSuppressAlert;
+  wxCheckBox* m_checkLogUsage;
+  wxStaticText* m_staticText167;
+  wxGauge* m_gaugeMemoryUsage;
+#endif
 
   SettingsDialogBase(wxWindow* parent, wxWindowID id = wxID_ANY,
                      const wxString& title = _("Weather Routing Settings"),

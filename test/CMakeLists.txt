@@ -75,6 +75,7 @@ set(TEST_SRC
     ${WEATHER_ROUTING_SOURCE_DIR}/src/ChartSafetyAtlas.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/ChartHazardEvaluator.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/georef.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/src/cutil.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/OceanPrewarmPolicy.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/ReachabilityPrewarmPolicy.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/Utilities.cpp

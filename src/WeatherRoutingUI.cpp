@@ -953,6 +953,53 @@ SettingsDialogBase::SettingsDialogBase(wxWindow* parent, wxWindowID id,
 
   fgSizer18->Add(fgSizer82, 1, wxEXPAND, 5);
 
+#ifdef __WXMSW__
+  wxStaticBoxSizer* sbSizer30 = new wxStaticBoxSizer(
+      new wxStaticBox(m_scrolledWindow4, wxID_ANY,
+                      _("Address Space Monitor")),
+      wxVERTICAL);
+
+  m_staticText166 = new wxStaticText(
+      sbSizer30->GetStaticBox(), wxID_ANY, _("Alert Threshold Percent:"),
+      wxDefaultPosition, wxDefaultSize, 0);
+  m_staticText166->Wrap(-1);
+  sbSizer30->Add(m_staticText166, 0, wxALL, 5);
+
+  m_spinThreshold = new wxSpinCtrlDouble(
+      sbSizer30->GetStaticBox(), wxID_ANY, wxEmptyString, wxDefaultPosition,
+      wxDefaultSize, wxSP_ARROW_KEYS, 50, 95, 80, 1);
+  m_spinThreshold->SetDigits(1);
+  sbSizer30->Add(m_spinThreshold, 0, wxALL, 5);
+
+  m_checkSuppressAlert = new wxCheckBox(
+      sbSizer30->GetStaticBox(), wxID_ANY,
+      _("Do not show address space alert"), wxDefaultPosition,
+      wxDefaultSize, 0);
+  sbSizer30->Add(m_checkSuppressAlert, 0, wxALL, 5);
+
+  m_checkLogUsage = new wxCheckBox(
+      sbSizer30->GetStaticBox(), wxID_ANY,
+      _("Log address space usage to opencpn.log"), wxDefaultPosition,
+      wxDefaultSize, 0);
+  sbSizer30->Add(m_checkLogUsage, 0, wxALL, 5);
+
+  wxBoxSizer* usageSizer = new wxBoxSizer(wxHORIZONTAL);
+  m_staticText167 =
+      new wxStaticText(sbSizer30->GetStaticBox(), wxID_ANY, _("Usage:"),
+                       wxDefaultPosition, wxDefaultSize, 0);
+  m_staticText167->Wrap(-1);
+  usageSizer->Add(m_staticText167, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
+  sbSizer30->Add(usageSizer, 0, wxEXPAND, 5);
+
+  m_gaugeMemoryUsage =
+      new wxGauge(sbSizer30->GetStaticBox(), wxID_ANY, 100,
+                  wxDefaultPosition, wxDefaultSize, wxGA_HORIZONTAL);
+  m_gaugeMemoryUsage->SetValue(0);
+  sbSizer30->Add(m_gaugeMemoryUsage, 0, wxALL | wxEXPAND, 5);
+
+  fgSizer18->Add(sbSizer30, 1, wxEXPAND | wxALL, 5);
+#endif
+
   m_scrolledWindow4->SetSizer(fgSizer18);
   m_scrolledWindow4->Layout();
   fgSizer18->Fit(m_scrolledWindow4);
