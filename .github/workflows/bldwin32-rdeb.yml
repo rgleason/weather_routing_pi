@@ -20,6 +20,20 @@ jobs:
         with:
           arch: x86
 
+      - name: Install gettext tools
+        shell: pwsh
+        run: |
+          choco install gettext --version 1.0.0.20260310 -y --no-progress
+          if ($LASTEXITCODE -ne 0) {
+            Start-Sleep -Seconds 10
+            choco install gettext --version 1.0.0.20260310 -y --no-progress
+          }
+          if ($LASTEXITCODE -ne 0) {
+            throw "Chocolatey could not install gettext"
+          }
+          Get-Command msgfmt
+          Get-Command msgmerge
+
       - name: Prepare vcpkg (x86-windows)
         uses: lukka/run-vcpkg@v11
         with:
