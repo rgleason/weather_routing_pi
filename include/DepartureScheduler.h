@@ -37,6 +37,18 @@ inline bool ShouldPromoteDepartureOptimizationCandidate(
   return optimization_enabled && optimization_candidate;
 }
 
+// Generated departure candidates carry runtime-only family metadata.  An
+// arrival-time route has its own adaptive departure search and can never
+// remain a member of the fixed departure-optimisation batch.  Editing a
+// candidate into arrival mode must therefore promote it unconditionally,
+// even though generated candidates have optimization_enabled set to false.
+inline bool ShouldPromoteDepartureOptimizationCandidateForTimeMode(
+    bool route_by_arrival, bool optimization_enabled,
+    bool optimization_candidate) {
+  return optimization_candidate &&
+         (route_by_arrival || optimization_enabled);
+}
+
 inline int AutomaticDepartureWorkerLimit(int logical_cpu_count) {
   if (logical_cpu_count <= 0)
     return kFallbackAutomaticParallelDepartureCandidates;

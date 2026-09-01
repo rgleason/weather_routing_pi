@@ -49,6 +49,7 @@ set(TEST_SRC
     KeyedRequestCache_tests.cpp
     OceanPrewarmPolicy_tests.cpp
     ReachabilityPrewarmPolicy_tests.cpp
+    RouteDisplayPolicy_tests.cpp
     Polar_tests.cpp
     PolygonRegion_tests.cpp
     Utilities_tests.cpp

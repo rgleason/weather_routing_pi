@@ -896,17 +896,21 @@ void ConfigurationDialog::Update() {
     if (!routeByArrival) {
       GET_CHECKBOX(UseCurrentTime);
       GET_CHECKBOX(DepartureTimeOptimizationEnabled);
-      if (weather_routing::ShouldPromoteDepartureOptimizationCandidate(
-              configuration.DepartureTimeOptimizationEnabled,
-              configuration.DepartureTimeOptimizationCandidate)) {
-        wxLogMessage(
-            "WR_DEPARTURE_PROMOTE source=configuration old_group=\"%s\" "
-            "old_offset_minutes=%d start=\"%s\" end=\"%s\".",
-            configuration.DepartureTimeOptimizationGroupId,
-            configuration.DepartureTimeOptimizationOffsetMinutes,
-            configuration.Start, configuration.End);
-        configuration.PromoteDepartureTimeOptimizationCandidate();
-      }
+    }
+    if (weather_routing::
+            ShouldPromoteDepartureOptimizationCandidateForTimeMode(
+                routeByArrival,
+                configuration.DepartureTimeOptimizationEnabled,
+                configuration.DepartureTimeOptimizationCandidate)) {
+      wxLogMessage(
+          "WR_DEPARTURE_PROMOTE source=configuration transition=%s "
+          "old_group=\"%s\" old_offset_minutes=%d start=\"%s\" end=\"%s\".",
+          routeByArrival ? wxString("arrival")
+                         : wxString("departure-optimization"),
+          configuration.DepartureTimeOptimizationGroupId,
+          configuration.DepartureTimeOptimizationOffsetMinutes,
+          configuration.Start, configuration.End);
+      configuration.PromoteDepartureTimeOptimizationCandidate();
     }
     if (NO_EDITED_CONTROLS ||
         std::find(m_edited_controls.begin(), m_edited_controls.end(),

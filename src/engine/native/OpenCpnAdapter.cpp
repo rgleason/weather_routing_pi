@@ -817,7 +817,7 @@ wr::RoutingRequest BuildRequest(RouteMapOverlay& overlay,
   request.options.reverseHorizon = wr::Duration{static_cast<std::int64_t>(
       std::max(24.0, configuration.ReverseReachabilityHorizonHours) * 3600.0)};
   request.options.graphCorridorWidthNm =
-      std::max(40.0, wr::distanceNm(request.start, request.destination) * 0.45);
+      weather_routing::SelectInitialGraphCorridorWidthNm(routeDistance);
   // The inexpensive first graph phase remains tightly focused. If it cannot
   // solve the passage, widen to the complete user-configured
   // MaxDivertedCourse envelope. ConstraintChecker is authoritative for that

@@ -103,6 +103,33 @@ public:
   std::string identity() const override { return "blocking-meridian"; }
 };
 
+class EndpointDepthProvider final : public LandAndBoundaryProvider {
+public:
+  EndpointDepthProvider(GeoPoint shallowPoint, double shallowDepthMetres,
+                        double otherDepthMetres = 20.0)
+      : shallowPoint_(shallowPoint),
+        shallowDepthMetres_(shallowDepthMetres),
+        otherDepthMetres_(otherDepthMetres) {}
+
+  bool pointForbidden(GeoPoint) const override { return false; }
+  bool segmentForbidden(GeoPoint, GeoPoint, double) const override {
+    return false;
+  }
+  double distanceToForbiddenNm(GeoPoint) const override {
+    return std::numeric_limits<double>::infinity();
+  }
+  std::optional<double> depthMetres(GeoPoint point) const override {
+    return distanceNm(point, shallowPoint_) < 1e-6 ? shallowDepthMetres_
+                                                   : otherDepthMetres_;
+  }
+  std::string identity() const override { return "endpoint-depth"; }
+
+private:
+  GeoPoint shallowPoint_;
+  double shallowDepthMetres_;
+  double otherDepthMetres_;
+};
+
 class MeridianBarrierWithOpenEndsProvider final
     : public LandAndBoundaryProvider {
 public:
@@ -1143,10 +1170,17 @@ TEST(ModernNativeEngine, UnboundedFinalGraphStageRemovesGraphOnlyLimit) {
       << " labels=" << result.diagnostics.graphLabels
       << " closest=" << result.diagnostics.closestApproachNm;
   ASSERT_EQ(result.solverPath, SolverPath::GraphFallback);
-  ASSERT_EQ(result.diagnostics.graphCorridorWidthsNm.size(), 3U);
+  ASSERT_EQ(result.diagnostics.graphCorridorWidthsNm.size(), 4U);
   EXPECT_DOUBLE_EQ(result.diagnostics.graphCorridorWidthsNm[0], 1.0);
   EXPECT_DOUBLE_EQ(result.diagnostics.graphCorridorWidthsNm[1], 2.0);
-  EXPECT_TRUE(std::isinf(result.diagnostics.graphCorridorWidthsNm[2]));
+  EXPECT_DOUBLE_EQ(result.diagnostics.graphCorridorWidthsNm[2], 4.0);
+  EXPECT_TRUE(std::isinf(result.diagnostics.graphCorridorWidthsNm[3]));
+  EXPECT_TRUE(std::any_of(
+      result.diagnostics.stageStopReasons.begin(),
+      result.diagnostics.stageStopReasons.end(), [](const std::string& reason) {
+        return reason.find("forward isochrone focused corridor") !=
+               std::string::npos;
+      }));
   double maximumCrossTrackNm = 0.0;
   for (const auto& leg : result.legs)
     maximumCrossTrackNm =
@@ -1206,6 +1240,23 @@ TEST(ModernNativeEngine, RejectsGateBeyondConfiguredWaitingBound) {
       request.departure + std::chrono::hours{2});
   const auto result = RoutingEngine{}.route(request, environment);
   EXPECT_FALSE(Successful(result.status));
+}
+
+TEST(ModernNativeEngine, RejectsShallowDestinationBeforeSearch) {
+  auto request = TestRequest();
+  request.constraints.minimumDepthMetres = 1.7;
+  const auto boundaries = std::make_shared<EndpointDepthProvider>(
+      request.destination, 1.2);
+
+  const auto result =
+      RoutingEngine{}.route(request, TestEnvironment(boundaries));
+
+  EXPECT_EQ(result.status, RoutingStatus::InvalidDestination);
+  EXPECT_EQ(result.diagnostics.generatedStates, 0U);
+  EXPECT_NE(result.message.find("destination depth 1.2 m"),
+            std::string::npos);
+  EXPECT_NE(result.message.find("configured minimum 1.7 m"),
+            std::string::npos);
 }
 
 TEST(ModernNativeEngine, FinalApproachMayOutlastSeveralSearchSteps) {

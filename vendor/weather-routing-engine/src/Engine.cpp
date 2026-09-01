@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <iterator>
 #include <map>
 #include <numbers>
 #include <queue>
@@ -203,12 +204,17 @@ std::vector<double> graphCorridorSchedule(const RoutingOptions& options) {
   std::vector<double> widths{initial};
   if (maximum <= initial + 1e-9) return widths;
 
-  // One intermediate doubling retains the fast, focused graph behaviour for
-  // ordinary passages. The final stage then covers the complete configured
-  // envelope (or becomes unbounded when an external geometric constraint,
-  // such as OpenCPN's MaxDivertedCourse, is authoritative).
-  const double intermediate = std::max(initial + 1.0, initial * 2.0);
-  if (intermediate < maximum) widths.push_back(intermediate);
+  // Two intermediate doublings retain the fast, focused graph behaviour for
+  // ordinary passages without jumping directly from a local coastal search
+  // to an unbounded ocean-wide search. The final stage still covers the
+  // complete configured envelope (or becomes unbounded when an external
+  // geometric constraint, such as OpenCPN's MaxDivertedCourse, is
+  // authoritative).
+  double intermediate = std::max(initial + 1.0, initial * 2.0);
+  for (int stage = 0; stage < 2 && intermediate < maximum; ++stage) {
+    widths.push_back(intermediate);
+    intermediate = std::max(intermediate + 1.0, intermediate * 2.0);
+  }
   widths.push_back(maximum);
   return widths;
 }
@@ -1152,6 +1158,26 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
   unsigned stalledApproachLayers = 0;
   double lastApproachProgressNm = std::numeric_limits<double>::infinity();
   RoutingStatus dataFailure = RoutingStatus::Complete;
+  const double focusedCorridorCoreWidthNm =
+      request.options.graphCorridorWidthNm;
+  // Preserve a sparse fringe for routes which initially need to turn away
+  // from the destination around a coastal obstruction.  Keeping the fringe
+  // sparse is important: every survivor otherwise incurs an authoritative
+  // chart/depth query before ordinary layer pruning can reject it.
+  const double focusedCorridorWidthNm =
+      focusedCorridorCoreWidthNm * 1.5;
+  constexpr std::size_t kDetourFringeCandidatesPerSide = 128;
+  const bool focusForwardBeforeGraphRecovery =
+      request.options.useGraphFallback &&
+      std::isfinite(focusedCorridorWidthNm) && focusedCorridorWidthNm > 0.0;
+  if (focusForwardBeforeGraphRecovery) {
+    diagnostics.stageStopReasons.push_back(
+        "forward isochrone focused corridor: full core " +
+        graphCorridorDescription(focusedCorridorCoreWidthNm) +
+        ", sparse detour fringe to " +
+        graphCorridorDescription(focusedCorridorWidthNm) +
+        "; wider states deferred to progressive graph recovery");
+  }
   while (!result.retained.empty() &&
          result.nodes[result.retained.front()].time < deadline) {
     if (request.cancellation.cancelled()) {
@@ -1328,6 +1354,52 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
       }
       result.solution = result.alternativeSolutions.front();
       return result;
+    }
+    if (focusForwardBeforeGraphRecovery) {
+      std::vector<Node> coreCandidates;
+      std::vector<Node> portFringeCandidates;
+      std::vector<Node> starboardFringeCandidates;
+      coreCandidates.reserve(candidates.size());
+      for (auto& candidate : candidates) {
+        const double crossTrack = crossTrackDistanceNm(
+            request.start, request.destination, candidate.position);
+        if (std::abs(crossTrack) <= focusedCorridorCoreWidthNm) {
+          coreCandidates.push_back(std::move(candidate));
+        } else if (std::abs(crossTrack) <= focusedCorridorWidthNm) {
+          (crossTrack < 0.0 ? portFringeCandidates
+                            : starboardFringeCandidates)
+              .push_back(std::move(candidate));
+        }
+      }
+      const auto retainBestFringe = [&](std::vector<Node>& fringe) {
+        std::stable_sort(fringe.begin(), fringe.end(),
+                         [&](const Node& a, const Node& b) {
+                           return std::tuple{
+                                      distanceNm(a.position,
+                                                 request.destination),
+                                      stateCost(request, a), a.predecessor} <
+                                  std::tuple{
+                                      distanceNm(b.position,
+                                                 request.destination),
+                                      stateCost(request, b), b.predecessor};
+                         });
+        if (fringe.size() > kDetourFringeCandidatesPerSide)
+          fringe.resize(kDetourFringeCandidatesPerSide);
+      };
+      retainBestFringe(portFringeCandidates);
+      retainBestFringe(starboardFringeCandidates);
+      const std::size_t before = candidates.size();
+      candidates.clear();
+      candidates.reserve(coreCandidates.size() + portFringeCandidates.size() +
+                         starboardFringeCandidates.size());
+      std::move(coreCandidates.begin(), coreCandidates.end(),
+                std::back_inserter(candidates));
+      std::move(portFringeCandidates.begin(), portFringeCandidates.end(),
+                std::back_inserter(candidates));
+      std::move(starboardFringeCandidates.begin(),
+                starboardFringeCandidates.end(),
+                std::back_inserter(candidates));
+      diagnostics.pruned.outsideCorridor += before - candidates.size();
     }
     auto retainedNodes = pruneLayer(request, environment, std::move(candidates),
                                     labelCap, diagnostics);
@@ -2555,6 +2627,34 @@ RoutingResult RoutingEngine::routeMember(
     result.status = RoutingStatus::InvalidDestination;
     result.message = "destination is inside a forbidden area";
     return result;
+  }
+  if (request.constraints.minimumDepthMetres &&
+      environment.landAndBoundaries) {
+    const double minimumDepth = *request.constraints.minimumDepthMetres;
+    const auto startDepth =
+        environment.landAndBoundaries->depthMetres(request.start);
+    if (startDepth && *startDepth < minimumDepth) {
+      std::ostringstream message;
+      message << "start depth " << *startDepth
+              << " m is shallower than configured minimum " << minimumDepth
+              << " m";
+      result.status = RoutingStatus::InvalidStart;
+      result.message = message.str();
+      result.diagnostics.stageStopReasons.push_back(result.message);
+      return result;
+    }
+    const auto destinationDepth =
+        environment.landAndBoundaries->depthMetres(request.destination);
+    if (destinationDepth && *destinationDepth < minimumDepth) {
+      std::ostringstream message;
+      message << "destination depth " << *destinationDepth
+              << " m is shallower than configured minimum " << minimumDepth
+              << " m";
+      result.status = RoutingStatus::InvalidDestination;
+      result.message = message.str();
+      result.diagnostics.stageStopReasons.push_back(result.message);
+      return result;
+    }
   }
   const auto check = preflight(request, environment);
   result.preflight = check;

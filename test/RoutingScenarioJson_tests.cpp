@@ -51,6 +51,12 @@ TEST(RoutingScenarioJson, LoadsSelfContainedGuiRegressionSettings) {
   EXPECT_DOUBLE_EQ(40.0, scenario.route.headingFromDegrees);
   EXPECT_DOUBLE_EQ(160.0, scenario.route.headingToDegrees);
   EXPECT_DOUBLE_EQ(5.0, scenario.route.headingStepDegrees);
+  EXPECT_TRUE(scenario.route.hasMaxDivertedCourseDegrees);
+  EXPECT_DOUBLE_EQ(180.0, scenario.route.maxDivertedCourseDegrees);
+  EXPECT_TRUE(scenario.route.hasMaxCourseAngleDegrees);
+  EXPECT_DOUBLE_EQ(180.0, scenario.route.maxCourseAngleDegrees);
+  EXPECT_TRUE(scenario.route.hasMaxSearchAngleDegrees);
+  EXPECT_DOUBLE_EQ(180.0, scenario.route.maxSearchAngleDegrees);
   EXPECT_TRUE(scenario.route.optimizeTacking);
   EXPECT_DOUBLE_EQ(1.0, scenario.route.upwindEfficiency);
   EXPECT_DOUBLE_EQ(1.0, scenario.route.downwindEfficiency);

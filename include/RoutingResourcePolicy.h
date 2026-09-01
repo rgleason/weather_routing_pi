@@ -6,6 +6,8 @@
 #define WEATHER_ROUTING_RESOURCE_POLICY_H
 
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
 
 #include "supercpn/weather_routing/ResourcePolicy.h"
 
@@ -44,6 +46,18 @@ inline std::uint64_t ScaleRoutingResource(std::uint64_t base, double scale,
                                           int effort_percent) {
   return supercpn::weather_routing::scaleRoutingResource(
       base, scale, static_cast<unsigned>(std::max(0, effort_percent)));
+}
+
+// Begin graph recovery close to the direct passage and widen only when the
+// focused search is exhausted.  A fixed 40 NM initial half-width made short
+// coastal routes pay for a time-dependent search over thousands of square
+// miles before their local detour had been explored.  The graph engine still
+// widens to the complete configured envelope, so this is an ordering policy,
+// not a new route constraint.
+inline double SelectInitialGraphCorridorWidthNm(double route_distance_nm) {
+  const double finite_distance =
+      std::isfinite(route_distance_nm) ? route_distance_nm : 100.0;
+  return std::clamp(finite_distance * 0.20, 6.0, 20.0);
 }
 
 inline RoutingResourcePolicy SelectRoutingResourcePolicy(

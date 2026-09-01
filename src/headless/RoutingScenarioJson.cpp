@@ -188,6 +188,18 @@ bool LoadRoutingScenarioJson(const wxString& path,
       scenario.route.headingStepDegrees = double_value;
       scenario.route.hasHeadingStepDegrees = true;
     }
+    if (JsonDouble(route, "maxDivertedCourseDegrees", double_value)) {
+      scenario.route.maxDivertedCourseDegrees = double_value;
+      scenario.route.hasMaxDivertedCourseDegrees = true;
+    }
+    if (JsonDouble(route, "maxCourseAngleDegrees", double_value)) {
+      scenario.route.maxCourseAngleDegrees = double_value;
+      scenario.route.hasMaxCourseAngleDegrees = true;
+    }
+    if (JsonDouble(route, "maxSearchAngleDegrees", double_value)) {
+      scenario.route.maxSearchAngleDegrees = double_value;
+      scenario.route.hasMaxSearchAngleDegrees = true;
+    }
     if (JsonDouble(route, "maxTrueWindKnots", double_value)) {
       scenario.route.maxTrueWindKnots = double_value;
       scenario.route.hasMaxTrueWindKnots = true;

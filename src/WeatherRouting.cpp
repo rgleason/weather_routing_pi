@@ -50,6 +50,7 @@
 #include "ChartSafetyPolicy.h"
 #include "OceanPrewarmPolicy.h"
 #include "ReachabilityPrewarmPolicy.h"
+#include "RouteDisplayPolicy.h"
 #include "DepartureScheduler.h"
 #include "RoutingResourcePolicy.h"
 #include "WeatherDataProvider.h"
@@ -491,6 +492,68 @@ static PlugInSegmentSafetyOptions ChartSafetySearchRouteMaskOptions(
   // well as the configured final-validation mask.
   if (options.safety_margin_nm > 0.0) options.safety_margin_nm += 0.01;
   return options;
+}
+
+static bool EndpointMeetsMinimumDepth(
+    const RouteMapConfiguration& configuration, double latitude,
+    double longitude, const wxString& endpoint_name, wxString* failure_reason) {
+  if (configuration.MinimumDepthMeters <= 0.0) return true;
+
+  PlugInSegmentSafetyOptions options = {};
+  options.struct_size = sizeof(options);
+  options.safety_margin_nm = 0.0;
+  options.check_land = 1;
+  options.allow_gshhs_fallback = 0;
+  weather_routing::ApplyMinimumDepthPolicy(
+      options, configuration.MinimumDepthMeters);
+
+  PlugInSegmentSafetyResult result = {};
+  result.struct_size = sizeof(result);
+  bool queried = weather_routing::chart_safety_host::CheckSegment(
+      latitude, longitude, latitude, longitude, &options, &result);
+  for (int retry = 0;
+       queried && result.status == PI_SEGMENT_SAFETY_PENDING_DATA && retry < 4;
+       ++retry) {
+    PlugInSegmentSafetyRequestServiceResult service = {};
+    service.struct_size = sizeof(service);
+    weather_routing::chart_safety_host::ServicePendingRequests(
+        8, 250, &service);
+    result = {};
+    result.struct_size = sizeof(result);
+    queried = weather_routing::chart_safety_host::CheckSegment(
+        latitude, longitude, latitude, longitude, &options, &result);
+  }
+  if (queried && result.status == PI_SEGMENT_SAFETY_SAFE) return true;
+
+  if (failure_reason) {
+    if (queried && result.status == PI_SEGMENT_SAFETY_TOO_SHALLOW &&
+        result.has_depth && std::isfinite(result.hit_depth_m)) {
+      *failure_reason = wxString::Format(
+          _("%s charted depth %.1f m is below the configured minimum %.1f m"),
+          endpoint_name, result.hit_depth_m,
+          configuration.MinimumDepthMeters);
+    } else if (queried &&
+               result.status == PI_SEGMENT_SAFETY_UNKNOWN_DEPTH) {
+      *failure_reason = wxString::Format(
+          _("%s has no charted depth proving the configured minimum %.1f m"),
+          endpoint_name, configuration.MinimumDepthMeters);
+    } else {
+      *failure_reason = wxString::Format(
+          _("%s does not satisfy the configured minimum depth %.1f m"),
+          endpoint_name, configuration.MinimumDepthMeters);
+    }
+  }
+  wxLogMessage(
+      "WR_MINIMUM_DEPTH_ENDPOINT_REJECTED route=\"%s -> %s\" "
+      "endpoint=\"%s\" lat=%.8f lon=%.8f minimum_depth_m=%.3f "
+      "queried=%d status=%d has_depth=%d hit_depth_m=%.3f message=\"%s\"",
+      configuration.Start, configuration.End, endpoint_name, latitude,
+      longitude, configuration.MinimumDepthMeters, queried ? 1 : 0,
+      queried ? result.status : PI_SEGMENT_SAFETY_ERROR,
+      queried ? result.has_depth : 0,
+      queried ? result.hit_depth_m : std::numeric_limits<double>::quiet_NaN(),
+      queried ? wxString::FromUTF8(result.message) : wxString("unavailable"));
+  return false;
 }
 
 static bool PrewarmChartSafetyHazardSnapshot(
@@ -4186,6 +4249,15 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
           if (scenario.route.hasHeadingStepDegrees)
             configuration.ByDegrees =
                 wxMax(0.1, scenario.route.headingStepDegrees);
+          if (scenario.route.hasMaxDivertedCourseDegrees)
+            configuration.MaxDivertedCourse =
+                scenario.route.maxDivertedCourseDegrees;
+          if (scenario.route.hasMaxCourseAngleDegrees)
+            configuration.MaxCourseAngle =
+                scenario.route.maxCourseAngleDegrees;
+          if (scenario.route.hasMaxSearchAngleDegrees)
+            configuration.MaxSearchAngle =
+                scenario.route.maxSearchAngleDegrees;
           if (scenario.route.hasMaxTrueWindKnots)
             configuration.MaxTrueWindKnots = scenario.route.maxTrueWindKnots;
           if (scenario.route.hasMaxApparentWindKnots)
@@ -8248,9 +8320,10 @@ void WeatherRouting::UpdateRouteMap(RouteMapOverlay* routemapoverlay) {
 }
 
 static bool IsDisplayMetricAvailable(RouteMapOverlay* routemapoverlay) {
-  return routemapoverlay && routemapoverlay->Finished() &&
-         routemapoverlay->ReachedDestination() &&
-         routemapoverlay->EndTime().IsValid();
+  return routemapoverlay && weather_routing::HasPublishableRouteResult(
+                                routemapoverlay->Finished(),
+                                routemapoverlay->ReachedDestination(),
+                                routemapoverlay->EndTime().IsValid());
 }
 
 static wxString FormatRouteMetric(RouteMapOverlay* routemapoverlay,
@@ -8483,11 +8556,12 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
     End = configuration.End;
 
     wxDateTime endtime = routemapoverlay->EndTime();
+    const bool metricsAvailable = IsDisplayMetricAvailable(routemapoverlay);
     if (arrivalPlanning && configuration.PlannedArrivalTime.IsValid()) {
       const wxString plannedArrival = wr->m_SettingsDialog.FormatTime(
           configuration.PlannedArrivalTime, _T("%x %H:%M"));
       EndTime = wxString::Format(_("Target %s"), plannedArrival);
-    } else if (endtime.IsValid()) {
+    } else if (metricsAvailable) {
       EndTime = wr->m_SettingsDialog.FormatTime(endtime, _T("%x %H:%M"));
     } else {
       EndTime = _T("N/A");
@@ -8496,7 +8570,6 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
     // REFACTORING
     // I decided to dedicate a function for displaying the difference
     // between two TimeDate as it is usefull in some other part of the code.
-    bool metricsAvailable = IsDisplayMetricAvailable(routemapoverlay);
     Time = metricsAvailable ? calculateTimeDelta(starttime, endtime) : _("N/A");
 
     Distance =
@@ -10507,6 +10580,19 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
   ScopedRoutePreparation route_preparation(m_RoutePreparationDepth);
 
   RouteMapConfiguration configuration = routemapoverlay->GetConfiguration();
+  const bool routeByArrival =
+      configuration.TimeMode ==
+      RouteMapConfiguration::ROUTE_BY_ARRIVAL_TIME;
+  if (routeByArrival && configuration.DepartureTimeOptimizationCandidate) {
+    wxLogMessage(
+        "WR_DEPARTURE_PROMOTE source=route-start transition=arrival "
+        "old_group=\"%s\" old_offset_minutes=%d start=\"%s\" end=\"%s\".",
+        configuration.DepartureTimeOptimizationGroupId,
+        configuration.DepartureTimeOptimizationOffsetMinutes,
+        configuration.Start, configuration.End);
+    configuration.PromoteDepartureTimeOptimizationCandidate();
+    routemapoverlay->SetConfiguration(configuration);
+  }
   bool boatHasMoved = false;
   if (routemapoverlay->Finished() &&
       configuration.StartType == RouteMapConfiguration::START_FROM_BOAT) {
@@ -10523,9 +10609,6 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
   // 1. The route has completed, or
   // 2. Route is from boat and boat has moved, or
   // 3. Configuration specifies to use current start time.
-  const bool routeByArrival =
-      configuration.TimeMode ==
-      RouteMapConfiguration::ROUTE_BY_ARRIVAL_TIME;
   if (routemapoverlay->Finished() &&
       routemapoverlay->GetWeatherForecastStatus() == WEATHER_FORECAST_SUCCESS &&
       !boatHasMoved && (!configuration.UseCurrentTime || routeByArrival)) {
@@ -10773,6 +10856,20 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
           "WR_ROUTE_MASK_PREWARM_DEFERRED context=route start "
           "route=\"%s to %s\" policy=scout-or-bounded-tile-refinement",
           configuration.Start, configuration.End);
+    }
+    if (!configuration.chart_safety_scout_preview &&
+        configuration.MinimumDepthMeters > 0.0 &&
+        use_experimental_chart_safety && enforce_experimental_chart_safety) {
+      wxString endpoint_failure;
+      if (!EndpointMeetsMinimumDepth(
+              configuration, configuration.StartLat, configuration.StartLon,
+              _("Route start"), &endpoint_failure) ||
+          !EndpointMeetsMinimumDepth(
+              configuration, configuration.EndLat, configuration.EndLon,
+              _("Route destination"), &endpoint_failure)) {
+        routemapoverlay->SetError(endpoint_failure);
+        return;
+      }
     }
     if (!s_loggedDetectLandGshhsWarning) {
       wxLogMessage(

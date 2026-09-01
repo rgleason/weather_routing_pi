@@ -162,6 +162,8 @@ for a wider search on difficult routes.
 - `route.timeStepSeconds`
 - `route.headingFromDegrees`, `route.headingToDegrees`,
   `route.headingStepDegrees`
+- `route.maxDivertedCourseDegrees`, `route.maxCourseAngleDegrees`,
+  `route.maxSearchAngleDegrees`
 - `route.maxTrueWindKnots`, `route.maxApparentWindKnots`
 - `route.optimizeTacking`, `route.upwindEfficiency`,
   `route.downwindEfficiency`, `route.nightEfficiency`

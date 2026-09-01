@@ -24,6 +24,30 @@ TEST(DepartureScheduler,
       true, true));
 }
 
+TEST(DepartureScheduler,
+     ArrivalModeAlwaysPromotesAReusedDepartureCandidate) {
+  EXPECT_FALSE(
+      weather_routing::
+          ShouldPromoteDepartureOptimizationCandidateForTimeMode(false, false,
+                                                                 false));
+  EXPECT_FALSE(
+      weather_routing::
+          ShouldPromoteDepartureOptimizationCandidateForTimeMode(true, false,
+                                                                 false));
+  EXPECT_FALSE(
+      weather_routing::
+          ShouldPromoteDepartureOptimizationCandidateForTimeMode(false, false,
+                                                                 true));
+  EXPECT_TRUE(
+      weather_routing::
+          ShouldPromoteDepartureOptimizationCandidateForTimeMode(false, true,
+                                                                 true));
+  EXPECT_TRUE(
+      weather_routing::
+          ShouldPromoteDepartureOptimizationCandidateForTimeMode(true, false,
+                                                                 true));
+}
+
 TEST(DepartureScheduler, BoundsOnlyDepartureCandidateBatches) {
   EXPECT_EQ(weather_routing::EffectiveRouteWorkerLimit(20, true), 4);
   EXPECT_EQ(weather_routing::EffectiveRouteWorkerLimit(2, true), 2);

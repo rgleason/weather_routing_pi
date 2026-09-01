@@ -98,3 +98,16 @@ TEST(RoutingResourcePolicy, ScoutUsesDeterministicWorkIndependentOfEffort) {
   EXPECT_EQ(standard.maximum_retained_states,
             exhaustive.maximum_retained_states);
 }
+
+TEST(RoutingResourcePolicy, ShortRoutesBeginWithFocusedGraphCorridor) {
+  EXPECT_DOUBLE_EQ(6.0,
+                   weather_routing::SelectInitialGraphCorridorWidthNm(10.0));
+  EXPECT_DOUBLE_EQ(8.0,
+                   weather_routing::SelectInitialGraphCorridorWidthNm(40.0));
+  EXPECT_DOUBLE_EQ(20.0,
+                   weather_routing::SelectInitialGraphCorridorWidthNm(100.0));
+  EXPECT_DOUBLE_EQ(20.0,
+                   weather_routing::SelectInitialGraphCorridorWidthNm(500.0));
+  EXPECT_DOUBLE_EQ(
+      20.0, weather_routing::SelectInitialGraphCorridorWidthNm(NAN));
+}

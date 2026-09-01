@@ -68,6 +68,12 @@ struct RoutingScenarioRouteSettings {
   bool hasHeadingToDegrees;
   double headingStepDegrees;
   bool hasHeadingStepDegrees;
+  double maxDivertedCourseDegrees;
+  bool hasMaxDivertedCourseDegrees;
+  double maxCourseAngleDegrees;
+  bool hasMaxCourseAngleDegrees;
+  double maxSearchAngleDegrees;
+  bool hasMaxSearchAngleDegrees;
   double maxTrueWindKnots;
   bool hasMaxTrueWindKnots;
   double maxApparentWindKnots;
@@ -99,6 +105,12 @@ struct RoutingScenarioRouteSettings {
         hasHeadingToDegrees(false),
         headingStepDegrees(0.0),
         hasHeadingStepDegrees(false),
+        maxDivertedCourseDegrees(0.0),
+        hasMaxDivertedCourseDegrees(false),
+        maxCourseAngleDegrees(0.0),
+        hasMaxCourseAngleDegrees(false),
+        maxSearchAngleDegrees(0.0),
+        hasMaxSearchAngleDegrees(false),
         maxTrueWindKnots(0.0),
         hasMaxTrueWindKnots(false),
         maxApparentWindKnots(0.0),
