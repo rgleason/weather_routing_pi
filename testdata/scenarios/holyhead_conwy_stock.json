@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "name": "Holyhead to Conwy stock-host regression",
+  "start": {
+    "name": "Holyhead (outside TSS)",
+    "lat": 53.33780167,
+    "lon": -4.61454000
+  },
+  "end": {
+    "name": "Conwy Bay",
+    "lat": 53.30220000,
+    "lon": -3.90572833
+  },
+  "startTime": "2026-09-02T06:00:00Z",
+  "departureOptimization": {
+    "enabled": false,
+    "beforeMinutes": 0,
+    "afterMinutes": 0,
+    "stepMinutes": 60
+  },
+  "environment": {
+    "useGrib": true,
+    "useCurrents": true
+  },
+  "route": {
+    "boatFile": "~/.opencpn/plugins/weather_routing/boats/Nicholson_35_conservative.xml",
+    "timeStepSeconds": 3600,
+    "routingEffortPercent": 200,
+    "headingFromDegrees": 40,
+    "headingToDegrees": 160,
+    "headingStepDegrees": 5,
+    "maxDivertedCourseDegrees": 180,
+    "maxCourseAngleDegrees": 180,
+    "maxSearchAngleDegrees": 180,
+    "maxTrueWindKnots": 50,
+    "maxApparentWindKnots": 50,
+    "optimizeTacking": true,
+    "upwindEfficiency": 1,
+    "downwindEfficiency": 1,
+    "nightEfficiency": 1,
+    "useMotor": true,
+    "motorSpeedThresholdKnots": 4.5,
+    "motorSpeedKnots": 5.5
+  },
+  "safety": {
+    "mode": "gshhs",
+    "enforce": true,
+    "landMarginNm": 0.4,
+    "minimumDepthM": 0,
+    "persistentCertifiedCacheEnabled": false
+  },
+  "reverseReachability": {
+    "enabled": true,
+    "searchBackIsochrones": 6,
+    "horizonHours": 0,
+    "diagnostics": true
+  }
+}

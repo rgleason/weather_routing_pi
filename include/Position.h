@@ -20,13 +20,11 @@
 #ifndef _WEATHER_ROUTING_POSITION_H_
 #define _WEATHER_ROUTING_POSITION_H_
 
-#include <json/json.h>
 #include <wx/wx.h>
 
 #include "RoutePoint.h"
 #include "IsoRoute.h"
 #include "ConstraintChecker.h"
-
 
 class SkipPosition;
 class WR_GribRecordSet;
@@ -39,15 +37,10 @@ public:
   Position(double latitude, double longitude, Position* p = nullptr,
            double pheading = NAN, double pbearing = NAN, int polar_idx = -1,
            int tack_count = 0, int jibe_count = 0,
-           int sail_plan_change_count = 0, DataMask data_mask = DataMask::NONE,
+           int sail_plan_change_count = 0, int data_mask = 0,
            bool data_deficient = false);
-  Position(const Position* p);
-  /**
-   * Constructs a Position from a JSON object.
-   * See also toJson() method.
-   * @param json JSON object containing Position data.
-   */
-  Position(const Json::Value& json);
+  Position(Position* p);
+
   SkipPosition* BuildSkipList();
 
   /**
@@ -70,42 +63,11 @@ public:
    */
   bool Propagate(IsoRouteList& routelist, RouteMapConfiguration& configuration);
 
-  double Distance(const Position* p) const;
+  double Distance(Position* p);
   // Return the number of times the sail configuration has changed.
-  int SailChanges() const;
+  int SailChanges();
   double PropagateToEnd(RouteMapConfiguration& configuration, double& H,
-                        DataMask& data_mask);
-
-  /**
-   * Generates a list of positions from this position back to the origin
-   * by following parent pointers.
-   *
-   * @return List of positions from origin to this position
-   */
-  std::list<Position*> BuildRoute() {
-    std::list<Position*> route;
-    Position* current = this;
-
-    // Follow parent pointers back to origin.
-    while (current) {
-      route.push_front(current);
-      current = current->parent;
-    }
-    return route;
-  }
-
-    /**
-    * Serializes the Position object to JSON format.
-    *
-    * This method converts the Position's data into a JSON object, which can be
-    * used for storage, transmission, or debugging purposes. The JSON object will
-    * include all relevant fields such as latitude, longitude, parent heading,
-    * parent bearing, and propagation status.
-    *
-    * @param json Reference to a Json::Value object where the Position data will
-    *             be stored.
-  */
-  void toJson(Json::Value &json) const;
+                        int& data_mask);
 
   /** Helper method to get error as string. */
   static wxString GetErrorText(PropagationError error);
@@ -156,6 +118,7 @@ public:
 
   /** Indicates why propagation failed. */
   PropagationError propagation_error;
+
 private:
   /** Reset error tracking information. */
   void ResetErrorTracking();
@@ -168,8 +131,7 @@ private:
   bool rk_step(double timeseconds, double cog, double dist, double twa,
                RouteMapConfiguration& configuration, WR_GribRecordSet* grib,
                const wxDateTime& time, int newpolar, double& rk_BG,
-               double& rk_dist, DataMask& data_mask);
-  
+               double& rk_dist, int& data_mask);
 };
 
 /**

@@ -23,6 +23,13 @@
 #include <wx/treectrl.h>
 #include <wx/fileconf.h>
 #include <wx/collpane.h>
+#include <wx/listctrl.h>
+
+#include <map>
+#include <cstdint>
+#include <memory>
+#include <mutex>
+#include <vector>
 
 #ifdef __OCPN__ANDROID__
 #include <wx/qt/private/wxQtGesture.h>
@@ -39,6 +46,9 @@
 #include "PlotDialog.h"
 #include "FilterRoutesDialog.h"
 #include "RoutingTablePanel.h"
+#include "RouteSimplifier.h"
+#include "StabilityCorridorLifecycle.h"
+#include "weather_routing_engine/StabilityCorridor.h"
 
 class weather_routing_pi;
 class WeatherRouting;
@@ -163,6 +173,12 @@ public:
   /** Comfort/safety metrics for the route conditions. */
   wxString Comfort;
 
+  /** Compact final-route wind source summary for result lists. */
+  wxString WeatherSource;
+
+  /** Expanded final-route wind source summary for route status details. */
+  wxString WeatherSourceDetail;
+
   /** Pointer to the actual route calculation and display overlay. */
   RouteMapOverlay* routemapoverlay;
 };
@@ -205,15 +221,6 @@ private:
   wxTimer m_tAutoSaveXML;
 
 public:
-  /**
-   * Structure to store route saving options selected by the user
-   */
-  struct SaveRouteOptions {
-    bool dialogAccepted;        //!< Whether the user confirmed the dialog
-    bool simplifyRoute;         //!< Whether to simplify the route
-    double maxDurationPenalty;  //!< Maximum permitted ETA loss (percent)
-  };
-
   enum {
     POSITION_NAME = 0,  //!< Position identifier/name
     POSITION_LAT,       //!< Latitude coordinate
@@ -247,6 +254,7 @@ public:
     JIBES,              //!< Number of jibes performed
     SAIL_PLAN_CHANGES,  //!< Number of sail plan changes performed
     COMFORT,            //!< Comfort/safety metrics for conditions
+    WEATHER_SOURCE,     //!< Accepted route wind source (GRIB/climatology)
     STATE,              //!< Current computation state of route
     NUM_COLS            //!< Total number of display columns
   };
@@ -268,6 +276,21 @@ public:
   void Reset();
 
   void Render(piDC& dc, PlugIn_ViewPort& vp);
+  bool ShowStabilityCorridor(
+      const std::list<RouteMapOverlay*>& routes, RouteMapOverlay* selected,
+      wxString* status = nullptr);
+  bool ShowMultiLegStabilityCorridor(
+      const std::vector<std::vector<RouteMapOverlay*> >& candidates,
+      size_t selectedCandidate, wxString* status = nullptr);
+  void HideStabilityCorridor(const wxString& reason = wxString());
+  void CloseStabilityCorridorResults(bool keepVisible,
+                                     const wxString& reason);
+  bool StabilityCorridorKeepPreference() const {
+    return m_StabilityCorridorKeepPreference;
+  }
+  void SetStabilityCorridorKeepPreference(bool keep);
+  void SelectWeatherRoutesForStability(
+      const std::vector<RouteMapOverlay*>& routes);
   ConfigurationDialog m_ConfigurationDialog;
   ConfigurationBatchDialog m_ConfigurationBatchDialog;
   CursorPositionDialog m_CursorPositionDialog;
@@ -279,8 +302,6 @@ public:
 
   void UpdateCurrentConfigurations();
   void UpdateStates();
-  SaveRouteOptions ShowRouteSaveOptionsDialog();
-
   /**
    * Get list of currently selected route maps in the weather routes list
    *
@@ -290,7 +311,10 @@ public:
    */
   std::list<RouteMapOverlay*> CurrentRouteMaps(bool messagedialog = false);
   RouteMapOverlay* FirstCurrentRouteMap();
-  RouteMapOverlay* m_RouteMapOverlayNeedingGrib;
+  void RequestGribTimelineFrame(RouteMapOverlay* routeMapOverlay,
+                                const wxDateTime& time);
+  void HandleGribTimelineFrame(const wxString& requestToken,
+                               GribRecordSet* frame);
 
   void RebuildList();
   /**
@@ -334,8 +358,13 @@ public:
    * - Performing batch operations on multiple routes
    */
   std::list<WeatherRoute*> m_WeatherRoutes;
+  std::list<RouteMapOverlay*> m_DepartureOptimizationRoutes;
 
   void GenerateBatch();
+  bool ComputeDepartureTimeOptimization(RouteMapOverlay* routemapoverlay);
+  void ShowDepartureTimeOptimizationResults(
+      const std::list<RouteMapOverlay*>& routemapoverlays,
+      const wxDateTime& nominalStartTime);
   bool Show(bool show);
 
   void UpdateDisplaySettings();
@@ -364,13 +393,10 @@ public:
    * @param lat Latitude of the position in decimal degrees
    * @param lon Longitude of the position in decimal degrees
    * @param name Name identifier for the position
-   * @param suppress_prompt If true, suppresses the prompt for replacement and
-   * does the replacement
    * @see UpdateConfigurations() For updating route configurations with the new
    * position
    */
-  void AddPosition(double lat, double lon, wxString name,
-                   const bool suppress_prompt);
+  void AddPosition(double lat, double lon, wxString name);
   /**
    * Adds a position with specified GUID (Globally Unique Identifier).
    *
@@ -387,6 +413,9 @@ public:
    */
   void AddPosition(double lat, double lon, wxString name, wxString GUID);
   void AddRoute(wxString& GUID);
+  bool CreateMultiLegConfigurationsFromRoute(const wxString& routeGuid);
+  bool ComputeMultiLegSequence(RouteMapOverlay* selectedRoute);
+  bool EditMultiLegGroupSettings(RouteMapOverlay* selectedRoute);
 
   void CursorRouteChanged();
   void UpdateColumns();
@@ -420,13 +449,8 @@ public:
    */
   void ScheduleAutoSave() { m_tAutoSaveXML.Start(5000, true); }
 
-  /**
-   * Get reference to the plugin instance.
-   * @return Reference to the weather_routing_pi plugin
-   */
-  weather_routing_pi& GetPlugin() { return m_weather_routing_pi; }
-
   SettingsDialog m_SettingsDialog;
+  weather_routing_pi& GetPlugin() { return m_weather_routing_pi; }
 
 private:
   void CopyDataFiles(wxString from, wxString to);
@@ -437,12 +461,8 @@ private:
   void OnDeleteAllPositions(wxCommandEvent& event);
   void OnClose(wxCloseEvent& event) { Hide(); }
   void OnPositionKeyDown(wxListEvent& event);
-  void OnEditConfiguration();
   void OnEditPosition();
-
-  void SaveSimplifiedRoute(RouteMapOverlay& routemapoverlay,
-                           const std::list<Position*>& simplifiedRoute);
-
+  void OnEditConfiguration();
   /**
    * Loads a weather routing configuration from an XML file.
    *
@@ -489,33 +509,35 @@ private:
   void OnWeatherRouteSort(wxListEvent& event);
   void OnWeatherRouteSelected();
   void OnWeatherRouteSelected(wxListEvent& event) { OnWeatherRouteSelected(); }
-  void OnWeatherPositionSelected();
-  void OnWeatherPositionSelected(wxListEvent& event) {
-    OnWeatherPositionSelected();
-  }
   void OnWeatherRouteKeyDown(wxListEvent& event);
   void OnWeatherRoutesListLeftDown(wxMouseEvent& event);
   void UpdateComputeState();
   void OnCompute(wxCommandEvent& event);
+  void OnEditMultiLegGroupSettings(wxCommandEvent& event);
+  void OnShowRoutingStatus(wxCommandEvent& event);
+  void OnComputeMultiLegSequence(wxCommandEvent& event);
+  void OnOptimizeMultiLegDeparture(wxCommandEvent& event);
   void OnComputeAll(wxCommandEvent& event);
   void OnStop(wxCommandEvent& event);
   void OnResetAll(wxCommandEvent& event);
   void OnPositions(wxCommandEvent& event);
   void OnBatch(wxCommandEvent& event);
   void OnEditConfiguration(wxCommandEvent& event) { OnEditConfiguration(); }
-  void OnEditPosition(wxCommandEvent& event) { OnEditPosition(); }
   void OnGoTo(wxCommandEvent& event);
   void OnDelete(wxCommandEvent& event);
   void OnDeleteAll(wxCommandEvent& event);
   void OnFilter(wxCommandEvent& event);
   /** Callback invoked when user clicks "Save as Track" menu item. */
   void OnSaveAsTrack(wxCommandEvent& event);
+  /** Prepare a validated compact route for route/GPX output. */
+  void OnSimplifyRoute(wxCommandEvent& event);
   /** Callback invoked when user clicks "Save as Route" menu item. */
   void OnSaveAsRoute(wxCommandEvent& event);
   /** Export route as GPX file. */
   void OnExportRouteAsGPX(wxCommandEvent& event);
   /** Callback invoked when user clicks "Save All as Tracks" menu item. */
   void OnSaveAllAsTracks(wxCommandEvent& event);
+  void OnChartAwarenessSettings(wxCommandEvent& event);
   void OnSettings(wxCommandEvent& event);
   void OnStatistics(wxCommandEvent& event);
   void OnReport(wxCommandEvent& event);
@@ -567,6 +589,7 @@ private:
    * @param routemapoverlay Pointer to the RouteMapOverlay to update
    */
   void UpdateRouteMap(RouteMapOverlay* routemapoverlay);
+  bool ValidateCompletedRouteForDisplay(RouteMapOverlay* routemapoverlay);
   /**
    * Updates a specific item in the weather routes list.
    *
@@ -580,30 +603,6 @@ private:
    * configuration data
    */
   void UpdateItem(long index, bool stateonly = false);
-  /**
-   * Adds or modifies a new position with the given name.
-   *
-   * Internal method to process the contents of the NewPosition dialog
-   *
-   * @param latitude_degrees Latitude of the position (degrees, signed integer
-   * number)
-   * @param latitude_minutes Latitude of the position (minutes, unsigned
-   * floating point number)
-   * @param longitude_degrees Longitude of the position (degrees, signed integer
-   * number)
-   * @param longitude_minutes Longitude of the position (minutes, unsigned
-   * floating point number)
-   * @param name
-   * @param suppress_prompt Suppresses the prompt and replaces existing position
-   * without asking
-   * @see AddPosition(double lat, double lon, wxString name) The method that
-   * performs the actual addition
-   */
-  void AddPosition(const wxString& latitude_degrees,
-                   const wxString& latitude_minutes,
-                   const wxString& longitude_degrees,
-                   const wxString& longitude_minutes, wxString name,
-                   const bool suppress_prompt);
 
   RouteMap* SelectedRouteMap();
   /** Save weather routing as OpenCPN track. */
@@ -611,6 +610,40 @@ private:
   /** Save weather routing as OpenCPN route. */
   void SaveAsRoute(RouteMapOverlay& routemapoverlay);
   void ExportRoute(RouteMapOverlay& routemapoverlay);
+  bool ValidateRouteForOutput(RouteMapOverlay& routemapoverlay,
+                              const wxString& action);
+  std::vector<PlotData> FullOutputRoute(RouteMapOverlay& routemapoverlay) const;
+  std::vector<PlotData> RouteOutputPoints(RouteMapOverlay& routemapoverlay,
+                                          bool* simplified = nullptr);
+  uint64_t RouteGeometryFingerprint(
+      const std::vector<PlotData>& points) const;
+  RouteSimplificationResult SimplifyOutputRoute(
+      RouteMapOverlay& routemapoverlay,
+      const RouteSimplificationOptions& options);
+  RouteSimplificationResult SimplifyOutputRoutes(
+      const std::vector<RouteMapOverlay*>& routes,
+      const RouteSimplificationOptions& options);
+  struct RouteOutputGroup {
+    bool multi_leg = false;
+    std::vector<RouteMapOverlay*> routes;
+  };
+  std::vector<RouteOutputGroup> SelectedRouteOutputGroups();
+  bool PrepareCombinedRouteOutput(
+      const std::vector<RouteMapOverlay*>& routes,
+      std::vector<PlotData>* points, bool* simplified,
+      wxString* failure_reason);
+  bool SelectedSimplifiedGroup(
+      const std::vector<RouteMapOverlay*>& routes,
+      std::vector<PlotData>* points = nullptr) const;
+  void SaveCombinedRoute(const std::vector<RouteMapOverlay*>& routes,
+                         const std::vector<PlotData>& points,
+                         bool simplified);
+  void ExportCombinedRoute(const std::vector<RouteMapOverlay*>& routes,
+                           const std::vector<PlotData>& points,
+                           bool simplified);
+  bool ValidateSimplifiedOutputRoute(
+      RouteMapOverlay& routemapoverlay,
+      const std::vector<PlotData>& points, wxString* failure_reason);
   /**
    * Initiates route calculation for a specific route map overlay.
    *
@@ -624,13 +657,188 @@ private:
    */
   void Start(RouteMapOverlay* routemapoverlay);
   void StartAll();
+  bool CollectChartSafetyScoutGeometry(
+      RouteMapOverlay* routemapoverlay,
+      std::vector<std::pair<double, double> >* geometry,
+      std::vector<RouteMapFrontierSegment>* retained_segments,
+      bool* reached_destination);
+  void PrepareChartSafetyScoutEnvelopes(
+      const std::vector<RouteMapOverlay*>& routemapoverlays,
+      const wxString& context);
+  bool RetryRouteWithChartSafetyPropagation(
+      RouteMapOverlay* routemapoverlay);
+  bool RetryRouteAfterMissingChartSafetyTiles(RouteMapOverlay* routemapoverlay);
   /* Stop the computation of the specified route. */
   void Stop(RouteMapOverlay* routemapoverlay);
   /* Stop the computation of all routes. */
   void StopAll();
 
+  void CancelMultiLegSequence();
+  void AdvanceMultiLegSequence(RouteMapOverlay* completedRoute);
+  bool StartMultiLegSequenceLeg(RouteMapOverlay* routemapoverlay);
+  std::vector<RouteMapOverlay*> GetMultiLegGroupRoutes(
+      const wxString& groupId);
+  bool RouteMapIsWaitingOrRunning(RouteMapOverlay* routemapoverlay) const;
+  bool RouteMapIsManaged(RouteMapOverlay* routemapoverlay) const;
+  wxString SafeMultiLegFailureReason(RouteMapOverlay* routemapoverlay) const;
+  void SelectMultiLegGroup(const wxString& groupId);
+  void BeginMultiLegGroupSettingsEdit(const wxString& groupId);
+  void PreserveMultiLegLegFields(RouteMapOverlay* routemapoverlay,
+                                 RouteMapConfiguration& configuration) const;
+  void ShowRoutingStatus(RouteMapOverlay* selectedRoute);
+  bool ComputeMultiLegDepartureOptimization(RouteMapOverlay* selectedRoute);
+  bool ComputeMultiLegSequenceNow(const wxString& groupId);
+  bool ComputeMultiLegDepartureOptimizationNow(const wxString& groupId);
+  bool ShouldShowChartSafetyComputeProgress(
+      const std::list<RouteMapOverlay*>& routemapoverlays) const;
+  void BeginChartSafetyComputeProgress(
+      bool computeAll, const std::list<RouteMapOverlay*>& routemapoverlays);
+  void StartCurrentRouteComputations();
+  void StartAllRouteComputations();
+  void UpdateChartSafetyComputeProgress(const wxString& stage,
+                                        RouteMapOverlay* routemapoverlay,
+                                        int value = -1, int range = -1);
+  void FinishChartSafetyComputeProgressIfDone();
+  void ScheduleDeferredRoutingStart(int mode, const wxString& groupId);
+  void CancelDeferredRoutingStart();
+  void OnDeferredRoutingStart(wxTimerEvent&);
+  void CancelMultiLegDepartureOptimization(bool cleanupCandidates = true);
+  bool StartNextMultiLegOptimizationCandidate();
+  bool StartMultiLegOptimizationLeg(RouteMapOverlay* routemapoverlay);
+  void AdvanceMultiLegDepartureOptimization(RouteMapOverlay* completedRoute);
+  void ShowMultiLegDepartureOptimizationResults();
+  void DeleteMultiLegOptimizationCandidateRows();
+  void ShowRoutingProgress(const wxString& title);
+  void UpdateRoutingProgress(const wxString& stage, const wxString& detail,
+                             int value = -1, int range = -1);
+  void FinishRoutingProgress(const wxString& stage, const wxString& detail);
+  void CloseRoutingProgress();
+  void OnRoutingProgressTimer(wxTimerEvent&);
+  void RefreshRoutingProgressTiming();
+  void PaintRoutingProgressNow();
+
+public:
+  bool ApplyMultiLegOptimizationCandidate(int candidateIndex);
+  bool ApplyBestMultiLegOptimizationCandidate();
+  void RunHeadlessRouteTestFromEnv();
+  bool CanStartExternalPlanningScenario() const {
+    return !m_HeadlessRouteTestState && m_RunningRouteMaps.empty() &&
+           m_WaitingRouteMaps.empty() && !m_bRunning &&
+           m_RoutePreparationDepth == 0 &&
+           !m_ActiveMultiLegSequence && !m_ActiveMultiLegDepartureOptimization;
+  }
+  void CancelExternalPlanningScenario() { StopAll(); }
+  void ClearExternalPlanningScenario();
+  void SaveLastUsedConfigurationDefaults(
+      const RouteMapConfiguration& configuration);
+  struct MultiLegOptimizationCandidate {
+    int offsetMinutes;
+    wxDateTime departureTime;
+    wxDateTime finalEta;
+    long totalElapsedSeconds;
+    double totalDistance;
+    int completedLegs;
+    int totalLegs;
+    int failedLegIndex;
+    wxString failedLegName;
+    wxString state;
+    wxString reason;
+    bool complete;
+    bool failed;
+    bool running;
+    bool best;
+    bool applied;
+    std::vector<RouteMapOverlay*> routes;
+  };
+
+  void PreserveMultiLegLegFieldsForDialog(
+      RouteMapOverlay* routemapoverlay,
+      RouteMapConfiguration& configuration) const {
+    PreserveMultiLegLegFields(routemapoverlay, configuration);
+  }
+
+  const std::vector<MultiLegOptimizationCandidate>&
+  MultiLegOptimizationCandidates() const {
+    return m_MultiLegOptimizationCandidates;
+  }
+  bool MultiLegDepartureOptimizationActive() const {
+    return m_ActiveMultiLegDepartureOptimization;
+  }
+  int ChartSafetyRamCacheMiB() const;
+  int EffectiveChartSafetyRamCacheMiB() const;
+  bool HasEnhancedChartSafety() const;
+  void SetChartSafetyRamCacheMiB(int ramMiB);
+  void CloseMultiLegDepartureOptimizationResults() {
+    CancelMultiLegDepartureOptimization(true);
+  }
+  int AppliedMultiLegOptimizationCandidateIndex() const {
+    return m_AppliedMultiLegOptimizationCandidateIndex;
+  }
+  bool HasCompleteMultiLegOptimizationCandidate() const;
+
+private:
+
+  struct HeadlessRouteTestState;
+  void OnHeadlessRouteTestTimer(wxTimerEvent&);
+  void CompleteHeadlessSingleRouteTest(bool timedOut, long elapsedMs);
+  void CompleteHeadlessMultiLegTest(bool timedOut, long elapsedMs);
+
+  wxTimer m_tHeadlessRouteTest;
+  std::unique_ptr<HeadlessRouteTestState> m_HeadlessRouteTestState;
+
+  struct PendingGribRequest {
+    RouteMapOverlay* route_map_overlay;
+    std::int64_t timeline_key;
+  };
+
+  std::mutex m_GribRequestMutex;
+  std::map<wxString, PendingGribRequest> m_PendingGribRequests;
+  std::uint64_t m_NextGribRequestToken{1};
+
+  struct SimplifiedRouteState {
+    uint64_t original_fingerprint;
+    RouteSimplificationOptions options;
+    RouteSimplificationResult result;
+
+    SimplifiedRouteState() : original_fingerprint(0) {}
+  };
+
+  std::map<RouteMapOverlay*, SimplifiedRouteState> m_SimplifiedRoutes;
+
+  struct SimplifiedRouteGroupState {
+    bool valid;
+    std::vector<RouteMapOverlay*> routes;
+    std::vector<uint64_t> fingerprints;
+    RouteSimplificationOptions options;
+    RouteSimplificationResult result;
+
+    SimplifiedRouteGroupState() : valid(false) {}
+  };
+
+  SimplifiedRouteGroupState m_SimplifiedRouteGroup;
+
+  StabilityCorridorLifecycle m_StabilityCorridorLifecycle;
+  bool m_StabilityCorridorKeepPreference;
+  bool m_UpdatingStabilityRouteSelection;
+  std::vector<RouteMapOverlay*> m_StabilityCorridorSourceRoutes;
+  std::vector<weather_routing_engine::StabilityRoute>
+      m_StabilityCorridorRoutes;
+  weather_routing_engine::StabilityCorridorResult m_StabilityCorridorResult;
+  void RenderStabilityCorridor(piDC& dc, PlugIn_ViewPort& vp);
+  void UpdateStabilityCorridorMenu();
+  void OnViewStabilityCorridor(wxCommandEvent& event);
+  void ValidateStabilityCorridorSelection(
+      const std::list<RouteMapOverlay*>& selectedRoutes);
+  bool ShowStabilityCorridorData(
+      const std::vector<RouteMapOverlay*>& sourceSignature,
+      const std::vector<weather_routing_engine::StabilityRoute>& routes,
+      size_t selectedIndex,
+      const std::vector<RouteMapOverlay*>& selectedRoutes, wxString* status);
+
   void DeleteRouteMaps(std::list<RouteMapOverlay*> routemapoverlays);
   RouteMapConfiguration DefaultConfiguration();
+  void ApplyLastUsedConfigurationDefaults(
+      RouteMapConfiguration& configuration) const;
 
   void AddRoutingPanel();
 
@@ -642,9 +850,11 @@ private:
   PlotDialog m_PlotDialog;
   FilterRoutesDialog m_FilterRoutesDialog;
 
-  wxTimer m_tCompute, m_tHideConfiguration;
+  wxTimer m_tCompute, m_tHideConfiguration, m_tRoutingProgress,
+      m_tDeferredRoutingStart;
 
   bool m_bRunning;
+  int m_RoutePreparationDepth;
   wxTimeSpan m_RunTime;
   wxDateTime m_StartTime;
 
@@ -652,6 +862,39 @@ private:
 
   int m_RoutesToRun;
   bool m_bSkipUpdateCurrentItems;
+  wxString m_ActiveMultiLegGroupId;
+  int m_ActiveMultiLegCurrentLegIndex;
+  bool m_ActiveMultiLegSequence;
+  bool m_ApplyingMultiLegGroupSettings;
+  wxString m_MultiLegSettingsGroupId;
+  std::map<RouteMapOverlay*, RouteMapConfiguration> m_MultiLegLegSnapshots;
+  wxString m_ActiveMultiLegOptimizationId;
+  wxString m_MultiLegOptimizationBaseGroupId;
+  int m_ActiveMultiLegOptimizationCandidateIndex;
+  int m_ActiveMultiLegOptimizationLegIndex;
+  int m_AppliedMultiLegOptimizationCandidateIndex;
+  bool m_ActiveMultiLegDepartureOptimization;
+  std::vector<MultiLegOptimizationCandidate>
+      m_MultiLegOptimizationCandidates;
+  int m_DeferredRoutingStartMode;
+  bool m_DeferredRoutingStartPending;
+  wxString m_DeferredRoutingStartGroupId;
+  bool m_ChartSafetyComputeProgressActive;
+  bool m_ChartSafetyComputeProgressAll;
+  int m_ChartSafetyComputeProgressTotalRoutes;
+  int m_ChartSafetyComputeProgressStartedRoutes;
+  int m_ChartSafetyComputeProgressCompletedRoutes;
+  wxDialog* m_RoutingProgressDialog;
+  wxStaticText* m_RoutingProgressStage;
+  wxStaticText* m_RoutingProgressDetail;
+  wxStaticText* m_RoutingProgressTiming;
+  wxGauge* m_RoutingProgressGauge;
+  wxDateTime m_RoutingProgressStartTime;
+  wxDateTime m_RoutingProgressStageStartTime;
+  wxString m_RoutingProgressCurrentStage;
+  wxString m_RoutingProgressPreviousStage;
+  wxTimeSpan m_RoutingProgressPreviousStageDuration;
+  bool m_RoutingProgressFinished;
 
   bool m_bShowConfiguration;
   bool m_bShowConfigurationBatch;
@@ -661,6 +904,8 @@ private:
   bool m_bShowReport;
   bool m_bShowPlot;
   bool m_bShowFilter;
+  wxMenuItem* m_mChartAwarenessSettings;
+  wxMenuItem* m_mStabilityCorridorView;
 
   wxPoint m_downPos, m_startPos, m_startMouse;
   wxTimer m_tDownTimer;

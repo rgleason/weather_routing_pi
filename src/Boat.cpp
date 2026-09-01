@@ -25,7 +25,6 @@
 
 #include <wx/wx.h>
 #include <wx/filename.h>
-#include <vector>
 
 #include "tinyxml.h"
 
@@ -92,27 +91,11 @@ wxString Boat::OpenXML(wxString filename, bool shortcut) {
       } else
         generateContours = true;
 
-      // Load StandaloneRegion if available
-      const char* standaloneStr = e->Attribute("StandaloneContours");
-      if (standaloneStr) {
-        wxFile standaloneContours(standaloneStr);
-        if (standaloneContours.IsOpened()) {
-          int size = standaloneContours.Length();
-          char* data = new char[size + 1];
-          if (standaloneContours.Read(data, size) == size) {
-            data[size] = 0;  // null terminate
-            polar.StandaloneRegion = PolygonRegion(data);
-          }
-          delete[] data;
-        }
-      } else
-        generateContours = true;
-
       wxString message;
       if (!polar.Open(polar.FileName, message)) return message;
 
       polar.m_crossoverpercentage =
-          AttributeDouble(e, "CrossOverPercentage", 0.0) / 100.0;
+          AttributeDouble(e, "CrossOverPercentage", 0.2) / 100.0;
 
       Polars.push_back(polar);
     }
@@ -166,28 +149,6 @@ wxString Boat::SaveXML(wxString filename) {
       }
     }
 
-    // Save StandaloneRegion if it exists
-    if (!polar.StandaloneRegion.Empty()) {
-      wxString ContoursPath = weather_routing_pi::StandardPath() +
-                              _T("contours") + wxFileName::GetPathSeparator();
-      if (!wxDirExists(ContoursPath)) wxMkdir(ContoursPath);
-
-      wxString StandaloneFileName = polar.FileName;
-      StandaloneFileName.Replace(wxFileName::GetPathSeparator(), _T("_"));
-      if (!wxFileName::GetVolumeSeparator().IsEmpty())
-        StandaloneFileName.Replace(wxFileName::GetVolumeSeparator(), _T("_"));
-      StandaloneFileName =
-          ContoursPath + StandaloneFileName + _T(".standalone");
-      wxFile file;
-      if (file.Open(StandaloneFileName, wxFile::write)) {
-        e->SetAttribute("StandaloneContours", StandaloneFileName.mb_str());
-        file.Write(polar.StandaloneRegion.toString());
-      } else {
-        delete e;
-        return _("Failed to open for writing: ") + StandaloneFileName;
-      }
-    }
-
     e->SetDoubleAttribute("CrossOverPercentage",
                           100.0 * polar.m_crossoverpercentage);
 
@@ -216,62 +177,6 @@ static Point FindNextSegmentPoint(std::list<Segment>& segments, Point p,
   return best;
 }
 
-bool Boat::PolarCanSail(int p, float H, float VW) {
-  const float maxVW = 40;
-  if (VW == 0 || VW == maxVW) return false;
-
-  PolarSpeedStatus error;
-  double speed = Polars[p].Speed(H, VW, &error, true);
-
-  // Check if the polar has valid data for these conditions and produces
-  // positive speed
-  return (error == POLAR_SPEED_SUCCESS && speed > 0);
-}
-
-void Boat::GenerateStandaloneRegion(int p, void* arg,
-                                    void (*status)(void*, int, int)) {
-  const int maxVW = 40;
-  const int stepi = 8;
-  float step = 1.0f / stepi;
-
-  bool buffer[2][maxVW * stepi + 1];
-  int bi = 0;
-  std::list<Segment> segments;
-
-  for (unsigned H = 0; H <= 180 * stepi; ++H) {
-    for (int VWi = 0; VWi <= maxVW * stepi; VWi++) {
-      float VW = VWi * step;
-      buffer[bi][VWi] = PolarCanSail(p, static_cast<float>(H) / stepi, VW);
-
-      if (VWi > 0 && H > 0) {
-        bool q[4] = {buffer[!bi][VWi - 1], buffer[bi][VWi - 1],
-                     buffer[!bi][VWi], buffer[bi][VWi]};
-        GenerateSegments(static_cast<float>(H) / stepi, VW, step, q, segments, p);
-      }
-    }
-    bi = !bi;
-  }
-
-  /* insert wrapping segments for 0 and 180 */
-  std::list<Segment> wrapped_segments;
-  for (std::list<Segment>::iterator it = segments.begin(); it != segments.end();
-       it++) {
-    if (it->p[1].x == 0) {
-      // find next segment starting at 0 with greater y
-      wrapped_segments.push_back(
-          Segment(it->p[1], FindNextSegmentPoint(segments, it->p[1], false)));
-    } else if (it->p[1].x == 180) {
-      // find next segment starting at 180 with lesser y
-      wrapped_segments.push_back(
-          Segment(it->p[1], FindNextSegmentPoint(segments, it->p[1], true)));
-    }
-  }
-
-  segments.splice(segments.end(), wrapped_segments);
-  Polars[p].StandaloneRegion = PolygonRegion(segments);
-  Polars[p].StandaloneRegion.Simplify(1e-1f);
-}
-
 bool Boat::FastestPolar(int p, float H, float VW) {
   const float maxVW = 40;
   if (VW == 0 || VW == maxVW) return false;
@@ -292,22 +197,20 @@ void Boat::GenerateCrossOverChart(void* arg, void (*status)(void*, int, int)) {
   float step = 1.0f / stepi;
 
   for (int p = 0; p < (int)Polars.size(); p++) {
-    if (status)
-      status(arg, p * 2, Polars.size() * 2);  // Updated progress calculation
+    if (status) status(arg, p, Polars.size());
 
-    // Generate CrossOver Region (optimal conditions)
     bool buffer[2][maxVW * stepi + 1];
     int bi = 0;
     std::list<Segment> segments;
-    for (unsigned H = 0; H <= 180 * stepi; ++H) {
+    for (float H = 0; H <= 180; H += step) {
       for (int VWi = 0; VWi <= maxVW * stepi; VWi++) {
         float VW = VWi * step;
-        buffer[bi][VWi] = FastestPolar(p, static_cast<float>(H) / stepi, VW);
+        buffer[bi][VWi] = FastestPolar(p, H, VW);
 
         if (VWi > 0 && H > 0) {
           bool q[4] = {buffer[!bi][VWi - 1], buffer[bi][VWi - 1],
                        buffer[!bi][VWi], buffer[bi][VWi]};
-          GenerateSegments(static_cast<float>(H) / stepi, VW, step, q, segments, p);
+          GenerateSegments(H, VW, step, q, segments, p);
         }
       }
       bi = !bi;
@@ -331,18 +234,8 @@ void Boat::GenerateCrossOverChart(void* arg, void (*status)(void*, int, int)) {
     segments.splice(segments.end(), wrapped_segments);
     Polars[p].CrossOverRegion = PolygonRegion(segments);
     Polars[p].CrossOverRegion.Simplify(1e-1f);
-
-    if (status)
-      status(arg, p * 2 + 1,
-             Polars.size() * 2);  // Updated progress calculation
-
-    // Generate Standalone Region (all operational conditions)
-    GenerateStandaloneRegion(
-        p, arg, nullptr);  // Don't pass status to avoid double callbacks
   }
-  if (status)
-    status(arg, Polars.size() * 2,
-           Polars.size() * 2);  // Updated progress calculation
+  if (status) status(arg, Polars.size(), Polars.size());
 }
 
 Point Boat::Interp(const Point& p0, const Point& p1, int q, bool q0, bool q1) {

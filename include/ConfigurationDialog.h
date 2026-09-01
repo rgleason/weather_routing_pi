@@ -77,12 +77,18 @@ public:
 
   void AddSource(wxString name);
   void RemoveSource(wxString name);
+  void RenameSource(const wxString& oldName, const wxString& newName);
   void ClearSources();
-  /// Fill combobox for start or end selection with all waypoints
+  /// Fill combobox for start or end selection with all OpenCPN waypoints.
   void AddWaypoints(const bool toStart);
-  /// Fill combobox for start or end selection with all positions
+  /// Fill combobox for start or end selection with all Weather Routing positions.
   void AddPositions(const bool toStart);
   void SetBoatFilename(wxString path);
+  /**
+   * Synchronize time-zone controls after SettingsDialog has been constructed
+   * and its persisted settings have been loaded.
+   */
+  void RefreshTimeZoneControls();
 
   wxDateTime m_GribTimelineTime;
 
@@ -104,6 +110,7 @@ protected:
     Update();
   }
   void OnUseCurrentTime(wxCommandEvent& event);
+  void OnTimeZoneDisplay(wxCommandEvent& event);
   void OnGribTime(wxCommandEvent& event);
   void OnCurrentTime(wxCommandEvent& event);
   void OnUpdateSpin(wxSpinEvent& event) {
@@ -126,6 +133,7 @@ protected:
   void OnStartFromBoat(wxCommandEvent& event);
   void OnStartFromPosition(wxCommandEvent& event);
   void OnStartFromWaypoint(wxCommandEvent& event);
+  void OnRoutingTimeMode(wxCommandEvent& event);
   void OnEndAtPosition(wxCommandEvent& event);
   void OnEndAtWaypoint(wxCommandEvent& event);
   void OnAvoidCyclones(wxCommandEvent& event);
@@ -135,6 +143,8 @@ protected:
   void OnRemoveDegreeStep(wxCommandEvent& event);
   void OnClearDegreeSteps(wxCommandEvent& event);
   void OnGenerateDegreeSteps(wxCommandEvent& event);
+  void UpdateChartSafetyRamLabel();
+  void UpdateRoutingTimeModeControls();
   void OnClose(wxCommandEvent& event) { Hide(); }
 
 private:

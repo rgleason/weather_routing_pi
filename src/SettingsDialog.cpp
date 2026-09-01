@@ -64,6 +64,7 @@ const wxString SettingsDialog::column_names[] = {"",  // "Visible" column
                                                  "Jibes",
                                                  "Sail Plan Changes",
                                                  "Sailing Comfort",
+                                                 "Wx",
                                                  "State"};
 
 SettingsDialog::SettingsDialog(wxWindow* parent)
@@ -468,7 +469,9 @@ void SettingsDialog::LoadSettings() {
   bool columns[WeatherRouting::NUM_COLS];
   for (int i = 0; i < WeatherRouting::NUM_COLS; i++)
     columns[i] = i != WeatherRouting::BOAT &&
-                 (i <= WeatherRouting::DISTANCE || i == WeatherRouting::STATE);
+                 (i <= WeatherRouting::DISTANCE ||
+                  i == WeatherRouting::WEATHER_SOURCE ||
+                  i == WeatherRouting::STATE);
 
   for (int i = 0; i < WeatherRouting::NUM_COLS; i++) {
     if (i == 0)
@@ -480,7 +483,19 @@ void SettingsDialog::LoadSettings() {
     m_cblFields->Check(i, columns[i]);
   }
 
-  m_cbUseLocalTime->SetValue((bool)pConf->Read(_T("UseLocalTime"), 0L));
+  const bool legacyUseLocalTime =
+      (bool)pConf->Read(_T("UseLocalTime"), 0L);
+  m_useLocalTimeZone =
+      (bool)pConf->Read(_T("UseLocalTimeZone"), legacyUseLocalTime);
+  pConf->Read(_T("DisplayTimeZone"), &m_displayTimeZone,
+              marine_time::SystemTimeZone());
+  if (!marine_time::IsTimeZoneAvailable(m_displayTimeZone)) {
+    m_displayTimeZone = marine_time::SystemTimeZone();
+  }
+  if (!marine_time::IsTimeZoneAvailable(m_displayTimeZone)) {
+    m_displayTimeZone = "UTC";
+    m_useLocalTimeZone = false;
+  }
 
 #ifdef __WXMSW__
   LoadMemorySettings();
@@ -525,7 +540,10 @@ void SettingsDialog::SaveSettings() {
     pConf->Write(wxString::Format(_T("Column_") + _(column_names[i]), i),
                  m_cblFields->IsChecked(i));
 
-  pConf->Write(_T("UseLocalTime"), m_cbUseLocalTime->GetValue());
+  // Keep the legacy key synchronized so downgrades retain the user's choice.
+  pConf->Write(_T("UseLocalTime"), m_useLocalTimeZone);
+  pConf->Write(_T("UseLocalTimeZone"), m_useLocalTimeZone);
+  pConf->Write(_T("DisplayTimeZone"), m_displayTimeZone);
 
 #ifdef __WXMSW__
   SaveMemorySettings();
@@ -676,6 +694,37 @@ void SettingsDialog::OnUpdateColumns(wxCommandEvent& event) {
   if (weather_routing) weather_routing->UpdateColumns();
 }
 
+void SettingsDialog::SetDisplayTimeZone(bool enabled,
+                                        const wxString& zoneName) {
+  m_useLocalTimeZone = enabled;
+  if (marine_time::IsTimeZoneAvailable(zoneName))
+    m_displayTimeZone = zoneName;
+  else if (!marine_time::IsTimeZoneAvailable(m_displayTimeZone))
+    m_displayTimeZone = "UTC";
+  SaveSettings();
+}
+
+wxString SettingsDialog::FormatTime(const wxDateTime& utc,
+                                    const wxString& format,
+                                    bool appendAbbreviation) const {
+  const wxString zone =
+      m_useLocalTimeZone ? m_displayTimeZone : wxString("UTC");
+  return marine_time::FormatInTimeZone(utc, format, zone,
+                                       appendAbbreviation);
+}
+
+wxDateTime SettingsDialog::ToDisplayWallClock(const wxDateTime& utc) const {
+  return marine_time::ToWallClock(
+      utc, m_useLocalTimeZone ? m_displayTimeZone : wxString("UTC"));
+}
+
+marine_time::WallClockConversion SettingsDialog::DisplayWallClockToUtc(
+    int year, int month, int day, int hour, int minute, int second) const {
+  return marine_time::FromWallClock(
+      year, month, day, hour, minute, second,
+      m_useLocalTimeZone ? m_displayTimeZone : wxString("UTC"));
+}
+
 void SettingsDialog::OnHelp(wxCommandEvent& event) {
 #ifdef __OCPN__ANDROID__
   wxSize sz = ::wxGetDisplaySize();
@@ -707,10 +756,4 @@ if there are multiple processors\n");
   wxMessageDialog mdlg(this, mes, _("Weather Routing"),
                        wxOK | wxICON_INFORMATION);
   mdlg.ShowModal();
-}
-
-wxDateTime::TimeZone SettingsDialog::GetTimeZone() const {
-  return m_cbUseLocalTime->IsChecked()
-    ? wxDateTime::Local
-    : wxDateTime::UTC;
 }

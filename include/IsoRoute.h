@@ -23,6 +23,7 @@
 #include <wx/wx.h>
 
 #include <list>
+#include <vector>
 
 #include "WeatherDataProvider.h"
 
@@ -32,6 +33,18 @@ struct RouteMapConfiguration;
 class IsoRoute;
 
 typedef std::list<IsoRoute*> IsoRouteList;
+
+struct IsoRouteDestinationCandidate {
+  double dt;
+  wxDateTime isochron_time;
+  double absolute_dt;
+  Position* endp;
+  double heading;
+  bool tacked;
+  bool jibed;
+  bool sail_plan_changed;
+  int data_mask;
+};
 
 /**
  * Represents a closed loop of positions forming an isochrone boundary.
@@ -150,6 +163,17 @@ public:
    * route.
    */
   void ReduceClosePoints();
+
+  /**
+   * Bound frontier density by removing roughly evenly spaced intermediate
+   * positions.  This is used only after safety checks and graph merge/reduce,
+   * before the next isochrone expands, to keep chart-aware routing practical
+   * without allowing unchecked segments into the result.
+   *
+   * @param max_positions Maximum positions to retain in this route.
+   * @return Number of positions removed from this route and its children.
+   */
+  int ThinPositions(int max_positions);
   //    bool ApplyCurrents(GribRecordSet *grib, wxDateTime time,
   //    RouteMapConfiguration &configuration);
   /**
@@ -215,7 +239,11 @@ public:
   void PropagateToEnd(RouteMapConfiguration& configuration, double& mindt,
                       Position*& endp, double& minH, bool& mintacked,
                       bool& minjibed, bool& minsail_plan_changed,
-                      DataMask& mindata_mask);
+                      int& mindata_mask);
+
+  void CollectDestinationCandidates(
+      RouteMapConfiguration& configuration,
+      std::vector<IsoRouteDestinationCandidate>& candidates);
 
   /**
    * Counts the number of skip positions in this route.
@@ -323,7 +351,7 @@ public:
   ~IsoChron();
 
   /**
-   * Propagates all routes in this isochrone to create the next isochrone.
+   * Propagates all routes in this isochron to create the next isochrone.
    *
    * From each position on each route in the current isochrone, calculates all
    * possible new positions the vessel could reach in the next time increment,

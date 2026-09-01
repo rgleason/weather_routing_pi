@@ -20,7 +20,13 @@
 #ifndef _WEATHER_ROUTING_ROUTE_MAP_OVERLAY_H_
 #define _WEATHER_ROUTING_ROUTE_MAP_OVERLAY_H_
 
+#include <atomic>
+#include <cmath>
+#include <vector>
+#include <string>
+
 #include "RouteMap.h"
+#include "RoutingFootprint.h"
 #include "LineBufferOverlay.h"
 
 class PlugIn_ViewPort;
@@ -29,6 +35,21 @@ class PlugIn_Route;
 class piDC;
 class RouteMapOverlay;
 class SettingsDialog;
+namespace supercpn::weather_routing {
+struct RoutingResult;
+struct RoutingProgressUpdate;
+}  // namespace supercpn::weather_routing
+
+struct ModernIsochroneLayer {
+  struct Trace {
+    std::pair<double, double> endpoint;
+    std::vector<std::pair<double, double>> route;
+  };
+  wxDateTime time;
+  bool reverse{};
+  std::vector<std::vector<std::pair<double, double>>> contours;
+  std::vector<Trace> traces;
+};
 
 /**
  * Thread class for route map overlay calculations.
@@ -162,7 +183,7 @@ public:
    */
   void Render(wxDateTime time, SettingsDialog& settingsdialog, piDC& dc,
               PlugIn_ViewPort& vp, bool justendroute,
-              const RoutePoint* positionOnRoute = nullptr);
+              RoutePoint* positionOnRoute = nullptr);
 
   /**
    * Gets a color representing a sailing comfort level.
@@ -206,7 +227,7 @@ public:
    * Requests grib data for a specific time.
    * @param time Time for which to request grib data.
    */
-  void RequestGrib(wxDateTime time);
+  void RequestGrib(wxDateTime time, const wxString& requestToken);
 
   /**
    * Gets plot data for either the cursor route or destination route.
@@ -215,6 +236,21 @@ public:
    * @return Reference to a list of plot data points.
    */
   std::list<PlotData>& GetPlotData(bool cursor_route = false);
+
+  /**
+   * Returns the parent chain ending at the frontier position closest to the
+   * configured destination.  This is intended for post-computation scout
+   * prewarm hints when a scout made progress but did not reach its target.
+   * Call only after the route worker has stopped.
+   */
+  std::vector<std::pair<double, double>> GetClosestFrontierGeometry();
+
+  /**
+   * Return every parent edge retained by the reduced/thinned scout
+   * isochrones.  This is a prewarm hint, not a chart-safety decision.
+   * Call only after the route worker has stopped.
+   */
+  std::vector<RouteMapFrontierSegment> GetRetainedFrontierSegments();
 
   /**
    * Gets specific route information based on type.
@@ -233,21 +269,10 @@ public:
   int Cyclones(int* months);
 
   /**
-   * Gets the destination position, or null if the route could not be completed
-   * successfully.
+   * Gets the destination position.
    * @return Pointer to the destination position.
    */
   Position* GetDestination() { return destination_position; }
-  /**
-   * Gets the best achievable position.
-   *
-   * This is either:
-   * 1. The exact destination position (destination_position) if reached
-   * successfully.
-   * 2. The closest calculated position to the destination if exact arrival
-   * isn't possible.
-   */
-  Position* GetLastDestination() { return last_destination_position; }
 
   /**
    * Checks if the route has been updated.
@@ -266,6 +291,29 @@ public:
    * Calculates the closest reachable position to the destination.
    */
   void UpdateDestination();
+
+  /**
+   * Builds a bounded reverse reachability diagnostic when forward propagation
+   * collapses before reaching the destination.  This does not change route
+   * completion state; it only records/logs whether recent forward frontiers
+   * appear connectable to a destination-side reachable funnel.
+   */
+  bool AnalyzeReverseReachabilityForFrontierCollapse(const wxString& trigger);
+
+  /**
+   * Validates the reconstructed destination route against land constraints.
+   *
+   * This is a final safety net after propagation/direct-to-destination checks.
+   */
+  bool ValidateDestinationRouteLand(RouteMapConfiguration& configuration);
+
+  /**
+   * Validates the exact plotted destination route geometry against land
+   * constraints. This catches display/apply paths which use plot data rather
+   * than walking only the raw destination parent chain.
+   */
+  bool ValidatePlottedDestinationRouteLand(
+      RouteMapConfiguration& configuration);
 
   /**
    * Gets the end time of the route.
@@ -293,7 +341,9 @@ public:
    * Checks if the calculation thread is still running.
    * @return True if the thread is running.
    */
-  bool Running() { return m_Thread && m_Thread->IsAlive(); }
+  bool Running() {
+    return m_Thread && (m_Thread->IsAlive() || m_bUpdatingDestination.load());
+  }
 
   /**
    * Starts the route calculation thread.
@@ -301,6 +351,12 @@ public:
    * @return True if the thread started successfully.
    */
   bool Start(wxString& error);
+  void InstallModernNativeResult(
+      const supercpn::weather_routing::RoutingResult& result);
+  void SetModernNativeProgress(
+      const supercpn::weather_routing::RoutingProgressUpdate& progress);
+  bool GetModernNativeProgress(wxString& stage, wxString& detail);
+  bool UsesModernNativeResult() const { return m_UsesModernNativeResult; }
 
   /**
    * Deletes the calculation thread.
@@ -312,7 +368,7 @@ public:
    * Gets the last cursor position.
    * @return Pointer to the last cursor position.
    */
-  const Position* GetLastCursorPosition() const { return last_cursor_position; }
+  Position* GetLastCursorPosition() { return last_cursor_position; }
 
   /**
    * Gets the time at the last cursor position.
@@ -350,12 +406,6 @@ public:
    */
   int sailingConditionLevel(const PlotData& plot) const;
 
-  /**
-   * Gets the list of isochrones used for route calculation.
-   * @return Reference to the list of isochrones.
-   */
-  const IsoChronList& GetIsoChronList() const { return origin; }
-
 private:
   /**
    * Renders an alternate route.
@@ -368,7 +418,7 @@ private:
                             PlugIn_ViewPort& vp);
 
   /**
-   * Renders a single isochrone route.
+   * Renders a single isochron route.
    * @param r Pointer to the route to render.
    * @param time The currently selected time in the GRIB timeline.
    * @param grib_color Color for grib-based segments.
@@ -430,8 +480,67 @@ private:
   /** Pointer to the calculation thread. */
   RouteMapOverlayThread* m_Thread;
 
+  bool m_UsesModernNativeResult{false};
+  std::vector<Position*> m_ModernRoutePositions;
+  std::vector<Position*> m_ModernCursorRoutePositions;
+  std::vector<ModernIsochroneLayer> m_ModernIsochrones;
+  std::size_t m_ModernCursorLayer{std::numeric_limits<std::size_t>::max()};
+  std::size_t m_ModernCursorTrace{std::numeric_limits<std::size_t>::max()};
+  wxString m_ModernProgressStage;
+  wxString m_ModernProgressDetail;
+  bool m_ModernProgressUpdated{false};
+
+  std::atomic<bool> m_bUpdatingDestination;
+
+  struct ReverseSegmentFeasibility {
+    bool feasible;
+    double dt;
+    double heading;
+    int data_mask;
+    wxString failure_reason;
+
+    ReverseSegmentFeasibility()
+        : feasible(false), dt(NAN), heading(NAN), data_mask(0) {}
+  };
+
+  ReverseSegmentFeasibility CanSailSegment(Position* start, double end_lat,
+                                           double end_lon,
+                                           IsoChron* start_isochron,
+                                           const wxDateTime& target_time,
+                                           RouteMapConfiguration configuration);
+  bool TryReverseReachabilityRecovery(RouteMapConfiguration& configuration,
+                                      int isochrons_considered);
+
+  struct ReverseReachabilityDebugPoint {
+    double lat;
+    double lon;
+    int layer;
+    bool connected;
+
+    ReverseReachabilityDebugPoint()
+        : lat(NAN), lon(NAN), layer(0), connected(false) {}
+    ReverseReachabilityDebugPoint(double latitude, double longitude,
+                                  int layer_index, bool is_connected)
+        : lat(latitude),
+          lon(longitude),
+          layer(layer_index),
+          connected(is_connected) {}
+  };
+
+  void RenderReverseReachabilityDiagnostics(piDC& dc, PlugIn_ViewPort& vp);
+  std::vector<ReverseReachabilityDebugPoint> m_reverseReachabilityDebugPoints;
+
   /** Mutex for thread-safe access to route data. */
   wxMutex routemutex;
+
+  struct DestinationUpdateGuard {
+    explicit DestinationUpdateGuard(RouteMapOverlay& overlay)
+        : m_overlay(overlay) {
+      m_overlay.m_bUpdatingDestination.store(true);
+    }
+    ~DestinationUpdateGuard() { m_overlay.m_bUpdatingDestination.store(false); }
+    RouteMapOverlay& m_overlay;
+  };
 
   /**
    * Sets the point color based on position data.
@@ -447,8 +556,7 @@ private:
    * @param dc Device context for drawing.
    * @param vp ViewPort for coordinate transformations.
    */
-  void DrawLine(const RoutePoint* p1, const RoutePoint* p2, piDC& dc,
-                PlugIn_ViewPort& vp);
+  void DrawLine(RoutePoint* p1, RoutePoint* p2, piDC& dc, PlugIn_ViewPort& vp);
 
   /**
    * Draws a line between two route points with color gradation.
@@ -459,7 +567,7 @@ private:
    * @param dc Device context for drawing.
    * @param vp ViewPort for coordinate transformations.
    */
-  void DrawLine(const RoutePoint* p1, wxColour& color1, const RoutePoint* p2,
+  void DrawLine(RoutePoint* p1, wxColour& color1, RoutePoint* p2,
                 wxColour& color2, piDC& dc, PlugIn_ViewPort& vp);
 
   /** Last cursor latitude. */
@@ -496,8 +604,7 @@ private:
   Position* destination_position;
 
   /**
-   * Best achievable position reached toward the destination during route
-   * calculation.
+   * Best position reached toward the destination during route calculation.
    *
    * This stores either:
    * 1. The exact destination position (destination_position) if reached
@@ -567,6 +674,9 @@ private:
 
   /** Line buffer for wind barbs along the route. */
   LineBuffer wind_barb_route_cache;
+
+  /** Line buffer for climatology-sourced wind barbs along the route. */
+  LineBuffer climatology_wind_barb_route_cache;
 
   /** Current sailing comfort level. */
   int m_sailingComfort;

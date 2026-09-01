@@ -19,6 +19,8 @@
 
 #include <wx/wx.h>
 
+#include <cmath>
+
 #include "RoutePoint.h"
 #include "WeatherDataProvider.h"
 #include "RouteMap.h"
@@ -37,7 +39,6 @@ WeatherData::WeatherData(RoutePoint* position)
       currentDir(0),
       currentSpeed(0),
       swell(0) {
-  // Silence warning about uninitialized fields
   atlas.storm = 0;
   atlas.calm = 0;
 }
@@ -45,7 +46,7 @@ WeatherData::WeatherData(RoutePoint* position)
 /* get data from a position for plotting */
 bool RoutePoint::GetPlotData(RoutePoint* next, double dt,
                              RouteMapConfiguration& configuration,
-                             PlotData& data) const {
+                             PlotData& data) {
   data.lat = lat;
   data.lon = lon;
   data.tacks = tacks;
@@ -76,8 +77,7 @@ bool RoutePoint::GetPlotData(RoutePoint* next, double dt,
       WeatherDataProvider::GetAirPressure(configuration, lat, lon);
 
   climatology_wind_atlas atlas;
-
-  DataMask data_mask = DataMask::NONE;
+  int data_mask = 0;
   bool old = configuration.grib_is_data_deficient;
   configuration.grib_is_data_deficient = grib_is_data_deficient;
   if (!WeatherDataProvider::ReadWindAndCurrents(
@@ -91,8 +91,8 @@ bool RoutePoint::GetPlotData(RoutePoint* next, double dt,
     return false;
   }
 
-  // Combine the current RoutePoint's data_mask (which includes MOTOR_USED)
-  // with the local data_mask (which includes wind/current sources)
+  // Keep route-calculation flags such as MOTOR_USED alongside the freshly
+  // read weather-source flags for table/report display.
   data.data_mask = this->data_mask | data_mask;
 
   // Calculate the great circle distance and initial bearing between this route
@@ -106,26 +106,16 @@ bool RoutePoint::GetPlotData(RoutePoint* next, double dt,
   WeatherDataProvider::GroundToWaterFrame(data.cog, data.sog, data.currentDir,
                                           data.currentSpeed, data.ctw,
                                           data.stw);
-
-  // CTW is the track through water, but heading should account for current and
-  // leeway.
-  data.hdg = data.ctw;
-
-  // Calculate wave direction relative to boat heading
-  if (!std::isnan(data.WVDIR) && !std::isnan(data.hdg)) {
-    data.WVREL = heading_resolve(data.WVDIR - data.hdg);
-  } else {
-    data.WVREL = NAN;
-  }
-
+  data.WVREL = std::isfinite(data.WVDIR) && std::isfinite(data.ctw)
+                   ? heading_resolve(data.WVDIR - data.ctw)
+                   : NAN;
   configuration.grib_is_data_deficient = old;
   return true;
 }
 
 bool RoutePoint::GetWindData(RouteMapConfiguration& configuration,
                              double& twdOverWater, double& twsOverWater,
-
-                             DataMask& data_mask) {
+                             int& data_mask) {
   double twdOverGround, twsOverGround, currentDir, currentSpeed;
   climatology_wind_atlas atlas;
   return WeatherDataProvider::ReadWindAndCurrents(
@@ -135,8 +125,7 @@ bool RoutePoint::GetWindData(RouteMapConfiguration& configuration,
 
 bool RoutePoint::GetCurrentData(RouteMapConfiguration& configuration,
                                 double& currentDir, double& currentSpeed,
-
-                                DataMask& data_mask) {
+                                int& data_mask) {
   double twdOverGround, twsOverGround, twdOverWater, twsOverWater;
   climatology_wind_atlas atlas;
   return WeatherDataProvider::ReadWindAndCurrents(
@@ -147,7 +136,7 @@ bool RoutePoint::GetCurrentData(RouteMapConfiguration& configuration,
 bool BoatData::GetBoatSpeedForPolar(RouteMapConfiguration& configuration,
                                     const WeatherData& weather_data,
                                     double timeseconds, int newpolar,
-                                    double twa, double ctw, DataMask& data_mask,
+                                    double twa, double ctw, int& data_mask,
                                     bool bound, const char* caller) {
   if (newpolar < 0 ||
       newpolar >= static_cast<int>(configuration.boat.Polars.size())) {
@@ -157,8 +146,8 @@ bool BoatData::GetBoatSpeedForPolar(RouteMapConfiguration& configuration,
   Polar& polar = configuration.boat.Polars[newpolar];
   PolarSpeedStatus polar_status;
   bool used_grib = false;  // true if grib data was used, false if climatology.
-  bool using_motor = false;  // true if motor is being used instead of sailing
-  if ((data_mask & DataMask::CLIMATOLOGY_WIND) &&
+  bool using_motor = false;
+  if ((data_mask & Position::CLIMATOLOGY_WIND) &&
       (configuration.ClimatologyType == RouteMapConfiguration::CUMULATIVE_MAP ||
        configuration.ClimatologyType ==
            RouteMapConfiguration::CUMULATIVE_MINUS_CALMS)) {
@@ -200,7 +189,7 @@ bool BoatData::GetBoatSpeedForPolar(RouteMapConfiguration& configuration,
     // This can happen if the wind speed is outside the range of the polar data.
     // For example, if the wind speed is too high or too low, or if the wind
     // angle is too close to the polar's minimum angle.
-    wxLogDebug(
+    wxLogMessage(
         "[%s] Failed to get polar speed. windDirOverWater=%f "
         "windSpeedOverWater=%f "
         "twa=%f tws=%f ctw=%f stw=%f bound=%d grib=%d",
@@ -210,44 +199,33 @@ bool BoatData::GetBoatSpeedForPolar(RouteMapConfiguration& configuration,
     return false;  // ctw = stw = 0;
   }
 
-  // Check if motor should be used for low sailing speeds
+  // This deliberately changes speed only. The configured course-angle range
+  // remains authoritative while motoring, just as it is while sailing.
   if (configuration.UseMotor && stw < configuration.MotorSpeedThreshold) {
     stw = configuration.MotorSpeed;
     using_motor = true;
-    data_mask |= DataMask::MOTOR_USED;
-    // When motoring, the boat can go in any direction regardless of wind
-    // The course through water (ctw) remains as requested
-    // Note: All other constraints (land, boundaries, weather) still apply
+    data_mask |= Position::MOTOR_USED;
   }
 
-  // Apply upwind/downwind efficiency factors based on wind angle.
-  // Skip efficiency factors when motoring as they don't apply to engine power
+  // Sailing efficiency factors do not apply to engine power.
   if (!using_motor) {
     double abs_twa = fabs(twa);
     if (abs_twa <= 90.0) {
-      // Upwind sailing (0-90 degrees relative to wind)
       stw *= configuration.UpwindEfficiency;
     } else {
-      // Downwind sailing (90-180 degrees relative to wind)
       stw *= configuration.DownwindEfficiency;
     }
   }
 
-  if (configuration.NightCumulativeEfficiency != 1.0) {
-    // Determine if it's day or night at the current position and time.
-    DayLightStatus dayLightStatus =
-        SunCalculator::GetInstance().GetDayLightStatus(
-            weather_data.lat, weather_data.lon, configuration.time);
+  // Determine if it's day or night at the current position and time
+  DayLightStatus dayLightStatus =
+      SunCalculator::GetInstance().GetDayLightStatus(
+          weather_data.lat, weather_data.lon, configuration.time);
 
-    if (dayLightStatus == DayLightStatus::Night) {
-      if (!using_motor) {
-        // Apply day/night efficiency factor only if not motoring.
-        // Skip night efficiency when motoring as engine power is consistent.
-        stw *= configuration.NightCumulativeEfficiency;
-      }
-      // Set the NIGHT_TIME flag in data_mask for visual differentiation
-      data_mask |= DataMask::NIGHT_TIME;
-    }
+  if (dayLightStatus == DayLightStatus::Night) {
+    if (!using_motor) stw *= configuration.NightCumulativeEfficiency;
+    // Set the NIGHT_TIME flag in data_mask for visual differentiation
+    data_mask |= Position::NIGHT_TIME;
   }
 
   // Calculate boat movement over ground by combining boat speed with current.
@@ -256,12 +234,19 @@ bool BoatData::GetBoatSpeedForPolar(RouteMapConfiguration& configuration,
 
   // Calculate distance traveled over ground based on speed and time.
   dist = sog * timeseconds / 3600.0;
+  if (!std::isfinite(stw) || !std::isfinite(sog) ||
+      !std::isfinite(dist)) {
+    configuration.nonfinite_boat_speed_rejections++;
+    return false;
+  }
+  if (stw <= 0 || sog <= 0 || dist <= 0)
+    configuration.zero_boat_speed_rejections++;
   return true;
 }
 
 bool WeatherData::ReadWeatherDataAndCheckConstraints(
-    RouteMapConfiguration& configuration, RoutePoint* position,
-    DataMask& data_mask, PropagationError& error_code, bool end) {
+    RouteMapConfiguration& configuration, RoutePoint* position, int& data_mask,
+    PropagationError& error_code, bool end) {
   if (!ConstraintChecker::CheckSwellConstraint(configuration, lat, lon, swell,
                                                error_code)) {
     return false;
@@ -272,6 +257,7 @@ bool WeatherData::ReadWeatherDataAndCheckConstraints(
   }
 
   // Read wind and current data
+  configuration.weather_data_read_attempts++;
   if (!WeatherDataProvider::ReadWindAndCurrents(
           configuration, position, twdOverGround, twsOverGround, twdOverWater,
           twsOverWater, currentDir, currentSpeed, atlas, data_mask)) {
@@ -283,6 +269,26 @@ bool WeatherData::ReadWeatherDataAndCheckConstraints(
                            configuration.time.Format("%Y-%m-%d %H:%M:%S"));
     }
     return false;
+  }
+  configuration.weather_data_read_successes++;
+  if (data_mask & Position::GRIB_WIND) configuration.grib_wind_data_reads++;
+  if (data_mask & Position::CLIMATOLOGY_WIND)
+    configuration.climatology_wind_data_reads++;
+  if (data_mask & Position::DATA_DEFICIENT_WIND)
+    configuration.deficient_wind_data_reads++;
+  if (configuration.Currents) {
+    configuration.current_data_read_attempts++;
+    if (data_mask & (Position::GRIB_CURRENT |
+                     Position::CLIMATOLOGY_CURRENT |
+                     Position::DATA_DEFICIENT_CURRENT)) {
+      configuration.current_data_reads++;
+      configuration.current_speed_samples++;
+      configuration.sum_current_speed_seen += currentSpeed;
+      if (currentSpeed > configuration.max_current_speed_seen)
+        configuration.max_current_speed_seen = currentSpeed;
+    } else {
+      configuration.missing_current_data_reads++;
+    }
   }
 
   // Check if wind exceeds configured maximum limit (safety limit)
@@ -306,9 +312,9 @@ bool WeatherData::ReadWeatherDataAndCheckConstraints(
 bool BoatData::GetBestPolarAndBoatSpeed(RouteMapConfiguration& configuration,
                                         const WeatherData& weather_data,
                                         double twa, double ctw,
-                                        double parent_heading,
-                                        DataMask& data_mask, int polar,
-                                        int& newpolar, double& timeseconds) {
+                                        double parent_heading, int& data_mask,
+                                        int polar, int& newpolar,
+                                        double& timeseconds) {
   Reset();
   PolarSpeedStatus status;
   newpolar = configuration.boat.FindBestPolarForCondition(
@@ -368,26 +374,23 @@ bool BoatData::GetBestPolarAndBoatSpeed(RouteMapConfiguration& configuration,
   return true;
 }
 
-double calculateRhumbBearing(const double dlon, const double lon,
-                             const double dlat, const double lat) {
-  // We need to calculate the constant bearing for a rhumb line
-  double y = sin(deg2rad(dlon - lon)) * cos(deg2rad(dlat));
-  double x = cos(deg2rad(lat)) * sin(deg2rad(dlat)) -
-             sin(deg2rad(lat)) * cos(deg2rad(dlat)) * cos(deg2rad(dlon - lon));
-  double rhumbBearing = rad2deg(atan2(y, x));
-
-  // Normalize to 0-360
-  return heading_resolve(rhumbBearing);
-}
-
 double RoutePoint::RhumbLinePropagateToPoint(
     double dlat, double dlon, RouteMapConfiguration& configuration,
-    std::vector<RoutePoint*>& intermediatePoints, DataMask& data_mask,
+    std::vector<RoutePoint*>& intermediatePoints, int& data_mask,
     double& totalDistance, double& averageSpeed, double maxSegmentLength) {
   // Calculate rhumb line distance
   double rhumbDistance = DistLoxodrome(lat, lon, dlat, dlon);
 
   totalDistance = rhumbDistance;
+
+  // Calculate rhumb line bearing
+  // We need to calculate the constant bearing for a rhumb line
+  double y = sin(deg2rad(dlon - lon)) * cos(deg2rad(dlat));
+  double x = cos(deg2rad(lat)) * sin(deg2rad(dlat)) -
+             sin(deg2rad(lat)) * cos(deg2rad(dlat)) * cos(deg2rad(dlon - lon));
+  double rhumbBearing = rad2deg(atan2(y, x));
+  // Normalize to 0-360
+  rhumbBearing = heading_resolve(rhumbBearing);
 
   // If distance is very short, use regular PropagateToPoint
   if (rhumbDistance <= maxSegmentLength) {
@@ -406,6 +409,7 @@ double RoutePoint::RhumbLinePropagateToPoint(
 
   // Calculate number of segments needed
   int numSegments = std::ceil(rhumbDistance / maxSegmentLength);
+  double segmentDistance = rhumbDistance / numSegments;
 
   // Propagate through each segment sequentially
   double totalTime = 0;
@@ -445,6 +449,10 @@ double RoutePoint::RhumbLinePropagateToPoint(
         return log(tan(M_PI / 4 + lat / 2));
       };
 
+      double mp1 = meridionalParts(lat1);
+      double mp2 = meridionalParts(lat2);
+      double mp_i = mp1 + fraction * (mp2 - mp1);
+
       // Calculate intermediate longitude
       double lon_i;
       if (fabs(lat2 - lat1) < 1e-10) {
@@ -478,6 +486,7 @@ double RoutePoint::RhumbLinePropagateToPoint(
 
       // Restore original configuration time
       configuration.time = originalTime;
+
       return NAN;
     }
 
@@ -511,8 +520,7 @@ double RoutePoint::RhumbLinePropagateToPoint(
 
 double RoutePoint::PropagateToPoint(double dlat, double dlon,
                                     RouteMapConfiguration& configuration,
-                                    double& heading, DataMask& data_mask,
-                                    bool end) {
+                                    double& heading, int& data_mask, bool end) {
   PropagationError error_code;
   WeatherData weather_data(this);
   if (!weather_data.ReadWeatherDataAndCheckConstraints(
@@ -554,8 +562,9 @@ double RoutePoint::PropagateToPoint(double dlat, double dlon,
     ctw =
         weather_data.twdOverWater + heading; /* rotated relative to true wind */
 
-    double timeseconds = 0.0;  // Set to negative values for sail plan changes,
-                               // tacking and jibing
+    // GetBestPolarAndBoatSpeed adjusts this value for manoeuvre penalties, so
+    // it must not enter that calculation with an indeterminate value.
+    double timeseconds = 0.0;
 
     if (!boat_data.GetBestPolarAndBoatSpeed(
             configuration, weather_data, heading, ctw, NAN /*parent_heading*/,
@@ -569,7 +578,7 @@ double RoutePoint::PropagateToPoint(double dlat, double dlon,
   } while ((bearing - cog) > 1e-3);
   configuration.OptimizeTacking = old;
 
-  /* only allow if we fit in the isochrone time.  We could optimize this by
+  /* only allow if we fit in the isochron time.  We could optimize this by
   finding the maximum boat speed once, and using that before computing boat
   speed for this angle, but for now, we don't worry because propagating to
   the end is a small amount of total computation */
@@ -584,8 +593,10 @@ double RoutePoint::PropagateToPoint(double dlat, double dlon,
   }
 
   /* landfall test if we are within 60 miles (otherwise it's very slow) */
-  if (configuration.DetectLand && dist < 60 && CrossesLand(dlat, dlon)) {
-    if (!end) configuration.land_crossing = true;
+  if (configuration.DetectLand && dist < 60 &&
+      !ConstraintChecker::CheckLandConstraint(configuration, lat, lon, dlat,
+                                              dlon, cog)) {
+    configuration.land_crossing = true;
     return NAN;
   }
 
@@ -606,11 +617,11 @@ double RoutePoint::PropagateToPoint(double dlat, double dlon,
   return 3600.0 * dist / boat_data.sog;
 }
 
-bool RoutePoint::CrossesLand(double dlat, double dlon) const {
+bool RoutePoint::CrossesLand(double dlat, double dlon) {
   return PlugIn_GSHHS_CrossesLand(lat, lon, dlat, dlon);
 }
 
-bool RoutePoint::EntersBoundary(double dlat, double dlon) const {
+bool RoutePoint::EntersBoundary(double dlat, double dlon) {
   struct FindClosestBoundaryLineCrossing_t t;
   t.dStartLat = lat, t.dStartLon = heading_resolve(lon);
   t.dEndLat = dlat, t.dEndLon = heading_resolve(dlon);
@@ -619,14 +630,3 @@ bool RoutePoint::EntersBoundary(double dlat, double dlon) const {
   // we request any type
   return RouteMap::ODFindClosestBoundaryLineCrossing(&t);
 }
-
-  void RoutePoint::toJson(Json::Value &json) const {
-    json["lat"] = lat;
-    json["lon"] = lon;
-    json["polar"] = polar;
-    json["tacks"] = tacks;
-    json["jibes"] = jibes;
-    json["sail_plan_changes"] = sail_plan_changes;
-    json["grib_is_data_deficient"] = grib_is_data_deficient;
-    json["data_mask"] = static_cast<uint32_t>(data_mask);
-  }

@@ -5,6 +5,7 @@
 #endif
 #include <wx/mstream.h>
 #include "icons.h"
+#include "version.h"
 
 wxBitmap* _img_WeatherRouting;
 
@@ -14,6 +15,22 @@ wxString _svg_weather_routing;
 wxString _svg_weather_routing_rollover;
 wxString _svg_weather_routing_toggled;
 #endif
+
+wxString WeatherRoutingDataFile(const wxString& filename) {
+  wxFileName installed;
+  installed.SetPath(GetPluginDataDir(PLUGIN_PACKAGE_NAME));
+  installed.AppendDir(_T("data"));
+  installed.SetFullName(filename);
+  if (installed.FileExists()) return installed.GetFullPath();
+
+#ifdef WEATHER_ROUTING_SOURCE_DATA_DIR
+  wxFileName source(wxString::FromUTF8(WEATHER_ROUTING_SOURCE_DATA_DIR), "");
+  source.SetFullName(filename);
+  if (source.FileExists()) return source.GetFullPath();
+#endif
+
+  return installed.GetFullPath();
+}
 
 void initialize_images(void) {
   {
@@ -177,17 +194,14 @@ void initialize_images(void) {
   }
 
 #ifdef PLUGIN_USE_SVG
-  wxFileName fn;
-  fn.SetPath(GetPluginDataDir("weather_routing_pi"));
-  fn.AppendDir(_T("data"));
-  fn.SetFullName(_T("weather_routing_pi.svg"));
-  _svg_weather_routing = fn.GetFullPath();
-  fn.SetFullName(_T("weather_routing_pi_rollover.svg"));
-  _svg_weather_routing_rollover = fn.GetFullPath();
-  fn.SetFullName(_T("weather_routing_pi_toggled.svg"));
-  _svg_weather_routing_toggled = fn.GetFullPath();
-
-  wxLogMessage("Loading toolbar icon: " + _svg_weather_routing_rollover);
+  _svg_weather_routing =
+      WeatherRoutingDataFile(_T("weather_routing_pi.svg"));
+  _svg_weather_routing_rollover =
+      WeatherRoutingDataFile(_T("weather_routing_pi_rollover.svg"));
+  _svg_weather_routing_toggled =
+      WeatherRoutingDataFile(_T("weather_routing_pi_toggled.svg"));
+  wxLogMessage(_T("Loading WeatherRouting toolbar icon: ") +
+               _svg_weather_routing);
 #endif
 
   return;

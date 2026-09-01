@@ -19,7 +19,9 @@
 
 #include <wx/wx.h>
 
+#include <cmath>
 #include <map>
+#include <vector>
 
 #include "IsoRoute.h"
 #include "Position.h"
@@ -53,7 +55,7 @@ Position* IsoRoute::ClosestPosition(double lat, double lon, double* dist) {
       mindist = dist;
     }
 
-    const Position* q = s->next->point;
+    Position* q = s->next->point;
     switch (s->quadrant) {
       case 0:
         if ((lon > p->lon && lat > p->lat) || (lon < q->lon && lat < q->lat))
@@ -74,7 +76,7 @@ Position* IsoRoute::ClosestPosition(double lat, double lon, double* dist) {
     }
 
     {
-      const Position* e = s->next->point;
+      Position* e = s->next->point;
       for (p = p->next; p != e; p = p->next) {
         double dlat = lat - p->lat, dlon = lon - p->lon;
         double dist = dlat * dlat + dlon * dlon;
@@ -150,15 +152,14 @@ bool IsoRoute::Propagate(IsoRouteList& routelist,
 void IsoRoute::PropagateToEnd(RouteMapConfiguration& configuration,
                               double& mindt, Position*& endp, double& minH,
                               bool& mintacked, bool& minjibed,
-                              bool& minsail_plan_changed,
-                              DataMask& mindata_mask) {
+                              bool& minsail_plan_changed, int& mindata_mask) {
   Position* p = skippoints->point;
   // TODO: it does not look like this function is used anywhere.
   // If it is used, one problem is that it does not check for the
   // case when there is a sailplan change.
   do {
     double H;
-    DataMask data_mask = DataMask::NONE;
+    int data_mask = 0;
     double dt = p->PropagateToEnd(configuration, H, data_mask);
 
     /* did we tack thru the wind? apply penalty */
@@ -186,6 +187,7 @@ void IsoRoute::PropagateToEnd(RouteMapConfiguration& configuration,
       endp = p;
       mintacked = tacked;
       minjibed = jibed;
+      minsail_plan_changed = false;
       mindata_mask = data_mask;
     }
     p = p->next;
@@ -195,6 +197,57 @@ void IsoRoute::PropagateToEnd(RouteMapConfiguration& configuration,
        cit++)
     (*cit)->PropagateToEnd(configuration, mindt, endp, minH, mintacked,
                            minjibed, minsail_plan_changed, mindata_mask);
+}
+
+void IsoRoute::CollectDestinationCandidates(
+    RouteMapConfiguration& configuration,
+    std::vector<IsoRouteDestinationCandidate>& candidates) {
+  Position* p = skippoints->point;
+  do {
+    double H;
+    int data_mask = 0;
+    double dt = p->PropagateToEnd(configuration, H, data_mask);
+
+    bool tacked = false;
+    if (!std::isnan(dt) && p->parent_heading * H < 0 &&
+        fabs(p->parent_heading - H) < 180) {
+      tacked = true;
+      dt += configuration.TackingTime;
+    }
+
+    bool jibed = false;
+    if (!std::isnan(dt) && p->parent_heading * H > 0 &&
+        fabs(p->parent_heading - H) > 180) {
+      jibed = true;
+      dt += configuration.JibingTime;
+    }
+
+    if (!std::isnan(dt)) {
+      IsoRouteDestinationCandidate candidate;
+      candidate.dt = dt;
+      candidate.isochron_time = configuration.time;
+      candidate.absolute_dt = configuration.StartTime.IsValid() &&
+                                      configuration.time.IsValid()
+                                  ? (configuration.time -
+                                     configuration.StartTime)
+                                            .GetSeconds()
+                                            .ToDouble() +
+                                        dt
+                                  : dt;
+      candidate.endp = p;
+      candidate.heading = H;
+      candidate.tacked = tacked;
+      candidate.jibed = jibed;
+      candidate.sail_plan_changed = false;
+      candidate.data_mask = data_mask;
+      candidates.push_back(candidate);
+    }
+    p = p->next;
+  } while (p != skippoints->point);
+
+  for (IsoRouteList::iterator cit = children.begin(); cit != children.end();
+       cit++)
+    (*cit)->CollectDestinationCandidates(configuration, candidates);
 }
 
 int IsoRoute::SkipCount() {
@@ -250,9 +303,6 @@ void IsoChron::PropagateIntoList(IsoRouteList& routelist,
 
     /* build up a list of iso regions for each point
        in the current iso */
-    // Note: Propagate() must not change the configuration.Anchoring field,
-    // otherwise x might not be initialized
-    // const& configuration is not possible because the polarstatus is set
     if ((*it)->Propagate(routelist, configuration)) propagated = true;
 
     if (!configuration.Anchoring) x = new IsoRoute(*it);
@@ -266,16 +316,13 @@ void IsoChron::PropagateIntoList(IsoRouteList& routelist,
         y = nullptr;
       if ((*cit)->Propagate(routelist, configuration)) {
         if (!configuration.Anchoring) y = new IsoRoute(*cit, x);
-        // NOLINTBEGIN: x is always initialized for any value of
-        // configuration.Anchoring
         x->children.push_back(y); /* copy child */
-        // NOLINTEND
         propagated = true;
       } else
         delete y;
     }
 
-    /* if any propagation occurred even for children, then we clone this route
+    /* if any propagation occured even for children, then we clone this route
        this prevents backtracking, otherwise, we don't need this route
        (it's a dead end) */
     if (propagated)
@@ -603,6 +650,63 @@ void IsoRoute::ReduceClosePoints() {
 
   for (IsoRouteList::iterator it = children.begin(); it != children.end(); it++)
     (*it)->ReduceClosePoints();
+}
+
+int IsoRoute::ThinPositions(int max_positions) {
+  int removed = 0;
+
+  if (max_positions < 3) max_positions = 3;
+
+  int count = Count();
+  if (count > max_positions) {
+    std::vector<Position*> positions;
+    positions.reserve(count);
+    Position* p = skippoints->point;
+    do {
+      positions.push_back(p);
+      p = p->next;
+    } while (p != skippoints->point);
+
+    std::vector<bool> keep(count, false);
+    for (int i = 0; i < max_positions; ++i) {
+      int index = (int)floor((double)i * count / max_positions);
+      if (index < 0) index = 0;
+      if (index >= count) index = count - 1;
+      keep[index] = true;
+    }
+
+    Position* first_kept = nullptr;
+    Position* previous_kept = nullptr;
+    for (int i = 0; i < count; ++i) {
+      Position* pos = positions[i];
+      if (keep[i]) {
+        if (!first_kept) first_kept = pos;
+        if (previous_kept) {
+          previous_kept->next = pos;
+          pos->prev = previous_kept;
+        }
+        previous_kept = pos;
+      } else {
+        ++removed;
+      }
+    }
+
+    if (first_kept && previous_kept) {
+      previous_kept->next = first_kept;
+      first_kept->prev = previous_kept;
+      for (int i = 0; i < count; ++i) {
+        if (!keep[i]) delete positions[i];
+      }
+      DeleteSkipPoints(skippoints);
+      skippoints = first_kept->BuildSkipList();
+      MinimizeLat();
+    }
+  }
+
+  for (IsoRouteList::iterator it = children.begin(); it != children.end(); ++it)
+    removed += (*it)->ThinPositions(max_positions);
+
+  return removed;
 }
 
 /* apply current to given route, and return if it changed at all */
@@ -1082,6 +1186,7 @@ startnormalizing:
         if (pstart) break; /* have start, must be done */
       startingp:;
       } while (q != sq->point);
+      p = pstart;
       if (!pstart) goto done;
       //    if(pstart == pend)  // this is never hit in practice
       //      goto done;
@@ -1438,8 +1543,7 @@ bool Merge(IsoRouteList& rl, IsoRoute* route1, IsoRoute* route2, int level,
   return false;
 }
 
-typedef wxWeakRef<Shared_GribRecordSet> Shared_GribRecordSetRef;
-extern std::map<time_t, Shared_GribRecordSetRef> grib_key;
+extern std::map<time_t, std::weak_ptr<WR_GribRecordSet>> grib_key;
 extern wxMutex s_key_mutex;
 
 IsoChron::IsoChron(IsoRouteList r, wxDateTime t, double d,
@@ -1453,6 +1557,7 @@ IsoChron::IsoChron(IsoRouteList r, wxDateTime t, double d,
   m_Grib = m_SharedGrib.GetGribRecordSet();
   if (m_Grib) {
     wxMutexLocker lock(s_key_mutex);
-    grib_key[m_Grib->m_Reference_Time] = &m_SharedGrib;
+    grib_key[m_Grib->m_Reference_Time] =
+        m_SharedGrib.GetSharedGribRecordSet();
   }
 }

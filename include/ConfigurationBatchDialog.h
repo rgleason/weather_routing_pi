@@ -47,6 +47,7 @@ public:
   void Render(piDC& dc, PlugIn_ViewPort& vp);
   void AddSource(wxString name);
   void RemoveSource(wxString name);
+  void RenameSource(const wxString& oldName, const wxString& newName);
   void ClearSources();
 
   void Reset();

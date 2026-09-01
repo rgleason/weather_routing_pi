@@ -11,6 +11,7 @@
 #include <wx/mstream.h>
 
 extern void initialize_images(void);
+extern wxString WeatherRoutingDataFile(const wxString& filename);
 
 extern wxBitmap* _img_WeatherRouting;
 

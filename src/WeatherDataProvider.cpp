@@ -19,9 +19,10 @@
 
 #include <wx/wx.h>
 
+#include <cmath>
 #include <functional>
 
-#include "RoutePoint.h"
+#include "json/json.h"
 #include "WeatherDataProvider.h"
 #include "RouteMap.h"
 #include "Utilities.h"
@@ -31,6 +32,120 @@
 
 extern Json::Value g_ReceivedJSONMsg;
 extern wxString g_ReceivedMessage;
+
+enum { WIND, CURRENT };
+
+namespace {
+
+const char* ClimatologyServiceName(
+    ClimatologyService service) {
+  switch (service) {
+    case ClimatologyService::Wind:
+      return "wind";
+    case ClimatologyService::Current:
+      return "current";
+    case ClimatologyService::WindAtlas:
+      return "wind-atlas";
+    case ClimatologyService::CycloneTracks:
+      return "cyclone-tracks";
+  }
+  return "unknown";
+}
+
+}  // namespace
+
+void WeatherDataProvider::ResetClimatologyPreparation() {
+  ClimatologyThreadGuard::Reset();
+}
+
+bool WeatherDataProvider::CanInvokeClimatology(
+    ClimatologyService service) {
+  if (wxIsMainThread()) return true;
+  if (ClimatologyThreadGuard::CanInvoke(service, false)) return true;
+  if (ClimatologyThreadGuard::ShouldLogBlocked(service)) {
+    wxLogMessage(
+        "WR_CLIMATOLOGY_THREAD_GUARD service=%s action=blocked "
+        "reason=main-thread-preflight-not-complete",
+        ClimatologyServiceName(service));
+  }
+  return false;
+}
+
+bool WeatherDataProvider::PrepareClimatologyForWorkers(
+    const RouteMapConfiguration& configuration) {
+  if (!wxIsMainThread()) {
+    wxLogMessage(
+        "WR_CLIMATOLOGY_PREFLIGHT result=failed reason=not-main-thread");
+    return false;
+  }
+
+  const wxDateTime queryTime = configuration.StartTime.IsValid()
+                                   ? configuration.StartTime
+                                   : wxDateTime::Now();
+  const double queryLat =
+      std::isfinite(configuration.StartLat) ? configuration.StartLat : 0.0;
+  const double queryLon =
+      std::isfinite(configuration.StartLon) ? configuration.StartLon : 0.0;
+
+  const bool useClimatology =
+      configuration.ClimatologyType != RouteMapConfiguration::DISABLED;
+  if (useClimatology && configuration.Currents &&
+      RouteMap::ClimatologyData) {
+    double direction = 0.0;
+    double speed = 0.0;
+    std::lock_guard<std::recursive_mutex> invocationLock(
+        ClimatologyThreadGuard::InvocationMutex());
+    RouteMap::ClimatologyData(CURRENT, queryTime, queryLat, queryLon,
+                              direction, speed);
+    ClimatologyThreadGuard::MarkPrepared(ClimatologyService::Current);
+  }
+
+  if (configuration.ClimatologyType == RouteMapConfiguration::AVERAGE &&
+      RouteMap::ClimatologyData) {
+    double direction = 0.0;
+    double speed = 0.0;
+    std::lock_guard<std::recursive_mutex> invocationLock(
+        ClimatologyThreadGuard::InvocationMutex());
+    RouteMap::ClimatologyData(WIND, queryTime, queryLat, queryLon, direction,
+                              speed);
+    ClimatologyThreadGuard::MarkPrepared(ClimatologyService::Wind);
+  }
+
+  if (configuration.ClimatologyType >
+          RouteMapConfiguration::CURRENTS_ONLY &&
+      RouteMap::ClimatologyWindAtlasData) {
+    int count = 8;
+    double directions[8] = {};
+    double speeds[8] = {};
+    double storm = 0.0;
+    double calm = 0.0;
+    std::lock_guard<std::recursive_mutex> invocationLock(
+        ClimatologyThreadGuard::InvocationMutex());
+    RouteMap::ClimatologyWindAtlasData(queryTime, queryLat, queryLon, count,
+                                       directions, speeds, storm, calm);
+    ClimatologyThreadGuard::MarkPrepared(ClimatologyService::WindAtlas);
+  }
+
+  if (configuration.AvoidCycloneTracks &&
+      RouteMap::ClimatologyCycloneTrackCrossings) {
+    std::lock_guard<std::recursive_mutex> invocationLock(
+        ClimatologyThreadGuard::InvocationMutex());
+    RouteMap::ClimatologyCycloneTrackCrossings(
+        queryLat, queryLon, queryLat, queryLon, queryTime,
+        configuration.CycloneMonths * 30 + configuration.CycloneDays);
+    ClimatologyThreadGuard::MarkPrepared(ClimatologyService::CycloneTracks);
+  }
+
+  wxLogMessage(
+      "WR_CLIMATOLOGY_PREFLIGHT result=ready current=%d wind=%d "
+      "wind_atlas=%d cyclone_tracks=%d lat=%.6f lon=%.6f time=\"%s\"",
+      ClimatologyThreadGuard::IsPrepared(ClimatologyService::Current),
+      ClimatologyThreadGuard::IsPrepared(ClimatologyService::Wind),
+      ClimatologyThreadGuard::IsPrepared(ClimatologyService::WindAtlas),
+      ClimatologyThreadGuard::IsPrepared(ClimatologyService::CycloneTracks),
+      queryLat, queryLon, queryTime.FormatISOCombined());
+  return true;
+}
 
 static Json::Value RequestGRIB(const wxDateTime& time, const wxString& what,
                                double lat, double lon) {
@@ -108,8 +223,6 @@ twd = 0.;
   return true;
 }
 
-enum { WIND, CURRENT };
-
 static bool GribCurrent(RouteMapConfiguration& configuration, double lat,
                         double lon, double& currentDir, double& currentSpeed) {
   WR_GribRecordSet* grib = configuration.grib;
@@ -138,20 +251,23 @@ static bool GribCurrent(RouteMapConfiguration& configuration, double lat,
 
 bool WeatherDataProvider::GetCurrent(RouteMapConfiguration& configuration,
                                      double lat, double lon, double& currentDir,
-                                     double& currentSpeed,
-                                     DataMask& data_mask) {
+                                     double& currentSpeed, int& data_mask) {
   if (!configuration.grib_is_data_deficient &&
       GribCurrent(configuration, lat, lon, currentDir, currentSpeed)) {
-    data_mask |= DataMask::GRIB_CURRENT;
+    data_mask |= Position::GRIB_CURRENT;
     return true;
   }
 
   if (configuration.ClimatologyType != RouteMapConfiguration::DISABLED &&
       RouteMap::ClimatologyData &&
-      RouteMap::ClimatologyData(CURRENT, configuration.time, lat, lon,
-                                currentDir, currentSpeed)) {
-    data_mask |= DataMask::CLIMATOLOGY_CURRENT;
-    return true;
+      CanInvokeClimatology(ClimatologyService::Current)) {
+    std::lock_guard<std::recursive_mutex> invocationLock(
+        ClimatologyThreadGuard::InvocationMutex());
+    if (RouteMap::ClimatologyData(CURRENT, configuration.time, lat, lon,
+                                  currentDir, currentSpeed)) {
+      data_mask |= Position::CLIMATOLOGY_CURRENT;
+      return true;
+    }
   }
 
 #if 0  // for now disable deficient current data as it's usefulness is not known
@@ -160,7 +276,7 @@ bool WeatherDataProvider::GetCurrent(RouteMapConfiguration& configuration,
 // so only current data from a different time is allowed
 if(configuration.AllowDataDeficient &&
 configuration.grib_is_data_deficient && GribCurrent(configuration, lat, lon, currentDir, currentSpeed)) {
-data_mask |= DataMask::GRIB_CURRENT | DataMask::DATA_DEFICIENT_CURRENT;
+data_mask |= Position::GRIB_CURRENT | Position::DATA_DEFICIENT_CURRENT;
 return true;
 }
 #endif
@@ -292,18 +408,11 @@ void WeatherDataProvider::TransformToGroundFrame(
  * otherwise
  */
 bool WeatherDataProvider::ReadWindAndCurrents(
-    RouteMapConfiguration& configuration, const RoutePoint* position,
+    RouteMapConfiguration& configuration, RoutePoint* position,
     /* normal data */
     double& twdOverGround, double& twsOverGround, double& twdOverWater,
     double& twsOverWater, double& currentDir, double& currentSpeed,
-
-    climatology_wind_atlas& atlas, DataMask& data_mask) {
-
-    //int cv = _CrtCheckMemory();
-    //if (!cv) {
-    //    int yyp = 4;
-    //  }
-
+    climatology_wind_atlas& atlas, int& data_mask) {
   /* read current data */
   if (!configuration.Currents ||
       !GetCurrent(configuration, position->lat, position->lon, currentDir,
@@ -314,31 +423,37 @@ bool WeatherDataProvider::ReadWindAndCurrents(
     if (!configuration.grib_is_data_deficient &&
         GetGribWind(configuration, position->lat, position->lon, twdOverGround,
                     twsOverGround)) {
-      data_mask |= DataMask::GRIB_WIND;
+      data_mask |= Position::GRIB_WIND;
       break;
     }
 
     if (configuration.ClimatologyType == RouteMapConfiguration::AVERAGE &&
         RouteMap::ClimatologyData &&
-        RouteMap::ClimatologyData(WIND, configuration.time, position->lat,
-                                  position->lon, twdOverGround,
-                                  twsOverGround)) {
-      twdOverGround = heading_resolve(twdOverGround);
-
-      data_mask |= DataMask::CLIMATOLOGY_WIND;
-
-      break;
+        CanInvokeClimatology(ClimatologyService::Wind)) {
+      std::lock_guard<std::recursive_mutex> invocationLock(
+          ClimatologyThreadGuard::InvocationMutex());
+      if (RouteMap::ClimatologyData(WIND, configuration.time, position->lat,
+                                    position->lon, twdOverGround,
+                                    twsOverGround)) {
+        twdOverGround = heading_resolve(twdOverGround);
+        data_mask |= Position::CLIMATOLOGY_WIND;
+        break;
+      }
     } else if (configuration.ClimatologyType >
                    RouteMapConfiguration::CURRENTS_ONLY &&
-               RouteMap::ClimatologyWindAtlasData) {
+               RouteMap::ClimatologyWindAtlasData &&
+               CanInvokeClimatology(ClimatologyService::WindAtlas)) {
       int windatlas_count = 8;
       double speeds[8];
+      std::lock_guard<std::recursive_mutex> invocationLock(
+          ClimatologyThreadGuard::InvocationMutex());
       if (RouteMap::ClimatologyWindAtlasData(
-              configuration.time, position->lat, position->lon, windatlas_count,
-              atlas.directions, speeds, atlas.storm, atlas.calm)) {
+              configuration.time, position->lat, position->lon,
+              windatlas_count, atlas.directions, speeds, atlas.storm,
+              atlas.calm)) {
         /* compute wind speeds over water with the given current */
         for (int i = 0; i < windatlas_count; i++) {
-          double twd = static_cast<double>(i) * 360 / windatlas_count;
+          double twd = i * 360 / windatlas_count;
           double tws = speeds[i] * configuration.WindStrength;
           GroundToWaterFrame(twd, tws, currentDir, -currentSpeed, atlas.W[i],
                              atlas.VW[i]);
@@ -373,8 +488,7 @@ bool WeatherDataProvider::ReadWindAndCurrents(
 
         TransformToGroundFrame(twdOverWater, twsOverWater, currentDir,
                                currentSpeed, twdOverGround, twsOverGround);
-
-        data_mask |= DataMask::CLIMATOLOGY_WIND;
+        data_mask |= Position::CLIMATOLOGY_WIND;
         return true;
       }
     }
@@ -385,14 +499,10 @@ bool WeatherDataProvider::ReadWindAndCurrents(
     if (configuration.grib_is_data_deficient &&
         GetGribWind(configuration, position->lat, position->lon, twdOverGround,
                     twsOverGround)) {
-      // NOLINTBEGIN: data_mask might take the value 5, which is not listed
-      // in the enum
-      data_mask |= DataMask::GRIB_WIND | DataMask::DATA_DEFICIENT_WIND;
-      // NOLINTEND
-
+      data_mask |= Position::GRIB_WIND | Position::DATA_DEFICIENT_WIND;
       break;
     }
-    const Position* n = dynamic_cast<const Position*>(position);
+    Position* n = dynamic_cast<Position*>(position);
     if (!n || !n->parent) return false;
     position = n->parent;
   }
@@ -460,26 +570,18 @@ double WeatherDataProvider::GetSwell(RouteMapConfiguration& configuration,
       [](double height) { return height < 0 ? 0 : height; });
 }
 
-/**
- * Return the wave direction at the specified lat/long location.
- * @return the wave direction in degrees.
- */
 double WeatherDataProvider::GetWaveDirection(
     RouteMapConfiguration& configuration, double lat, double lon) {
   return GetWeatherParameter(
       configuration, lat, lon, "WAVE DIR", Idx_WVDIR, NAN,
-      [](double height) { return height < 0 ? 0 : height; });
+      [](double direction) { return direction < 0 ? NAN : direction; });
 }
 
-/**
- * Return the wave period at the specified lat/long location.
- * @return the wave period in seconds.
- */
 double WeatherDataProvider::GetWavePeriod(RouteMapConfiguration& configuration,
                                           double lat, double lon) {
   return GetWeatherParameter(
       configuration, lat, lon, "WAVE PERIOD", Idx_WVPER, NAN,
-      [](double height) { return height < 0 ? 0 : height; });
+      [](double period) { return period < 0 ? NAN : period; });
 }
 
 /**

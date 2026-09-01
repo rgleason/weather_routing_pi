@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "name": "Holyhead chart-blocked reverse recovery diagnostic",
+  "start": {
+    "name": "Holyhead outside TSS",
+    "lat": 53.3378,
+    "lon": -4.614540
+  },
+  "end": {
+    "name": "Holy Island inland diagnostic endpoint",
+    "lat": 53.3000,
+    "lon": -4.6800
+  },
+  "startTime": "2026-07-10T06:00:00Z",
+  "departureOptimization": {
+    "enabled": false,
+    "beforeMinutes": 0,
+    "afterMinutes": 0,
+    "stepMinutes": 60
+  },
+  "environment": {
+    "useCurrents": true
+  },
+  "safety": {
+    "mode": "chart",
+    "enforce": true,
+    "landMarginNm": 0.0,
+    "minimumDepthM": 0,
+    "persistentCertifiedCacheEnabled": false
+  },
+  "reverseReachability": {
+    "enabled": true,
+    "searchBackIsochrones": 6,
+    "horizonHours": 0,
+    "diagnostics": true
+  }
+}

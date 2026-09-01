@@ -1,0 +1,5 @@
+ARG BASE_IMAGE=debian:bookworm
+FROM ${BASE_IMAGE}
+
+COPY install-debian-build-deps.sh /usr/local/bin/
+RUN /usr/local/bin/install-debian-build-deps.sh
