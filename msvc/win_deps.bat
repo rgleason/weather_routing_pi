@@ -41,19 +41,28 @@ if errorlevel 1 (
 echo done git
 :: Install choco cmake and add it's persistent user path element
 ::
+set "CMAKE_HOME=C:\Program Files\CMake"
 cmake --version > nul 2>&1
-if errorlevel 1 (
-  set "CMAKE_HOME=C:\Program Files\CMake"
+if errorlevel 1 if not exist "%CMAKE_HOME%\bin\cmake.exe" (
   choco install -y --no-progress cmake
+  if errorlevel 1 exit /b !errorlevel!
+)
+if exist "%CMAKE_HOME%\bin\cmake.exe" (
   set "EXTRA_PATH=%CMAKE_HOME%\bin;%EXTRA_PATH%"
 )
 
 :: Install choco poedit and add it's persistent user path element
 ::
-set "POEDIT_HOME=C:\Program Files (x86)\Poedit\GettextTools"
-if not exist "%POEDIT_HOME%" (choco install -y poedit)
-dir "%POEDIT_HOME%"
-set "EXTRA_PATH=%POEDIT_HOME%\bin;%EXTRA_PATH%"
+where msgfmt > nul 2>&1
+if errorlevel 1 (
+  set "POEDIT_HOME=C:\Program Files (x86)\Poedit\GettextTools"
+  if not exist "!POEDIT_HOME!\bin\msgfmt.exe" (
+    choco install -y --no-progress poedit
+    if errorlevel 1 exit /b !errorlevel!
+  )
+  dir "!POEDIT_HOME!"
+  set "EXTRA_PATH=!POEDIT_HOME!\bin;!EXTRA_PATH!"
+)
 
 :: Update required python stuff
 ::
@@ -89,23 +98,29 @@ echo set "wxWidgets_LIB_DIR=%wxWidgets_LIB_DIR%" >> %CONFIG_FILE%
 echo set "TARGET_TUPLE=%TARGET_TUPLE%" >> %CONFIG_FILE%
 
 if not exist "%WXWIN%" (
-  wget --version > nul 2>&1 || choco install -y wget
   if  "%~1"=="wx32" (
       echo Downloading 3.2.1
       if not exist  %SCRIPTDIR%..\cache\wxWidgets-3.2.1 (
           mkdir %SCRIPTDIR%..\cache\wxWidgets-3.2.1
       )
       set "GITHUB_DL=https://github.com/wxWidgets/wxWidgets/releases/download"
-      wget -nv --no-check-certificate !GITHUB_DL!/v3.2.1/wxMSW-3.2.1_vc14x_Dev.7z
+      curl.exe --fail --location --retry 5 --retry-delay 5 --output wxMSW-3.2.1_vc14x_Dev.7z !GITHUB_DL!/v3.2.1/wxMSW-3.2.1_vc14x_Dev.7z
+      if errorlevel 1 exit /b !errorlevel!
       7z x -o%SCRIPTDIR%..\cache\wxWidgets-3.2.1 wxMSW-3.2.1_vc14x_Dev.7z
-      wget -nv --no-check-certificate !GITHUB_DL!/v3.2.1/wxWidgets-3.2.1-headers.7z
+      if errorlevel 1 exit /b !errorlevel!
+      curl.exe --fail --location --retry 5 --retry-delay 5 --output wxWidgets-3.2.1-headers.7z !GITHUB_DL!/v3.2.1/wxWidgets-3.2.1-headers.7z
+      if errorlevel 1 exit /b !errorlevel!
       7z x -o%SCRIPTDIR%..\cache\wxWidgets-3.2.1 wxWidgets-3.2.1-headers.7z
+      if errorlevel 1 exit /b !errorlevel!
   ) else (
       echo Downloading 3.1.2
-      wget -O wxWidgets-3.1.2.7z -nv --no-check-certificate ^
-        https://download.opencpn.org/s/E2p4nLDzeqx4SdX/download
+      curl.exe --fail --location --retry 5 --retry-delay 5 ^
+        --output wxWidgets-3.1.2.7z https://download.opencpn.org/s/E2p4nLDzeqx4SdX/download
+      if errorlevel 1 exit /b !errorlevel!
       7z i > nul 2>&1 || choco install -y 7zip
+      if errorlevel 1 exit /b !errorlevel!
       7z x wxWidgets-3.1.2.7z -o%WXWIN%
+      if errorlevel 1 exit /b !errorlevel!
   )
 )
 dir cache

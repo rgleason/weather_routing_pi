@@ -13,6 +13,10 @@ rem CMake 4's FindGettext module requires msgfmt and msgmerge at configure
 rem time.  Install the same pinned package used by xGRIB's validated Windows
 rem build before configuring the wxWidgets and Visual Studio environments.
 choco install gettext --version 1.0.0.20260310 -y --no-progress
+if errorlevel 1 (
+  timeout /t 10 /nobreak
+  choco install gettext --version 1.0.0.20260310 -y --no-progress
+)
 if errorlevel 1 exit /b %errorlevel%
 call refreshenv
 if errorlevel 1 exit /b %errorlevel%
@@ -61,19 +65,22 @@ if exist build (rmdir /s /q build)
 mkdir build && cd build
 dir
 
-wget https://sourceforge.net/projects/opencpnplugins/files/opencpn.lib
+curl.exe --fail --location --retry 5 --retry-delay 5 --output opencpn.lib https://sourceforge.net/projects/opencpnplugins/files/opencpn.lib
 if errorlevel 1 exit /b %errorlevel%
-wget https://download.opencpn.org/s/oibxM3kzfzKcSc3/download/OpenCPN_buildwin-4.99a.7z
+curl.exe --fail --location --retry 5 --retry-delay 5 --output OpenCPN_buildwin-4.99a.7z https://download.opencpn.org/s/oibxM3kzfzKcSc3/download/OpenCPN_buildwin-4.99a.7z
 if errorlevel 1 exit /b %errorlevel%
 7z x -y OpenCPN_buildwin-4.99a.7z -o..\buildwin
 if errorlevel 1 exit /b %errorlevel%
-wget https://download.opencpn.org/s/54HsBDLNzRZLL6i/download/nsis-3.04-setup.exe
+curl.exe --fail --location --retry 5 --retry-delay 5 --output nsis-3.04-setup.exe https://download.opencpn.org/s/54HsBDLNzRZLL6i/download/nsis-3.04-setup.exe
 if errorlevel 1 exit /b %errorlevel%
 nsis-3.04-setup.exe /S
 if errorlevel 1 exit /b %errorlevel%
 
-echo Check if poedit has been installed
-poedit -version
+echo Check gettext tools
+msgfmt --version
+if errorlevel 1 exit /b %errorlevel%
+msgmerge --version
+if errorlevel 1 exit /b %errorlevel%
 echo Done check
 
 echo Create build environment
