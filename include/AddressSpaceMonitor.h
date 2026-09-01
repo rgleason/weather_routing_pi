@@ -20,6 +20,8 @@
  * @author Weather Routing Plugin Team
  * @date 2024
  */
+#include <wx/defs.h>
+
 #ifdef __WXMSW__
 
 #ifndef ADDRESSSPACEMONITOR_H

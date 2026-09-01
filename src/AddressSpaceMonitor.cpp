@@ -1,3 +1,5 @@
+#include <wx/defs.h>
+
 #ifdef __WXMSW__
 
 #include "AddressSpaceMonitor.h"
