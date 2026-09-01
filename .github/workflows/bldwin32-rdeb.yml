@@ -14,6 +14,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: MSVC dev cmd (x86)
         uses: ilammy/msvc-dev-cmd@v1
