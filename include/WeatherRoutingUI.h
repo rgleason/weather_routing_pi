@@ -462,7 +462,7 @@ protected:
   wxCheckBox* m_cbOptimizeTacking;
   wxCheckBox* m_cbAllowDataDeficient;
   wxButton* m_bOK;
-  wxPanel* m_pAdvanced;
+  wxScrolledWindow* m_pAdvanced;
   wxStaticText* m_staticText26;
   wxSpinCtrl* m_sMaxLatitude;
   wxStaticText* m_staticText131;

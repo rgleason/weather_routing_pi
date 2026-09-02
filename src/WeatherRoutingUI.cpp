@@ -1808,8 +1808,10 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   m_pBasic->Layout();
   fgSizer106->Fit(m_pBasic);
   m_notebook7->AddPage(m_pBasic, _("Basic"), true);
-  m_pAdvanced = new wxPanel(m_notebook7, wxID_ANY, wxDefaultPosition,
-                            wxDefaultSize, wxTAB_TRAVERSAL);
+  m_pAdvanced = new wxScrolledWindow(
+      m_notebook7, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+      wxVSCROLL | wxTAB_TRAVERSAL);
+  m_pAdvanced->SetScrollRate(0, 10);
   wxBoxSizer* bSizer8;
   bSizer8 = new wxBoxSizer(wxVERTICAL);
 
@@ -1817,7 +1819,6 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   fgSizer1072 = new wxFlexGridSizer(0, 2, 0, 0);
   fgSizer1072->AddGrowableCol(0);
   fgSizer1072->AddGrowableCol(1);
-  fgSizer1072->AddGrowableRow(0);
   fgSizer1072->SetFlexibleDirection(wxBOTH);
   fgSizer1072->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
 
@@ -2529,16 +2530,16 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
 
   fgSizer1072->Add(fgSizer109, 1, wxEXPAND | wxALL, 5);
 
-  bSizer8->Add(fgSizer1072, 1, wxEXPAND, 5);
+  bSizer8->Add(fgSizer1072, 0, wxEXPAND, 5);
 
   m_bResetAdvanced =
       new wxButton(m_pAdvanced, wxID_ANY, _("Reset all Advanced Parameters"),
                    wxDefaultPosition, wxDefaultSize, 0);
-  bSizer8->Add(m_bResetAdvanced, 0, wxALL | wxALIGN_CENTER_HORIZONTAL, 5);
+  bSizer8->Add(m_bResetAdvanced, 0, wxALL | wxALIGN_CENTER_HORIZONTAL, 10);
 
   m_pAdvanced->SetSizer(bSizer8);
   m_pAdvanced->Layout();
-  bSizer8->Fit(m_pAdvanced);
+  m_pAdvanced->FitInside();
   m_notebook7->AddPage(m_pAdvanced, _("Advanced"), false);
 
   fgSizer95->Add(m_notebook7, 1, wxEXPAND | wxALL, 5);
