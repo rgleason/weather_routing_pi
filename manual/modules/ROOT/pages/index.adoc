@@ -657,6 +657,40 @@ View > Settings “Alternates for all isochrones” is unchecked and there are s
 
 Create a new position with the same name to replace it. There is then a prompt to overwrite the old location. This works from the context menu on the chart also.
 
+=== How are Comfort Levels defined? ===
+
+1. Three levels of comfort are defined: Green ("Good"), Orange ("Bumpy"), Red ("Difficult").
+2. The comfort levels are based on wind speed, apparent wind direction and wave height.
+3. More upwind => less comfort
+4. The more the wind speed is above 27kts => less comfort
+5. The greater the wave height => less comfort
+
+Sean's recallection as an Example:
+- 1 knot of current against 10 knots of wind gives bumpy factor of 1. 
+- 2 knots of current against 20 knots of wind bumpy factor of 4.
+- 6 knots against 30 knots of wind is quite bad. (I did experience this a few times.)   
+But this is simple and the wave height should be factored in somehow too.
+Conversely if the wind and current align it smooths the sea.
+
+The "best" comfort calculation would consider: 
+- Wave height, period, and direction relative to the boat; 
+- COG and LWL and righting moment of the boat. 
+- Righting moment can be measureed. Rock the boat and time sway from one side and back.
+- Key comfort factor is boat resonation in the swell pattern.
+- When swell timing equals or nearly equals the boat's righting moment, causing resonance and amplification.
+- Factors: boat speed, wave period, the angle the boat travels relative to the waves all affect the timing of swells.
+- That timing across waves relative to the righting moment defines the comfort. 
+- Increased wave height makes it worse. 
+- Directly on the beam makes it worse. 
+- Directly on the bow makes it worse and the righting moment is different on the bow (LWL and SOG could be used here).
+- On the bow the period and LWL to predict a likelihood of hobby horsing.
+- Wind hardly affects it at all, excepting that higher wind means the other factors will get worse in the future if they haven't already.
+- To really figure it, you would do two comfort calculations, one relative to the beam, and one relative to the bow, and add them.
+- The calculations are not easy.
+
+=== Is percentage upwind calculated? ===
+Percentage upwind is calculated as the percentage of points on the route where the apparent wind is less than 90 degrees. Because points on the route are equally spaced in time, that means the percentage of time sailing upwind relative to apparent wind, which makes good sense.
+
 == Supplemental Hardware and Software
 * Voyage Recordings to create polars: Use Opencpn VDR_pi RPI3 or Yacht Devices Voyage Recorder
 * Yacht Devices using Excel: https://www.yachtd.com/downloads/polar_diagram.pdf[Case: How to plot a polar diagram for a yacht using data collected by Voyage Recorder]
