@@ -9,10 +9,38 @@
 #include <string>
 #include <vector>
 
+#include "engine/native/CoordinateNormalization.h"
 #include "supercpn/weather_routing/Engine.h"
 
 namespace {
 using namespace supercpn::weather_routing;
+
+TEST(ModernNativeAdapterCoordinates,
+     NormalizesLegacyWesternPacificLongitudesForEngineInput) {
+  // RouteMapConfiguration stores these ordinary western longitudes in its
+  // legacy positive-longitude form when both endpoints are west of 90 W.
+  const GeoPoint palmerston =
+      weather_routing::native::NativeEnginePoint(-18.05, 196.85);
+  const GeoPoint niue =
+      weather_routing::native::NativeEnginePoint(-19.05, 190.08);
+
+  EXPECT_DOUBLE_EQ(palmerston.latitude, -18.05);
+  EXPECT_NEAR(palmerston.longitude, -163.15, 1e-12);
+  EXPECT_DOUBLE_EQ(niue.latitude, -19.05);
+  EXPECT_NEAR(niue.longitude, -169.92, 1e-12);
+  EXPECT_GE(palmerston.longitude, -180.0);
+  EXPECT_LE(palmerston.longitude, 180.0);
+  EXPECT_GE(niue.longitude, -180.0);
+  EXPECT_LE(niue.longitude, 180.0);
+}
+
+TEST(ModernNativeAdapterCoordinates, PreservesCanonicalLongitudes) {
+  const GeoPoint point =
+      weather_routing::native::NativeEnginePoint(53.341, -4.620887);
+
+  EXPECT_DOUBLE_EQ(point.latitude, 53.341);
+  EXPECT_NEAR(point.longitude, -4.620887, 1e-12);
+}
 
 TimePoint TestTime() { return TimePoint{Duration{1784419200}}; }
 
