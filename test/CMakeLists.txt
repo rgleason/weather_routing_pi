@@ -200,6 +200,14 @@ add_test(
         -P ${CMAKE_CURRENT_LIST_DIR}/HeadlessRouteLifecycleContract.cmake
 )
 add_test(
+    NAME weather_routing_table_lifecycle_contract
+    COMMAND ${CMAKE_COMMAND}
+        -DROUTING_SOURCE=${WEATHER_ROUTING_SOURCE_DIR}/src/WeatherRouting.cpp
+        -DTABLE_SOURCE=${WEATHER_ROUTING_SOURCE_DIR}/src/RoutingTablePanel.cpp
+        -DTABLE_HEADER=${WEATHER_ROUTING_SOURCE_DIR}/include/RoutingTablePanel.h
+        -P ${CMAKE_CURRENT_LIST_DIR}/RoutingTableLifecycleContract.cmake
+)
+add_test(
     NAME weather_routing_msvc_cplusplus_contract
     COMMAND ${CMAKE_COMMAND}
         -DROOT_CMAKE=${WEATHER_ROUTING_SOURCE_DIR}/CMakeLists.txt

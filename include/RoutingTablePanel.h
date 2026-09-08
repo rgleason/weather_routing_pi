@@ -61,6 +61,15 @@ public:
   void PopulateTable();
 
   /**
+   * Changes the route displayed by the table. Passing nullptr clears the
+   * table without retaining a reference to a deleted route.
+   */
+  void SetRouteMap(RouteMapOverlay* routemap);
+
+  /** Return the route currently displayed by the table, if any. */
+  RouteMapOverlay* GetRouteMap() const { return m_RouteMap; }
+
+  /**
    * Sets the panel background color to match the current color scheme
    */
   void SetColorScheme(PI_ColorScheme cs);

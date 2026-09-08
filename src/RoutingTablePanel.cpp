@@ -565,6 +565,14 @@ RoutingTablePanel::RoutingTablePanel(wxWindow* parent,
 
 RoutingTablePanel::~RoutingTablePanel() {}
 
+void RoutingTablePanel::SetRouteMap(RouteMapOverlay* routemap) {
+  m_RouteMap = routemap;
+  m_lastTimelineTime = wxDateTime();
+  m_highlightedRow = -1;
+  m_originalCellColors.clear();
+  PopulateTable();
+}
+
 void RoutingTablePanel::OnClose(wxCommandEvent& event) {
   // Hide parent Aui pane rather than destroying the dialog
   GetParent()->Hide();
@@ -783,17 +791,22 @@ void RoutingTablePanel::handleSailPlanCell(
 }
 
 void RoutingTablePanel::PopulateTable() {
+  // Clear the old route before consulting the replacement. Route overlays are
+  // owned by WeatherRouting and may be deleted when an optimisation is rerun.
+  if (m_gridWeatherTable->GetNumberRows() > 0)
+    m_gridWeatherTable->DeleteRows(0, m_gridWeatherTable->GetNumberRows());
+  m_gridWeatherTable->SetRowLabelSize(0);
+
+  if (!m_RouteMap || !m_WeatherRouting.RouteMapIsManaged(m_RouteMap)) {
+    m_RouteMap = nullptr;
+    UpdateSummary(std::list<PlotData>());
+    return;
+  }
+
   // Get plot data from the route
   std::list<PlotData> plotData = m_RouteMap->GetPlotData(false);
   UpdateSummary(plotData);
-  // Clear existing grid content and set new size
-  if (m_gridWeatherTable->GetNumberRows() > 0)
-    m_gridWeatherTable->DeleteRows(0, m_gridWeatherTable->GetNumberRows());
-
   m_gridWeatherTable->AppendRows(plotData.size());
-
-  // Hide the row labels (leftmost column with numbers)
-  m_gridWeatherTable->SetRowLabelSize(0);
 
   // Get configuration for formatting
   RouteMapConfiguration configuration = m_RouteMap->GetConfiguration();
@@ -1081,7 +1094,10 @@ void RoutingTablePanel::PopulateTable() {
 }
 
 void RoutingTablePanel::UpdateTimeHighlight(wxDateTime timelineTime) {
-  if (!m_RouteMap || !timelineTime.IsValid()) {
+  const bool routeIsManaged =
+      m_RouteMap && m_WeatherRouting.RouteMapIsManaged(m_RouteMap);
+  if (!routeIsManaged || !timelineTime.IsValid()) {
+    if (m_RouteMap && !routeIsManaged) SetRouteMap(nullptr);
     return;
   }
 

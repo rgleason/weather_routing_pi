@@ -214,6 +214,8 @@ public:
  */
 class WeatherRouting : public WeatherRoutingBase {
 private:
+  friend class RoutingTablePanel;
+
   bool m_disable_colpane;
   wxCollapsiblePane* m_colpane;
   wxWindow* m_colpaneWindow;

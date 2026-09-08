@@ -1546,19 +1546,20 @@ WeatherRouting::~WeatherRouting() {
         "tearing down.");
   }
 
-  for (std::list<WeatherRoute*>::iterator it = m_WeatherRoutes.begin();
-       it != m_WeatherRoutes.end(); it++)
-    delete *it;
-  delete m_panel;
-  delete m_colpane;
-
   // Clean up routing table panel if it exists
   if (m_RoutingTablePanel) {
+    m_RoutingTablePanel->SetRouteMap(nullptr);
     wxAuiManager* pauimgr = ::GetFrameAuiManager();
     pauimgr->DetachPane(m_RoutingTablePanel);
     m_RoutingTablePanel->Destroy();
     m_RoutingTablePanel = nullptr;
   }
+
+  for (std::list<WeatherRoute*>::iterator it = m_WeatherRoutes.begin();
+       it != m_WeatherRoutes.end(); it++)
+    delete *it;
+  delete m_panel;
+  delete m_colpane;
 }
 
 void WeatherRouting::RequestGribTimelineFrame(
@@ -1774,9 +1775,15 @@ void WeatherRouting::Render(piDC& dc, PlugIn_ViewPort& vp) {
 
   RenderStabilityCorridor(dc, vp);
 
-  // Update highlighted row in the routing table panel if it exists
+  // A hidden table does not need timeline repaint work. In particular, do not
+  // let a retained AUI pane dereference route data while routes are replaced.
   if (m_RoutingTablePanel) {
-    m_RoutingTablePanel->UpdateTimeHighlight(time);
+    wxAuiManager* pauimgr = ::GetFrameAuiManager();
+    if (pauimgr) {
+      wxAuiPaneInfo& pane = pauimgr->GetPane(m_RoutingTablePanel);
+      if (pane.IsOk() && pane.IsShown())
+        m_RoutingTablePanel->UpdateTimeHighlight(time);
+    }
   }
 
   for (int i = 0; i < m_panel->m_lWeatherRoutes->GetItemCount(); i++) {
@@ -5235,18 +5242,11 @@ void WeatherRouting::OnWeatherRouteSelected() {
 
   UpdateDialogs();
 
-  // Update the Routing Table panel if it exists and is shown
+  // Keep the table's route reference synchronized even while its AUI pane is
+  // hidden. An empty selection must clear the previous route reference.
   if (m_RoutingTablePanel) {
-    wxAuiManager* pauimgr = ::GetFrameAuiManager();
-    wxAuiPaneInfo& pane = pauimgr->GetPane(m_RoutingTablePanel);
-    if (pane.IsOk() && pane.IsShown()) {
-      if (!currentroutemaps.empty()) {
-        // Update with the first selected route
-        ((RoutingTablePanel*)m_RoutingTablePanel)->m_RouteMap =
-            currentroutemaps.front();
-        ((RoutingTablePanel*)m_RoutingTablePanel)->PopulateTable();
-      }
-    }
+    m_RoutingTablePanel->SetRouteMap(
+        currentroutemaps.empty() ? nullptr : currentroutemaps.front());
   }
 
   SetEnableConfigurationMenu();
@@ -7340,9 +7340,7 @@ void WeatherRouting::AddRoutingPanel() {
     pauimgr->Update();
   } else {
     // Update data in existing panel
-    ((RoutingTablePanel*)m_RoutingTablePanel)->m_RouteMap =
-        currentroutemaps.front();
-    ((RoutingTablePanel*)m_RoutingTablePanel)->PopulateTable();
+    m_RoutingTablePanel->SetRouteMap(currentroutemaps.front());
 
     // Show the panel if it's hidden
     wxAuiManager* pauimgr = ::GetFrameAuiManager();
@@ -11197,6 +11195,14 @@ void WeatherRouting::Reset() {
 
 void WeatherRouting::DeleteRouteMaps(
     std::list<RouteMapOverlay*> routemapoverlays) {
+  // RoutingTablePanel is retained when its AUI pane is hidden. Detach it from
+  // an overlay before deleting that overlay so later chart paints cannot use
+  // a dangling route pointer.
+  if (m_RoutingTablePanel &&
+      std::find(routemapoverlays.begin(), routemapoverlays.end(),
+                m_RoutingTablePanel->GetRouteMap()) != routemapoverlays.end())
+    m_RoutingTablePanel->SetRouteMap(nullptr);
+
   for (RouteMapOverlay* route : routemapoverlays) {
     if (std::find(m_StabilityCorridorSourceRoutes.begin(),
                   m_StabilityCorridorSourceRoutes.end(),
@@ -11212,6 +11218,13 @@ void WeatherRouting::DeleteRouteMaps(
   bool current = false;
   for (std::list<RouteMapOverlay*>::iterator it = routemapoverlays.begin();
        it != routemapoverlays.end(); it++) {
+    // Deleting a wxListCtrl row can synchronously change the selection and
+    // bind the table to another member of this deletion batch. Check every
+    // route as well as detaching the initially displayed route above.
+    if (m_RoutingTablePanel &&
+        m_RoutingTablePanel->GetRouteMap() == *it)
+      m_RoutingTablePanel->SetRouteMap(nullptr);
+
     std::list<RouteMapOverlay*> currentroutemaps = CurrentRouteMaps();
     for (std::list<RouteMapOverlay*>::iterator cit = currentroutemaps.begin();
          cit != currentroutemaps.end(); cit++)
