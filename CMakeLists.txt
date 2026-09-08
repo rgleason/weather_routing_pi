@@ -32,6 +32,14 @@ set(CMLOC "CMakeLists: ")
 
 # Option to enable/disable testing
 option(OCPN_BUILD_TEST "Build plugin tests" OFF)
+set(_xweather_identity_default OFF)
+if("$ENV{CIRCLE_PROJECT_REPONAME}" STREQUAL "xweather_routing_pi")
+  set(_xweather_identity_default ON)
+endif()
+option(WEATHER_ROUTING_XWEATHER_IDENTITY
+       "Build the separately installable xWeatherRouting variant"
+       ${_xweather_identity_default})
+unset(_xweather_identity_default)
 
 # define minimum cmake version
 cmake_minimum_required(VERSION 3.10)
@@ -64,19 +72,26 @@ endif (COMMAND cmake_policy)
 set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
 
 # define plugin name, owner and versions
-set(VERBOSE_NAME "WeatherRouting")
-set(COMMON_NAME "WeatherRouting")  # Search "getcommonname"in <plugin_pi>.cpp
-set(TITLE_NAME "weatherrouting")
+if(WEATHER_ROUTING_XWEATHER_IDENTITY)
+  set(VERBOSE_NAME "xWeatherRouting")
+  set(COMMON_NAME "xWeatherRouting")
+  set(TITLE_NAME "xweatherrouting")
+  set(PACKAGE "xweather_routing_pi")
+else()
+  set(VERBOSE_NAME "WeatherRouting")
+  set(COMMON_NAME "WeatherRouting")  # Search "getcommonname"in <plugin_pi>.cpp
+  set(TITLE_NAME "weatherrouting")
+  set(PACKAGE "weather_routing_pi")
+endif()
 set(PACKAGE_CONTACT "Sean d'Epagnier; Weather Routing Plugin Team")
-set(PACKAGE "weather_routing_pi")
 set(SHORT_DESCRIPTION
     "Advanced deterministic weather routing with departure and arrival planning.")
 set(LONG_DESCRIPTION
     "WeatherRouting computes land-aware sailing routes using deterministic forward isochrones, reverse recovery, graph fallback, concurrent departure optimisation, and planned-arrival routing. Stock OpenCPN uses GSHHS land checks; optional chart-backed safety is available only when the host provides it.")
 
 set(VERSION_MAJOR "1")
-set(VERSION_MINOR "16")
-set(VERSION_PATCH "1")
+set(VERSION_MINOR "17")
+set(VERSION_PATCH "0")
 set(VERSION_TWEAK "0")
 set(VERSION_DATE  "08/09/2026") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov511")
@@ -100,15 +115,17 @@ set(ALPHA "alpha") #Standard Repos
 #set (CLOUDSMITH_BASE_REPOSITORY "${GIT_REPOSITORY_NAME}")
 #set (CLOUDSMITH_BASE_REPOSITORY "opencpn-plugins")  # Ricks's customization
 set(CLOUDSMITH_BASE_REPOSITORY "weather-routing")
-set(PLUGIN_GIT_REPOSITORY "pob220/weather_routing_pi")
+if(WEATHER_ROUTING_XWEATHER_IDENTITY)
+  set(PLUGIN_GIT_REPOSITORY "pob220/xweather_routing_pi")
+else()
+  set(PLUGIN_GIT_REPOSITORY "pob220/weather_routing_pi")
+endif()
 
 # Keep validation independent of the OpenCPN publishing repositories.  Alpha
 # publication remains a separate, explicitly approved later step.
 set(CLOUDSMITH_USER "opencpn")
 
-set(XML_INFO_URL
-    "https://github.com/pob220/weather_routing_pi"
-)
+set(XML_INFO_URL "https://github.com/${PLUGIN_GIT_REPOSITORY}")
 set(XML_SUMMARY ${SHORT_DESCRIPTION})
 set(XML_DESCRIPTION ${LONG_DESCRIPTION})
 

@@ -27,6 +27,7 @@
 
 #include <map>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -661,7 +662,9 @@ private:
       RouteMapOverlay* routemapoverlay,
       std::vector<std::pair<double, double> >* geometry,
       std::vector<RouteMapFrontierSegment>* retained_segments,
-      bool* reached_destination);
+      bool* reached_destination,
+      const std::function<void(long)>& heartbeat =
+          std::function<void(long)>());
   void PrepareChartSafetyScoutEnvelopes(
       const std::vector<RouteMapOverlay*>& routemapoverlays,
       const wxString& context);

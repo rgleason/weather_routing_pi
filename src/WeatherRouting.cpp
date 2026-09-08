@@ -9089,7 +9089,7 @@ bool WeatherRouting::CollectChartSafetyScoutGeometry(
     RouteMapOverlay* routemapoverlay,
     std::vector<std::pair<double, double> >* geometry,
     std::vector<RouteMapFrontierSegment>* retained_segments,
-    bool* reached_destination) {
+    bool* reached_destination, const std::function<void(long)>& heartbeat) {
   if (geometry) geometry->clear();
   if (retained_segments) retained_segments->clear();
   if (reached_destination) *reached_destination = false;
@@ -9153,12 +9153,19 @@ bool WeatherRouting::CollectChartSafetyScoutGeometry(
   }
 
   bool watchdog_expired = false;
+  long next_heartbeat_ms = 250;
   while (routemapoverlay->Running()) {
     if (routemapoverlay->NeedsGrib() && !routemapoverlay->Finished()) {
       RequestGribTimelineFrame(routemapoverlay, routemapoverlay->NewTime());
     }
 
-    if (timer.Time() > kChartSafetyScoutWatchdogMs) {
+    const long elapsed_ms = timer.Time();
+    if (heartbeat && elapsed_ms >= next_heartbeat_ms) {
+      heartbeat(elapsed_ms);
+      next_heartbeat_ms = elapsed_ms + 250;
+    }
+
+    if (elapsed_ms > kChartSafetyScoutWatchdogMs) {
       watchdog_expired = true;
       routemapoverlay->Stop();
       break;
@@ -9374,6 +9381,22 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
   };
   std::map<wxString, std::vector<ScoutEnvelope> > groups;
   std::map<wxString, ScoutEnvelope> reusable_scouts;
+  int scout_total = 0;
+  for (std::vector<RouteMapOverlay*>::const_iterator route =
+           routemapoverlays.begin();
+       route != routemapoverlays.end(); ++route) {
+    if (!*route) continue;
+    const RouteMapConfiguration configuration = (*route)->GetConfiguration();
+    if (!configuration.DetectLand ||
+        configuration.chart_safety_missing_tile_retry_count > 0)
+      continue;
+    const wxString scope = ChartSafetySharedPrewarmScopeKey(configuration);
+    if (s_chartSafetySharedPrewarmScopes.find(scope) ==
+        s_chartSafetySharedPrewarmScopes.end())
+      ++scout_total;
+  }
+  int scouts_completed = 0;
+  wxStopWatch scout_progress_timer;
   for (std::vector<RouteMapOverlay*>::const_iterator route =
            routemapoverlays.begin();
        route != routemapoverlays.end(); ++route) {
@@ -9386,6 +9409,25 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
     if (s_chartSafetySharedPrewarmScopes.find(scope) !=
         s_chartSafetySharedPrewarmScopes.end())
       continue;
+
+    const int scout_number = scouts_completed + 1;
+    const wxString departure =
+        configuration.StartTime.IsValid()
+            ? configuration.StartTime.FormatISOCombined(' ') + _(" UTC")
+            : _("unspecified time");
+    const wxString scout_stage =
+        scout_total > 1 ? _("Surveying chart-safe route alternatives")
+                        : _("Surveying chart-safe route corridor");
+    if (m_RoutingProgressDialog && m_RoutingProgressDialog->IsShown()) {
+      UpdateRoutingProgress(
+          scout_stage,
+          wxString::Format(
+              _("Chart-safety scout %d of %d: %s to %s, departure %s. "
+                "Working; each scout may take a few seconds."),
+              scout_number, wxMax(1, scout_total), configuration.Start,
+              configuration.End, departure),
+          scouts_completed, wxMax(1, scout_total));
+    }
 
     std::map<wxString, ScoutEnvelope>::const_iterator reusable =
         reusable_scouts.find(scope);
@@ -9404,6 +9446,13 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
           configuration.chart_safety_start_endpoint_reach_nm,
           configuration.chart_safety_end_endpoint_reach_nm);
       s_chartSafetyPreparedScoutScopes.insert(scope);
+      ++scouts_completed;
+      if (m_RoutingProgressDialog && m_RoutingProgressDialog->IsShown())
+        UpdateRoutingProgress(
+            scout_stage,
+            wxString::Format(_("Completed %d of %d chart-safety scouts."),
+                             scouts_completed, wxMax(1, scout_total)),
+            scouts_completed, wxMax(1, scout_total));
       continue;
     }
 
@@ -9411,9 +9460,22 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
     envelope.configuration = configuration;
     envelope.complete = false;
     envelope.scope = scope;
-    if (!CollectChartSafetyScoutGeometry(*route, &envelope.points,
-                                         &envelope.retained_segments,
-                                         &envelope.complete)) {
+    long last_heartbeat_second = -1;
+    const std::function<void(long)> heartbeat =
+        [this, &last_heartbeat_second](long elapsed_ms) {
+          const long elapsed_second = elapsed_ms / 1000;
+          if (elapsed_second == last_heartbeat_second) return;
+          last_heartbeat_second = elapsed_second;
+          // Scout workers are deliberately polled without yielding the event
+          // loop: yielding here can re-enter partially constructed routing
+          // state. Force only the progress widgets to repaint so the elapsed
+          // clock remains visibly alive during this bounded wait.
+          RefreshRoutingProgressTiming();
+          PaintRoutingProgressNow();
+        };
+    if (!CollectChartSafetyScoutGeometry(
+            *route, &envelope.points, &envelope.retained_segments,
+            &envelope.complete, heartbeat)) {
       envelope.points.push_back(
           std::make_pair(configuration.StartLat, configuration.StartLon));
       envelope.points.push_back(
@@ -9441,6 +9503,25 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
     reusable_scouts[scope] = envelope;
     groups[ChartSafetyScoutEnvelopeGroupKey(configuration)].push_back(
         envelope);
+    ++scouts_completed;
+    if (m_RoutingProgressDialog && m_RoutingProgressDialog->IsShown()) {
+      wxString detail = wxString::Format(
+          _("Completed %d of %d chart-safety scouts."), scouts_completed,
+          wxMax(1, scout_total));
+      if (scouts_completed < scout_total && scouts_completed > 0) {
+        const long elapsed_ms = scout_progress_timer.Time();
+        const long remaining_seconds =
+            ((elapsed_ms / scouts_completed) *
+             (scout_total - scouts_completed) +
+             999) /
+            1000;
+        detail += wxString::Format(
+            _(" Approximately %ld seconds of scouting remain."),
+            remaining_seconds);
+      }
+      UpdateRoutingProgress(scout_stage, detail, scouts_completed,
+                            wxMax(1, scout_total));
+    }
   }
 
   for (std::map<wxString, std::vector<ScoutEnvelope> >::iterator group =
