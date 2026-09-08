@@ -561,7 +561,7 @@ double WeatherDataProvider::GetWeatherParameter(
 
 /**
  * Return the swell height at the specified lat/long location.
- * @return the swell height in meters. 0 if no data is available.
+ * @return the swell height in meters. NAN if no data is available.
  */
 double WeatherDataProvider::GetSwell(RouteMapConfiguration& configuration,
                                      double lat, double lon) {
@@ -586,7 +586,7 @@ double WeatherDataProvider::GetWavePeriod(RouteMapConfiguration& configuration,
 
 /**
  * Return the wind gust speed for the specified lat/long location, in knots.
- * @return the wind gust speed in knots. 0 if no data is available.
+ * @return the wind gust speed in knots. NAN if no data is available.
  */
 double WeatherDataProvider::GetGust(RouteMapConfiguration& configuration,
                                     double lat, double lon) {
@@ -606,7 +606,7 @@ double WeatherDataProvider::GetCloudCover(RouteMapConfiguration& configuration,
 
 /**
  * Return the rainfall rate at the specified lat/long location.
- * @return the rainfall rate in mm/h. 0 if no data is available.
+ * @return the rainfall rate in mm/h. NAN if no data is available.
  */
 double WeatherDataProvider::GetRainfall(RouteMapConfiguration& configuration,
                                         double lat, double lon) {
@@ -616,7 +616,7 @@ double WeatherDataProvider::GetRainfall(RouteMapConfiguration& configuration,
 
 /**
  * Return the air temperature at the specified lat/long location.
- * @return the air temperature in degrees Celsius. 0 if no data is available.
+ * @return the air temperature in Kelvin. NAN if no data is available.
  */
 double WeatherDataProvider::GetAirTemperature(
     RouteMapConfiguration& configuration, double lat, double lon) {
@@ -626,7 +626,7 @@ double WeatherDataProvider::GetAirTemperature(
 
 /**
  * Return the sea temperature at the specified lat/long location.
- * @return the sea temperature in degrees Celsius. 0 if no data is available.
+ * @return the sea temperature in Kelvin. NAN if no data is available.
  */
 double WeatherDataProvider::GetSeaTemperature(
     RouteMapConfiguration& configuration, double lat, double lon) {
@@ -637,7 +637,7 @@ double WeatherDataProvider::GetSeaTemperature(
 /**
  * Return the CAPE (Convective Available Potential Energy) at the specified
  * lat/long location.
- * @return the CAPE in J/kg. 0 if no data is available.
+ * @return the CAPE in J/kg. NAN if no data is available.
  */
 double WeatherDataProvider::GetCAPE(RouteMapConfiguration& configuration,
                                     double lat, double lon) {
@@ -646,7 +646,7 @@ double WeatherDataProvider::GetCAPE(RouteMapConfiguration& configuration,
 
 /**
  * Return the relative humidity at the specified lat/long location.
- * @return the relative humidity in percent. 0 if no data is available.
+ * @return the relative humidity in percent. NAN if no data is available.
  */
 double WeatherDataProvider::GetRelativeHumidity(
     RouteMapConfiguration& configuration, double lat, double lon) {
@@ -656,7 +656,7 @@ double WeatherDataProvider::GetRelativeHumidity(
 
 /**
  * Return the air surface pressure at the specified lat/long location.
- * @return the air pressure in hPa. NAN if no data is available.
+ * @return the air pressure in Pa. NAN if no data is available.
  */
 double WeatherDataProvider::GetAirPressure(RouteMapConfiguration& configuration,
                                            double lat, double lon) {

@@ -23,7 +23,9 @@
 #include <wx/wx.h>
 
 #include <functional>
+#include <limits>
 #include <memory>
+#include <utility>
 
 #include "GribRecord.h"
 #include "GribRecordSet.h"
@@ -64,7 +66,7 @@ public:
    * @param configuration Route configuration with GRIB data
    * @param lat Latitude in degrees
    * @param lon Longitude in degrees
-   * @return the swell height in meters. 0 if no data is available.
+   * @return the swell height in meters. NAN if no data is available.
    */
   static double GetSwell(RouteMapConfiguration& configuration, double lat,
                          double lon);
@@ -180,6 +182,41 @@ public:
   }
   std::shared_ptr<WR_GribRecordSet> GetSharedGribRecordSet() const {
     return m_data;
+  }
+
+  /** Estimate the storage owned by this immutable copied GRIB frame. */
+  std::size_t EstimatedMemoryBytes() const noexcept {
+    const WR_GribRecordSet* record_set = m_data.get();
+    if (!record_set) return 0;
+
+    std::size_t total = sizeof(WR_GribRecordSet);
+    const auto add_saturated = [&total](std::size_t bytes) {
+      if (bytes > std::numeric_limits<std::size_t>::max() - total)
+        total = std::numeric_limits<std::size_t>::max();
+      else
+        total += bytes;
+    };
+    for (int i = 0; i < Idx_COUNT; ++i) {
+      const GribRecord* record = record_set->m_GribRecordPtrArray[i];
+      if (!record) continue;
+      add_saturated(sizeof(GribRecord));
+      const int raw_ni = record->getNi();
+      const int raw_nj = record->getNj();
+      if (raw_ni <= 0 || raw_nj <= 0) continue;
+      const std::size_t ni = static_cast<std::size_t>(raw_ni);
+      const std::size_t nj = static_cast<std::size_t>(raw_nj);
+      if (nj != 0 && ni <= std::numeric_limits<std::size_t>::max() / nj) {
+        const std::size_t cells = ni * nj;
+        if (cells <= std::numeric_limits<std::size_t>::max() / sizeof(double))
+          add_saturated(cells * sizeof(double));
+        else
+          total = std::numeric_limits<std::size_t>::max();
+        // Some records also own a validity bitmap. Its protected allocation
+        // size is conservatively estimated from the grid dimensions.
+        add_saturated(cells / 8 + (cells % 8 != 0 ? 1 : 0));
+      }
+    }
+    return total;
   }
 
   bool operator==(const Shared_GribRecordSet& other) const {

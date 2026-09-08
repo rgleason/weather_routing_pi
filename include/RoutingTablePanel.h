@@ -21,6 +21,7 @@
 #define _WEATHER_TABLE_DIALOG_H_
 
 #include <wx/aui/aui.h>
+#include <array>
 #include <list>
 #include <map>
 
@@ -80,6 +81,10 @@ private:
   void OnClose(wxCommandEvent& event);
   void OnSize(wxSizeEvent& event);
   void OnExportCsv(wxCommandEvent& event);
+  void OnChooseColumns(wxCommandEvent& event);
+  void LoadColumnVisibility();
+  void SaveColumnVisibility() const;
+  void ApplyColumnVisibility();
   void UpdateSummary(const std::list<PlotData>& plotData);
 
   /**
@@ -150,7 +155,9 @@ private:
   wxGrid* m_gridWeatherTable;
   wxSizer* m_mainSizer;
   wxStaticText* m_summaryText;
+  wxButton* m_columnsButton;
   wxButton* m_exportCsvButton;
+  std::array<bool, COL_COUNT> m_columnVisible;
 
   // Members for time-based highlighting
   int m_highlightedRow;           // Current highlighted row index

@@ -18,6 +18,7 @@
  ***************************************************************************/
 
 #include <wx/wx.h>
+#include <wx/choicdlg.h>
 #include <wx/ffile.h>
 #include <wx/filedlg.h>
 
@@ -494,16 +495,22 @@ RoutingTablePanel::RoutingTablePanel(wxWindow* parent,
 
   wxBoxSizer* summarySizer = new wxBoxSizer(wxHORIZONTAL);
   m_summaryText = new wxStaticText(this, wxID_ANY, wxEmptyString);
+  m_columnsButton = new wxButton(this, wxID_ANY, _("Columns..."));
   m_exportCsvButton = new wxButton(this, wxID_ANY, _("Export CSV..."));
   summarySizer->Add(m_summaryText, 1, wxALIGN_CENTER_VERTICAL | wxALL, 5);
+  summarySizer->Add(m_columnsButton, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
   summarySizer->Add(m_exportCsvButton, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
   m_mainSizer->Add(summarySizer, 0, wxEXPAND);
+  m_columnsButton->Bind(wxEVT_BUTTON, &RoutingTablePanel::OnChooseColumns,
+                        this);
   m_exportCsvButton->Bind(wxEVT_BUTTON, &RoutingTablePanel::OnExportCsv, this);
 
   // Create the grid with the columns we need
   m_gridWeatherTable =
       new wxGrid(this, wxID_ANY, wxDefaultPosition, wxDefaultSize);
   m_gridWeatherTable->CreateGrid(0, COL_COUNT);
+  m_gridWeatherTable->EnableEditing(false);
+  m_gridWeatherTable->EnableDragColSize(true);
 
   // Set column labels
   m_gridWeatherTable->SetColLabelValue(COL_LEG_NUMBER, _("Leg #"));
@@ -542,10 +549,7 @@ RoutingTablePanel::RoutingTablePanel(wxWindow* parent,
   m_gridWeatherTable->SetColLabelValue(COL_CURRENT_DIR, _("Curr Dir"));
   m_gridWeatherTable->SetColLabelValue(COL_CURRENT_ANGLE, _("Curr Angle"));
 
-  // Auto size all columns initially
-  for (int i = 0; i < COL_COUNT; i++) {
-    m_gridWeatherTable->AutoSizeColumn(i);
-  }
+  LoadColumnVisibility();
 
   // Add components to sizer
   m_mainSizer->Add(m_gridWeatherTable, 1, wxEXPAND | wxALL, 5);
@@ -556,6 +560,7 @@ RoutingTablePanel::RoutingTablePanel(wxWindow* parent,
 
   // Populate the table with data from the route
   PopulateTable();
+  ApplyColumnVisibility();
 }
 
 RoutingTablePanel::~RoutingTablePanel() {}
@@ -567,6 +572,68 @@ void RoutingTablePanel::OnClose(wxCommandEvent& event) {
 
 void RoutingTablePanel::OnSize(wxSizeEvent& event) {
   event.Skip();
+}
+
+void RoutingTablePanel::LoadColumnVisibility() {
+  m_columnVisible.fill(true);
+  wxFileConfig* config = GetOCPNConfigObject();
+  if (!config) return;
+  const wxString previousPath = config->GetPath();
+  config->SetPath(_T("/PlugIns/WeatherRouting/WeatherTable"));
+  for (int col = 0; col < COL_COUNT; ++col) {
+    bool visible = true;
+    config->Read(wxString::Format("ColumnVisible_%d", col), &visible, true);
+    m_columnVisible[static_cast<std::size_t>(col)] = visible;
+  }
+  config->SetPath(previousPath);
+}
+
+void RoutingTablePanel::SaveColumnVisibility() const {
+  wxFileConfig* config = GetOCPNConfigObject();
+  if (!config) return;
+  const wxString previousPath = config->GetPath();
+  config->SetPath(_T("/PlugIns/WeatherRouting/WeatherTable"));
+  for (int col = 0; col < COL_COUNT; ++col)
+    config->Write(wxString::Format("ColumnVisible_%d", col),
+                  m_columnVisible[static_cast<std::size_t>(col)]);
+  config->SetPath(previousPath);
+}
+
+void RoutingTablePanel::ApplyColumnVisibility() {
+  for (int col = 0; col < COL_COUNT; ++col) {
+    if (m_columnVisible[static_cast<std::size_t>(col)]) {
+      m_gridWeatherTable->ShowCol(col);
+      m_gridWeatherTable->AutoSizeColumn(col);
+    } else {
+      m_gridWeatherTable->HideCol(col);
+    }
+  }
+  m_gridWeatherTable->ForceRefresh();
+}
+
+void RoutingTablePanel::OnChooseColumns(wxCommandEvent& event) {
+  wxArrayString choices;
+  wxArrayInt selections;
+  for (int col = 0; col < COL_COUNT; ++col) {
+    choices.Add(m_gridWeatherTable->GetColLabelValue(col));
+    if (m_columnVisible[static_cast<std::size_t>(col)]) selections.Add(col);
+  }
+
+  wxMultiChoiceDialog dialog(
+      this, _("Select the columns to show in the Weather Table."),
+      _("Weather Table Columns"), choices);
+  dialog.SetSelections(selections);
+  if (dialog.ShowModal() != wxID_OK) return;
+
+  m_columnVisible.fill(false);
+  const wxArrayInt selected = dialog.GetSelections();
+  for (std::size_t i = 0; i < selected.GetCount(); ++i) {
+    const int col = selected[i];
+    if (col >= 0 && col < COL_COUNT)
+      m_columnVisible[static_cast<std::size_t>(col)] = true;
+  }
+  SaveColumnVisibility();
+  ApplyColumnVisibility();
 }
 
 void RoutingTablePanel::UpdateSummary(const std::list<PlotData>& plotData) {
@@ -620,15 +687,21 @@ void RoutingTablePanel::OnExportCsv(wxCommandEvent& event) {
   if (dialog.ShowModal() != wxID_OK) return;
 
   wxString csv;
+  bool firstField = true;
   for (int col = 0; col < m_gridWeatherTable->GetNumberCols(); ++col) {
-    if (col) csv += ',';
+    if (!m_columnVisible[static_cast<std::size_t>(col)]) continue;
+    if (!firstField) csv += ',';
     csv += CsvField(m_gridWeatherTable->GetColLabelValue(col));
+    firstField = false;
   }
   csv += "\r\n";
   for (int row = 0; row < m_gridWeatherTable->GetNumberRows(); ++row) {
+    firstField = true;
     for (int col = 0; col < m_gridWeatherTable->GetNumberCols(); ++col) {
-      if (col) csv += ',';
+      if (!m_columnVisible[static_cast<std::size_t>(col)]) continue;
+      if (!firstField) csv += ',';
       csv += CsvField(m_gridWeatherTable->GetCellValue(row, col));
+      firstField = false;
     }
     csv += "\r\n";
   }
@@ -990,9 +1063,10 @@ void RoutingTablePanel::PopulateTable() {
     row++;
   }
 
-  // Auto-size all columns for better display
+  // Auto-size the selected columns for better display.
   for (int i = 0; i < COL_COUNT; i++) {
-    m_gridWeatherTable->AutoSizeColumn(i);
+    if (m_columnVisible[static_cast<std::size_t>(i)])
+      m_gridWeatherTable->AutoSizeColumn(i);
   }
 
   // Reset highlight state

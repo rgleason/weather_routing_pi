@@ -1,5 +1,7 @@
 #include <wx/wx.h>
 
+#include <cmath>
+
 #include <gtest/gtest.h>
 
 #include "MultiLegRouteOutput.h"
@@ -24,6 +26,23 @@ MultiLegRouteOutputLeg Leg(int index, int count,
 }
 
 }  // namespace
+
+TEST(PlotData, OptionalWeatherFieldsDefaultToUnavailable) {
+  const PlotData point{};
+  EXPECT_TRUE(std::isnan(point.WVHT));
+  EXPECT_TRUE(std::isnan(point.WVDIR));
+  EXPECT_TRUE(std::isnan(point.WVREL));
+  EXPECT_TRUE(std::isnan(point.WVPER));
+  EXPECT_TRUE(std::isnan(point.VW_GUST));
+  EXPECT_TRUE(std::isnan(point.cloud_cover));
+  EXPECT_TRUE(std::isnan(point.rain_mm_per_hour));
+  EXPECT_TRUE(std::isnan(point.air_temp));
+  EXPECT_TRUE(std::isnan(point.sea_surface_temp));
+  EXPECT_TRUE(std::isnan(point.cape));
+  EXPECT_TRUE(std::isnan(point.relative_humidity));
+  EXPECT_TRUE(std::isnan(point.air_pressure));
+  EXPECT_TRUE(std::isnan(point.reflectivity));
+}
 
 TEST(MultiLegRouteOutput, AssemblesAllLegsInDeclaredOrder) {
   std::vector<MultiLegRouteOutputLeg> legs;

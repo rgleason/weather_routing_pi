@@ -15,8 +15,11 @@
 #include <cstddef>
 #include <deque>
 #include <functional>
+#include <limits>
 #include <map>
 #include <mutex>
+#include <new>
+#include <utility>
 
 namespace weather_routing {
 
@@ -31,7 +34,17 @@ namespace weather_routing {
 template <typename Key, typename Value>
 class KeyedRequestCache {
 public:
-  explicit KeyedRequestCache(std::size_t capacity) : capacity_(capacity) {}
+  using WeightFunction = std::function<std::size_t(const Value&)>;
+
+  explicit KeyedRequestCache(std::size_t capacity)
+      : capacity_(capacity),
+        maximum_weight_(std::numeric_limits<std::size_t>::max()) {}
+
+  KeyedRequestCache(std::size_t capacity, std::size_t maximum_weight,
+                    WeightFunction weight_function)
+      : capacity_(capacity),
+        maximum_weight_(maximum_weight),
+        weight_function_(std::move(weight_function)) {}
 
   KeyedRequestCache(const KeyedRequestCache&) = delete;
   KeyedRequestCache& operator=(const KeyedRequestCache&) = delete;
@@ -80,11 +93,18 @@ public:
     }
   }
 
-  void Publish(const Key& key, const Value& value, bool valid) {
+  bool Publish(const Key& key, const Value& value, bool valid) {
     std::lock_guard<std::mutex> lock(mutex_);
-    StoreLocked(key, value, valid);
+    try {
+      StoreLocked(key, value, valid);
+    } catch (const std::bad_alloc&) {
+      if (request_active_ && active_key_ == key) request_active_ = false;
+      condition_.notify_all();
+      return false;
+    }
     if (request_active_ && active_key_ == key) request_active_ = false;
     condition_.notify_all();
+    return true;
   }
 
   void NotifyAll() { condition_.notify_all(); }
@@ -94,10 +114,16 @@ public:
     return entries_.size();
   }
 
+  std::size_t TotalWeight() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return total_weight_;
+  }
+
 private:
   struct Entry {
     Value value;
     bool valid;
+    std::size_t weight;
   };
 
   void TouchLocked(const Key& key) {
@@ -106,19 +132,45 @@ private:
   }
 
   void StoreLocked(const Key& key, const Value& value, bool valid) {
-    entries_[key] = Entry{value, valid};
+    const std::size_t weight = weight_function_ ? weight_function_(value) : 0;
+    const auto existing = entries_.find(key);
+    if (existing != entries_.end()) {
+      const std::size_t old_weight = existing->second.weight;
+      existing->second = Entry{value, valid, weight};
+      total_weight_ -= old_weight;
+    } else {
+      entries_.emplace(key, Entry{value, valid, weight});
+    }
+    if (weight > std::numeric_limits<std::size_t>::max() - total_weight_)
+      total_weight_ = std::numeric_limits<std::size_t>::max();
+    else
+      total_weight_ += weight;
     TouchLocked(key);
-    while (entries_.size() > capacity_ && !lru_.empty()) {
-      entries_.erase(lru_.front());
+    while ((entries_.size() > capacity_ || total_weight_ > maximum_weight_) &&
+           !lru_.empty()) {
+      // Retain a single valid result even when it is larger than the byte
+      // budget. Otherwise the publishing request would immediately evict its
+      // own reply and every waiter would request the same frame again.
+      if (entries_.size() == 1 && total_weight_ > maximum_weight_ &&
+          entries_.size() <= capacity_)
+        break;
+      const auto victim = entries_.find(lru_.front());
+      if (victim != entries_.end()) {
+        total_weight_ -= victim->second.weight;
+        entries_.erase(victim);
+      }
       lru_.pop_front();
     }
   }
 
   const std::size_t capacity_;
+  const std::size_t maximum_weight_;
+  const WeightFunction weight_function_;
   mutable std::mutex mutex_;
   std::condition_variable condition_;
   std::map<Key, Entry> entries_;
   std::deque<Key> lru_;
+  std::size_t total_weight_{0};
   bool request_active_{false};
   Key active_key_{};
 };

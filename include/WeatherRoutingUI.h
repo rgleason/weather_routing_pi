@@ -561,7 +561,8 @@ public:
       const wxString& title = _("WeatherRouting Configuration"),
       const wxPoint& pos = wxDefaultPosition,
       const wxSize& size = wxSize(-1, -1),
-      long style = wxDEFAULT_DIALOG_STYLE | wxMAXIMIZE_BOX | wxMINIMIZE_BOX);
+      long style = wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER | wxMAXIMIZE_BOX |
+                   wxMINIMIZE_BOX);
   ~ConfigurationDialogBase();
 };
 

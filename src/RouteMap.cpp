@@ -70,6 +70,7 @@
 #include <functional>
 #include <list>
 #include <map>
+#include <new>
 
 #include "Utilities.h"
 #include "Boat.h"
@@ -349,11 +350,35 @@ bool RouteMap::AcquireGribTimelineFrame(const wxDateTime& time,
       [this] { return m_CancellationFlag->load(std::memory_order_relaxed); });
 }
 
-void RouteMap::PublishTimelineFrame(std::int64_t timeline_key,
+bool RouteMap::PublishTimelineFrame(std::int64_t timeline_key,
                                     const Shared_GribRecordSet& frame) {
-  if (timeline_key < 0) return;
-  m_GribTimelineCache.Publish(timeline_key, frame,
-                              frame.GetGribRecordSet() != nullptr);
+  if (timeline_key < 0) return true;
+  const bool published = m_GribTimelineCache.Publish(
+      timeline_key, frame, frame.GetGribRecordSet() != nullptr);
+  if (!published) {
+    MarkResourceExhaustionLocked(_("caching a GRIB timeline frame"));
+    m_CancellationFlag->store(true, std::memory_order_relaxed);
+  }
+  return published;
+}
+
+void RouteMap::MarkResourceExhaustionLocked(const wxString& context) {
+  m_bResourceExhausted = true;
+  m_bNeedsGrib = false;
+  m_bReachedDestination = false;
+  m_bFinished = true;
+  m_FailureReason = wxString::Format(
+      _("Not enough memory while %s. Try a smaller-area or lower-resolution "
+        "GRIB, close unused routes, or use a 64-bit OpenCPN build."),
+      context);
+}
+
+void RouteMap::ReportResourceExhaustion(const wxString& context) {
+  Lock();
+  MarkResourceExhaustionLocked(context);
+  Unlock();
+  m_CancellationFlag->store(true, std::memory_order_relaxed);
+  m_GribTimelineCache.NotifyAll();
 }
 
 static long CountIsoRouteListPositions(const IsoRouteList& routes) {
@@ -1078,6 +1103,7 @@ void RouteMap::Reset() {
   m_bNeedsChartSafetyData = false;
   m_ErrorMsg = wxEmptyString;
   m_FailureReason = wxEmptyString;
+  m_bResourceExhausted = false;
 
   m_bReachedDestination = false;
   m_bWeatherForecastStatus = WEATHER_FORECAST_SUCCESS;
@@ -1155,42 +1181,52 @@ void RouteMap::SetNewGrib(GribRecordSet* grib, std::int64_t timeline_key) {
     }
   }
   /* copy the grib record set */
-  m_NewGrib = new WR_GribRecordSet(bogus_ID /* XXX */);
-  m_NewGrib->m_Reference_Time = grib->m_Reference_Time;
-  for (int i = 0; i < Idx_COUNT; i++) {
-    switch (i) {
-      case Idx_HTSIGW:
-      case Idx_WVDIR:
-      case Idx_WVPER:
-      case Idx_WIND_GUST:
-      case Idx_WIND_VX:
-      case Idx_WIND_VY:
-      case Idx_SEACURRENT_VX:
-      case Idx_SEACURRENT_VY:
-      case Idx_AIR_TEMP:
-      case Idx_CAPE:
-      case Idx_CLOUD_TOT:
-      case Idx_HUMID_RE:
-      case Idx_PRECIP_TOT:
-      case Idx_SEA_TEMP:
-      case Idx_PRESSURE:
-      case Idx_COMP_REFL:
-        if (grib->m_GribRecordPtrArray[i]) {
-          m_NewGrib->SetUnRefGribRecord(
-              i, new GribRecord(*grib->m_GribRecordPtrArray[i]));
-        }
-        break;
-      default:
-        break;
+  try {
+    auto copied = std::make_shared<WR_GribRecordSet>(bogus_ID /* XXX */);
+    copied->m_Reference_Time = grib->m_Reference_Time;
+    for (int i = 0; i < Idx_COUNT; i++) {
+      switch (i) {
+        case Idx_HTSIGW:
+        case Idx_WVDIR:
+        case Idx_WVPER:
+        case Idx_WIND_GUST:
+        case Idx_WIND_VX:
+        case Idx_WIND_VY:
+        case Idx_SEACURRENT_VX:
+        case Idx_SEACURRENT_VY:
+        case Idx_AIR_TEMP:
+        case Idx_CAPE:
+        case Idx_CLOUD_TOT:
+        case Idx_HUMID_RE:
+        case Idx_PRECIP_TOT:
+        case Idx_SEA_TEMP:
+        case Idx_PRESSURE:
+        case Idx_COMP_REFL:
+          if (grib->m_GribRecordPtrArray[i]) {
+            copied->SetUnRefGribRecord(
+                i, new GribRecord(*grib->m_GribRecordPtrArray[i]));
+          }
+          break;
+        default:
+          break;
+      }
     }
+    m_SharedNewGrib.SetSharedGribRecordSet(std::move(copied));
+    m_NewGrib = m_SharedNewGrib.GetGribRecordSet();
+    {
+      wxMutexLocker lock(s_key_mutex);
+      grib_key[m_NewGrib->m_Reference_Time] =
+          m_SharedNewGrib.GetSharedGribRecordSet();
+    }
+    PublishTimelineFrame(timeline_key, m_SharedNewGrib);
+  } catch (const std::bad_alloc&) {
+    m_NewGrib = nullptr;
+    m_SharedNewGrib.SetSharedGribRecordSet(nullptr);
+    MarkResourceExhaustionLocked(_("copying a GRIB timeline frame"));
+    m_CancellationFlag->store(true, std::memory_order_relaxed);
+    PublishTimelineFrame(timeline_key, Shared_GribRecordSet());
+    return;
   }
-  m_SharedNewGrib.SetGribRecordSet(m_NewGrib);
-  {
-    wxMutexLocker lock(s_key_mutex);
-    grib_key[m_NewGrib->m_Reference_Time] =
-        m_SharedNewGrib.GetSharedGribRecordSet();
-  }
-  PublishTimelineFrame(timeline_key, m_SharedNewGrib);
 }
 
 void RouteMap::SetNewGrib(WR_GribRecordSet* grib, std::int64_t timeline_key) {
@@ -1216,34 +1252,44 @@ void RouteMap::SetNewGrib(WR_GribRecordSet* grib, std::int64_t timeline_key) {
     }
   }
   /* copy the grib record set */
-  m_NewGrib = new WR_GribRecordSet(grib->m_ID);
-  m_NewGrib->m_Reference_Time = grib->m_Reference_Time;
-  for (int i = 0; i < Idx_COUNT; i++) {
-    switch (i) {
-      case Idx_HTSIGW:
-      case Idx_WVDIR:
-      case Idx_WVPER:
-      case Idx_WIND_GUST:
-      case Idx_WIND_VX:
-      case Idx_WIND_VY:
-      case Idx_SEACURRENT_VX:
-      case Idx_SEACURRENT_VY:
-        if (grib->m_GribRecordPtrArray[i]) {
-          m_NewGrib->SetUnRefGribRecord(
-              i, new GribRecord(*grib->m_GribRecordPtrArray[i]));
-        }
-        break;
-      default:
-        break;
+  try {
+    auto copied = std::make_shared<WR_GribRecordSet>(grib->m_ID);
+    copied->m_Reference_Time = grib->m_Reference_Time;
+    for (int i = 0; i < Idx_COUNT; i++) {
+      switch (i) {
+        case Idx_HTSIGW:
+        case Idx_WVDIR:
+        case Idx_WVPER:
+        case Idx_WIND_GUST:
+        case Idx_WIND_VX:
+        case Idx_WIND_VY:
+        case Idx_SEACURRENT_VX:
+        case Idx_SEACURRENT_VY:
+          if (grib->m_GribRecordPtrArray[i]) {
+            copied->SetUnRefGribRecord(
+                i, new GribRecord(*grib->m_GribRecordPtrArray[i]));
+          }
+          break;
+        default:
+          break;
+      }
     }
+    m_SharedNewGrib.SetSharedGribRecordSet(std::move(copied));
+    m_NewGrib = m_SharedNewGrib.GetGribRecordSet();
+    {
+      wxMutexLocker lock(s_key_mutex);
+      grib_key[m_NewGrib->m_Reference_Time] =
+          m_SharedNewGrib.GetSharedGribRecordSet();
+    }
+    PublishTimelineFrame(timeline_key, m_SharedNewGrib);
+  } catch (const std::bad_alloc&) {
+    m_NewGrib = nullptr;
+    m_SharedNewGrib.SetSharedGribRecordSet(nullptr);
+    MarkResourceExhaustionLocked(_("copying a GRIB timeline frame"));
+    m_CancellationFlag->store(true, std::memory_order_relaxed);
+    PublishTimelineFrame(timeline_key, Shared_GribRecordSet());
+    return;
   }
-  m_SharedNewGrib.SetGribRecordSet(m_NewGrib);
-  {
-    wxMutexLocker lock(s_key_mutex);
-    grib_key[m_NewGrib->m_Reference_Time] =
-        m_SharedNewGrib.GetSharedGribRecordSet();
-  }
-  PublishTimelineFrame(timeline_key, m_SharedNewGrib);
 }
 
 void RouteMap::GetStatistics(int& isochrons, int& routes, int& invroutes,

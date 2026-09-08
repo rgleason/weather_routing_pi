@@ -203,3 +203,46 @@ TEST(KeyedRequestCache, EvictionBoundsMemoryWithoutLimitingKeyHorizon) {
   EXPECT_EQ(cache.Size(), 2u);
   EXPECT_EQ(requests[1000000], 1);
 }
+
+TEST(KeyedRequestCache, EvictsLeastRecentlyUsedEntriesByWeight) {
+  weather_routing::KeyedRequestCache<int, int> cache(
+      8, 10, [](const int& value) { return static_cast<std::size_t>(value); });
+
+  cache.Publish(1, 4, true);
+  cache.Publish(2, 4, true);
+  cache.Publish(3, 4, true);
+
+  EXPECT_EQ(cache.Size(), 2u);
+  EXPECT_EQ(cache.TotalWeight(), 8u);
+
+  int value = 0;
+  int requests = 0;
+  EXPECT_TRUE(cache.Acquire(
+      2, &value, 10, [&](const int&) { ++requests; }, [] { return false; }));
+  EXPECT_EQ(value, 4);
+  EXPECT_EQ(requests, 0);
+
+  cache.Publish(4, 5, true);
+  EXPECT_EQ(cache.Size(), 2u);
+  EXPECT_EQ(cache.TotalWeight(), 9u);
+
+  EXPECT_TRUE(cache.Acquire(
+      2, &value, 10, [&](const int&) { ++requests; }, [] { return false; }));
+  EXPECT_EQ(requests, 0);
+}
+
+TEST(KeyedRequestCache, RetainsOneReplyLargerThanWeightBudget) {
+  weather_routing::KeyedRequestCache<int, int> cache(
+      8, 10, [](const int& value) { return static_cast<std::size_t>(value); });
+  cache.Publish(7, 20, true);
+
+  EXPECT_EQ(cache.Size(), 1u);
+  EXPECT_EQ(cache.TotalWeight(), 20u);
+
+  int value = 0;
+  int requests = 0;
+  EXPECT_TRUE(cache.Acquire(
+      7, &value, 10, [&](const int&) { ++requests; }, [] { return false; }));
+  EXPECT_EQ(value, 20);
+  EXPECT_EQ(requests, 0);
+}

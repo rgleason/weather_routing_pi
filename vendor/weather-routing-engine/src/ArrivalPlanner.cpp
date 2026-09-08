@@ -171,8 +171,8 @@ ArrivalPlanningResult ArrivalPlanner::plan(
                         current.second > Duration::zero()) ||
                        (previous->second > Duration::zero() &&
                         current.second <= Duration::zero()))) {
-        const double firstError = previous->second.count();
-        const double secondError = current.second.count();
+        const double firstError = static_cast<double>(previous->second.count());
+        const double secondError = static_cast<double>(current.second.count());
         const double denominator = secondError - firstError;
         if (std::abs(denominator) > 0.5) {
           const double fraction =

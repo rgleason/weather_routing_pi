@@ -24,6 +24,7 @@
 #include <cmath>
 #include <functional>
 #include <list>
+#include <new>
 #include <vector>
 
 #include "ocpn_plugin.h"
@@ -54,49 +55,57 @@ RouteMapOverlayThread::RouteMapOverlayThread(RouteMapOverlay& routemapoverlay)
 }
 
 void* RouteMapOverlayThread::Entry() {
-  RouteMapConfiguration cf = m_RouteMapOverlay.GetConfiguration();
-  const bool defer_destination_update_to_main =
-      cf.DetectLand && ConstraintChecker::IsExperimentalChartSafetyEnforced();
+  try {
+    RouteMapConfiguration cf = m_RouteMapOverlay.GetConfiguration();
+    const bool defer_destination_update_to_main =
+        cf.DetectLand && ConstraintChecker::IsExperimentalChartSafetyEnforced();
 
-  if (!cf.RouteGUID.IsEmpty()) {
-    std::unique_ptr<PlugIn_Route> rte = GetRoute_Plugin(cf.RouteGUID);
-    PlugIn_Route* proute = rte.get();
-    if (proute == nullptr) return 0;
+    if (!cf.RouteGUID.IsEmpty()) {
+      std::unique_ptr<PlugIn_Route> rte = GetRoute_Plugin(cf.RouteGUID);
+      PlugIn_Route* proute = rte.get();
+      if (proute == nullptr) return 0;
 
-    m_RouteMapOverlay.RouteAnalysis(proute);
-  } else {
-    const bool cumulativeClimatology =
-        cf.ClimatologyType == RouteMapConfiguration::CUMULATIVE_MAP ||
-        cf.ClimatologyType == RouteMapConfiguration::CUMULATIVE_MINUS_CALMS;
-    if (ModernNativeRouteEnabled(cf)) {
-      wxString modernError;
-      RunModernNativeRoute(m_RouteMapOverlay, modernError);
-      if (!modernError.IsEmpty())
-        wxLogMessage("WR_MODERN_NATIVE_RESULT route=\"%s -> %s\" error=\"%s\"",
-                     cf.Start, cf.End, modernError);
-      return nullptr;
-    }
-    if (cumulativeClimatology)
-      wxLogMessage(
-          "WR_MODERN_NATIVE_FALLBACK route=\"%s -> %s\" reason=\"cumulative "
-          "climatology distribution requires legacy probabilistic semantics\"",
-          cf.Start, cf.End);
-    while (!TestDestroy() && !m_RouteMapOverlay.Finished()) {
-      {
-        RouteMapOverlay::DestinationUpdateGuard destination_update_guard(
-            m_RouteMapOverlay);
-        if (!m_RouteMapOverlay.Propagate()) {
-          wxThread::Sleep(50);
+      m_RouteMapOverlay.RouteAnalysis(proute);
+    } else {
+      const bool cumulativeClimatology =
+          cf.ClimatologyType == RouteMapConfiguration::CUMULATIVE_MAP ||
+          cf.ClimatologyType == RouteMapConfiguration::CUMULATIVE_MINUS_CALMS;
+      if (ModernNativeRouteEnabled(cf)) {
+        wxString modernError;
+        RunModernNativeRoute(m_RouteMapOverlay, modernError);
+        if (!modernError.IsEmpty())
+          wxLogMessage(
+              "WR_MODERN_NATIVE_RESULT route=\"%s -> %s\" error=\"%s\"",
+              cf.Start, cf.End, modernError);
+        return nullptr;
+      }
+      if (cumulativeClimatology)
+        wxLogMessage(
+            "WR_MODERN_NATIVE_FALLBACK route=\"%s -> %s\" "
+            "reason=\"cumulative climatology distribution requires legacy "
+            "probabilistic semantics\"",
+            cf.Start, cf.End);
+      while (!TestDestroy() && !m_RouteMapOverlay.Finished()) {
+        {
+          RouteMapOverlay::DestinationUpdateGuard destination_update_guard(
+              m_RouteMapOverlay);
+          if (!m_RouteMapOverlay.Propagate()) {
+            wxThread::Sleep(50);
+            continue;
+          }
+          // don't do it inside worker thread, race
+          // m_RouteMapOverlay.UpdateCursorPosition();
+          if (!defer_destination_update_to_main)
+            m_RouteMapOverlay.UpdateDestination();
+          wxThread::Sleep(5);
           continue;
         }
-        // don't do it inside worker thread, race
-        // m_RouteMapOverlay.UpdateCursorPosition();
-        if (!defer_destination_update_to_main)
-          m_RouteMapOverlay.UpdateDestination();
-        wxThread::Sleep(5);
-        continue;
       }
     }
+  } catch (const std::bad_alloc&) {
+    m_RouteMapOverlay.ReportResourceExhaustion(
+        _("calculating the weather route"));
+    wxLogError("Weather Routing stopped after a memory allocation failed");
   }
   //    m_RouteMapOverlay.m_Thread = nullptr;
   return 0;
@@ -312,12 +321,16 @@ bool RouteMapOverlay::GetModernNativeProgress(wxString& stage,
 void RouteMapOverlay::InstallModernNativeResult(
     const supercpn::weather_routing::RoutingResult& result) {
   namespace wr = supercpn::weather_routing;
-  const bool complete =
+  const bool resultComplete =
       result.status == wr::RoutingStatus::Complete ||
       result.status == wr::RoutingStatus::CompleteUsingReverseRecovery ||
       result.status == wr::RoutingStatus::CompleteUsingFrontierRecovery ||
       result.status == wr::RoutingStatus::CompleteUsingGraphFallback;
-  SetFailureReason(complete ? wxString() : wxString::FromUTF8(result.message));
+  const bool resourceExhausted = ResourceExhausted();
+  const bool complete = resultComplete && !resourceExhausted;
+  if (!resourceExhausted)
+    SetFailureReason(complete ? wxString()
+                              : wxString::FromUTF8(result.message));
 
   RouteMapConfiguration configuration = GetConfiguration();
   configuration.ReverseRecoveryUsed =
@@ -407,12 +420,15 @@ void RouteMapOverlay::InstallModernNativeResult(
       data.WVHT = leg.waves.available
                       ? leg.waves.significantHeightMetres
                       : std::numeric_limits<double>::quiet_NaN();
-      data.WVDIR = leg.waves.directionFromDegrees;
-      data.WVPER = leg.waves.periodSeconds;
+      data.WVDIR = leg.waves.available
+                       ? leg.waves.directionFromDegrees
+                       : std::numeric_limits<double>::quiet_NaN();
+      data.WVPER = leg.waves.available
+                       ? leg.waves.periodSeconds
+                       : std::numeric_limits<double>::quiet_NaN();
       data.WVREL = std::isfinite(data.WVDIR)
                        ? heading_resolve(data.WVDIR - data.ctw)
                        : std::numeric_limits<double>::quiet_NaN();
-      data.VW_GUST = 0.0;
       data.coastalDepartureEgress = leg.coastalDepartureEgress;
       if (leg.tackTransition) ++tacks;
       if (leg.gybeTransition) ++jibes;
