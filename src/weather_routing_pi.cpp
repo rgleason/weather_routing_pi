@@ -28,6 +28,12 @@
 #include <wx/timer.h>
 #include <wx/treectrl.h>
 #include <wx/fileconf.h>
+
+#ifdef __WXMSW__
+#include <windows.h>
+#include <psapi.h>
+#endif
+
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -277,6 +283,11 @@ bool weather_routing_pi::DeInit() {
   FlushChartSafetyCache();
   weather_routing::chart_safety_host::Shutdown();
   m_tCursorLatLon.Stop();
+  
+#ifdef __WXMSW__
+	CheckMsvcRuntimeFamilyConsistency();
+#endif
+  
 #ifdef __WXMSW__
   m_addressSpaceTimer.Stop();
   m_addressSpaceMonitor.Shutdown();
@@ -1355,4 +1366,143 @@ void weather_routing_pi::ShowMenuItems(bool show) {
   // active. Toggling them here can leave one route action hidden after the
   // Weather Routing window is closed while other route actions remain visible.
   // SetCanvasMenuItemViz(m_route_multileg_menu_id, show, "Route");
+}
+
+
+# =========================================
+# MSVC Runtime Family Consistency Check
+# ===========================================
+
+#include <windows.h>
+#include <psapi.h>
+#include <string>
+#include <vector>
+#include <iostream>
+
+
+
+struct MsvcDllInfo {
+    std::string name;
+    std::string path;
+    DWORD major;
+    DWORD minor;
+    DWORD build;
+    DWORD revision;
+};
+
+static bool GetDllVersion(const std::string& path,
+                          DWORD& major, DWORD& minor,
+                          DWORD& build, DWORD& revision)
+{
+    DWORD handle = 0;
+    DWORD size = GetFileVersionInfoSizeA(path.c_str(), &handle);
+    if (size == 0)
+        return false;
+
+    std::vector<char> buffer(size);
+    if (!GetFileVersionInfoA(path.c_str(), handle, size, buffer.data()))
+        return false;
+
+    VS_FIXEDFILEINFO* info = nullptr;
+    UINT len = 0;
+    if (!VerQueryValueA(buffer.data(), "\\", (LPVOID*)&info, &len))
+        return false;
+
+    major    = HIWORD(info->dwFileVersionMS);
+    minor    = LOWORD(info->dwFileVersionMS);
+    build    = HIWORD(info->dwFileVersionLS);
+    revision = LOWORD(info->dwFileVersionLS);
+
+    return true;
+}
+
+static bool IsMsvcRuntimeDll(const std::string& name)
+{
+    return
+        name == "msvcp140.dll" ||
+        name == "vcruntime140.dll" ||
+        name == "vcruntime140_1.dll" ||
+        name == "msvcp140_1.dll" ||
+        name == "msvcp140_atomic_wait.dll" ||
+        name == "concrt140.dll";
+}
+
+
+
+void CheckMsvcRuntimeFamilyConsistency()
+{
+    DEBUGSL("MSVC Runtime Consistency Check:");
+
+    HMODULE modules[1024];
+    DWORD needed = 0;
+
+    if (!EnumProcessModules(GetCurrentProcess(), modules, sizeof(modules), &needed)) {
+        DEBUGSL("EnumProcessModules failed.");
+        return;
+    }
+
+    size_t count = needed / sizeof(HMODULE);
+    std::vector<MsvcDllInfo> runtimes;
+
+    char path[MAX_PATH];
+
+    for (size_t i = 0; i < count; ++i) {
+        if (GetModuleFileNameA(modules[i], path, MAX_PATH) == 0)
+            continue;
+
+        std::string fullpath(path);
+
+        // Extract filename
+        size_t pos = fullpath.find_last_of("\\/");
+        std::string filename = (pos != std::string::npos)
+            ? fullpath.substr(pos + 1)
+            : fullpath;
+
+        if (!IsMsvcRuntimeDll(filename))
+            continue;
+
+        DWORD major, minor, build, revision;
+        if (!GetDllVersion(fullpath, major, minor, build, revision)) {
+            DEBUGSL("Failed to get version for " + filename);
+            continue;
+        }
+
+        MsvcDllInfo info { filename, fullpath, major, minor, build, revision };
+        runtimes.push_back(info);
+    }
+
+    if (runtimes.empty()) {
+        DEBUGSL("No MSVC runtime DLLs found.");
+        return;
+    }
+
+    // Print all detected runtimes
+    for (auto& dll : runtimes) {
+        DEBUGST("  ");
+        DEBUGCONT(dll.name + "  ");
+        DEBUGEND(std::to_string(dll.major) + "." +
+                 std::to_string(dll.minor) + "." +
+                 std::to_string(dll.build) + "." +
+                 std::to_string(dll.revision));
+    }
+
+    // Compare families
+    DWORD refMajor = runtimes[0].major;
+    DWORD refMinor = runtimes[0].minor;
+
+    bool mismatch = false;
+
+    for (auto& dll : runtimes) {
+        if (dll.major != refMajor || dll.minor != refMinor) {
+            mismatch = true;
+            break;
+        }
+    }
+
+    if (!mismatch) {
+        DEBUGSL("Status: OK — all runtime DLLs belong to the same family.");
+    } else {
+        DEBUGSL("ERROR: Mixed MSVC runtime families detected!");
+        DEBUGSL("This can cause allocator, exception, and STL ABI instability.");
+    }
 }
