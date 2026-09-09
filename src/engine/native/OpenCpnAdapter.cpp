@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "ConstraintChecker.h"
+#include "engine/native/CoordinateNormalization.h"
 #include "engine/native/ConstraintTime.h"
 #include "RouteMapOverlay.h"
 #include "RoutingQualityPolicy.h"
@@ -733,8 +734,10 @@ private:
 wr::RoutingRequest BuildRequest(RouteMapOverlay& overlay,
                                 const RouteMapConfiguration& configuration) {
   wr::RoutingRequest request;
-  request.start = {configuration.StartLat, configuration.StartLon};
-  request.destination = {configuration.EndLat, configuration.EndLon};
+  request.start = weather_routing::native::NativeEnginePoint(
+      configuration.StartLat, configuration.StartLon);
+  request.destination = weather_routing::native::NativeEnginePoint(
+      configuration.EndLat, configuration.EndLon);
   request.departure = ToNative(configuration.StartTime);
   request.vessel.upwindEfficiency = 1.0;
   request.vessel.downwindEfficiency = 1.0;
