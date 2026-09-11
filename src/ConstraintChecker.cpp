@@ -851,8 +851,10 @@ bool ConstraintChecker::CheckMaxCourseAngleConstraint(
     double bearing;
     // this is faster than gc distance, and actually works better in higher
     // latitudes
+    // Native candidates use [-180, 180], while route endpoints may use
+    // [0, 360]. Measure the short longitude difference in either convention.
     double d1 = dlat - configuration.StartLat,
-           d2 = dlon - configuration.StartLon;
+           d2 = heading_resolve(dlon - configuration.StartLon);
     d2 *= cos(deg2rad(dlat)) / 2;  // correct for latitude
     bearing = rad2deg(atan2(d2, d1));
 
@@ -870,12 +872,14 @@ bool ConstraintChecker::CheckMaxDivertedCourse(
     double bearing, dist;
     double bearing1, dist1;
 
-    double d1 = dlat - configuration.EndLat, d2 = dlon - configuration.EndLon;
+    double d1 = dlat - configuration.EndLat,
+           d2 = heading_resolve(dlon - configuration.EndLon);
     d2 *= cos(deg2rad(dlat)) / 2;  // correct for latitude
     bearing = rad2deg(atan2(d2, d1));
     dist = sqrt(pow(d1, 2) + pow(d2, 2));
 
-    d1 = configuration.StartLat - dlat, d2 = configuration.StartLon - dlon;
+    d1 = configuration.StartLat - dlat;
+    d2 = heading_resolve(configuration.StartLon - dlon);
     bearing1 = rad2deg(atan2(d2, d1));
     dist1 = sqrt(pow(d1, 2) + pow(d2, 2));
 

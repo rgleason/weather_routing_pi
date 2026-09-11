@@ -100,7 +100,10 @@ bool WeatherDataProvider::PrepareClimatologyForWorkers(
     ClimatologyThreadGuard::MarkPrepared(ClimatologyService::Current);
   }
 
-  if (configuration.ClimatologyType == RouteMapConfiguration::AVERAGE &&
+  // The legacy provider creates its overlay/data factory in ClimatologyData,
+  // but not in ClimatologyWindAtlasData. Prime it on the main thread for all
+  // wind modes, including atlas routing when currents are disabled.
+  if (configuration.ClimatologyType > RouteMapConfiguration::CURRENTS_ONLY &&
       RouteMap::ClimatologyData) {
     double direction = 0.0;
     double speed = 0.0;
