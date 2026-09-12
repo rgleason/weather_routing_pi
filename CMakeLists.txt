@@ -91,7 +91,7 @@ set(LONG_DESCRIPTION
 
 set(VERSION_MAJOR "1")
 set(VERSION_MINOR "17")
-set(VERSION_PATCH "3")
+set(VERSION_PATCH "4")
 set(VERSION_TWEAK "0")
 set(VERSION_DATE  "12/09/2026") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov511")
@@ -283,6 +283,7 @@ SET (HDRS
             include/OceanPrewarmPolicy.h
             include/ReachabilityPrewarmPolicy.h
             include/ExternalPlanningProvider.h
+            include/ProcessAddressSpace.h
             include/AddressSpaceMonitor.h
             include/ChartSafetyDefaults.h
             include/ClimatologyThreadGuard.h

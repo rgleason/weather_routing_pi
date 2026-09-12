@@ -39,6 +39,7 @@ aui
 REQUIRED)
 
 set(TEST_SRC
+    ProcessAddressSpace_tests.cpp
     AppendOnlyCache_tests.cpp
     ChartSafetyCache_tests.cpp
     ChartSafetyHost_tests.cpp

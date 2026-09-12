@@ -103,6 +103,23 @@ void* RouteMapOverlayThread::Entry() {
       }
     }
   } catch (const std::bad_alloc&) {
+#ifdef __WXMSW__
+    MEMORYSTATUSEX memory{};
+    memory.dwLength = sizeof(memory);
+    if (GlobalMemoryStatusEx(&memory)) {
+      // Capture process headroom at the failure, not physical RAM alone.
+      // Free address space may still be fragmented; this does not identify
+      // the failed allocation or establish a leak.
+      wxLogError("WR_ALLOCATION_FAILURE process_bits=%u "
+                 "virtual_total_bytes=%llu virtual_available_bytes=%llu "
+                 "commit_available_bytes=%llu physical_available_bytes=%llu",
+                 static_cast<unsigned>(sizeof(void*) * 8),
+                 static_cast<unsigned long long>(memory.ullTotalVirtual),
+                 static_cast<unsigned long long>(memory.ullAvailVirtual),
+                 static_cast<unsigned long long>(memory.ullAvailPageFile),
+                 static_cast<unsigned long long>(memory.ullAvailPhys));
+    }
+#endif
     m_RouteMapOverlay.ReportResourceExhaustion(
         _("calculating the weather route"));
     wxLogError("Weather Routing stopped after a memory allocation failed");

@@ -57,11 +57,11 @@ void MemoryAlertDialog::UpdateMemoryInfo(double usedGB, double totalGB,
   }
 
   wxString message = wxString::Format(
-      _("WARNING: Current Usage: %.1f%% (%.2f GB / %.1f GB)\n"
+      _("WARNING: Address space used: %.1f%% (%.2f GiB / %.1f GiB)\n"
         "OpenCPN + Pi address threshold: %.0f%%\n\n"
-        "Prevent Crashes:\n"
+        "To release routing results:\n"
         "Select WR_Pi - Routing - Reset All\n"
-        "This will free address space."),
+        "This may free address space."),
       percent, usedGB, totalGB, m_monitor->thresholdPercent);
 
   m_messageText->SetLabel(message);
@@ -228,16 +228,27 @@ void AddressSpaceMonitor::CheckAndAlert() {
   }
   isExecuting = true;
 
-  size_t used = GetUsedAddressSpace();
-  size_t total = GetTotalAddressSpace();
-  double percent = GetUsagePercent();
+  const auto space = GetAddressSpace();
+  if (!space) {
+    if (m_textLabel) m_textLabel->SetLabel(_("Address space unavailable"));
+    if (usageGauge) usageGauge->SetValue(0);
+    if (activeAlertDialog && activeAlertDialog->IsShown())
+      activeAlertDialog->Hide();
+    if (logToFile)
+      wxLogWarning("AddressSpaceMonitor: process address-space query failed");
+    isExecuting = false;
+    return;
+  }
+  const auto used = space->UsedBytes();
+  const auto total = space->total;
+  const double percent = space->UsedPercent();
 
   double usedGB = used / (1024.0 * 1024.0 * 1024.0);
   double totalGB = total / (1024.0 * 1024.0 * 1024.0);
 
 //  Update text label if connected
   if (m_textLabel) {
-    wxString stats = wxString::Format("%.1f%% (%.2f GB / %.1f GB)", percent,
+    wxString stats = wxString::Format("%.1f%% (%.2f GiB / %.1f GiB)", percent,
                                       usedGB, totalGB);
     m_textLabel->SetLabel(stats);
 
@@ -255,8 +266,10 @@ void AddressSpaceMonitor::CheckAndAlert() {
   }
 
   if (logToFile) {
-    wxLogMessage("AddressSpaceMonitor: %.2f GB / %.1f GB (%.1f%%)", usedGB,
-                 totalGB, percent);
+    wxLogMessage("AddressSpaceMonitor: reserved+committed=%.2f GiB "
+                 "total=%.1f GiB (%.1f%%) process_bits=%u",
+                 usedGB, totalGB, percent,
+                 static_cast<unsigned>(sizeof(void*) * 8));
   }
 
   UpdateAlertIfShown(usedGB, totalGB, percent);
@@ -374,7 +387,9 @@ void AddressSpaceMonitor::SetThresholdPercent(double percent) {
 
   // If dialog is shown and we're now below the new threshold, hide it
   if (activeAlertDialog && activeAlertDialog->IsShown()) {
-    double currentPercent = GetUsagePercent();
+    const auto space = GetAddressSpace();
+    if (!space) return;
+    const double currentPercent = space->UsedPercent();
     if (currentPercent < thresholdPercent) {
       activeAlertDialog->Hide();
       wxLogMessage(
@@ -383,8 +398,8 @@ void AddressSpaceMonitor::SetThresholdPercent(double percent) {
           currentPercent, thresholdPercent);
     } else {
       // Update the dialog to show the new threshold
-      double usedGB = GetUsedAddressSpace() / (1024.0 * 1024.0 * 1024.0);
-      double totalGB = GetTotalAddressSpace() / (1024.0 * 1024.0 * 1024.0);
+      double usedGB = space->UsedBytes() / (1024.0 * 1024.0 * 1024.0);
+      double totalGB = space->total / (1024.0 * 1024.0 * 1024.0);
       activeAlertDialog->UpdateMemoryInfo(usedGB, totalGB, currentPercent);
     }
   }
@@ -430,36 +445,10 @@ void AddressSpaceMonitor::SetGauge(wxGauge* gauge) {
   }
 }
 
-size_t AddressSpaceMonitor::GetUsedAddressSpace() const {
-  if (!m_isValid) {
-    return 0;
-  }
-
-  MEMORY_BASIC_INFORMATION mbi;
-  unsigned char* addr = nullptr;
-  size_t used = 0;
-
-  while (VirtualQuery(addr, &mbi, sizeof(mbi)) == sizeof(mbi)) {
-    if (mbi.State == MEM_COMMIT) {
-      used += mbi.RegionSize;
-    }
-    addr += mbi.RegionSize;
-  }
-  return used;
-}
-
-size_t AddressSpaceMonitor::GetTotalAddressSpace() const {
-  if (!m_isValid) {
-    return 0x80000000ULL;  // Return default even if invalid
-  }
-  return 0x80000000ULL;  // 2 GB for 32-bit process
-}
-
-double AddressSpaceMonitor::GetUsagePercent() const {
-  if (!m_isValid) {
-    return 0.0;
-  }
-  return 100.0 * GetUsedAddressSpace() / GetTotalAddressSpace();
+std::optional<weather_routing::ProcessAddressSpace>
+AddressSpaceMonitor::GetAddressSpace() const {
+  if (!m_isValid) return std::nullopt;
+  return weather_routing::QueryProcessAddressSpace();
 }
 
 void AddressSpaceMonitor::SetTextLabel(wxStaticText* label) {

@@ -1241,9 +1241,12 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
           layerStep = request.options.minimumTimeStep;
       }
     }
+    // Inspect the retained layer for complete connections before spending
+    // any more of its generated-state budget. Otherwise a later, incomplete
+    // predecessor can exhaust that budget and discard an already found
+    // connection. Keep the same bounded alternatives for independent replay.
     for (const std::size_t index : result.retained) {
       const Node& from = result.nodes[index];
-      const std::size_t candidatesBefore = candidates.size();
       const double remaining = distanceNm(from.position, request.destination);
       diagnostics.closestApproachNm =
           std::min(diagnostics.closestApproachNm, remaining);
@@ -1258,13 +1261,27 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
           direct->predecessor = index;
           directCandidates.push_back(std::move(*direct));
           if (directCandidates.size() >= kMaximumDirectCandidates) break;
-          // A complete connection from this state is always preferable to
-          // propagating another incomplete state from the same predecessor.
-          // Continue inspecting the retained layer so independent replay has
-          // bounded alternatives if the first connection is rejected.
-          continue;
         }
       }
+    }
+    if (!directCandidates.empty()) {
+      std::stable_sort(
+          directCandidates.begin(), directCandidates.end(),
+          [&](const Node& a, const Node& b) {
+            return std::tuple{stateCost(request, a), a.time, a.predecessor} <
+                   std::tuple{stateCost(request, b), b.time, b.predecessor};
+          });
+      result.alternativeSolutions.reserve(directCandidates.size());
+      for (auto& direct : directCandidates) {
+        result.nodes.push_back(std::move(direct));
+        result.alternativeSolutions.push_back(result.nodes.size() - 1);
+      }
+      result.solution = result.alternativeSolutions.front();
+      return result;
+    }
+    for (const std::size_t index : result.retained) {
+      const Node& from = result.nodes[index];
+      const std::size_t candidatesBefore = candidates.size();
       const double bearing =
           initialBearingDegrees(from.position, request.destination);
       for (double heading :
@@ -1339,21 +1356,6 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
           candidates.push_back(std::move(*waiting));
         }
       }
-    }
-    if (!directCandidates.empty()) {
-      std::stable_sort(
-          directCandidates.begin(), directCandidates.end(),
-          [&](const Node& a, const Node& b) {
-            return std::tuple{stateCost(request, a), a.time, a.predecessor} <
-                   std::tuple{stateCost(request, b), b.time, b.predecessor};
-          });
-      result.alternativeSolutions.reserve(directCandidates.size());
-      for (auto& direct : directCandidates) {
-        result.nodes.push_back(std::move(direct));
-        result.alternativeSolutions.push_back(result.nodes.size() - 1);
-      }
-      result.solution = result.alternativeSolutions.front();
-      return result;
     }
     if (focusForwardBeforeGraphRecovery) {
       std::vector<Node> coreCandidates;

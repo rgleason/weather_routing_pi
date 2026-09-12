@@ -1288,6 +1288,25 @@ TEST(ModernNativeEngine, RejectsShallowDestinationBeforeSearch) {
             std::string::npos);
 }
 
+TEST(ModernNativeEngine, CompletesRetainedLayerBeforeSpendingMoreSearchBudget) {
+  auto request = TestRequest();
+  request.destination = destinationPoint(request.start, 270.0, 12.0);
+  request.options.useReverseRecovery = false;
+  request.options.useGraphFallback = false;
+  request.options.retryStages = 1;
+  // Enough to reach a retained layer with a valid destination connection,
+  // but insufficient for another exploratory fan from that layer. Recovery
+  // is disabled so it cannot conceal a discarded forward completion.
+  request.limits.maximumGeneratedStates = 1000;
+  const auto result = RoutingEngine{}.route(request, TestEnvironment());
+  ASSERT_TRUE(Successful(result.status)) << result.message
+      << " generated=" << result.diagnostics.generatedStates;
+  ASSERT_TRUE(result.validation.passed) << result.validation.failureReason;
+  ASSERT_FALSE(result.legs.empty());
+  EXPECT_EQ(result.legs.back().end, request.destination);
+  EXPECT_LE(result.diagnostics.generatedStates, 1000U);
+}
+
 TEST(ModernNativeEngine, FinalApproachMayOutlastSeveralSearchSteps) {
   auto request = TestRequest();
   request.destination = destinationPoint(request.start, 270.0, 2.2);

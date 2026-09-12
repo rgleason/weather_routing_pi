@@ -68,6 +68,7 @@ include/OptionalChartSafetyApi.h
 include/OceanPrewarmPolicy.h
 include/ReachabilityPrewarmPolicy.h
 include/ExternalPlanningProvider.h
+include/ProcessAddressSpace.h
 include/AddressSpaceMonitor.h
 include/ChartSafetyDefaults.h
 include/ClimatologyThreadGuard.h
