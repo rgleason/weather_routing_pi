@@ -23,10 +23,13 @@
 #include <stdlib.h>
 #include <math.h>
 #include <cmath>  // For std::isnan
+#include <time.h>
 
 #include "Utilities.h"
+#include "Boat.h"
 #include "RouteMapOverlay.h"
 #include "WeatherRouting.h"
+#include "wx28compat.h"
 
 //---------------------------------------------------------------------------------------
 //          Weather Routing Dialog Implementation
@@ -88,8 +91,6 @@ double PlotDialog::GetValue(PlotData& data, Variable variable) {
       return data.stw;
     case COURSE_THROUGH_WATER:
       return positive_degrees(data.ctw);
-    case HEADING:
-      return positive_degrees(data.hdg);
 
     case TRUE_WIND_SPEED_OVER_WATER:
       // This would be the same as the TWS reading on the boat, if the
@@ -132,7 +133,7 @@ double PlotDialog::GetValue(PlotData& data, Variable variable) {
       return data.WVHT;
     case WAVE_DIRECTION:
       return positive_degrees(data.WVDIR);
-    case WAVE_REL:
+    case WAVE_RELATIVE_DIRECTION:
       return positive_degrees(data.WVREL);
     case WAVE_PERIOD:
       return data.WVPER;
@@ -200,7 +201,6 @@ int PlotDialog::GetType(int var) {
       return SPEED;
     case COURSE_OVER_GROUND:
     case COURSE_THROUGH_WATER:
-    case HEADING:
       return COURSE;
     case TRUE_WIND_SPEED_OVER_WATER:
     case TRUE_WIND_SPEED_OVER_GROUND:
@@ -221,9 +221,10 @@ int PlotDialog::GetType(int var) {
     case SIG_WAVE_HEIGHT:
       return WAVE_HEIGHT;
     case WAVE_DIRECTION:
-    case WAVE_REL:
+    case WAVE_RELATIVE_DIRECTION:
+      return COURSE;
     case WAVE_PERIOD:
-      return WAVE_HEIGHT;  // Group all wave parameters together
+      return ENVIRONMENTAL;
     case TACKS:
     case JIBES:
     case SAIL_PLAN_CHANGES:
@@ -380,12 +381,9 @@ void PlotDialog::OnPaintPlot(wxPaintEvent& event) {
   dc.SetTextForeground(*wxBLACK);
   dc.SetPen(wxPen(*wxBLACK, 1, wxPENSTYLE_DOT));
 
-  const double steps = 10;  // Note that the loop only has 8 steps
+  const double steps = 10;
   bool grid = true;
-  double i = 1.0 / steps;
-  while (i <
-         1.0 - 1.0 / steps -
-             0.5 * 1.0 / steps) {  // Avoid creating an extra step, due to rounding errors
+  for (double i = 1 / steps; i < 1 - 1 / steps; i += 1 / steps) {
     int x = i * w, y = i * h;
     if (grid) {
       dc.DrawLine(x, 0, x, h);
@@ -397,7 +395,6 @@ void PlotDialog::OnPaintPlot(wxPaintEvent& event) {
                                  m_mintime);
     wxSize s = dc.GetTextExtent(time);
     dc.DrawText(time, x - s.x / 2, 0);
-    i += 1.0 / steps;
   }
 
   int x = 0;
@@ -406,8 +403,7 @@ void PlotDialog::OnPaintPlot(wxPaintEvent& event) {
     dc.SetTextForeground(
         wxColour(c.Red() * 3 / 4, c.Green() * 3 / 4, c.Blue() * 3 / 4));
     int maxx = 0;
-    i = 1.0 / steps;
-    while (i < 1.0 - 1.0 / steps - 0.5 * 1.0 / steps) {  // This loop also has only 8 steps
+    for (double i = 1 / steps; i < 1 - 1 / steps; i += 1 / steps) {
       wxString value = wxString::Format(
           _T("%.1f"),
           (1 - i) * (m_maxvalue[ci] - m_minvalue[ci]) + m_minvalue[ci]);
@@ -416,7 +412,6 @@ void PlotDialog::OnPaintPlot(wxPaintEvent& event) {
       dc.DrawText(value, x, y - s.y / 2);
 
       if (s.x > maxx) maxx = s.x;
-      i += 1.0 / steps;
     }
 
     x += maxx + 5;

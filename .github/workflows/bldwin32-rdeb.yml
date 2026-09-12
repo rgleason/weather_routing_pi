@@ -8,20 +8,41 @@ on:
 jobs:
   build-win32:
     runs-on: windows-2022
+    env:
+      VCPKG_DEFAULT_TRIPLET: x86-windows
+      VCPKG_TARGET_TRIPLET: x86-windows
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: MSVC dev cmd (x86)
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x86
 
-      - name: Install wxWidgets via vcpkg (x86-windows)
+      - name: Install gettext tools
+        shell: pwsh
+        run: |
+          choco install gettext --version 1.0.0.20260310 -y --no-progress
+          if ($LASTEXITCODE -ne 0) {
+            Start-Sleep -Seconds 10
+            choco install gettext --version 1.0.0.20260310 -y --no-progress
+          }
+          if ($LASTEXITCODE -ne 0) {
+            throw "Chocolatey could not install gettext"
+          }
+          $gettextBin = "C:\Program Files\gettext-iconv\bin"
+          $env:PATH = "$gettextBin;$env:PATH"
+          $gettextBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          Get-Command msgfmt
+          Get-Command msgmerge
+
+      - name: Prepare vcpkg (x86-windows)
         uses: lukka/run-vcpkg@v11
         with:
-          vcpkgTriplet: x86-windows
-          runVcpkgInstall: true
+          runVcpkgInstall: false
           vcpkgJsonGlob: vcpkg.json
 
       - name: Configure (CMake, Win32, RelWithDebInfo)
@@ -30,8 +51,7 @@ jobs:
           cmake -S . -B build `
             -G "Visual Studio 17 2022" -A Win32 -T v143 `
             -DOCPN_TARGET=MSVC `
-            -DwxWidgets_ROOT_DIR="${env:VCPKG_INSTALLED_DIR}\x86-windows" `
-            -DwxWidgets_LIB_DIR="${env:VCPKG_INSTALLED_DIR}\x86-windows\lib" `
+            -DVCPKG_TARGET_TRIPLET=x86-windows `
             -DCMAKE_TOOLCHAIN_FILE="${env:VCPKG_ROOT}\scripts\buildsystems\vcpkg.cmake"
 
       - name: Build (RelWithDebInfo)

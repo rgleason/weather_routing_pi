@@ -28,7 +28,35 @@ TEST(PolygonRegionTests, AssertionsBasic) {
     EXPECT_STRNE("hello", "world");
     // Expect equality.
     EXPECT_EQ(7 * 6, 42);
-  }
+}
+
+TEST(PolygonRegionTests, ContourArea) {
+  float square[] = {0.0f, 0.0f, 2.0f, 0.0f, 2.0f, 2.0f, 0.0f, 2.0f};
+  Contour contour(square, 4);
+  EXPECT_FLOAT_EQ(contour.Area(), 4.0f);
+}
+
+TEST(PolygonRegionTests, DegenerateContourAreaIsZero) {
+  float line[] = {0.0f, 0.0f, 1.0f, 1.0f};
+  Contour contour(line, 2);
+  EXPECT_FLOAT_EQ(contour.Area(), 0.0f);
+}
+
+TEST(PolygonRegionTests, SimplifyRemovesTinyDisconnectedRegion) {
+  float largeSquare[] = {0.0f, 0.0f, 10.0f, 0.0f,
+                         10.0f, 10.0f, 0.0f, 10.0f};
+  float tinySquare[] = {20.0f, 20.0f, 20.1f, 20.0f,
+                        20.1f, 20.1f, 20.0f, 20.1f};
+  PolygonRegion region(4, largeSquare);
+  PolygonRegion tiny(4, tinySquare);
+  region.Union(tiny);
+  ASSERT_TRUE(region.Contains(20.05f, 20.05f));
+
+  region.Simplify();
+
+  EXPECT_TRUE(region.Contains(5.0f, 5.0f));
+  EXPECT_FALSE(region.Contains(20.05f, 20.05f));
+}
 
   TEST(PolygonRegionTests, IntersectionBasic) {
     Point 

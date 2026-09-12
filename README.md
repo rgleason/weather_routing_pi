@@ -1,112 +1,85 @@
-Weather Routing Plugin for OpenCPN
-===========================================
+# Weather Routing integration branch
 
-Perform weather routing, see "data/WeatherRoutingInformation.html"
+The optional hardened-OpenCPN planning-provider boundary is documented in
+[docs/external_control_provider_preview_b.md](docs/external_control_provider_preview_b.md).
+Stock OpenCPN remains supported through the unchanged plug-in API 1.21.
 
-Compiling
-=========
+This branch integrates the fully working xWeatherRouting developments back
+into the current standard OpenCPN Weather Routing plugin. It retains the
+standard plugin identity, settings, polar and GRIB integrations while adding
+the modern deterministic routing engine developed and qualified in the
+xWeatherRouting branch.
 
-* git clone git://github.com/rgleason/weather_routing_pi.git
+The plugin currently provides:
 
-Under windows, you must find the file "opencpn.lib" (Visual Studio) or "libopencpn.dll.a" (mingw) which is built in the build directory after compiling opencpn.  This file must be copied to the plugin directory.
+- deterministic adaptive forward isochrones, reverse recovery and
+  time-dependent graph fallback;
+- preservation of useful suboptimal lineages for difficult coastal routes;
+- departure-time optimisation with independently isolated workers;
+- planned-arrival routing, including determination of the required departure
+  time;
+- UTC routing internally with optional IANA local-time display in the UI;
+- dense independent route validation and standard GSHHS land checks;
+- optional enhanced chart-backed hazard checks when the OpenCPN host exposes
+  the dynamically detected experimental service.
 
-Build as normally:
+The same binary loads on an unmodified stock OpenCPN host. Stock OpenCPN does
+not expose the optional chart-backed service, so Weather Routing disables
+those two controls and continues to use the standard GSHHS checks.
+There is no direct enhanced-core symbol dependency.
 
-* cd ..
-* cd build
-* cmake ..
-* make
-* make install
+Fresh installations leave both optional chart/depth controls unchecked.
+Users of an enhanced OpenCPN host can opt in; explicit choices made by
+existing users are preserved. The established `/PlugIns/WeatherRouting`
+settings and user-data layout remain unchanged.
 
-For OSX standalone build in weather_routing_pi directory:
+## Building
 
-* mkdir build
-* cd build
-* cmake ..
-* make
-* make create-pkg
+For a clean standalone build against the vendored stock OpenCPN 1.21 API:
 
-Unit Testing
-============
-
-The unit tests are disabled by default. To run the tests, define the relevant environment variable and run the tests as follows (from the build directory, as usual):
-
-```
-cmake -DOCPN_BUILD_TEST=ON ..
-make
-make test
-```
-
-You should see something like this:
-
-```
-Running tests...
-/opt/homebrew/Cellar/cmake/3.30.5/bin/ctest --force-new-ctest-process
-Test project weather_routing_pi/build
-      Start  1: PolarTests.AssertionsBasic
- 1/53 Test  #1: PolarTests.AssertionsBasic .....................   Passed    0.07 sec
-      Start  2: PolarTests.ConstructorBasic
- 2/53 Test  #2: PolarTests.ConstructorBasic ....................   Passed    0.01 sec
-      Start  3: PolarTests.OpenFailed
- 3/53 Test  #3: PolarTests.OpenFailed ..........................   Passed    0.01 sec
-      Start  4: PolarTests.OpenSuccess
- 4/53 Test  #4: PolarTests.OpenSuccess .........................   Passed    0.03 sec
- ...
- ```
-
-All tests are intended to pass.  If any tests fail, please report an issue, providing enough context 
-for a developer to reproduce and fix the problem.
-
-Test Coverage
-=============
-
-`gcov` can be used to determine and display test coverage (i.e. the percentage of source code 
-lines that are executed by automated unit tests) as follows (from the build directory, as usual):
-
-```
-make coverage
+```sh
+cmake -S . -B build-release -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DWEATHER_ROUTING_STANDALONE_API=ON \
+  -DOCPN_BUILD_TEST=OFF
+cmake --build build-release --parallel
+cmake --build build-release --target package
 ```
 
-You should see something like this:
+Keep release packaging in a build directory where tests are disabled. This
+prevents test-only GoogleTest libraries from being included by older
+packaging infrastructure.
 
-```
-File 'IsoRoute.cpp'
-Lines executed:60.44% of 771
+## Testing
 
-File 'LineBufferOverlay.cpp'
-Lines executed:63.95% of 172
-
-File 'PlotDialog.cpp'
-Lines executed:0.00% of 218
-
-File 'Polar.cpp'
-Lines executed:69.87% of 634
-
-File 'PolygonRegion.cpp'
-Lines executed:61.07% of 298
-
-File 'Position.cpp'
-Lines executed:43.85% of 317
-
+```sh
+cmake -S . -B build-test -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DWEATHER_ROUTING_STANDALONE_API=ON \
+  -DOCPN_BUILD_TEST=ON
+cmake --build build-test --parallel
+ctest --test-dir build-test --output-on-failure --parallel
 ```
 
-Occasionally you might see an error like this:
+The native engine, deterministic resource policies, planned-arrival planner,
+timezone lifecycle, route validation, chart-cache data structures and
+supporting geometry are covered by the test suite. Stock-host compatibility
+must also be checked by loading the clean package in an unmodified OpenCPN
+5.14 or later installation.
 
-```
-Invalid .gcda File!
-```
-The simplest fix for this is simply to delete all the '.gcda' files in the build directory and it's subdirectories, and then run `make gcov` again to regenerate these "Google coverage data" files.  For example (on Linux, MacOS and similar platforms):
+Further architecture and validation details are in
+[`docs/modern_native_engine.md`](docs/modern_native_engine.md) and
+[`docs/chart_safety_cache.md`](docs/chart_safety_cache.md).
 
-```
- find . -name '*.gcda' | xargs rm    
-```
+## Status
 
-PR's to increase the amount of automated testing, and overall test coverage are highly appreciated.
-Test code is located in the `test` directory.
+The package, library, catalogue and UI use the standard identity:
+`weather_routing_pi` / WeatherRouting. Cross-platform artifacts may be built
+for validation, but publishing or opening an upstream pull request is a
+separate release decision.
 
-License
-=======
-The plugin code is licensed under the terms of the GPL v3+ 
+## Licence and acknowledgement
 
-Part of the icons made by Smashicons (https://www.flaticon.com/authors/smashicons) from Flaticon (https://www.flaticon.com/) and is licensed under CC BY 3.0 (http://creativecommons.org/licenses/by/3.0)
-
+The plugin is GPL v3 or later. The original Weather Routing plugin was written
+by Sean D'Epagnier and has benefited from many OpenCPN contributors,
+translators and testers. This integration preserves that lineage and licence.

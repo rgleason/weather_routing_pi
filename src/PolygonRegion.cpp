@@ -1,4 +1,9 @@
 /***************************************************************************
+ *
+ * Project:  OpenCPN Weather Routing plugin
+ * Author:   Sean D'Epagnier
+ *
+ ***************************************************************************
  *   Copyright (C) 2016 by Sean D'Epagnier                                 *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
@@ -15,11 +20,12 @@
  *   along with this program; if not, write to the                         *
  *   Free Software Foundation, Inc.,                                       *
  *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,  USA.         *
- **************************************************************************/
+ ***************************************************************************
+ */
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
+#include <cmath>
 #include <string.h>
 
 #include <wx/wx.h>
@@ -68,13 +74,13 @@ void Contour::Reverse() {
 
 float Contour::Area() const {
   if (n < 3) return 0.0f;
-
-  float area = 0.0f;
-  for (int i = 0; i < 2 * n; i += 2) {
-    int pn = i < 2 * (n - 1) ? i + 2 : 0;
-    area += (points[pn + 0] - points[i + 0]) * (points[pn + 1] + points[i + 1]);
+  float twiceArea = 0.0f;
+  for (int i = 0; i < n; ++i) {
+    const int next = (i + 1) % n;
+    twiceArea += points[2 * i] * points[2 * next + 1] -
+                 points[2 * next] * points[2 * i + 1];
   }
-  return fabsf(area) * 0.5f;  // Return absolute area
+  return std::fabs(twiceArea) * 0.5f;
 }
 
 void Contour::Simplify(float epsilon) {
@@ -296,52 +302,24 @@ void PolygonRegion::Subtract(PolygonRegion& region) {
 }
 
 void PolygonRegion::RemoveTinySubRegions() {
-  if (contours.size() <= 1) {
-    return;
-  }
-  float threshold = NAN;
-  // Calculate threshold based on outer boundary areas
-  float total_outer_area = 0.0f;
-  int outer_count = 0;
+  if (contours.size() <= 1) return;
 
-  for (std::list<Contour>::iterator it = contours.begin(); it != contours.end();
-       it++) {
-    if (it->CCW()) {  // Counter-clockwise = outer boundary
-      total_outer_area += it->Area();
-      outer_count++;
-    }
-  }
+  float totalOuterArea = 0.0f;
+  for (auto& contour : contours)
+    if (contour.CCW()) totalOuterArea += contour.Area();
+  if (totalOuterArea <= 0.0f) return;
 
-  if (outer_count > 0) {
-    // Set threshold to 0.5% of outer boundary area.
-    threshold = total_outer_area * 0.005f;
-  } else {
-    threshold = 1.0f;  // Fallback threshold
-  }
-
-  // Remove tiny holes and regular sub-regions.
-  int removed_holes = 0;
-  std::list<Contour>::iterator it = contours.begin();
-  while (it != contours.end()) {
-    if (it->Area() < threshold) {  // Sub-region area below threshold
-      // Outer boundaries are counter-clockwise, holes are clockwise.
-      wxLogMessage(
-          "PolygonRegion::Simplify: remove %s. Area=%.6f. Percentage "
-          "area=%.2f%%)",
-          (!it->CCW() ? "hole" : "regular sub-region"), it->Area(),
-          (it->Area() / total_outer_area) * 100.0f);
+  const float threshold = totalOuterArea * 0.005f;
+  for (auto it = contours.begin(); it != contours.end();) {
+    if (it->Area() < threshold)
       it = contours.erase(it);
-      removed_holes++;
-    } else {
-      it++;
-    }
+    else
+      ++it;
   }
 }
 
-void PolygonRegion::Simplify(float epsilon, bool remove_small_sub_regions) {
+void PolygonRegion::Simplify(float epsilon, bool removeTinySubRegions) {
   if (contours.empty()) return;
-
-  // First pass: simplify vertices
   std::list<Contour>::iterator it = contours.begin();
   while (it != contours.end()) {
     it->Simplify(epsilon);
@@ -350,11 +328,7 @@ void PolygonRegion::Simplify(float epsilon, bool remove_small_sub_regions) {
     else
       it++;
   }
-
-  // Second pass: remove small holes and regular sub-regions if requested.
-  if (remove_small_sub_regions) {
-    RemoveTinySubRegions();
-  }
+  if (removeTinySubRegions) RemoveTinySubRegions();
 }
 
 #if 0

@@ -294,6 +294,65 @@ void SunCalculator::CalculateSun(double latit, double longit, int dayOfYear,
  * @param time UTC time to evaluate
  * @return DayTime enum indicating whether it's day or night
  */
+double SunCalculator::GetSunElevation(double lat, double lon,
+                                      const wxDateTime& time) {
+  if (!time.IsValid() || !std::isfinite(lat) || !std::isfinite(lon))
+    return NAN;
+
+  const double julianDay = time.GetTicks() / 86400.0 + 2440587.5;
+  const double century = (julianDay - 2451545.0) / 36525.0;
+  double geomLong = fmod(280.46646 + century * (36000.76983 +
+                                                century * 0.0003032),
+                         360.0);
+  if (geomLong < 0) geomLong += 360.0;
+  const double geomAnomaly =
+      357.52911 + century * (35999.05029 - 0.0001537 * century);
+  const double eccentricity =
+      0.016708634 - century * (0.000042037 + 0.0000001267 * century);
+  const double equationCenter =
+      sin(DEGREE * geomAnomaly) *
+          (1.914602 - century * (0.004817 + 0.000014 * century)) +
+      sin(DEGREE * 2.0 * geomAnomaly) * (0.019993 - 0.000101 * century) +
+      sin(DEGREE * 3.0 * geomAnomaly) * 0.000289;
+  const double trueLong = geomLong + equationCenter;
+  const double omega = 125.04 - 1934.136 * century;
+  const double apparentLong = trueLong - 0.00569 -
+                              0.00478 * sin(DEGREE * omega);
+  const double meanObliquity =
+      23.0 + (26.0 + (21.448 - century *
+                                  (46.815 + century *
+                                                (0.00059 - century * 0.001813))) /
+                           60.0) /
+                 60.0;
+  const double obliquity =
+      meanObliquity + 0.00256 * cos(DEGREE * omega);
+  const double declination =
+      asin(sin(DEGREE * obliquity) * sin(DEGREE * apparentLong));
+
+  const double y = tan(DEGREE * obliquity / 2.0) *
+                   tan(DEGREE * obliquity / 2.0);
+  const double equationMinutes =
+      4.0 * RADIAN *
+      (y * sin(2.0 * DEGREE * geomLong) -
+       2.0 * eccentricity * sin(DEGREE * geomAnomaly) +
+       4.0 * eccentricity * y * sin(DEGREE * geomAnomaly) *
+           cos(2.0 * DEGREE * geomLong) -
+       0.5 * y * y * sin(4.0 * DEGREE * geomLong) -
+       1.25 * eccentricity * eccentricity *
+           sin(2.0 * DEGREE * geomAnomaly));
+  const double utcMinutes = time.GetHour(wxDateTime::UTC) * 60.0 +
+                            time.GetMinute(wxDateTime::UTC) +
+                            time.GetSecond(wxDateTime::UTC) / 60.0;
+  double solarMinutes = fmod(utcMinutes + equationMinutes + 4.0 * lon, 1440.0);
+  if (solarMinutes < 0) solarMinutes += 1440.0;
+  double hourAngle = solarMinutes / 4.0 - 180.0;
+  const double elevation =
+      asin(sin(DEGREE * lat) * sin(declination) +
+           cos(DEGREE * lat) * cos(declination) *
+               cos(DEGREE * hourAngle));
+  return RADIAN * elevation;
+}
+
 DayLightStatus SunCalculator::GetDayLightStatus(double lat, double lon,
                                                 const wxDateTime& time,
                                                 double* sunElevation) {

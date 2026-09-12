@@ -1,8 +1,8 @@
 /**
  * @file AddressSpaceMonitor.h
- * @brief Windows-only 32-bit address space monitoring and alerting system.
+ * @brief Windows process address space monitoring and alerting system.
  *
- * @details Provides real-time monitoring of address space usage in 32-bit
+ * @details Provides real-time monitoring of address space usage in
  * OpenCPN processes on Windows. When usage exceeds a configurable threshold,
  * displays a popup alert dialog recommending memory cleanup actions.
  *
@@ -20,6 +20,8 @@
  * @author Weather Routing Plugin Team
  * @date 2024
  */
+#include <wx/defs.h>
+
 #ifdef __WXMSW__
 
 #ifndef ADDRESSSPACEMONITOR_H
@@ -28,6 +30,7 @@
 #include <wx/wx.h>
 #include <wx/gauge.h>
 #include <wx/dialog.h>
+#include "ProcessAddressSpace.h"
 
 // Forward declaration
 class AddressSpaceMonitor;
@@ -59,11 +62,12 @@ private:
 };
 
 /**
- * @brief Monitors 32-bit address space usage on Windows.
+ * @brief Monitors process address space usage on Windows.
  *
- * @details Tracks address space consumption in 32-bit OpenCPN processes and
- * alerts users when usage exceeds a configurable threshold. Prevents crashes
- * due to address space exhaustion by recommending memory cleanup actions.
+ * @details Tracks reserved and committed address space in OpenCPN processes
+ * and alerts users when usage exceeds a configurable threshold. This is not
+ * a physical-memory or commit-limit monitor and cannot guarantee allocation
+ * success, including when free address space is fragmented.
  *
  * Architecture:
  * - **Plugin timer**: Checks every 5 seconds (continuous monitoring)
@@ -103,9 +107,7 @@ public:
   void SetGauge(wxGauge* gauge);  ///< Connects gauge for visual feedback
   void SetTextLabel(wxStaticText* label);  ///< SetTextLabel for percent usedGB totalGB
 
-  size_t GetUsedAddressSpace() const;   ///< Queries current used space (bytes)
-  size_t GetTotalAddressSpace() const;  ///< Returns 2 GB (0x80000000)
-  double GetUsagePercent() const;       ///< Calculates percentage (0-100)
+  std::optional<weather_routing::ProcessAddressSpace> GetAddressSpace() const;
   bool IsValid() const { return m_isValid; }  ///< Valid state check
 
   bool alertDismissed;      ///< User suppressed alerts via Settings checkbox
