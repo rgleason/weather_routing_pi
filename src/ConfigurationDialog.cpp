@@ -137,6 +137,10 @@ ConfigurationDialog::ConfigurationDialog(WeatherRouting& weatherrouting)
 #endif
       m_WeatherRouting(weatherrouting),
       m_bBlockUpdate(false) {
+  m_cbUseExperimentalChartSafety->Bind(
+      wxEVT_CHECKBOX, &ConfigurationDialog::OnChartSafetyChanged, this);
+  m_cbEnforceExperimentalChartSafety->Bind(
+      wxEVT_CHECKBOX, &ConfigurationDialog::OnChartSafetyChanged, this);
   const wxString detect_land_note =
       _("Detect Land uses the standard GSHHS background shoreline data. "
         "Accuracy depends on the installed GSHHS quality. On a compatible "
@@ -879,6 +883,13 @@ void ConfigurationDialog::SetStartDateTime(wxDateTime datetime) {
       if (m_c##FIELD->GetString(m_c##FIELD->GetCount() - 1) == wxEmptyString) \
         m_c##FIELD->Delete(m_c##FIELD->GetCount() - 1);                       \
     }
+
+void ConfigurationDialog::OnChartSafetyChanged(wxCommandEvent&) {
+  if (m_bBlockUpdate || !m_WeatherRouting.HasEnhancedChartSafety()) return;
+  m_WeatherRouting.ApplyChartSafetySettings(
+      m_cbUseExperimentalChartSafety->GetValue(),
+      m_cbEnforceExperimentalChartSafety->GetValue());
+}
 
 void ConfigurationDialog::Update() {
   if (m_bBlockUpdate) return;

@@ -2661,7 +2661,11 @@ RoutingResult RoutingEngine::routeMember(
   result.warnings = check.warnings;
   if (!check.canRoute) {
     result.status = preflightStatus(check);
-    result.message = "routing preflight requires caller action";
+    result.message = result.status == RoutingStatus::WindForecastRequired
+        ? "Wind forecast does not cover the route endpoints or requested time. "
+          "Load a GRIB covering the start, destination and passage, or explicitly "
+          "enable climatology wind fallback."
+        : "routing preflight requires caller action";
     return result;
   }
   PolarPerformanceModel fallbackPerformance(request.vessel);

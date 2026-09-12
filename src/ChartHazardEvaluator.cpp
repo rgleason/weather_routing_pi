@@ -14,6 +14,7 @@
 #include <utility>
 
 #include "ChartSafetyCache.h"
+#include "ChartLongitude.h"
 
 namespace weather_routing {
 namespace {
@@ -81,7 +82,8 @@ void SetHitResult(PlugInSegmentSafetyResult* result, std::uint16_t flags,
   std::snprintf(result->chart_path, sizeof(result->chart_path), "%s",
                 mask.chart_path.c_str());
   result->hit_sample_lat = lat_cell * kExpectedResolutionDegrees;
-  result->hit_sample_lon = lon_cell * kExpectedResolutionDegrees;
+  result->hit_sample_lon = CanonicalChartLongitude(
+      lon_cell * kExpectedResolutionDegrees);
   result->hit_sample_index = sample;
   result->hit_sample_count = samples;
   result->grid_lookups = samples;
@@ -136,6 +138,7 @@ std::shared_ptr<const ChartHazardEvaluator::DerivedMask>
 ChartHazardEvaluator::GetMask(
     long lat_tile, long lon_tile,
     const PlugInSegmentSafetyOptions& options) {
+  lon_tile = CanonicalChartLongitudeTile(lon_tile);
   const std::string key = MaskKey(lat_tile, lon_tile, options);
   {
     std::shared_lock<std::shared_mutex> lock(mutex_);
@@ -226,7 +229,8 @@ ChartHazardEvaluator::BuildMask(
       auto found = source_tiles.find(id);
       if (found == source_tiles.end()) {
         std::shared_ptr<const ChartHazardTile> source;
-        if (!cache_.LookupSnapshot(source_lat_tile, source_lon_tile,
+        if (!cache_.LookupSnapshot(source_lat_tile,
+                                   CanonicalChartLongitudeTile(source_lon_tile),
                                    options.check_depth != 0, &source))
           return nullptr;
         found = source_tiles.emplace(id, std::move(source)).first;
@@ -324,6 +328,7 @@ bool ChartHazardEvaluator::CheckSegment(
       !std::isfinite(lon2))
     return false;
 
+  UnwrapChartSegment(lon1, lon2);
   const long y0 = std::lround(lat1 / kExpectedResolutionDegrees);
   const long x0 = std::lround(lon1 / kExpectedResolutionDegrees);
   const long y1 = std::lround(lat2 / kExpectedResolutionDegrees);

@@ -4431,6 +4431,17 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
         (mode.IsSameAs("single-opt", false) ||
          mode.IsSameAs("departure-opt", false) ||
          selected_config.DepartureTimeOptimizationEnabled);
+    const wxLongLong preparation_started_ms = wxGetUTCTimeMillis();
+    struct PreparationDeadline {
+      explicit PreparationDeadline(long milliseconds) {
+        weather_routing::chart_safety_host::SetPrewarmDeadline(
+            std::chrono::steady_clock::now() +
+            std::chrono::milliseconds(milliseconds));
+      }
+      ~PreparationDeadline() {
+        weather_routing::chart_safety_host::SetPrewarmDeadline({});
+      }
+    } preparation_deadline(timeout_ms);
     bool started = false;
     if (departure_opt) {
       started = ComputeDepartureTimeOptimization(selected_route);
@@ -4462,6 +4473,15 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
       started = true;
     }
 
+    if (weather_routing::chart_safety_host::PrewarmCancellationRequested()) {
+      StopAll();
+      wxLogMessage("WR_HEADLESS_ROUTE_TEST timeout during chart preparation.");
+      write_scenario_result("timeout", "timeout during chart preparation",
+                            {selected_route});
+      FinishHeadlessRouteTestProcess(2);
+      return;
+    }
+
     if (!started) {
       wxLogMessage(
           "WR_HEADLESS_ROUTE_TEST abort route=\"%s to %s\" "
@@ -4477,7 +4497,7 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
     m_HeadlessRouteTestState->kind =
         HeadlessRouteTestState::Kind::SingleRoute;
     m_HeadlessRouteTestState->timeoutMs = timeout_ms;
-    m_HeadlessRouteTestState->startedMs = wxGetUTCTimeMillis();
+    m_HeadlessRouteTestState->startedMs = preparation_started_ms;
     m_HeadlessRouteTestState->selectedRoute = selected_route;
     m_HeadlessRouteTestState->departureOptimization = departure_opt;
     m_HeadlessRouteTestState->scenarioLoaded = scenario_loaded;
@@ -7263,6 +7283,31 @@ int WeatherRouting::ChartSafetyRamCacheMiB() const {
 
 int WeatherRouting::EffectiveChartSafetyRamCacheMiB() const {
   return m_weather_routing_pi.EffectiveChartSafetyRamCacheMiB();
+}
+
+void WeatherRouting::ApplyChartSafetySettings(bool use, bool enforce) {
+  if (!HasEnhancedChartSafety()) return;
+  wxFileConfig* config = GetOCPNConfigObject();
+  config->SetPath("/PlugIns/WeatherRouting");
+  const bool old_use = config->ReadBool("UseExperimentalChartSafety",
+      weather_routing::chart_safety_defaults::kCheckLoadedCharts);
+  const bool old_enforce = config->ReadBool("EnforceExperimentalChartSafety",
+      weather_routing::chart_safety_defaults::kRequireChartDepthChecks);
+  if (old_use == use && old_enforce == enforce) return;
+
+  // This is a global policy. Stop jobs using the old policy and invalidate
+  // all results, including filtered/unselected and generated routes.
+  StopAll();
+  config->SetPath("/PlugIns/WeatherRouting");
+  config->Write("UseExperimentalChartSafety", use);
+  config->Write("EnforceExperimentalChartSafety", enforce);
+  config->Flush();
+  for (WeatherRoute* route : m_WeatherRoutes) route->routemapoverlay->Reset();
+  m_positionOnRoute = nullptr;
+  UpdateStates();
+  UpdateDialogs();
+  ScheduleAutoSave();
+  GetParent()->Refresh();
 }
 
 bool WeatherRouting::HasEnhancedChartSafety() const {

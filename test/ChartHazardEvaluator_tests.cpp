@@ -173,3 +173,48 @@ TEST(ChartHazardEvaluator, ConcurrentReadersShareImmutableDerivedMasks) {
 }
 
 }  // namespace
+
+TEST(ChartHazardEvaluatorLongitude, EquivalentWesternLongitudesUseLocalTiles) {
+  weather_routing::ChartSafetyCache cache;
+  cache.Configure("", 64, false);
+  cache.SetIdentity("longitude-regression");
+  StoreTile(cache, 0, -3480);
+  weather_routing::ChartHazardEvaluator evaluator(cache);
+  for (const auto endpoints : {std::pair{-173.99, -173.98},
+                               std::pair{-173.99, 186.02},
+                               std::pair{186.01, -173.98},
+                               std::pair{546.01, -533.98}}) {
+    PlugInSegmentSafetyResult result = {};
+    result.struct_size = sizeof(result);
+    ASSERT_TRUE(evaluator.CheckSegment(.01, endpoints.first, .02,
+                                       endpoints.second, Options(), &result));
+    EXPECT_EQ(result.status, PI_SEGMENT_SAFETY_SAFE);
+    EXPECT_LE(result.segment_sample_count, 10);
+  }
+}
+
+TEST(ChartHazardEvaluatorLongitude, CrossingDateLinePreservesLandAndDepthChecks) {
+  for (bool shallow : {false, true}) {
+    weather_routing::ChartSafetyCache cache;
+    cache.Configure("", 64, false);
+    cache.SetIdentity("dateline-regression");
+    StoreTile(cache, 0, 3599);
+    StoreTile(cache, 0, -3600, shallow ? -1 : 16, shallow ? -1 : 8,
+              shallow ? 16 : -1, shallow ? 8 : -1);
+    weather_routing::ChartHazardEvaluator evaluator(cache);
+    auto options = Options();
+    options.check_depth = shallow;
+    options.minimum_depth_m = 2;
+    for (bool reverse : {false, true}) {
+      PlugInSegmentSafetyResult result = {};
+      result.struct_size = sizeof(result);
+      ASSERT_TRUE(evaluator.CheckSegment(.02, reverse ? -179.98 : 179.99,
+                                         .02, reverse ? 179.99 : -179.98,
+                                         options, &result));
+      EXPECT_EQ(result.status, shallow ? PI_SEGMENT_SAFETY_TOO_SHALLOW
+                                      : PI_SEGMENT_SAFETY_CROSSES_LAND);
+      EXPECT_NEAR(result.hit_sample_lon, -179.99, 1e-9);
+      EXPECT_LT(result.segment_sample_count, 30);
+    }
+  }
+}

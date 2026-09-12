@@ -25,3 +25,48 @@ TEST(ChartSafetyHost, StockHostWithoutOptionalSymbolsRemainsUsable) {
 }
 
 }  // namespace
+
+#include "ChartLongitude.h"
+
+TEST(ChartSafetyHostLongitude, KeepsLegacyHostRequestsLocalAcrossDateLine) {
+  for (auto endpoints : {std::pair{179.99, -179.99},
+                         std::pair{-179.99, 179.99}}) {
+    const auto parts = weather_routing::SplitChartSegment(
+        -20, endpoints.first, -20.02, endpoints.second);
+    ASSERT_EQ(parts.count, 2u);
+    for (unsigned i = 0; i < parts.count; ++i) {
+      const auto& part = parts.segments[i];
+      EXPECT_LT(std::abs(part.lon2 - part.lon1), .011);
+      EXPECT_GE(part.lon1, -180);
+      EXPECT_LE(part.lon1, 180);
+      EXPECT_GE(part.lon2, -180);
+      EXPECT_LE(part.lon2, 180);
+    }
+    EXPECT_NEAR(parts.segments[0].lat2, -20.01, 1e-9);
+    EXPECT_DOUBLE_EQ(parts.segments[0].lat2, parts.segments[1].lat1);
+  }
+}
+
+TEST(ChartSafetyHostLongitude, QuintonFinalLegIsShortAndStaysNearTonga) {
+  const auto parts = weather_routing::SplitChartSegment(
+      -18.62565120, -173.88944898, -18.62, 186.12);
+  ASSERT_EQ(parts.count, 1u);
+  EXPECT_NEAR(parts.segments[0].lon2, -173.88, 1e-10);
+  EXPECT_LT(std::abs(parts.segments[0].lon2 - parts.segments[0].lon1), .01);
+}
+
+TEST(ChartSafetyHost, PreparationDeadlineAndExternalCancellationAreIndependent) {
+  using namespace weather_routing::chart_safety_host;
+  std::atomic_bool cancel{false};
+  SetPrewarmCancellationFlag(&cancel);
+  SetPrewarmDeadline(std::chrono::steady_clock::now() + std::chrono::hours(1));
+  EXPECT_FALSE(PrewarmCancellationRequested());
+  cancel = true;
+  EXPECT_TRUE(PrewarmCancellationRequested());
+  cancel = false;
+  SetPrewarmDeadline(std::chrono::steady_clock::now() - std::chrono::seconds(1));
+  EXPECT_TRUE(PrewarmCancellationRequested());
+  SetPrewarmDeadline({});
+  EXPECT_FALSE(PrewarmCancellationRequested());
+  SetPrewarmCancellationFlag(nullptr);
+}

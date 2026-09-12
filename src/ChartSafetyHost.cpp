@@ -8,6 +8,7 @@
  ***************************************************************************/
 
 #include "ChartSafetyHost.h"
+#include "ChartLongitude.h"
 
 #include <algorithm>
 #include <cmath>
@@ -92,6 +93,7 @@ HostFunctions g_host;
 weather_routing::ChartSafetyCache* g_cache = nullptr;
 std::unique_ptr<weather_routing::ChartHazardEvaluator> g_evaluator;
 std::atomic<const std::atomic_bool*> g_prewarm_cancellation{nullptr};
+std::atomic<std::int64_t> g_prewarm_deadline_ms{0};
 
 bool ConfirmHostIdentity() {
   if (!g_cache || !g_host.get_identity) return false;
@@ -114,14 +116,16 @@ double NormalizeBearing(double bearing) {
 
 std::pair<long, long> TileAt(double lat, double lon) {
   return {static_cast<long>(std::floor(lat / kRawTileDegrees)),
-          static_cast<long>(std::floor(lon / kRawTileDegrees))};
+          weather_routing::CanonicalChartLongitudeTile(
+              static_cast<long>(std::floor(lon / kRawTileDegrees)))};
 }
 
 void AddTileHalo(long lat_tile, long lon_tile, int radius,
                  std::set<std::pair<long, long>>* tiles) {
   for (int dlat = -radius; dlat <= radius; ++dlat)
     for (int dlon = -radius; dlon <= radius; ++dlon)
-      tiles->insert({lat_tile + dlat, lon_tile + dlon});
+      tiles->insert({lat_tile + dlat,
+                     weather_routing::CanonicalChartLongitudeTile(lon_tile + dlon)});
 }
 
 void AddCorridorTiles(double lat1, double lon1, double lat2, double lon2,
@@ -131,6 +135,7 @@ void AddCorridorTiles(double lat1, double lon1, double lat2, double lon2,
       !std::isfinite(lat2) || !std::isfinite(lon2))
     return;
 
+  weather_routing::UnwrapChartSegment(lon1, lon2);
   double bearing = 0.0;
   double distance_nm = 0.0;
   ll_gc_ll_reverse(lat1, lon1, lat2, lon2, &bearing, &distance_nm);
@@ -235,31 +240,39 @@ bool RequestRawTiles(const std::set<std::pair<long, long>>& raw_tiles,
     lat_tiles.push_back(tile.first);
     lon_tiles.push_back(tile.second);
   }
-  const auto* cancellation = g_prewarm_cancellation.load(
-      std::memory_order_acquire);
-  if (!cancellation)
-    return g_host.raw_tiles(lat_tiles.data(), lon_tiles.data(),
-                            static_cast<int>(lat_tiles.size()),
-                            options->check_depth != 0 ? 1 : 0, result);
-
-  constexpr std::size_t kExternalPrewarmBatchTiles = 16;
+  // Mutable host chart extraction must stay on its calling GUI thread.
+  // Bound each request to one tile so cancellation/deadlines are checked
+  // between extractions, including ordinary headless preparation.
+  constexpr std::size_t kExternalPrewarmBatchTiles = 1;
   PlugInSegmentSafetyResult batch_result = {};
   batch_result.struct_size = sizeof(batch_result);
+  PlugInSegmentSafetyResult totals = {};
   for (std::size_t offset = 0; offset < lat_tiles.size();
        offset += kExternalPrewarmBatchTiles) {
-    if (cancellation->load(std::memory_order_relaxed)) return false;
+    if (weather_routing::chart_safety_host::PrewarmCancellationRequested())
+      return false;
     const std::size_t count =
         std::min(kExternalPrewarmBatchTiles, lat_tiles.size() - offset);
     if (!g_host.raw_tiles(lat_tiles.data() + offset, lon_tiles.data() + offset,
                           static_cast<int>(count),
                           options->check_depth != 0 ? 1 : 0, &batch_result))
       return false;
+    totals.prewarm_base_tiles_built += batch_result.prewarm_base_tiles_built;
+    totals.prewarm_base_tiles_reused += batch_result.prewarm_base_tiles_reused;
+    totals.prewarm_masks_built += batch_result.prewarm_masks_built;
+    totals.prewarm_masks_reused += batch_result.prewarm_masks_reused;
+    totals.prewarm_fine_tiles_avoided += batch_result.prewarm_fine_tiles_avoided;
   }
   if (result) {
     *result = batch_result;
+    result->prewarm_base_tiles_built = totals.prewarm_base_tiles_built;
+    result->prewarm_base_tiles_reused = totals.prewarm_base_tiles_reused;
+    result->prewarm_masks_built = totals.prewarm_masks_built;
+    result->prewarm_masks_reused = totals.prewarm_masks_reused;
+    result->prewarm_fine_tiles_avoided = totals.prewarm_fine_tiles_avoided;
     result->prewarm_requested_tiles = static_cast<int>(lat_tiles.size());
   }
-  return !cancellation->load(std::memory_order_relaxed);
+  return !weather_routing::chart_safety_host::PrewarmCancellationRequested();
 }
 
 bool PrewarmRawTiles(
@@ -525,20 +538,43 @@ void SetPrewarmCancellationFlag(const std::atomic_bool* flag) {
   g_prewarm_cancellation.store(flag, std::memory_order_release);
 }
 
+void SetPrewarmDeadline(std::chrono::steady_clock::time_point deadline) {
+  g_prewarm_deadline_ms.store(std::chrono::duration_cast<
+      std::chrono::milliseconds>(deadline.time_since_epoch()).count(),
+      std::memory_order_release);
+}
+
 bool PrewarmCancellationRequested() {
   const auto* flag =
       g_prewarm_cancellation.load(std::memory_order_acquire);
-  return flag && flag->load(std::memory_order_relaxed);
+  const auto deadline = g_prewarm_deadline_ms.load(std::memory_order_acquire);
+  const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now().time_since_epoch()).count();
+  return (flag && flag->load(std::memory_order_relaxed)) ||
+         (deadline != 0 && now >= deadline);
 }
 
 bool CheckSegment(double lat1, double lon1, double lat2, double lon2,
                   const PlugInSegmentSafetyOptions* options,
                   PlugInSegmentSafetyResult* result) {
-  if (g_evaluator && options && result &&
-      g_evaluator->CheckSegment(lat1, lon1, lat2, lon2, *options, result))
-    return true;
-  return g_host.available &&
-         g_host.check(lat1, lon1, lat2, lon2, options, result);
+  if (!options || !result) return false;
+  const auto parts = weather_routing::SplitChartSegment(lat1, lon1, lat2, lon2);
+  if (parts.count == 0) return false;
+  int samples = 0;
+  for (unsigned i = 0; i < parts.count; ++i) {
+    const auto& part = parts.segments[i];
+    const bool evaluated = g_evaluator && g_evaluator->CheckSegment(
+        part.lat1, part.lon1, part.lat2, part.lon2, *options, result);
+    if (!evaluated && !(g_host.available && g_host.check(
+            part.lat1, part.lon1, part.lat2, part.lon2, options, result)))
+      return false;
+    if (result->hit_sample_count > 0)
+      result->hit_sample_lon = weather_routing::CanonicalChartLongitude(result->hit_sample_lon);
+    if (result->status != PI_SEGMENT_SAFETY_SAFE) return true;
+    samples += result->segment_sample_count;
+  }
+  result->segment_sample_count = samples;
+  return true;
 }
 
 bool PrewarmHazardSnapshot(double min_lat, double min_lon, double max_lat,

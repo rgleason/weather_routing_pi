@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "engine/native/CoordinateNormalization.h"
+#include "engine/native/WeatherCoverage.h"
 #include "supercpn/weather_routing/Engine.h"
 
 namespace {
@@ -1309,3 +1310,48 @@ TEST(ModernNativeEngine, FinalApproachMayOutlastSeveralSearchSteps) {
 }
 
 }  // namespace
+
+TEST(ModernNativeWeatherCoverage, IntersectsWindComponentsAndNormalizesLongitude) {
+  using weather_routing::native::WindGridCoverage;
+  const auto coverage = WindGridCoverage(185, -20, 187, -18, .1,
+                                         -174, -19, -172, -17, .1);
+  ASSERT_TRUE(coverage.available);
+  EXPECT_DOUBLE_EQ(coverage.area.west, -174);
+  EXPECT_DOUBLE_EQ(coverage.area.east, -173);
+  EXPECT_DOUBLE_EQ(coverage.area.south, -19);
+  EXPECT_DOUBLE_EQ(coverage.area.north, -18);
+  EXPECT_FALSE(coverage.begins.has_value());
+  EXPECT_FALSE(coverage.ends.has_value());
+  EXPECT_FALSE(WindGridCoverage(0, 0, 1, 1, .1,
+                                2, 0, 3, 1, .1).available);
+  EXPECT_FALSE(WindGridCoverage(0, 0, 1, 1, .1,
+                                0, 2, 1, 3, .1).available);
+}
+
+TEST(ModernNativeWeatherCoverage, PreservesGlobalAndDateLineGrids) {
+  using weather_routing::native::WindGridCoverage;
+  const auto global = WindGridCoverage(0, -90, 359, 90, 1,
+                                       -180, -90, 179, 90, 1);
+  ASSERT_TRUE(global.available);
+  EXPECT_DOUBLE_EQ(global.area.west, -180);
+  EXPECT_DOUBLE_EQ(global.area.east, 180);
+  const auto wrapped = WindGridCoverage(175, -20, 185, -10, .1,
+                                        175, -20, 185, -10, .1);
+  ASSERT_TRUE(wrapped.available);
+  EXPECT_DOUBLE_EQ(wrapped.area.west, 175);
+  EXPECT_DOUBLE_EQ(wrapped.area.east, -175);
+}
+
+TEST(ModernNativeEngine, RejectsUncoveredDestinationBeforeGeneratingSearchStates) {
+  auto request = TestRequest();
+  auto environment = TestEnvironment();
+  UniformWeatherProvider::Configuration weather;
+  weather.windTowardKnots = speedDirectionToVector(14, 140);
+  weather.area = {request.start.longitude - .01, request.start.latitude - .01,
+                  request.start.longitude + .01, request.start.latitude + .01};
+  environment.grib = std::make_shared<UniformWeatherProvider>(weather);
+  const auto result = RoutingEngine{}.route(request, environment);
+  EXPECT_EQ(result.status, RoutingStatus::WindForecastRequired);
+  EXPECT_NE(result.message.find("route endpoints"), std::string::npos);
+  EXPECT_EQ(result.diagnostics.generatedStates, 0u);
+}

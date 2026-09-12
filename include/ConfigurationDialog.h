@@ -96,6 +96,7 @@ protected:
   void OnValueChange(wxEvent& event) {
     m_edited_controls.push_back(event.GetEventObject());
   }
+  void OnChartSafetyChanged(wxCommandEvent& event);
   void OnUpdate(wxCommandEvent& event) {
     OnValueChange(event);
     Update();

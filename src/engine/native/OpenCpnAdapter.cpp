@@ -23,6 +23,7 @@
 #include "ConstraintChecker.h"
 #include "engine/native/CoordinateNormalization.h"
 #include "engine/native/ConstraintTime.h"
+#include "engine/native/WeatherCoverage.h"
 #include "RouteMapOverlay.h"
 #include "RoutingQualityPolicy.h"
 #include "RoutingResourcePolicy.h"
@@ -145,13 +146,32 @@ public:
         sharedCache_(SharedWeatherCacheFor(configuration_)) {}
 
   wr::ParameterCoverage windCoverage() const override {
-    return {configuration_.UseGrib || configuration_.ClimatologyType >
-                                          RouteMapConfiguration::CURRENTS_ONLY,
-            {},
-            {},
-            {-180.0, -90.0, 180.0, 90.0},
-            identity()};
+    // This provider implements the user's explicit climatology/deficient-data
+    // fallback internally. Do not reject that policy using GRIB-only bounds.
+    if (configuration_.ClimatologyType >
+            RouteMapConfiguration::CURRENTS_ONLY ||
+        (configuration_.UseGrib && configuration_.AllowDataDeficient))
+      return {true, {}, {}, {-180.0, -90.0, 180.0, 90.0}, identity()};
+    if (windCoverage_) return *windCoverage_;
+    wr::ParameterCoverage coverage;
+    Shared_GribRecordSet frame;
+    if (configuration_.UseGrib && overlay_.AcquireGribTimelineFrame(
+            configuration_.StartTime, frame)) {
+      const auto* records = frame.GetGribRecordSet();
+      const auto* u = records ? records->m_GribRecordPtrArray[Idx_WIND_VX] : nullptr;
+      const auto* v = records ? records->m_GribRecordPtrArray[Idx_WIND_VY] : nullptr;
+      if (u && v)
+        coverage = weather_routing::native::WindGridCoverage(
+            u->getLonMin(), u->getLatMin(), u->getLonMax(), u->getLatMax(),
+            u->getDi(), v->getLonMin(), v->getLatMin(), v->getLonMax(),
+            v->getLatMax(), v->getDi());
+    }
+    // A timeline frame supplies spatial bounds, not the complete forecast's
+    // time range. Sampling still checks weather availability along the route.
+    windCoverage_ = coverage;
+    return coverage;
   }
+
   wr::ParameterCoverage currentCoverage() const override {
     return {configuration_.Currents,
             {},
@@ -240,6 +260,8 @@ public:
   }
 
 private:
+  mutable std::optional<wr::ParameterCoverage> windCoverage_;
+
   struct LocalCacheSlot {
     bool valid{};
     OpenCpnWeatherCacheKey key{};
@@ -998,8 +1020,10 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
           // Do not let provider cache history or any mutable service state
           // leak from one departure into another: that was previously shown
           // to change hard-route frontier retention.
+          RouteMapConfiguration candidateConfiguration = configuration;
+          candidateConfiguration.StartTime = ToWx(departure);
           auto candidateWeather = std::make_shared<OpenCpnWeatherProvider>(
-              overlay, configuration);
+              overlay, candidateConfiguration);
           auto candidateLand =
               std::make_shared<OpenCpnLandProvider>(overlay, configuration);
           auto candidatePerformance =
