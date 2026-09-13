@@ -451,6 +451,16 @@ protected:
   wxRadioButton* m_rbEndWaypointSelection;
   /** The end point of the route. */
   wxComboBox* m_cEnd;
+  wxChoice* m_cRoutingEngine;
+  wxStaticText* m_tRoutingEngineDescription;
+  wxChoice* m_cEnginePreset;
+  wxStaticText* m_tEnginePresetStatus;
+  wxPanel* m_pMainEngine;
+  wxPanel* m_pQuickEngine;
+  wxSpinCtrl* m_sQuickOffshoreStepMinutes;
+  wxSpinCtrlDouble* m_sQuickHeadingStepDegrees;
+  wxSpinCtrl* m_sQuickMaximumSearchAngle;
+  wxSpinCtrl* m_sQuickMemoryBudgetMiB;
   wxSpinCtrl* m_sTimeStepHours;
   wxStaticText* m_staticText110;
   wxSpinCtrl* m_sTimeStepMinutes;
@@ -503,6 +513,8 @@ protected:
   wxSpinCtrl* m_sSailPlanChangeTime;
   wxStaticText* m_staticText141;  // "seconds" label for sail plan change time
   wxStaticText* m_staticText241;
+  wxStaticText* m_tShorelineResolution;
+  wxChoice* m_cShorelineResolution;
   wxSpinCtrlDouble* m_sSafetyMarginLand;
   wxStaticText* m_staticText1211;
   wxSpinCtrlDouble* m_sMinimumDepthMeters;

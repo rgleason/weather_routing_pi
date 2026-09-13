@@ -7,10 +7,7 @@ import sys
 import tarfile
 from pathlib import Path
 
-ARCHIVE_HASH = 'a36cb8c4fda7d56cfd851d92ed70a315d0a2ff81e10e99e8a0141ce9dc4e6d60'
-PAYLOAD_HASH = '8d4d73897c82dd0e8df63f33e4dab9dd3aea7a26459b923bf404cb9299f1cf04'
-NAME = 'poly-f-2.3.7.dat.gz'
-
+EXPECTED = json.loads((Path(__file__).resolve().parents[1] / 'data/shoreline/manifest.json').read_text())
 
 def digest(stream):
     h = hashlib.sha256()
@@ -24,20 +21,20 @@ def digest(stream):
 def verify(path):
     with tarfile.open(path, 'r:*') as package:
         members = package.getmembers()
-        payloads = [m for m in members if Path(m.name).name == NAME]
-        assert len(payloads) == 1, 'Full shoreline payload missing or duplicated'
-        payload = payloads[0]
-        assert payload.isfile() and '/data/shoreline/' in payload.name, payload.name
-        assert digest(package.extractfile(payload)) == (57754863, ARCHIVE_HASH)
-        with gzip.GzipFile(fileobj=package.extractfile(payload)) as data:
-            assert digest(data) == (171582632, PAYLOAD_HASH)
-        directory = payload.name.rsplit('/', 1)[0]
-        manifest = json.load(package.extractfile(directory + '/manifest.json'))
-        full = next(d for d in manifest['datasets'] if d['quality'] == 'f')
-        assert full['version'] == '2.3.7' and full['sha256'] == PAYLOAD_HASH
-        assert full['archive_sha256'] == ARCHIVE_HASH
+        assert [s['quality'] for s in EXPECTED['datasets']] == list('clihf')
+        for spec in EXPECTED['datasets']:
+            payloads = [m for m in members if Path(m.name).name == spec['file']]
+            assert len(payloads) == 1, f"Shoreline payload missing or duplicated: {spec['file']}"
+            payload = payloads[0]
+            assert payload.isfile() and '/data/shoreline/' in payload.name
+            assert digest(package.extractfile(payload)) == (spec['archive_bytes'], spec['archive_sha256'])
+            with gzip.GzipFile(fileobj=package.extractfile(payload)) as data:
+                assert digest(data) == (spec['uncompressed_bytes'], spec['sha256'])
+            directory = payload.name.rsplit('/', 1)[0]
+        assert json.load(package.extractfile(directory + '/manifest.json')) == EXPECTED
         assert package.getmember(directory + '/LICENSE.LGPL-3').isfile()
-    print('Verified packaged full-resolution GSHHG 2.3.7:', path)
+    print('Verified all five packaged GSHHG 2.3.7 resolutions:', path)
+
 
 
 if __name__ == '__main__':

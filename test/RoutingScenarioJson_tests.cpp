@@ -1,4 +1,5 @@
 #include <wx/wx.h>
+#include <wx/filename.h>
 
 #include <gtest/gtest.h>
 
@@ -204,6 +205,7 @@ TEST(RoutingScenarioJson, WritesStabilitySummaryAsValidJson) {
   departure.MakeFromTimezone(wxDateTime::UTC);
   candidate.departure = departure;
   candidate.state = "complete";
+  candidate.engine = "quick";
   candidate.route.emplace_back(53.31, -4.63, departure);
   candidate.route.emplace_back(55.12, -6.95);
   result.candidates.push_back(candidate);
@@ -234,6 +236,7 @@ TEST(RoutingScenarioJson, WritesStabilitySummaryAsValidJson) {
   ASSERT_TRUE(root["stabilityCorridor"].isObject());
   ASSERT_TRUE(root["candidates"].isArray());
   ASSERT_EQ(1U, root["candidates"].size());
+  EXPECT_EQ("quick", root["candidates"][0]["engine"].asString());
   EXPECT_EQ("2026-08-01T10:00:00Z",
             root["candidates"][0]["departure"].asString());
   ASSERT_EQ(2U, root["candidates"][0]["route"].size());
@@ -246,4 +249,72 @@ TEST(RoutingScenarioJson, WritesStabilitySummaryAsValidJson) {
   EXPECT_EQ("candidate-0",
             root["stabilityCorridor"]["representativeCandidateId"].asString());
   std::remove(path.mb_str());
+}
+
+TEST(RoutingScenarioJson, QuickSelectionAndBudgetAreExplicitAndValidated) {
+  const wxString path = wxFileName::CreateTempFileName("wr-quick-options-");
+  for (const int budget : {0, 96, 256, 4096, 4097}) {
+    {
+      std::ofstream file(path.mb_str());
+      file << R"({"schemaVersion":1,"name":"Quick settings","start":{"name":"A","lat":50,"lon":-5},"end":{"name":"B","lat":51,"lon":-4},"route":{"quickRoute":true,"quickMemoryBudgetMiB":)"
+           << budget << "}}";
+    }
+    weather_routing_engine::RoutingScenario scenario;
+    wxString error;
+    const bool loaded = weather_routing_headless::LoadRoutingScenarioJson(path, scenario, error);
+    EXPECT_EQ(loaded, budget >= 1 && budget <= 4096) << error;
+    if (loaded) {
+      EXPECT_TRUE(scenario.route.hasQuickRoute);
+      EXPECT_TRUE(scenario.route.quickRoute);
+      EXPECT_TRUE(scenario.route.hasQuickMemoryBudgetMiB);
+      EXPECT_EQ(scenario.route.quickMemoryBudgetMiB, budget);
+    }
+  }
+  std::remove(path.mb_str());
+}
+
+TEST(RoutingScenarioJson, EngineIdAndIndependentQuickSamplingAreValidated) {
+  const wxString path = wxFileName::CreateTempFileName("wr-engine-options-");
+  const std::vector<std::pair<std::string, bool>> cases = {
+      {R"("routingEngine":"quick","quickOffshoreStepMinutes":240,"quickHeadingStepDegrees":15,"quickMaximumSearchAngle":95)", true},
+      {R"("routingEngine":"main","quickRoute":true)", true},
+      {R"("routingEngine":"future")", false},
+      {R"("routingEngine":true)", false},
+      {R"("quickOffshoreStepMinutes":9)", false},
+      {R"("quickOffshoreStepMinutes":361)", false},
+      {R"("quickHeadingStepDegrees":4)", false},
+      {R"("quickHeadingStepDegrees":31)", false},
+      {R"("quickMaximumSearchAngle":181)", false},
+      {R"("quickHeadingStepDegrees":"fine")", false}};
+  for (const auto& [fields, expected] : cases) {
+    {
+      std::ofstream file(path.mb_str());
+      file << R"({"schemaVersion":1,"name":"Engine settings","start":{"name":"A","lat":50,"lon":-5},"end":{"name":"B","lat":51,"lon":-4},"route":{)"
+           << fields << "}}";
+    }
+    weather_routing_engine::RoutingScenario scenario;
+    wxString error;
+    EXPECT_EQ(weather_routing_headless::LoadRoutingScenarioJson(path, scenario, error), expected)
+        << fields << ": " << error;
+    if (expected) EXPECT_TRUE(scenario.route.hasRoutingEngine);
+  }
+  std::remove(path.mb_str());
+}
+
+TEST(RoutingScenarioJson, ShorelineResolutionInputsRejectInvalidTypesAndRanges) {
+  const wxString path = wxFileName::CreateTempFileName("wr-shoreline-json-");
+  for (const char* key : {"shorelineResolution", "chartShorelineResolution"}) {
+    for (const char* value : {"0", "1", "2", "3", "4", "-1", "5", "1.5", "true", "\"high\""}) {
+      { std::ofstream file(path.mb_str());
+        file << R"({"schemaVersion":1,"name":"shoreline","start":{"name":"A","lat":50,"lon":-5},"end":{"name":"B","lat":51,"lon":-4},"route":{")"
+             << key << "\":" << value << "}}";
+      }
+      weather_routing_engine::RoutingScenario scenario;
+      wxString error;
+      const bool expected = std::string(value).size() == 1 && value[0] >= '0' && value[0] <= '4';
+      EXPECT_EQ(weather_routing_headless::LoadRoutingScenarioJson(path, scenario, error), expected)
+          << key << "=" << value << ": " << error;
+    }
+  }
+  wxRemoveFile(path);
 }

@@ -1,5 +1,7 @@
 # Weather Routing integration branch
 
+See [1.17.7 changes](docs/release-1.17.7.md) and [Main/Quick engine settings](docs/quick-routing.md).
+
 The optional hardened-OpenCPN planning-provider boundary is documented in
 [docs/external_control_provider_preview_b.md](docs/external_control_provider_preview_b.md).
 Stock OpenCPN remains supported through the unchanged plug-in API 1.21.

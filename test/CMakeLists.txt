@@ -62,6 +62,7 @@ set(TEST_SRC
     RouteSimplifier_tests.cpp
     StabilityCorridor_tests.cpp
     StabilityCorridorLifecycle_tests.cpp
+    RoutingEngineSettings_tests.cpp
     RoutingScenarioJson_tests.cpp
     DepartureScheduler_tests.cpp
     RoutingQualityPolicy_tests.cpp
@@ -99,6 +100,7 @@ set(TEST_SRC
     ${WEATHER_ROUTING_ENGINE_DIR}/src/EnvironmentResolver.cpp
     ${WEATHER_ROUTING_ENGINE_DIR}/src/ArrivalPlanner.cpp
     ${WEATHER_ROUTING_ENGINE_DIR}/src/Engine.cpp
+    ${WEATHER_ROUTING_ENGINE_DIR}/src/QuickEngine.cpp
     ${WEATHER_ROUTING_ENGINE_DIR}/src/Validator.cpp
     ${WEATHER_ROUTING_ENGINE_DIR}/src/Ensemble.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/zuFile.cpp

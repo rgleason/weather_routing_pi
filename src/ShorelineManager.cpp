@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "ShorelineManager.h"
+#include "ShorelineSpec.h"
+#include <map>
 #include "ocpn_plugin.h"
 #include "version.h"
 #include <algorithm>
@@ -16,23 +18,12 @@
 
 namespace weather_routing {
 namespace {
-struct Spec {
-  const char* quality;
-  const char* code;
-  const char* hash;
-  std::size_t bytes;
-};
-const Spec full{
-    "Full", "f",
-    "8d4d73897c82dd0e8df63f33e4dab9dd3aea7a26459b923bf404cb9299f1cf04",
-    171582632};
-const Spec high{
-    "High", "h",
-    "f833f23da2de4d2083b9a82f4fe9d2563c7ed1575a5a382c190150690d4d5a84",
-    33435856};
+using Spec = ShorelineSpec;
 std::atomic<bool> busy{false};
-std::shared_ptr<ShorelineDataset> active;
-wxString activeDescription;
+// Weak entries reuse datasets held by active routes, without retaining five
+// unused caches after those route snapshots are released.
+std::map<std::pair<int, std::size_t>, std::weak_ptr<ShorelineDataset>> active;
+std::array<wxString, 5> descriptions;
 std::filesystem::path Path(const wxString& p) {
   return std::filesystem::u8path(p.ToUTF8().data());
 }
@@ -56,7 +47,9 @@ struct Config {
 };
 const Spec& Selected() {
   Config c;
-  return c.Read("Resolution", "full") == "high" ? high : full;
+  const auto id = c.Read("Resolution", "full");
+  for (const auto& spec : kShorelineSpecs) if (id == spec.id) return spec;
+  return kShorelineSpecs[4];
 }
 std::size_t Budget() {
   Config c;
@@ -112,73 +105,41 @@ std::shared_ptr<ShorelineDataset> Verify(const Spec& s,
         "/ Shoreline data to install or repair it.");
   return std::make_shared<ShorelineDataset>(p, Budget());
 }
-void InstallBundled() {
-  auto p = Destination(full);
-  InstallShorelineGzip(Archive(full), p, full.hash, full.bytes);
-  Record(full, p);
-}
-std::vector<std::string> Mirrors(const Spec& s) {
-  const std::string name = std::string("poly-") + s.code + "-2.3.7.dat.gz";
-  return {
-      "https://github.com/pob220/xweather_routing_pi/releases/download/"
-      "gshhg-2.3.7/" +
-          name,
-      "https://github.com/pob220/weather_routing_pi/releases/download/"
-      "gshhg-2.3.7/" +
-          name};
-}
-void Download(wxWindow* parent, const Spec& s) {
-  std::filesystem::create_directories(Root());
-  auto destination = Destination(s);
-  auto archive = destination;
-  archive += ".download";
-  const auto source = DownloadShorelineMirrors(
-      Mirrors(s),
-      [&](const std::string& url, const std::filesystem::path& output) {
-        auto status = OCPN_downloadFile(
-            wxString::FromUTF8(url.c_str()), Wx(output), _("Shoreline data"),
-            wxString::Format(_("Downloading GSHHG 2.3.7 — %s resolution"),
-                             s.quality),
-            wxNullBitmap, parent,
-            OCPN_DLDS_CAN_ABORT | OCPN_DLDS_AUTO_CLOSE |
-                OCPN_DLDS_ELAPSED_TIME | OCPN_DLDS_REMAINING_TIME |
-                OCPN_DLDS_SPEED | OCPN_DLDS_SIZE,
-            120);
-        return status == OCPN_DL_ABORTED    ? ShorelineDownloadResult::Cancelled
-               : status == OCPN_DL_NO_ERROR ? ShorelineDownloadResult::Complete
-                                            : ShorelineDownloadResult::Failed;
-      },
-      archive, destination, s.hash, s.bytes);
-  Record(s, destination);
-  wxLogMessage("WR_SHORELINE_INSTALLED source=%s quality=%s sha256=%s",
-               source.c_str(), s.quality, s.hash);
+void InstallBundled(const Spec& s) {
+  auto p = Destination(s);
+  InstallShorelineGzip(Archive(s), p, s.hash, s.bytes);
+  Record(s, p);
 }
 }  // namespace
 bool ShorelineManager::Busy() { return busy; }
-std::shared_ptr<ShorelineDataset> ShorelineManager::Prepare() {
-  if (busy)
-    throw std::runtime_error(
-        "Shoreline data management is open. Close it before computing a "
-        "route.");
-  if (active && active->Error().empty()) return active;
-  active.reset();
-  const auto& s = Selected();
-  auto p = Installed(s);
-  try {
-    active = Verify(s, p);
-  } catch (...) {
-    if (&s != &full) throw;
-    InstallBundled();
-    p = Installed(s);
-    active = Verify(s, p);
-  }
-  activeDescription = wxString::Format("GSHHG 2.3.7 / %s / SHA256 %s / %s",
-                                       s.quality, s.hash, Wx(p));
-  wxLogMessage("WR_SHORELINE_READY %s cache_mib=%llu", activeDescription,
-               static_cast<unsigned long long>(Budget() / 1024 / 1024));
-  return active;
+int ShorelineManager::DefaultResolution() {
+  return static_cast<int>(&Selected() - kShorelineSpecs.data());
 }
-wxString ShorelineManager::Description() { return activeDescription; }
+std::shared_ptr<ShorelineDataset> ShorelineManager::Prepare(int resolution) {
+  if (busy) throw std::runtime_error("Close shoreline data management before computing a route.");
+  const auto& s = ShorelineSpecFor(resolution);
+  const auto key = std::make_pair(resolution, Budget());
+  if (auto dataset = active[key].lock(); dataset && dataset->Error().empty()) return dataset;
+  auto p = Installed(s);
+  std::shared_ptr<ShorelineDataset> dataset;
+  try { dataset = Verify(s, p); }
+  catch (const std::bad_alloc&) { throw; }
+  catch (const std::exception&) {
+    InstallBundled(s);
+    p = Installed(s);
+    dataset = Verify(s, p);
+  }
+  descriptions[resolution] = wxString::Format("GSHHG 2.3.7 / %s / SHA256 %s / %s",
+                                               s.quality, s.hash, Wx(p));
+  wxLogMessage("WR_SHORELINE_READY %s cache_mib=%llu", descriptions[resolution],
+               static_cast<unsigned long long>(Budget() / 1024 / 1024));
+  active[key] = dataset;
+  return dataset;
+}
+wxString ShorelineManager::Description(int resolution) {
+  ShorelineSpecFor(resolution);
+  return descriptions[resolution];
+}
 void ShorelineManager::Show(wxWindow* parent) {
   if (busy.exchange(true)) return;
   struct Unlock {
@@ -189,15 +150,16 @@ void ShorelineManager::Show(wxWindow* parent) {
   auto main = new wxBoxSizer(wxVERTICAL);
   auto text =
       new wxStaticText(&dialog, wxID_ANY,
-                       _("Land detection on standard OpenCPN uses the plugin's "
-                         "own GSHHG data.\nFull resolution is included and "
-                         "works offline. Chart-aware routing is unchanged."));
+                       _("All five GSHHG resolutions are included for offline use. "
+                         "Choose each route's resolution in Configuration / Advanced. "
+                         "This default is used when importing older routes; "
+                         "existing route selections are preserved."));
   text->Wrap(dialog.FromDIP(560));
   main->Add(text, 0, wxALL, 12);
   auto choice = new wxChoice(&dialog, wxID_ANY);
-  choice->Append(_("Full — most detailed (164 MiB installed)"));
-  choice->Append(_("High — smaller dataset (32 MiB installed)"));
-  choice->SetSelection(&Selected() == &high ? 1 : 0);
+  for (int q = 0; q < 5; ++q)
+    choice->Append(wxString::Format("%d — %s", q, wxGetTranslation(kShorelineSpecs[q].quality)));
+  choice->SetSelection(DefaultResolution());
   main->Add(choice, 0, wxEXPAND | wxLEFT | wxRIGHT, 12);
   auto status = new wxStaticText(&dialog, wxID_ANY, "");
   main->Add(status, 0, wxALL, 12);
@@ -219,10 +181,8 @@ void ShorelineManager::Show(wxWindow* parent) {
   main->Add(cache, 0, wxALL, 12);
   auto actions = new wxBoxSizer(wxHORIZONTAL);
   auto verify = new wxButton(&dialog, wxID_ANY, _("Verify installed data"));
-  auto download = new wxButton(&dialog, wxID_ANY, _("Download and install"));
-  auto restore = new wxButton(&dialog, wxID_ANY, _("Restore bundled full"));
+  auto restore = new wxButton(&dialog, wxID_ANY, _("Restore selected bundled data"));
   actions->Add(verify, 0, wxRIGHT, 6);
-  actions->Add(download, 0, wxRIGHT, 6);
   actions->Add(restore);
   main->Add(actions, 0, wxALL, 12);
   auto updates =
@@ -231,7 +191,7 @@ void ShorelineManager::Show(wxWindow* parent) {
   auto footer = dialog.CreateSeparatedButtonSizer(wxOK | wxCANCEL);
   main->Add(footer, 0, wxEXPAND | wxALL, 12);
   auto selected = [&]() -> const Spec& {
-    return choice->GetSelection() == 1 ? high : full;
+    return ShorelineSpecFor(choice->GetSelection());
   };
   std::filesystem::path verifiedPath;
   auto refresh = [&]() {
@@ -242,9 +202,7 @@ void ShorelineManager::Show(wxWindow* parent) {
         (!p.empty() && std::filesystem::exists(p))
             ? (verifiedPath == p ? _("Verified SHA-256 and format")
                                  : _("Installed; verification runs before use"))
-            : (&s == &full
-                   ? _("Included in plugin; ready for offline installation")
-                   : _("Not installed"))));
+            : _("Included in plugin; ready for offline installation")));
     installedFile->ChangeValue(Wx(p));
     installedFile->SetToolTip(Wx(p));
     status->Wrap(dialog.FromDIP(560));
@@ -267,13 +225,9 @@ void ShorelineManager::Show(wxWindow* parent) {
   verify->Bind(wxEVT_BUTTON, [&](wxCommandEvent&) {
     action([&]() { Verify(selected(), Installed(selected())); });
   });
-  download->Bind(wxEVT_BUTTON, [&](wxCommandEvent&) {
-    action([&]() { Download(&dialog, selected()); });
-  });
   restore->Bind(wxEVT_BUTTON, [&](wxCommandEvent&) {
     action([&]() {
-      InstallBundled();
-      choice->SetSelection(0);
+      InstallBundled(selected());
     });
   });
   updates->Bind(wxEVT_BUTTON, [&](wxCommandEvent&) {
@@ -289,16 +243,16 @@ void ShorelineManager::Show(wxWindow* parent) {
       [&](wxCommandEvent&) {
         try {
           const auto& s = selected();
-          if (&s == &full && Installed(s).empty()) InstallBundled();
+          if (Installed(s).empty()) InstallBundled(s);
           Verify(s, Installed(s));
           {
             Config c;
-            c.c->Write("Resolution", wxString(&s == &high ? "high" : "full"));
+            c.c->Write("Resolution", wxString(s.id));
             c.c->Write("CacheMiB", cache->GetValue());
             c.c->Flush();
           }
-          active.reset();
-          activeDescription.clear();
+          active.clear();
+          descriptions.fill(wxString());
           dialog.EndModal(wxID_OK);
         } catch (const std::exception& e) {
           wxMessageBox(wxString::FromUTF8(e.what()), _("Shoreline data"),

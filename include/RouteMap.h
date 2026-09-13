@@ -20,6 +20,8 @@
 #ifndef _WEATHER_ROUTING_ROUTE_MAP_H_
 #define _WEATHER_ROUTING_ROUTE_MAP_H_
 
+#include "RoutingEngineSettings.h"
+
 #include "ShorelineDataset.h"
 #include "wx/datetime.h"
 #include <wx/object.h>
@@ -222,9 +224,20 @@ struct RouteMapPosition {
  * position, timestamp, error flags, and intermediate calculation results.
  */
 struct RouteMapConfiguration {
-  // Pinned per calculation; optional chart-aware queries retain their host path.
+  // Pinned per calculation; chart geometry retains its separate host path.
   std::shared_ptr<weather_routing::ShorelineDataset> shoreline_dataset;
   wxString shoreline_description;
+  int ShorelineResolution{4};  // Main, including migrated pre-1.17.7 preference.
+  int QuickShorelineResolution{0};
+  int ChartShorelineResolution{0};  // Preliminary shoreline work in enforced chart mode.
+  int SelectedShorelineResolution() const {
+    return IsQuick() ? QuickShorelineResolution : ShorelineResolution;
+  }
+  int EffectiveShorelineResolution() const {
+    return chart_safety_scout_preview ||
+        (chart_safety_runtime_available && chart_safety_runtime_enforced)
+        ? ChartShorelineResolution : SelectedShorelineResolution();
+  }
   wxString shoreline_error;
   /**
    * Defines the source for the starting point of the route.
@@ -242,6 +255,11 @@ struct RouteMapConfiguration {
     END_AT_POSITION,  //!< End at named Weather Routing position.
     END_AT_WAYPOINT   //!< End at OpenCPN waypoint/mark.
   };
+
+  weather_routing::RoutingEngineSettings EngineSettings;
+  bool IsQuick() const {
+    return EngineSettings.engine == weather_routing::RoutingEngine::Quick;
+  }
 
   RouteMapConfiguration(); /* avoid waiting forever in update longitudes */
 
@@ -1025,6 +1043,17 @@ public:
     return time;
   }
 
+  weather_routing::RoutingSearchSnapshot GetComputedSearchSettings() {
+    Lock();
+    const auto snapshot = m_ComputedSearchSettings;
+    Unlock();
+    return snapshot;
+  }
+  void CaptureSearchSettings(const RouteMapConfiguration& configuration, bool native) {
+    Lock();
+    m_ComputedSearchSettings = weather_routing::RoutingSearchSnapshot::Capture(configuration, native);
+    Unlock();
+  }
   void SetConfiguration(const RouteMapConfiguration& o) {
     Lock();
     m_Configuration = o;
@@ -1275,6 +1304,7 @@ private:
                              std::vector<Position*>& failed_positions);
 
   RouteMapConfiguration m_Configuration;
+  weather_routing::RoutingSearchSnapshot m_ComputedSearchSettings;
   bool m_bFinished, m_bValid;
   bool m_bReachedDestination;
   /**

@@ -284,9 +284,6 @@ bool GshhsSegmentSafetyHitsLand(RouteMapConfiguration* configuration,
                                 double lon2, double safety_margin_nm) {
   ++s_gshhsSafetyCalls;
   auto crosses = [&](double a, double b, double c, double d) {
-    // Preserve all existing enhanced-core chart/scout/fallback behavior.
-    if (s_useExperimentalChartSafety)
-      return PlugIn_GSHHS_CrossesLand(a, b, c, d);
     try {
       if (!configuration || !configuration->shoreline_dataset)
         throw std::runtime_error(

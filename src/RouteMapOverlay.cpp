@@ -176,6 +176,15 @@ bool RouteMapOverlay::Start(wxString& error) {
   if (error.size()) return false;
 
   RouteMapConfiguration configuration = GetConfiguration();
+  if (configuration.EngineSettings.engine == weather_routing::RoutingEngine::Unsupported) {
+    error = _("Unsupported routing engine: ") +
+        wxString::FromUTF8(configuration.EngineSettings.EngineId());
+    return false;
+  }
+  if (configuration.IsQuick() && !ModernNativeRouteEnabled(configuration)) {
+    error = _("Quick Route cannot analyse an existing route or use cumulative climatology/legacy routing. Select the main engine for this configuration.");
+    return false;
+  }
   /* test for cyclone data if needed */
   if (configuration.AvoidCycloneTracks &&
       (!ClimatologyCycloneTrackCrossings ||
@@ -206,6 +215,7 @@ bool RouteMapOverlay::Start(wxString& error) {
   m_ModernProgress.Begin();
   Unlock();
 
+  CaptureSearchSettings(configuration, ModernNativeRouteEnabled(configuration));
   m_Thread = new RouteMapOverlayThread(*this);
   m_Thread->Run();
   return true;

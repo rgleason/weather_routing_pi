@@ -163,6 +163,24 @@ int main() {
             "arrival planner selected the wrong latest departure");
     require(arrivalPlan.route && arrivalPlan.route->validation.passed,
             "arrival planner returned a route without forward validation");
+    arrivalOptions.retainOnlyBestResult = true;
+    const auto compactPlan = arrivalPlanner.plan(route, arrivalOptions, [&](TimePoint departure) {
+      RoutingResult candidate;
+      candidate.status = RoutingStatus::Complete;
+      candidate.validation.passed = true;
+      candidate.metrics.elapsed = std::chrono::hours{10};
+      RouteLeg leg;
+      leg.start = route.start; leg.end = route.destination;
+      leg.startTime = departure; leg.endTime = departure + candidate.metrics.elapsed;
+      candidate.legs.push_back(leg);
+      return candidate;
+    });
+    require(compactPlan.departure == arrivalPlan.departure && compactPlan.arrival == arrivalPlan.arrival,
+            "compact arrival retention changed the selected schedule");
+    require(compactPlan.diagnostics.evaluatedDepartures == arrivalPlan.diagnostics.evaluatedDepartures,
+            "compact arrival retention changed evaluations");
+    require(compactPlan.route && compactPlan.route->legs.size() == 1 && compactPlan.route->validation.passed,
+            "compact arrival retention lost the winning route");
     require(arrivalPlan.diagnostics.reverseProjections > 0,
             "arrival planner did not use reverse timing projection");
     require(evaluatedDepartures ==

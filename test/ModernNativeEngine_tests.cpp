@@ -12,6 +12,7 @@
 #include "engine/native/CoordinateNormalization.h"
 #include "engine/native/WeatherCoverage.h"
 #include "supercpn/weather_routing/Engine.h"
+#include "supercpn/weather_routing/QuickEngine.h"
 
 namespace {
 using namespace supercpn::weather_routing;
@@ -1376,6 +1377,78 @@ TEST(ModernNativeEngine, WidensCollapsedContinentalForwardCorridorWithinBudget) 
   }));
   for (const auto& leg : result.legs)
     EXPECT_FALSE(barrier->segmentForbidden(leg.start, leg.end, 0.0));
+}
+
+
+TEST(QuickNativeEngine, AuthoritativeValidationStillRejectsBlockedRoute) {
+  auto request = TestRequest();
+  request.destination = destinationPoint(request.start, 270.0, 8.0);
+  request.limits.maximumRouteDuration = std::chrono::hours{12};
+  auto boundaries = std::make_shared<SplitSearchValidationProvider>();
+  const auto result = QuickRoutingEngine{}.route(request, TestEnvironment(boundaries));
+  EXPECT_FALSE(Successful(result.route.status));
+  EXPECT_FALSE(result.route.validation.passed);
+  EXPECT_GT(boundaries->prepareCalls, 0U);
+  EXPECT_TRUE(boundaries->validationObservedPreparedRoute);
+  EXPECT_GT(boundaries->validationCalls, 0U);
+}
+
+TEST(QuickNativeEngine, PreservesAuthoritativeCoastalEgress) {
+  auto request = TestRequest();
+  request.destination = destinationPoint(request.start, 270.0, 8.0);
+  request.constraints.landSafetyMarginNm = 0.4;
+  request.limits.maximumRouteDuration = std::chrono::hours{12};
+  auto boundaries = std::make_shared<CoastalDepartureEgressProvider>(request.start);
+  const auto result = QuickRoutingEngine{}.route(request, TestEnvironment(boundaries));
+  ASSERT_TRUE(Successful(result.route.status)) << result.route.message;
+  EXPECT_TRUE(result.route.validation.passed);
+  EXPECT_EQ(result.route.validation.acceptedPrefixLegs, result.route.legs.size());
+}
+
+TEST(QuickNativeEngine, RejectsChartBlockedPassage) {
+  auto request = TestRequest();
+  request.options.maximumSearchAngleDegrees = 80.0;
+  const auto result = QuickRoutingEngine{}.route(request,
+      TestEnvironment(std::make_shared<BlockingMeridianProvider>()));
+  EXPECT_FALSE(Successful(result.route.status));
+}
+
+TEST(QuickNativeEngine, CancellationStopsWeatherWork) {
+  auto request = TestRequest();
+  request.progress = [&](const RoutingProgressUpdate& progress) {
+    if (progress.generatedStates > 0) request.cancellation.cancel();
+  };
+  const auto result = QuickRoutingEngine{}.route(request, TestEnvironment());
+  EXPECT_EQ(result.route.status, RoutingStatus::Cancelled);
+  EXPECT_FALSE(result.route.validation.passed);
+  EXPECT_GT(result.route.diagnostics.generatedStates, 0U);
+}
+
+TEST(QuickNativeEngine, EnforcesWeatherWorkAndMemoryBudgets) {
+  auto request = TestRequest();
+  QuickRoutingOptions options;
+  options.maximumWeatherCalls = 50;
+  auto result = QuickRoutingEngine{}.route(request, TestEnvironment(), options);
+  EXPECT_EQ(result.route.status, RoutingStatus::ResourceLimitReached);
+  EXPECT_LE(result.quick.weatherCalls, 51U);
+  options.maximumWeatherCalls = 24000000;
+  options.memoryBudgetMiB = 1;
+  options.beamWidth = options.recoveryBeamWidth = 512;
+  result = QuickRoutingEngine{}.route(request, TestEnvironment(), options);
+  EXPECT_EQ(result.route.status, RoutingStatus::ResourceLimitReached);
+  EXPECT_LE(result.quick.peakSearchBytes, 1024U * 1024U);
+  EXPECT_FALSE(result.route.validation.passed);
+}
+
+
+TEST(QuickNativeEngine, RejectsInvalidBudgetWithoutSearching) {
+  for (const unsigned budget : {0U, 4097U}) {
+    QuickRoutingOptions options; options.memoryBudgetMiB = budget;
+    const auto result = QuickRoutingEngine{}.route(TestRequest(), TestEnvironment(), options);
+    EXPECT_EQ(result.route.status, RoutingStatus::InvalidVesselConfiguration);
+    EXPECT_EQ(result.quick.peakSearchBytes, 0U);
+    EXPECT_EQ(result.quick.weatherCalls, 0U);
+  }
 }
 
 }  // namespace

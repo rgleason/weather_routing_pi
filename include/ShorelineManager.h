@@ -8,9 +8,10 @@ namespace weather_routing {
 // workers.
 class ShorelineManager {
 public:
-  static std::shared_ptr<ShorelineDataset> Prepare();
+  static std::shared_ptr<ShorelineDataset> Prepare(int resolution);
+  static int DefaultResolution();
   static void Show(wxWindow* parent);
   static bool Busy();
-  static wxString Description();
+  static wxString Description(int resolution);
 };
 }  // namespace weather_routing

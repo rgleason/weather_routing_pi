@@ -119,6 +119,20 @@ public:
     return total_weight_;
   }
 
+  // Adjust only between routes. Eviction retains one oversized reply, as Publish does.
+  void SetMaximumWeight(std::size_t maximum) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    maximum_weight_ = maximum;
+    while (entries_.size() > 1 && total_weight_ > maximum_weight_ && !lru_.empty()) {
+      const auto victim = entries_.find(lru_.front());
+      if (victim != entries_.end()) {
+        total_weight_ -= victim->second.weight;
+        entries_.erase(victim);
+      }
+      lru_.pop_front();
+    }
+  }
+
 private:
   struct Entry {
     Value value;
@@ -164,7 +178,7 @@ private:
   }
 
   const std::size_t capacity_;
-  const std::size_t maximum_weight_;
+  std::size_t maximum_weight_;
   const WeightFunction weight_function_;
   mutable std::mutex mutex_;
   std::condition_variable condition_;

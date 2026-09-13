@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "ShorelineDataset.h"
+#include "ShorelineSpec.h"
 #include <gtest/gtest.h>
 #include <fstream>
 #include <random>
@@ -307,4 +308,28 @@ TEST(ShorelineDataset, VerifiedBundledFullResolutionRealWorld) {
   EXPECT_FALSE(d.CrossesLand(45, -40, 46, -39));
   EXPECT_FALSE(d.CrossesLand(54, -4.8, 54, -4.5));
   EXPECT_LE(d.CacheBytes(), 16u * 1024 * 1024);
+}
+
+class BundledShoreline : public testing::TestWithParam<int> {};
+TEST_P(BundledShoreline, OfflineInstallVerificationAndGlobalTileCoverage) {
+  Files files;
+  const auto& spec = ShorelineSpecFor(GetParam());
+  const auto archive = fs::path(WEATHER_ROUTING_SOURCE_DIR) / "data" / "shoreline" /
+      (std::string("poly-") + spec.code + "-2.3.7.dat.gz");
+  InstallShorelineGzip(archive, files / "shoreline.dat", spec.hash, spec.bytes);
+  EXPECT_EQ(ShorelineSha256(files / "shoreline.dat"), spec.hash);
+  ShorelineDataset data(files / "shoreline.dat", 16u * 1024 * 1024);
+  EXPECT_TRUE(data.CrossesLand(48.85, 2.35, 48.85, 2.35));
+  EXPECT_FALSE(data.CrossesLand(0, -30, 0, -29));
+  EXPECT_TRUE(data.CrossesLand(50, -6, 51, -1));
+  // Exercise every tile with a small cache, including eviction and reloads.
+  for (int lon = 0; lon < 360; ++lon) for (int lat = -90; lat < 90; ++lat)
+    EXPECT_NO_THROW(data.CrossesLand(lat + .5, lon + .5, lat + .5, lon + .5));
+  EXPECT_LE(data.CacheBytes(), 16u * 1024 * 1024);
+  EXPECT_TRUE(data.Error().empty());
+}
+INSTANTIATE_TEST_SUITE_P(AllFiveResolutions, BundledShoreline, testing::Range(0, 5));
+TEST(ShorelineDataset, InvalidResolutionRejected) {
+  EXPECT_THROW(ShorelineSpecFor(-1), std::invalid_argument);
+  EXPECT_THROW(ShorelineSpecFor(5), std::invalid_argument);
 }

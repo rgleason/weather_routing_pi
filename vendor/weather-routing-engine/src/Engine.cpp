@@ -13,6 +13,7 @@
 #include <unordered_map>
 
 #include "RoutingInternal.h"
+#include "MotionKernel.h"
 
 namespace supercpn::weather_routing {
 namespace {
@@ -2479,6 +2480,62 @@ RoutingStatus preflightStatus(const RoutingPreflightResult& preflight) {
   return RoutingStatus::InvalidVesselConfiguration;
 }
 }  // namespace
+
+namespace internal {
+namespace {
+template <typename To, typename From> To copyMotionState(const From& from) {
+  To to;
+  to.position = from.position; to.time = from.time;
+  to.incomingHeading = from.incomingHeading; to.tack = from.tack;
+  to.mode = from.mode; to.role = from.role;
+  to.profileIdentity = from.profileIdentity; to.sailPlan = from.sailPlan;
+  to.modeDuration = from.modeDuration; to.motorDuration = from.motorDuration;
+  to.waitDuration = from.waitDuration;
+  to.departureEgressActive = from.departureEgressActive;
+  to.fuel = from.fuel; to.risk = from.risk; to.manoeuvres = from.manoeuvres;
+  return to;
+}
+MotionCandidate motionCandidate(Node node) {
+  return {copyMotionState<MotionState>(node), std::move(node.incomingLeg)};
+}
+}  // namespace
+std::vector<MotionCandidate> checkedMotion(
+    const RoutingRequest& request, const RoutingEnvironment& environment,
+    const VesselPerformanceModel& performance, const MotionState& from,
+    double heading, Duration step, Duration slice, RoutingDiagnostics& diagnostics,
+    RoutingStatus* failure) {
+  auto nodes = propagate(request, environment, performance,
+                         copyMotionState<Node>(from), heading, step, diagnostics,
+                         slice, failure);
+  std::vector<MotionCandidate> result;
+  for (auto& node : nodes)
+    if (!nodeMotionForbidden(request, environment, node, diagnostics))
+      result.push_back(motionCandidate(std::move(node)));
+  return result;
+}
+std::optional<MotionCandidate> checkedConnection(
+    const RoutingRequest& request, const RoutingEnvironment& environment,
+    const VesselPerformanceModel& performance, const MotionState& from,
+    Duration window, RoutingDiagnostics& diagnostics) {
+  const Node node = copyMotionState<Node>(from);
+  auto next = directConnection(request, environment, performance, node,
+      directConnectionWindow(request, node, window), diagnostics);
+  if (!next) return {};
+  return motionCandidate(std::move(*next));
+}
+std::optional<MotionCandidate> checkedWait(
+    const RoutingRequest& request, const RoutingEnvironment& environment,
+    const MotionState& from, Duration step, RoutingDiagnostics& diagnostics) {
+  auto node = waitInPlace(request, environment, copyMotionState<Node>(from),
+                          step, diagnostics);
+  if (!node) return {};
+  return motionCandidate(std::move(*node));
+}
+RoutingStatus failedPreflightStatus(const RoutingPreflightResult& check) {
+  return preflightStatus(check);
+}
+void summariseRoute(RoutingResult& result) { calculateResultSummaries(result); }
+}  // namespace internal
 
 RoutingPreflightResult RoutingEngine::preflight(
     const RoutingRequest& request,

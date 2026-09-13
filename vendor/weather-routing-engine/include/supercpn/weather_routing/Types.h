@@ -442,7 +442,8 @@ enum class SolverPath {
   AdaptiveIsochrone,
   ReverseRecovery,
   FrontierRecovery,
-  GraphFallback
+  GraphFallback,
+  QuickBeam
 };
 
 struct ConstraintMargins {

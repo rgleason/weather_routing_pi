@@ -158,6 +158,18 @@ ArrivalPlanningResult ArrivalPlanner::plan(
       ++output.diagnostics.reverseProjections;
     }
     results.emplace(key(departure), std::pair{candidate, std::move(route)});
+    if (options.retainOnlyBestResult) {
+      auto bestResult = results.end();
+      for (auto it = results.begin(); it != results.end(); ++it) {
+        const auto& c = it->second.first;
+        if (c.forwardValidated && c.arrival && c.deadlineError <= Duration::zero() &&
+            (bestResult == results.end() || c.departure > bestResult->second.first.departure))
+          bestResult = it;
+      }
+      for (auto it = results.begin(); it != results.end(); ++it)
+        if (it != bestResult) it->second.second = RoutingResult{};
+    }
+
 
     // When two forward-valid ETAs straddle the arrival deadline, interpolate
     // a departure and then prove it with another complete forward solve.
