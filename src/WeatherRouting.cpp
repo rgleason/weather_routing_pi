@@ -553,11 +553,23 @@ static bool EndpointMeetsMinimumDepth(
           _("%s charted depth %.1f m is below the configured minimum %.1f m"),
           endpoint_name, result.hit_depth_m,
           configuration.MinimumDepthMeters);
-    } else if (queried &&
-               result.status == PI_SEGMENT_SAFETY_UNKNOWN_DEPTH) {
+    } else if (queried && result.status == PI_SEGMENT_SAFETY_TOO_SHALLOW) {
       *failure_reason = wxString::Format(
-          _("%s has no charted depth proving the configured minimum %.1f m"),
+          _("%s is charted too shallow for the configured minimum %.1f m"),
           endpoint_name, configuration.MinimumDepthMeters);
+    } else if (queried &&
+               (result.status == PI_SEGMENT_SAFETY_UNKNOWN_DEPTH ||
+                result.status == PI_SEGMENT_SAFETY_NO_DATA)) {
+      *failure_reason = wxString::Format(
+          _("%s lacks chart/depth coverage proving the configured minimum "
+            "%.1f m. Load charts with depth coverage at this position."),
+          endpoint_name, configuration.MinimumDepthMeters);
+    } else if (!queried || result.status == PI_SEGMENT_SAFETY_ERROR ||
+               result.status == PI_SEGMENT_SAFETY_PENDING_DATA) {
+      *failure_reason = wxString::Format(
+          _("%s depth check could not be completed. Required chart data or "
+            "the chart-safety service is unavailable; retry after loading charts."),
+          endpoint_name);
     } else {
       *failure_reason = wxString::Format(
           _("%s does not satisfy the configured minimum depth %.1f m"),
@@ -3817,6 +3829,7 @@ void WeatherRouting::CompleteHeadlessSingleRouteTest(bool timed_out,
     StopAll();
   }
 
+  wxString first_failure;
   int complete = 0;
   int failed = 0;
   int running = 0;
@@ -3837,8 +3850,13 @@ void WeatherRouting::CompleteHeadlessSingleRouteTest(bool timed_out,
       if (running_route == route) is_running = true;
     for (auto waiting_route : m_WaitingRouteMaps)
       if (waiting_route == route) is_waiting = true;
-    const bool is_complete = route->Finished() && route->ReachedDestination();
-    const bool is_failed = route->Finished() && !route->ReachedDestination();
+    const wxString diagnostic = route->GetDiagnosticError();
+    const auto outcome = weather_routing::ClassifyRouteOutcome(
+        is_running || is_waiting, route->Valid(), route->Finished(),
+        route->ReachedDestination(), !diagnostic.IsEmpty());
+    const bool is_complete = outcome == weather_routing::RouteOutcome::Complete;
+    const bool is_failed = outcome == weather_routing::RouteOutcome::Failed;
+    if (is_failed && first_failure.IsEmpty()) first_failure = diagnostic;
     if (is_complete) complete++;
     if (is_failed) failed++;
     if (is_running) running++;
@@ -3849,11 +3867,12 @@ void WeatherRouting::CompleteHeadlessSingleRouteTest(bool timed_out,
                            : is_waiting ? _("Waiting")
                                         : _("Not running");
     long elapsed_seconds = -1;
-    if (route->EndTime().IsValid() && configuration.StartTime.IsValid()) {
+    if (is_complete && route->EndTime().IsValid() && configuration.StartTime.IsValid()) {
       const wxTimeSpan elapsed = route->EndTime() - configuration.StartTime;
       elapsed_seconds = elapsed.GetSeconds().ToLong();
     }
-    const double distance_nm = route->RouteInfo(RouteMapOverlay::DISTANCE);
+    const double distance_nm =
+        is_complete ? route->RouteInfo(RouteMapOverlay::DISTANCE) : NAN;
     wxLogMessage(
         "WR_HEADLESS_ROUTE_TEST route_result index=%lu offset=%d "
         "start=\"%s\" end=\"%s\" complete=%d failed=%d running=%d "
@@ -3863,9 +3882,10 @@ void WeatherRouting::CompleteHeadlessSingleRouteTest(bool timed_out,
         configuration.DepartureTimeOptimizationOffsetMinutes,
         configuration.Start, configuration.End, is_complete ? 1 : 0,
         is_failed ? 1 : 0, is_running ? 1 : 0, is_waiting ? 1 : 0, state,
-        route->EndTime().IsValid() ? route->EndTime().FormatISOCombined()
+        is_complete && route->EndTime().IsValid()
+            ? route->EndTime().FormatISOCombined()
                                    : wxString("invalid"),
-        elapsed_seconds, distance_nm, route->GetFailureReason());
+        elapsed_seconds, distance_nm, diagnostic);
   }
 
   wxLogMessage(
@@ -3882,7 +3902,9 @@ void WeatherRouting::CompleteHeadlessSingleRouteTest(bool timed_out,
                                                 : _("unknown");
   const wxString result_failure =
       timed_out ? _("timeout")
-                : (complete > 0 ? wxString() : _("no_completed_routes"));
+                : (complete > 0 ? wxString()
+                   : !first_failure.IsEmpty() ? first_failure
+                                              : _("no_completed_routes"));
   if (m_HeadlessRouteTestState->scenarioLoaded &&
       !m_HeadlessRouteTestState->scenarioOutputPath.IsEmpty()) {
     wxString write_error;
@@ -8695,7 +8717,7 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
   }
 
   if (!routemapoverlay->Valid()) {
-    State = _("Invalid Start/End");
+    State = _("Cannot compute");
     wxString error = routemapoverlay->GetError();
     wxString weatherError = routemapoverlay->GetWeatherForecastError();
     if (!error.IsEmpty())
@@ -10833,8 +10855,23 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
   if (configuration.MinimumDepthMeters > 0.0 &&
       (!configuration.DetectLand || !use_chart_safety ||
        !enforce_chart_safety)) {
+    wxString missing;
+    const auto require = [&missing](bool enabled, const wxString& label) {
+      if (enabled) return;
+      if (!missing.IsEmpty()) missing += _(", ");
+      missing += label;
+    };
+    require(configuration.DetectLand, _("Detect Land"));
+    require(use_chart_safety, _("Check loaded charts"));
+    require(enforce_chart_safety, _("Require chart/depth checks for routing"));
     routemapoverlay->SetError(
-        _("Minimum depth requires enabled and enforced chart-aware safety"));
+        HasEnhancedChartSafety()
+            ? wxString::Format(
+                  _("Minimum charted depth is %.1f m. Enable: %s."),
+                  configuration.MinimumDepthMeters, missing)
+            : _("Minimum charted depth requires an OpenCPN build with the "
+                "chart-safety service. This host provides shoreline checks "
+                "only; it cannot enforce a charted depth limit."));
     wxLogError(
         "WR_MINIMUM_DEPTH unavailable route=\"%s -> %s\" "
         "minimum_depth_m=%.3f detect_land=%d chart_safety_use=%d "

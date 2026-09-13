@@ -1732,6 +1732,12 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   fgSizer23->Add(m_cbOptimizeTacking, 1, wxALL | wxEXPAND, 5);
 
   sbOptions->Add(fgSizer23, 1, wxEXPAND | wxALL, 5);
+  wxStaticText* safetyExplanation = new wxStaticText(
+      sbOptions->GetStaticBox(), wxID_ANY,
+      _("To enforce charted depths, enable Detect Land and both chart options. "
+        "Checking charts alone provides diagnostics without enforcing them."));
+  safetyExplanation->Wrap(440);
+  sbOptions->Add(safetyExplanation, 0, wxEXPAND | wxALL, 5);
 
   fgSizer112->Add(sbOptions, 1, wxEXPAND | wxALL, 5);
 
@@ -2340,6 +2346,13 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   fgSizer113->Add(fgSizer11511, 1, wxEXPAND, 5);
 
   sbOptions1->Add(fgSizer113, 1, wxEXPAND, 5);
+  wxStaticText* depthExplanation = new wxStaticText(
+      sbOptions1->GetStaticBox(), wxID_ANY,
+      _("0 m disables only the depth limit; land checks remain separate. "
+        "A positive depth needs Detect Land and both chart options on Basic, "
+        "plus a compatible chart-safety host and chart coverage."));
+  depthExplanation->Wrap(440);
+  sbOptions1->Add(depthExplanation, 0, wxEXPAND | wxALL, 5);
 
   fgSizer109->Add(sbOptions1, 1, wxEXPAND | wxALL, 5);
 

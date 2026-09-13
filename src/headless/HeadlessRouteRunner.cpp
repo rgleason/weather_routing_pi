@@ -17,6 +17,7 @@
 #include <wx/filename.h>
 
 #include "RouteMapOverlay.h"
+#include "RouteDisplayPolicy.h"
 #include "RoutingScenarioJson.h"
 #include "StabilityRouteAdapter.h"
 #include "weather_routing_engine/StabilityCorridor.h"
@@ -41,24 +42,20 @@ weather_routing_engine::RoutingCandidateResult CandidateFromRoute(
   RouteMapConfiguration configuration = route->GetConfiguration();
   candidate.departure = configuration.StartTime;
   candidate.offsetMinutes = configuration.DepartureTimeOptimizationOffsetMinutes;
-  candidate.eta = route->EndTime();
-  candidate.distanceNm = route->RouteInfo(RouteMapOverlay::DISTANCE);
-  if (candidate.eta.IsValid() && configuration.StartTime.IsValid()) {
-    wxTimeSpan elapsed = candidate.eta - configuration.StartTime;
-    candidate.elapsedSeconds = elapsed.GetSeconds().ToLong();
-  }
-
-  if (route->Finished() && route->ReachedDestination()) {
+  candidate.failureReason = route->GetDiagnosticError();
+  const auto outcome = weather_routing::ClassifyRouteOutcome(
+      route->Running(), route->Valid(), route->Finished(),
+      route->ReachedDestination(), !candidate.failureReason.IsEmpty());
+  if (outcome == weather_routing::RouteOutcome::Complete) {
     candidate.state = "complete";
     candidate.finalSafety = "pass";
-  } else if (route->Finished()) {
+  } else if (outcome == weather_routing::RouteOutcome::Failed) {
     candidate.state = "failed";
     candidate.finalSafety = "fail";
   } else {
     candidate.state = "incomplete";
     candidate.finalSafety = "unknown";
   }
-  candidate.failureReason = route->GetFailureReason();
   candidate.reverseRecoveryUsed = configuration.ReverseRecoveryUsed;
   candidate.reverseRecoveryStatus = configuration.ReverseRecoveryStatus;
   candidate.reverseLayersBuilt = configuration.ReverseLayersBuilt;
@@ -68,6 +65,15 @@ weather_routing_engine::RoutingCandidateResult CandidateFromRoute(
   candidate.reverseConnectionTime = configuration.ReverseConnectionTime;
   candidate.reverseFailureReason = configuration.ReverseFailureReason;
   candidate.reverseFinalValidationPass = configuration.ReverseFinalValidationPass;
+  // A geometry scout or unfinished frontier is not a result route. Keep its
+  // ETA and fabricated start/end chord out of the deliverable JSON contract.
+  if (outcome != weather_routing::RouteOutcome::Complete) return candidate;
+  candidate.eta = route->EndTime();
+  candidate.distanceNm = route->RouteInfo(RouteMapOverlay::DISTANCE);
+  if (candidate.eta.IsValid() && configuration.StartTime.IsValid()) {
+    candidate.elapsedSeconds =
+        (candidate.eta - configuration.StartTime).GetSeconds().ToLong();
+  }
   const auto append_point = [&candidate](double latitude, double longitude,
                                           const wxDateTime& time) {
     if (!candidate.route.empty()) {

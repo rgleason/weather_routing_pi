@@ -2148,14 +2148,13 @@ double RouteMapOverlay::RouteInfo(enum RouteInfoType type, bool cursor_route) {
     case JIBES:
       return plotdata.size() ? plotdata.back().jibes : 0;
     case DISTANCE:
-      if (total == 0)
-        total = NAN;
-      else if (Finished()) {
+      if (!plotdata.empty() && !cursor_route && Finished() &&
+          ReachedDestination()) {
         RouteMapConfiguration configuration = GetConfiguration();
         total += DistGreatCircle_Plugin(lat0, lon0, configuration.EndLat,
                                         configuration.EndLon);
       }
-      return total;
+      return plotdata.empty() ? NAN : total;
     case COMFORT:
       return comfort;
     case PERCENTAGE_UPWIND:

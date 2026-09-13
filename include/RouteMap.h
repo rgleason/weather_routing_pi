@@ -1149,6 +1149,17 @@ public:
     return ret;
   }
 
+  // Preflight, worker and weather-service errors use separate storage. Use
+  // this when presenting a terminal outcome, without changing solver state.
+  wxString GetDiagnosticError() {
+    Lock();
+    wxString ret = !m_ErrorMsg.IsEmpty() ? m_ErrorMsg
+                   : !m_FailureReason.IsEmpty() ? m_FailureReason
+                                               : m_bWeatherForecastError;
+    Unlock();
+    return ret;
+  }
+
   void SetFailureReason(wxString msg) {
     Lock();
     m_FailureReason = msg;
