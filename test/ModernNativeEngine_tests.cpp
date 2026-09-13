@@ -1328,6 +1328,56 @@ TEST(ModernNativeEngine, FinalApproachMayOutlastSeveralSearchSteps) {
   EXPECT_LE(result.diagnostics.generatedStates, 20U);
 }
 
+TEST(ModernNativeEngine, WidensCollapsedContinentalForwardCorridorWithinBudget) {
+  auto request = TestRequest();
+  request.start = {0.0, 0.0};
+  request.destination = {0.0, 8.0};
+  request.options.maximumSearchAngleDegrees = 60.0;
+  request.options.timeStep = std::chrono::hours{6};
+  request.options.headingStepDegrees = 20.0;
+  request.options.refinedHeadingStepDegrees = 7.5;
+  request.options.spatialCellNm = 5.0;
+  request.options.labelsPerCell = 10;
+  request.options.graphCorridorWidthNm = 20.0;
+  request.options.maximumGraphCorridorWidthNm = INFINITY;
+  request.options.useReverseRecovery = false;
+  request.options.useFrontierRecovery = true;
+  request.options.useGraphFallback = true;
+  request.options.retryStages = 7;
+  request.limits.maximumRouteDuration = std::chrono::hours{24 * 30};
+  request.limits.maximumGeneratedStates = 4520000;
+  request.limits.maximumForwardGeneratedStates = 2700000;
+  request.limits.maximumRetainedStates = 280000;
+  request.limits.maximumGraphGeneratedStates = 900000;
+  request.limits.maximumGraphLabels = 720000;
+  UniformWeatherProvider::Configuration weather;
+  weather.begins = TestTime();
+  weather.ends = TestTime() + std::chrono::hours{24 * 30};
+  weather.windTowardKnots = speedDirectionToVector(14.0, 140.0);
+  weather.currentTowardKnots = Vector2{};
+  auto barrier = std::make_shared<MeridianBarrierWithOpenEndsProvider>(
+      3.0, 0.0, 2.1);  // A detour beyond 120 NM, not a small island fixture.
+  auto environment = TestEnvironment(barrier);
+  environment.grib = std::make_shared<UniformWeatherProvider>(weather);
+  environment.performance = std::make_shared<ConstantSpeedPerformance>();
+  const auto result = RoutingEngine{}.route(request, environment);
+  std::string diagnostic = result.message;
+  for (const auto& reason : result.diagnostics.stageStopReasons)
+    diagnostic += "\n" + reason;
+  ASSERT_FALSE(result.legs.empty()) << diagnostic;
+  EXPECT_EQ(result.solverPath, SolverPath::AdaptiveIsochrone);
+  EXPECT_EQ(result.legs.back().end, request.destination);
+  EXPECT_LE(result.diagnostics.generatedStates,
+            request.limits.maximumGeneratedStates);
+  EXPECT_TRUE(std::any_of(result.diagnostics.stageStopReasons.begin(),
+                          result.diagnostics.stageStopReasons.end(),
+                          [](const std::string& reason) {
+    return reason.find("collapsed coastal forward corridor") != std::string::npos;
+  }));
+  for (const auto& leg : result.legs)
+    EXPECT_FALSE(barrier->segmentForbidden(leg.start, leg.end, 0.0));
+}
+
 }  // namespace
 
 TEST(ModernNativeWeatherCoverage, IntersectsWindComponentsAndNormalizesLongitude) {

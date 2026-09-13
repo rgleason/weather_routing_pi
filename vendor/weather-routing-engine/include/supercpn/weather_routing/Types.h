@@ -247,6 +247,7 @@ struct RoutingOptions {
   bool useReverseRecovery{true};
   bool useFrontierRecovery{true};
   bool useGraphFallback{true};
+  bool useWideForwardRecovery{true};
   // Permit a bounded stationary hold only when a retained state cannot make
   // any feasible progress. This is a recovery action for tidal/weather gates,
   // not an unbounded departure-time optimiser.

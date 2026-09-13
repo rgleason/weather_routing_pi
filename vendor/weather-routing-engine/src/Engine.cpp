@@ -61,6 +61,7 @@ struct SearchArtifacts {
   std::string reason;
   bool resourceLimited{};
   bool convergenceStalled{};
+  bool coastalCorridorStalled{};
 };
 
 void reportProgress(const RoutingRequest& request, RoutingProgressStage stage,
@@ -1156,6 +1157,7 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
                               double headingStep, Duration step,
                               unsigned labelCap, bool allowCompletion,
                               unsigned attempt, unsigned totalAttempts,
+                              bool refineIntegration,
                               std::uint64_t endpointGeneratedStateCeiling,
                               std::uint64_t forwardGeneratedStateCeiling,
                               RoutingDiagnostics& diagnostics) {
@@ -1176,6 +1178,8 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
   const auto deadline = request.departure + request.limits.maximumRouteDuration;
   unsigned layer = 0;
   unsigned stalledApproachLayers = 0;
+  unsigned stalledCoastalLayers = 0;
+  double lastCoastalProgressNm = std::numeric_limits<double>::infinity();
   double lastApproachProgressNm = std::numeric_limits<double>::infinity();
   RoutingStatus dataFailure = RoutingStatus::Complete;
   const double focusedCorridorCoreWidthNm =
@@ -1205,6 +1209,8 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
       result.reason = "routing cancelled";
       return result;
     }
+    const auto landRejectionsBeforeLayer = diagnostics.landRejections;
+    const auto corridorPrunedBeforeLayer = diagnostics.pruned.outsideCorridor;
     std::vector<Node> candidates;
     std::vector<Node> directCandidates;
     constexpr std::size_t kMaximumDirectCandidates = 8;
@@ -1316,7 +1322,7 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
         // multiplied provider traffic by roughly three without adding
         // forecast detail, while final replay remains unchanged.
         const Duration integrationSlice{
-            coastalDepartureEgress || attempt > 1
+            coastalDepartureEgress || refineIntegration
                 ? std::chrono::minutes{5}
                 : std::chrono::minutes{15}};
         for (auto& next : propagate(request, environment, performance, from,
@@ -1474,6 +1480,35 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
         layerClosestNm = std::min(
             layerClosestNm,
             distanceNm(result.nodes[index].position, request.destination));
+      // On an ocean passage an early continental obstruction is far outside
+      // the final-approach radius. Detect repeated *obstructed* stagnation in
+      // the initial narrow corridor (four obstructed layers), rather than
+      // spending the entire forward budget waiting against the same coast. Calm open water and the wider
+      // retry keep their original temporal exploration and waiting behavior.
+      const double widerWidth = std::min(
+          request.options.maximumGraphCorridorWidthNm,
+          std::clamp(distanceNm(request.start, request.destination) * 0.25,
+                     40.0, 200.0));
+      if (request.options.useWideForwardRecovery &&
+          distanceNm(request.start, request.destination) > 400.0 &&
+          focusForwardBeforeGraphRecovery &&
+          focusedCorridorCoreWidthNm + 1e-6 < widerWidth) {
+        if (layerClosestNm < lastCoastalProgressNm - 0.5) {
+          lastCoastalProgressNm = layerClosestNm;
+          stalledCoastalLayers = 0;
+        } else if (diagnostics.landRejections > landRejectionsBeforeLayer &&
+                   diagnostics.pruned.outsideCorridor > corridorPrunedBeforeLayer) {
+          ++stalledCoastalLayers;
+        } else {
+          stalledCoastalLayers = 0;
+        }
+        if (stalledCoastalLayers >= 4) {
+          result.failure = RoutingStatus::SearchIncomplete;
+          result.reason = "coastal corridor progress stalled";
+          result.coastalCorridorStalled = true;
+          return result;
+        }
+      }
       // A difficult coastal route can become topologically stalled well
       // outside the small final-connection radius. Continuing the same
       // forward fan at ever finer resolution then repeats millions of
@@ -2100,6 +2135,28 @@ SearchArtifacts graphSearch(const RoutingRequest& request,
                distanceNm(result.nodes[index].position, request.destination),
                serial++, index});
   };
+  GeoPoint closestExpanded = request.start;
+  TimePoint closestExpandedTime = request.departure;
+  double closestExpandedNm = distanceNm(request.start, request.destination);
+  struct GraphSummary {
+    std::function<void()> record;
+    ~GraphSummary() noexcept {
+      // Optional diagnostics must not turn resource exhaustion into terminate.
+      try { record(); } catch (...) {}
+    }
+  } summary{[&] {
+    std::ostringstream detail;
+    detail << stageName << " final search state: corridor="
+           << graphCorridorDescription(activeCorridorWidthNm)
+           << " queued=" << open.size() << " deferred=" << deferredLabelCount
+           << " admitted=" << graphLabelsThisSearch
+           << " generated="
+           << diagnostics.generatedStates - graphGeneratedStatesAtStart
+           << " closest=(" << closestExpanded.latitude << ","
+           << closestExpanded.longitude << ") remaining_nm=" << closestExpandedNm
+           << " elapsed_s=" << (closestExpandedTime - request.departure).count();
+    diagnostics.stageStopReasons.push_back(detail.str());
+  }};
   const auto widenCorridor = [&]() {
     if (corridorStage + 1 >= corridorWidths.size() ||
         deferredLabelCount == 0)
@@ -2193,6 +2250,11 @@ SearchArtifacts graphSearch(const RoutingRequest& request,
     const Node from = result.nodes[entry.node];
     if (localGraphDeadline && from.time >= *localGraphDeadline) continue;
     const double remaining = distanceNm(from.position, request.destination);
+    if (remaining < closestExpandedNm) {
+      closestExpandedNm = remaining;
+      closestExpanded = from.position;
+      closestExpandedTime = from.time;
+    }
     diagnostics.closestApproachNm =
         std::min(diagnostics.closestApproachNm, remaining);
     const double arrivalCaptureNm =
@@ -2836,6 +2898,9 @@ RoutingResult RoutingEngine::routeMember(
           ? request.limits.maximumGraphGeneratedStates
           : legacyGraphReserve;
   std::uint64_t previousAttemptGenerated{};
+  double forwardCorridorWidth = request.options.graphCorridorWidthNm;
+  unsigned forwardRefinementBase = 0;
+  bool forwardWasWidened = false;
   for (unsigned attempt = 0; attempt < attempts; ++attempt) {
     if (attempt > 0) {
       const std::uint64_t estimatedRefinement = std::max<std::uint64_t>(
@@ -2854,30 +2919,70 @@ RoutingResult RoutingEngine::routeMember(
         break;
       }
     }
+    // Refining headings inside the same collapsed coastal corridor cannot
+    // discover a continental detour. Try the original offshore cadence in a
+    // wider envelope before spending the remaining budget on refinement.
+    // The first attempt and all authoritative motion/replay checks remain
+    // unchanged. This consumes the existing forward budget, not extra RAM or
+    // generated-state allowances, and leaves graph recovery available.
+    const double recoveryWidth = std::max(
+        request.options.graphCorridorWidthNm,
+        std::min(request.options.maximumGraphCorridorWidthNm,
+                 std::clamp(distanceNm(request.start, request.destination) *
+                                0.25, 40.0, 200.0)));
+    const bool widenForward =
+        attempt > 0 && !forwardWasWidened &&
+        recoveryWidth > forwardCorridorWidth + 1e-6 &&
+        (latest.reason == "forward frontier collapsed" ||
+         latest.coastalCorridorStalled) &&
+        request.options.useWideForwardRecovery &&
+        result.diagnostics.landRejections > 0 &&
+        result.diagnostics.pruned.outsideCorridor > 0 &&
+        distanceNm(request.start, request.destination) > 400.0 &&
+        request.options.useGraphFallback &&
+        std::isfinite(request.options.graphCorridorWidthNm) &&
+        request.options.graphCorridorWidthNm > 0.0;
+    RoutingRequest attemptRequest = request;
+    if (widenForward) {
+      forwardCorridorWidth = recoveryWidth;
+      forwardWasWidened = true;
+      forwardRefinementBase = attempt;
+      result.diagnostics.stageStopReasons.push_back(
+          "collapsed coastal forward corridor: retrying original cadence "
+          "with width " + graphCorridorDescription(
+              forwardCorridorWidth));
+    }
+    attemptRequest.options.graphCorridorWidthNm = forwardCorridorWidth;
+    const unsigned refinement = attempt - forwardRefinementBase;
     reportProgress(request, RoutingProgressStage::ForwardIsochrone,
                    result.diagnostics, attempt + 1, attempts);
     result.diagnostics.stagesAttempted.push_back(SolverPath::AdaptiveIsochrone);
     const double headingStep =
         std::max(request.options.refinedHeadingStepDegrees,
-                 request.options.headingStepDegrees / std::pow(1.5, attempt));
+                 request.options.headingStepDegrees / std::pow(1.5, refinement));
     const Duration step = std::max(
         request.options.minimumTimeStep,
         Duration{static_cast<std::int64_t>(request.options.timeStep.count() /
-                                           (attempt >= 2 ? 2 : 1))});
+                                           (refinement >= 2 ? 2 : 1))});
     const unsigned labels =
-        std::min<unsigned>(64, request.options.labelsPerCell * (1 + attempt));
+        std::min<unsigned>(64, request.options.labelsPerCell * (1 + refinement));
     const std::uint64_t generatedBefore = result.diagnostics.generatedStates;
     const std::uint64_t endpointGeneratedBefore =
         result.diagnostics.coastalEndpointGeneratedStates;
     latest = forwardSearch(
-        request, environment, performance, headingStep, step, labels,
+        attemptRequest, environment, performance, headingStep, step, labels,
         !request.options.forceForwardFailureForTesting, attempt + 1, attempts,
-        endpointGeneratedStateCeiling, forwardGeneratedStateCeiling,
+        refinement > 0, endpointGeneratedStateCeiling, forwardGeneratedStateCeiling,
         result.diagnostics);
     previousAttemptGenerated =
         (result.diagnostics.generatedStates - generatedBefore) -
         (result.diagnostics.coastalEndpointGeneratedStates -
          endpointGeneratedBefore);
+    result.diagnostics.stageStopReasons.push_back(
+        "forward attempt " + std::to_string(attempt + 1) +
+        " generated=" + std::to_string(previousAttemptGenerated) +
+        " retained=" + std::to_string(latest.nodes.size()) +
+        " outcome=" + (latest.solution ? "candidate" : latest.reason));
     if (latest.solution) {
       rejectedCandidateSafePrefixes.clear();
       candidateReplayProducedUsefulPrefix = false;

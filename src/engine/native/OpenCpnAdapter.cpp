@@ -836,6 +836,8 @@ wr::RoutingRequest BuildRequest(RouteMapOverlay& overlay,
           RouteMapConfiguration::ROUTE_BY_ARRIVAL_TIME;
   request.options.useFrontierRecovery = true;
   request.options.useGraphFallback = true;
+  request.options.useWideForwardRecovery = configuration.DetectLand &&
+      !configuration.chart_safety_scout_preview;
   request.options.retryStages = quality.retry_stages;
   request.options.reverseLayers = static_cast<unsigned>(
       std::max(8, configuration.ReverseReachabilitySearchBackIsochrones));
