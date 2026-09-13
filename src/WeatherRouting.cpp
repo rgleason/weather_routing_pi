@@ -52,6 +52,7 @@
 #include "OceanPrewarmPolicy.h"
 #include "ReachabilityPrewarmPolicy.h"
 #include "RouteDisplayPolicy.h"
+#include "RouteExportFileName.h"
 #include "DepartureScheduler.h"
 #include "RoutingResourcePolicy.h"
 #include "WeatherDataProvider.h"
@@ -10483,7 +10484,8 @@ void WeatherRouting::ExportCombinedRoute(
   wxString directory = weather_routing_pi::StandardPath() +
                        _T("PlannedRoutes") + wxFileName::GetPathSeparator();
   if (!wxDir::Exists(directory)) wxDir::Make(directory);
-  wxString base = directory + route.m_RouteNameString;
+  wxString base = directory +
+                  weather_routing::RouteExportFileStem(route.m_RouteNameString);
   wxString path = base + ".gpx";
   for (int suffix_number = 1; wxFileName::Exists(path) && suffix_number < 100;
        ++suffix_number)
@@ -10757,7 +10759,8 @@ void WeatherRouting::ExportRoute(RouteMapOverlay& routemapoverlay) {
   if (!wxDir::Exists(export_path_base)) wxDir::Make(export_path_base);
 
   // Handle duplicate file names by adding "(n)" as needed
-  export_path_base += new_route.m_RouteNameString;
+  export_path_base +=
+      weather_routing::RouteExportFileStem(new_route.m_RouteNameString);
   wxString export_path = export_path_base + ".gpx";
   if (wxFileName::Exists(export_path)) {
     int iv = 1;
