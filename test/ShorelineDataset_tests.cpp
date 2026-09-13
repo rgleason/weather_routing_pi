@@ -205,8 +205,12 @@ TEST(ShorelineDataset, InsecureMirrorIsNotContacted) {
 TEST(ShorelineDataset, ReadFailureInvalidatesSnapshot) {
   Files f;
   Fixture(f / "data");
+  // Keep the index and minimum cell record valid, but truncate the polygon
+  // before opening the reader. Truncating an already-open tiny fixture may
+  // leave its complete valid bytes in the C++ stream's read-ahead buffer
+  // (notably on Windows), which does not exercise a failed read at all.
+  fs::resize_file(f / "data", 48 + 64800 * 4 + 16 + 16);
   ShorelineDataset d(f / "data");
-  fs::resize_file(f / "data", 48 + 64800 * 4);
   EXPECT_THROW(d.CrossesLand(.4, .4, .6, .6), ShorelineQueryError);
   EXPECT_FALSE(d.Error().empty());
   // Restoring the same filename must not revive a failed in-flight snapshot.
