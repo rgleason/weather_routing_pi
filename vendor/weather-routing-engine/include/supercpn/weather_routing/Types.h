@@ -331,6 +331,7 @@ struct RoutingProgressUpdate {
   std::uint64_t retainedStates{};
   std::uint64_t landChecks{};
   double closestApproachNm{std::numeric_limits<double>::infinity()};
+  unsigned effortPercent{100};
 };
 
 using RoutingProgressCallback =

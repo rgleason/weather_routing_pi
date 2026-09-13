@@ -893,8 +893,9 @@ wr::RoutingRequest BuildRequest(RouteMapOverlay& overlay,
   request.limits.maximumExplorationDistanceNm =
       std::max(500.0, routeDistance * 5.0);
   request.cancellation = wr::CancellationToken(overlay.CancellationFlag());
-  request.progress = [&overlay](const wr::RoutingProgressUpdate& progress) {
-    overlay.SetModernNativeProgress(progress);
+  request.progress = [&overlay, generation = overlay.ModernProgressGeneration()](
+                         const wr::RoutingProgressUpdate& progress) {
+    overlay.SetModernNativeProgress(progress, generation);
   };
   return request;
 }

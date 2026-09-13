@@ -69,8 +69,27 @@ void reportProgress(const RoutingRequest& request, RoutingProgressStage stage,
   if (!request.progress) return;
   request.progress({stage, attempt, totalAttempts, diagnostics.generatedStates,
                     diagnostics.retainedStates, diagnostics.landChecks,
-                    diagnostics.closestApproachNm});
+                    diagnostics.closestApproachNm,
+                    request.options.routingEffortPercent});
 }
+
+// Accepted-state counters alone can stay still while thousands of headings
+// are rejected. Publish real worker activity at a bounded cadence as well.
+class WorkProgress {
+ public:
+  void tick(const RoutingRequest& request, RoutingProgressStage stage,
+            const RoutingDiagnostics& diagnostics, unsigned attempt = 0,
+            unsigned totalAttempts = 0) {
+    if (!request.progress || (++work_ & 63U) != 0U) return;
+    const auto now = std::chrono::steady_clock::now();
+    if (now - last_ < std::chrono::seconds(1)) return;
+    last_ = now;
+    reportProgress(request, stage, diagnostics, attempt, totalAttempts);
+  }
+ private:
+  std::uint64_t work_{};
+  std::chrono::steady_clock::time_point last_{};
+};
 
 bool finitePoint(GeoPoint point) {
   return std::isfinite(point.latitude) && std::isfinite(point.longitude) &&
@@ -1141,6 +1160,7 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
                               std::uint64_t forwardGeneratedStateCeiling,
                               RoutingDiagnostics& diagnostics) {
   SearchArtifacts result;
+  WorkProgress workerProgress;
   Node initial;
   initial.position = request.start;
   initial.time = request.departure;
@@ -1288,6 +1308,8 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
            headings(layerHeadingStep, bearing, request.options.adaptiveHeadings,
                     request.options.refinedHeadingStepDegrees,
                     request.options.maximumSearchAngleDegrees)) {
+        workerProgress.tick(request, RoutingProgressStage::ForwardIsochrone,
+                            diagnostics, attempt, totalAttempts);
         // Exploratory propagation is independently replayed at a dense
         // cadence before any route can be returned. Match the adapter's
         // canonical 15-minute weather buckets here: five-minute integration
@@ -1835,6 +1857,7 @@ SearchArtifacts graphSearch(const RoutingRequest& request,
                             GraphSearchKind kind,
                             RoutingDiagnostics& diagnostics) {
   SearchArtifacts result;
+  WorkProgress workerProgress;
   const bool frontierRecovery = kind == GraphSearchKind::FrontierRecovery;
   const std::string stageName =
       frontierRecovery ? "frontier recovery" : "graph fallback";
@@ -2243,6 +2266,7 @@ SearchArtifacts graphSearch(const RoutingRequest& request,
         diagnostics.resourceLimitEvents.push_back(result.reason);
         return result;
       }
+      workerProgress.tick(request, progressStage, diagnostics);
       auto propagated = propagate(
           request, environment, performance, from, heading, expansionStep,
           diagnostics, Duration{std::chrono::minutes{15}}, &dataFailure);

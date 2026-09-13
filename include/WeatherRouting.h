@@ -694,7 +694,7 @@ private:
   bool ComputeMultiLegDepartureOptimization(RouteMapOverlay* selectedRoute);
   bool ComputeMultiLegSequenceNow(const wxString& groupId);
   bool ComputeMultiLegDepartureOptimizationNow(const wxString& groupId);
-  bool ShouldShowChartSafetyComputeProgress(
+  bool ShouldShowComputeProgress(
       const std::list<RouteMapOverlay*>& routemapoverlays) const;
   void BeginChartSafetyComputeProgress(
       bool computeAll, const std::list<RouteMapOverlay*>& routemapoverlays);
@@ -892,7 +892,7 @@ private:
   int m_ChartSafetyComputeProgressCompletedRoutes;
   wxDialog* m_RoutingProgressDialog;
   wxStaticText* m_RoutingProgressStage;
-  wxStaticText* m_RoutingProgressDetail;
+  wxTextCtrl* m_RoutingProgressDetail;
   wxStaticText* m_RoutingProgressTiming;
   wxGauge* m_RoutingProgressGauge;
   wxDateTime m_RoutingProgressStartTime;

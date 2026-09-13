@@ -196,9 +196,7 @@ bool RouteMapOverlay::Start(wxString& error) {
   }
 
   Lock();
-  m_ModernProgressStage.clear();
-  m_ModernProgressDetail.clear();
-  m_ModernProgressUpdated = false;
+  m_ModernProgress.Begin();
   Unlock();
 
   m_Thread = new RouteMapOverlayThread(*this);
@@ -281,7 +279,8 @@ void RouteMapOverlay::RouteAnalysis(PlugIn_Route* proute) {
 }
 
 void RouteMapOverlay::SetModernNativeProgress(
-    const supercpn::weather_routing::RoutingProgressUpdate& progress) {
+    const supercpn::weather_routing::RoutingProgressUpdate& progress,
+    std::uint64_t generation) {
   using supercpn::weather_routing::RoutingProgressStage;
   wxString stage;
   switch (progress.stage) {
@@ -295,7 +294,7 @@ void RouteMapOverlay::SetModernNativeProgress(
       stage = _("Forward isochrone");
       break;
     case RoutingProgressStage::ReverseRecovery:
-      stage = _("Reverse-isocrone recovery");
+      stage = _("Reverse-isochrone recovery");
       break;
     case RoutingProgressStage::FrontierRecovery:
       stage = _("Isochrone graph recovery");
@@ -310,29 +309,38 @@ void RouteMapOverlay::SetModernNativeProgress(
       stage = _("Route complete");
       break;
   }
-  const wxString detail = wxString::Format(
-      _("Attempt %u/%u — %llu states generated, %llu retained, %llu chart "
-        "checks"),
-      progress.attempt, progress.totalAttempts,
+  wxString detail = wxString::Format(
+      _("Effort %u%% — %llu states generated, %llu retained, %llu land checks"),
+      progress.effortPercent,
       static_cast<unsigned long long>(progress.generatedStates),
       static_cast<unsigned long long>(progress.retainedStates),
       static_cast<unsigned long long>(progress.landChecks));
-  Lock();
-  m_ModernProgressStage = stage;
-  m_ModernProgressDetail = detail;
-  m_ModernProgressUpdated = true;
-  Unlock();
+  if (progress.totalAttempts > 0)
+    detail += wxString::Format(_("; stage attempt %u/%u"),
+                              progress.attempt, progress.totalAttempts);
+  if (std::isfinite(progress.closestApproachNm))
+    detail += wxString::Format(_("; closest approach %.1f NM remaining"),
+                              progress.closestApproachNm);
+  m_ModernProgress.Publish(generation, {stage, detail});
 }
 
 bool RouteMapOverlay::GetModernNativeProgress(wxString& stage,
                                               wxString& detail) {
-  Lock();
-  stage = m_ModernProgressStage;
-  detail = m_ModernProgressDetail;
-  const bool available = !stage.IsEmpty() && m_ModernProgressUpdated;
-  m_ModernProgressUpdated = false;
-  Unlock();
-  return available;
+  const auto snapshot = m_ModernProgress.Read();
+  stage = snapshot.value.stage;
+  detail = snapshot.value.detail;
+  if (!snapshot.sequence) return false;
+  const auto now = std::chrono::steady_clock::now();
+  const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+      now - snapshot.started).count();
+  const auto age = std::chrono::duration_cast<std::chrono::seconds>(
+      now - snapshot.updated).count();
+  detail += wxString::Format(_("\nWorker elapsed: %lld s; last update: %lld s ago"),
+                             static_cast<long long>(elapsed),
+                             static_cast<long long>(age));
+  if (NeedsChartSafetyData()) stage = _("Waiting for chart data");
+  else if (NeedsGrib()) stage = _("Waiting for weather data");
+  return true;
 }
 
 void RouteMapOverlay::InstallModernNativeResult(
@@ -2239,9 +2247,7 @@ void RouteMapOverlay::Clear() {
   // clear_cursor_plotdata = false;
   last_cursor_plotdata.clear();
   last_destination_plotdata.clear();
-  m_ModernProgressStage.clear();
-  m_ModernProgressDetail.clear();
-  m_ModernProgressUpdated = false;
+  m_ModernProgress.Begin();
   m_UpdateOverlay = true;
 }
 

@@ -1159,6 +1159,10 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
                 wxCommandEventHandler(WeatherRouting::OnViewStabilityCorridor),
                 this, m_mStabilityCorridorView->GetId());
 
+  wxMenuItem* progressItem = m_mView->Append(wxID_ANY, _("Routing progress..."));
+  m_mView->Bind(wxEVT_MENU, &WeatherRouting::OnShowRoutingStatus, this,
+               progressItem->GetId());
+
   wxIcon icon;
   icon.CopyFromBitmap(*_img_WeatherRouting);
   m_ConfigurationDialog.SetIcon(icon);
@@ -2320,10 +2324,9 @@ void WeatherRouting::ShowRoutingProgress(const wxString& title) {
         new wxStaticText(m_RoutingProgressDialog, wxID_ANY, wxEmptyString);
     m_RoutingProgressStage->SetFont(m_RoutingProgressStage->GetFont().Bold());
     topSizer->Add(m_RoutingProgressStage, 0, wxALL | wxEXPAND, 8);
-    m_RoutingProgressDetail =
-        new wxStaticText(m_RoutingProgressDialog, wxID_ANY, wxEmptyString,
-                         wxDefaultPosition, wxSize(kProgressTextWidth, -1));
-    m_RoutingProgressDetail->Wrap(kProgressTextWidth);
+    m_RoutingProgressDetail = new wxTextCtrl(
+        m_RoutingProgressDialog, wxID_ANY, wxEmptyString, wxDefaultPosition,
+        wxSize(kProgressTextWidth, 220), wxTE_MULTILINE | wxTE_READONLY);
     topSizer->Add(m_RoutingProgressDetail, 0,
                   wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 8);
     m_RoutingProgressTiming =
@@ -2338,17 +2341,28 @@ void WeatherRouting::ShowRoutingProgress(const wxString& title) {
                   wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 8);
     wxStaticText* note = new wxStaticText(
         m_RoutingProgressDialog, wxID_ANY,
-        _("Use the Weather Routing Stop button to cancel active route "
-          "computations."));
+        _("Hide keeps computations running. Reopen with View > Routing progress. "
+          "Worker update age reports activity; it is not a completion estimate."));
     note->Wrap(kProgressTextWidth);
     topSizer->Add(note, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 8);
+    wxBoxSizer* buttons = new wxBoxSizer(wxHORIZONTAL);
+    wxButton* hide = new wxButton(m_RoutingProgressDialog, wxID_ANY, _("Hide"));
+    wxButton* stop = new wxButton(m_RoutingProgressDialog, wxID_ANY,
+                                  _("Stop all computations"));
+    hide->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+      m_RoutingProgressDialog->Hide();
+    });
+    stop->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+      CancelMultiLegDepartureOptimization(true);
+      StopAll();
+      FinishRoutingProgress(_("Stopped"), _("Route computations stopped."));
+    });
+    buttons->Add(hide, 0, wxALL, 5);
+    buttons->Add(stop, 0, wxALL, 5);
+    topSizer->Add(buttons, 0, wxALIGN_RIGHT);
     m_RoutingProgressDialog->SetSizerAndFit(topSizer);
     m_RoutingProgressDialog->Bind(wxEVT_CLOSE_WINDOW,
                                   [this](wxCloseEvent& event) {
-                                    if (m_DeferredRoutingStartPending)
-                                      CancelDeferredRoutingStart();
-                                    if (m_tRoutingProgress.IsRunning())
-                                      m_tRoutingProgress.Stop();
                                     if (m_RoutingProgressDialog)
                                       m_RoutingProgressDialog->Hide();
                                   });
@@ -2362,6 +2376,7 @@ void WeatherRouting::ShowRoutingProgress(const wxString& title) {
   m_RoutingProgressPreviousStage.Clear();
   m_RoutingProgressPreviousStageDuration = wxTimeSpan(0);
   m_RoutingProgressFinished = false;
+  m_RoutingProgressGauge->Show();
   m_RoutingProgressDialog->Show();
   m_RoutingProgressDialog->Raise();
   RefreshRoutingProgressTiming();
@@ -2390,8 +2405,7 @@ void WeatherRouting::UpdateRoutingProgress(const wxString& stage,
         wxMin(value, m_RoutingProgressGauge->GetRange()));
   if (!stage.IsEmpty()) m_RoutingProgressStage->SetLabel(stage);
 
-  m_RoutingProgressDetail->SetLabel(detail);
-  m_RoutingProgressDetail->Wrap(540);
+  m_RoutingProgressDetail->ChangeValue(detail);
   RefreshRoutingProgressTiming();
   wxLogMessage("WR_PROGRESS stage=\"%s\" detail=\"%s\" value=%d range=%d",
                stage, detail, value, range);
@@ -2413,6 +2427,51 @@ void WeatherRouting::CloseRoutingProgress() {
 
 void WeatherRouting::OnRoutingProgressTimer(wxTimerEvent&) {
   RefreshRoutingProgressTiming();
+  if (m_RoutingProgressFinished || m_RunningRouteMaps.empty()) return;
+  UpdateStates();
+  if (!m_RoutingProgressDialog || !m_RoutingProgressDialog->IsShown()) return;
+  // Preparation counts are not a percentage of the route search.
+  m_RoutingProgressGauge->Hide();
+  wxString details, currentStage;
+  size_t shown = 0;
+  for (RouteMapOverlay* route : m_RunningRouteMaps) {
+    if (!route || shown++ >= 6) continue;
+    const auto configuration = route->GetConfiguration();
+    wxString stage, detail;
+    if (!route->GetModernNativeProgress(stage, detail)) {
+      stage = _("Computing");
+      detail = _("No worker progress update available yet.");
+    }
+    currentStage = stage;
+    if (!details.IsEmpty()) details += "\n\n";
+    details += wxString::Format(_("%s to %s — %s\n%s"),
+                               configuration.Start, configuration.End,
+                               stage, detail);
+  }
+  if (m_RunningRouteMaps.size() > 6)
+    details += _("\nMore active routes are listed in the routing table.");
+  if (!m_WaitingRouteMaps.empty())
+    details += wxString::Format(_("\n%lu routes waiting."),
+               static_cast<unsigned long>(m_WaitingRouteMaps.size()));
+  const wxString displayedStage =
+      m_RunningRouteMaps.size() == 1 ? currentStage : _("Computing routes");
+  if (displayedStage != m_RoutingProgressCurrentStage) {
+    // Worker/service-wait transitions may alternate every refresh. Update the
+    // clock without logging those transient snapshots every second.
+    const wxDateTime now = wxDateTime::Now();
+    m_RoutingProgressPreviousStage = m_RoutingProgressCurrentStage;
+    m_RoutingProgressPreviousStageDuration = now - m_RoutingProgressStageStartTime;
+    m_RoutingProgressCurrentStage = displayedStage;
+    m_RoutingProgressStageStartTime = now;
+    m_RoutingProgressStage->SetLabel(displayedStage);
+    m_RoutingProgressDetail->ChangeValue(details);
+    RefreshRoutingProgressTiming();
+  } else {
+    m_RoutingProgressDetail->ChangeValue(details);
+  }
+  // Refreshing the UI is not proof that the worker advanced. No synthetic
+  // percentage or heartbeat is generated here, and no per-second log spam.
+  m_RoutingProgressDialog->Layout();
 }
 
 void WeatherRouting::RefreshRoutingProgressTiming() {
@@ -2474,21 +2533,10 @@ void WeatherRouting::PaintRoutingProgressNow() {
   painting = false;
 }
 
-bool WeatherRouting::ShouldShowChartSafetyComputeProgress(
+bool WeatherRouting::ShouldShowComputeProgress(
     const std::list<RouteMapOverlay*>& routemapoverlays) const {
-  bool use_experimental_chart_safety = false;
-  bool enforce_experimental_chart_safety = false;
-  ReadExperimentalChartSafetySettings(use_experimental_chart_safety,
-                                      enforce_experimental_chart_safety);
-  if (!use_experimental_chart_safety || !enforce_experimental_chart_safety)
-    return false;
-
-  for (auto routemapoverlay : routemapoverlays) {
-    if (!routemapoverlay) continue;
-    RouteMapConfiguration configuration = routemapoverlay->GetConfiguration();
-    if (configuration.DetectLand) return true;
-  }
-  return false;
+  return std::any_of(routemapoverlays.begin(), routemapoverlays.end(),
+                     [](RouteMapOverlay* route) { return route != nullptr; });
 }
 
 void WeatherRouting::BeginChartSafetyComputeProgress(
@@ -2504,13 +2552,12 @@ void WeatherRouting::BeginChartSafetyComputeProgress(
   wxString stage = computeAll ? _("Preparing routes") : _("Preparing route");
   wxString detail =
       computeAll
-          ? wxString::Format(_("Preparing %d weather routes with chart-backed "
-                               "safety checks."),
+          ? wxString::Format(_("Preparing %d weather routes."),
                              m_ChartSafetyComputeProgressTotalRoutes)
-          : _("Preparing weather route with chart-backed safety checks.");
+          : _("Preparing weather route with the selected safety settings.");
   UpdateRoutingProgress(stage, detail, 0,
                         m_ChartSafetyComputeProgressTotalRoutes);
-  wxLogMessage("WR_PROGRESS mode=%s stage=\"%s\" routes=%d chart_enforcement=1",
+  wxLogMessage("WR_PROGRESS mode=%s stage=\"%s\" routes=%d",
                computeAll ? "compute-all" : "single", stage,
                m_ChartSafetyComputeProgressTotalRoutes);
 }
@@ -2551,8 +2598,7 @@ void WeatherRouting::UpdateChartSafetyComputeProgress(
                     .GetMilliseconds()
                     .ToLong();
   wxLogMessage(
-      "WR_PROGRESS mode=%s route=\"%s\" stage=\"%s\" elapsed_ms=%ld "
-      "chart_enforcement=1",
+      "WR_PROGRESS mode=%s route=\"%s\" stage=\"%s\" elapsed_ms=%ld",
       m_ChartSafetyComputeProgressAll ? "compute-all" : "single", routeName,
       stage, elapsedMs);
 }
@@ -2561,17 +2607,16 @@ void WeatherRouting::FinishChartSafetyComputeProgressIfDone() {
   if (!m_ChartSafetyComputeProgressActive) return;
   if (!m_RunningRouteMaps.empty() || !m_WaitingRouteMaps.empty()) return;
 
-  wxString stage = m_ChartSafetyComputeProgressAll ? _("All routes complete")
-                                                   : _("Route complete");
+  wxString stage = _("Computation finished");
   wxString detail =
       m_ChartSafetyComputeProgressAll
           ? wxString::Format(_("Completed %d weather route computations."),
                              m_ChartSafetyComputeProgressCompletedRoutes)
-          : _("Weather route computation finished.");
+          : _("Weather route computation finished. See the route State for "
+              "its result or failure reason.");
   FinishRoutingProgress(stage, detail);
   wxLogMessage(
-      "WR_PROGRESS mode=%s stage=\"%s\" completed_routes=%d "
-      "chart_enforcement=1",
+      "WR_PROGRESS mode=%s stage=\"%s\" completed_routes=%d",
       m_ChartSafetyComputeProgressAll ? "compute-all" : "single", stage,
       m_ChartSafetyComputeProgressCompletedRoutes);
   m_ChartSafetyComputeProgressActive = false;
@@ -6564,7 +6609,7 @@ void WeatherRouting::OnCompute(wxCommandEvent& event) {
   CancelMultiLegSequence();
   CancelMultiLegDepartureOptimization(true);
   std::list<RouteMapOverlay*> currentroutemaps = CurrentRouteMaps();
-  if (ShouldShowChartSafetyComputeProgress(currentroutemaps)) {
+  if (ShouldShowComputeProgress(currentroutemaps)) {
     if (m_DeferredRoutingStartPending) {
       wxMessageBox(_("A weather routing start is already pending."),
                    _("Weather Routing"), wxOK | wxICON_WARNING, this);
@@ -6610,6 +6655,13 @@ void WeatherRouting::OnEditMultiLegGroupSettings(wxCommandEvent& event) {
 }
 
 void WeatherRouting::OnShowRoutingStatus(wxCommandEvent& event) {
+  if (m_RoutingProgressDialog && !m_RoutingProgressFinished &&
+      (m_DeferredRoutingStartPending || !m_RunningRouteMaps.empty() ||
+       !m_WaitingRouteMaps.empty())) {
+    m_RoutingProgressDialog->Show();
+    m_RoutingProgressDialog->Raise();
+    return;
+  }
   ShowRoutingStatus(FirstCurrentRouteMap());
 }
 
@@ -6623,7 +6675,7 @@ void WeatherRouting::OnComputeAll(wxCommandEvent& event) {
     if (weatherroute && weatherroute->routemapoverlay)
       allroutemaps.push_back(weatherroute->routemapoverlay);
   }
-  if (ShouldShowChartSafetyComputeProgress(allroutemaps)) {
+  if (ShouldShowComputeProgress(allroutemaps)) {
     if (m_DeferredRoutingStartPending) {
       wxMessageBox(_("A weather routing start is already pending."),
                    _("Weather Routing"), wxOK | wxICON_WARNING, this);
@@ -7609,11 +7661,6 @@ void WeatherRouting::OnComputationTimer(wxTimerEvent&) {
       continue;
     } else
       it++;
-
-    wxString modernStage, modernDetail;
-    if (routemapoverlay->GetModernNativeProgress(modernStage, modernDetail) &&
-        m_RoutingProgressDialog && m_RoutingProgressDialog->IsShown())
-      UpdateRoutingProgress(modernStage, modernDetail);
 
     /* Service chart-derived data only on the application thread.  The route
      * worker retains all completed isochrones and recomputes only its
@@ -8724,9 +8771,11 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
       State += ": " + error;
     else if (!weatherError.IsEmpty())
       State += ": " + weatherError;
-  } else if (routemapoverlay->Running())
-    State = _("Computing...");
-  else {
+  } else if (routemapoverlay->Running()) {
+    wxString stage, detail;
+    State = routemapoverlay->GetModernNativeProgress(stage, detail)
+                ? _("Computing: ") + stage : _("Computing...");
+  } else {
     if (routemapoverlay->Finished()) {
       if (routemapoverlay->ReachedDestination())
         State = _("Complete");
