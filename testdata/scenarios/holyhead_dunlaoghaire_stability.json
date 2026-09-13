@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "name": "Holyhead to Dun Laoghaire stability corridor",
+  "start": {
+    "name": "Holyhead outside TSS",
+    "lat": 53.3378,
+    "lon": -4.61454
+  },
+  "end": {
+    "name": "Dun Laoghaire outside harbour entrance",
+    "lat": 53.3,
+    "lon": -6.13
+  },
+  "startTime": "2026-07-11T10:00:00Z",
+  "departureOptimization": {
+    "enabled": true,
+    "beforeMinutes": 240,
+    "afterMinutes": 240,
+    "stepMinutes": 60,
+    "concurrentRoutes": 6
+  },
+  "environment": {
+    "useCurrents": true
+  },
+  "safety": {
+    "mode": "chart",
+    "enforce": true,
+    "landMarginNm": 0.1,
+    "minimumDepthM": 0,
+    "persistentCertifiedCacheEnabled": true
+  },
+  "reverseReachability": {
+    "enabled": true,
+    "searchBackIsochrones": 6,
+    "horizonHours": 0,
+    "diagnostics": true
+  },
+  "stabilityCorridor": {
+    "enabled": true,
+    "source": "departureCandidates",
+    "minimumRoutes": 3,
+    "maxEtaPenaltyMinutes": 120,
+    "gridResolutionNm": 0.5,
+    "innerAgreementThreshold": 0.7,
+    "outerAgreementThreshold": 0.4,
+    "clusterRoutes": true,
+    "writeGeoJson": true
+  }
+}

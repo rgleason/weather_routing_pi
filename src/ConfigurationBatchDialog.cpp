@@ -125,6 +125,20 @@ void ConfigurationBatchDialog::RemoveSource(wxString name) {
   }
 }
 
+void ConfigurationBatchDialog::RenameSource(const wxString& oldName,
+                                            const wxString& newName) {
+  for (size_t i = 0; i < sources.size(); ++i) {
+    BatchSource* source = sources[i];
+    if (source->Name == oldName) {
+      source->Name = newName;
+      m_lSources->SetString(i, newName);
+      m_lDestinations->SetString(i, newName);
+    }
+    for (BatchDestination* destination : source->destinations)
+      if (destination->Name == oldName) destination->Name = newName;
+  }
+}
+
 void ConfigurationBatchDialog::ClearSources() {
   for (std::vector<BatchSource*>::iterator it = sources.begin();
        it != sources.end(); it++)

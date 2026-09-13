@@ -28,6 +28,8 @@
 
 #include "ocpn_plugin.h"
 
+#include "Utilities.h"
+#include "Boat.h"
 #include "RouteMapOverlay.h"
 
 #include "WeatherRouting.h"
@@ -129,7 +131,7 @@ void ReportDialog::SetRouteMapOverlays(
     double port_starboard = (*it)->RouteInfo(RouteMapOverlay::PORT_STARBOARD);
     page += _("Port/Starboard") + wxString(_T(": ")) +
             (std::isnan(port_starboard)
-                 ? _T("nan")
+                 ? wxString(_T("nan"))
                  : wxString::Format(_T("%d/%d"), (int)port_starboard,
                                     100 - (int)port_starboard)) +
             _T("<dt>");
@@ -170,20 +172,8 @@ void ReportDialog::SetRouteMapOverlays(
   m_htmlConfigurationReport->SetPage(page);
 }
 
-wxDateTime::TimeZone ReportDialog::DisplayedTimeZone() {
-  return m_WeatherRouting.m_SettingsDialog.GetTimeZone();
-}
-
 wxString ReportDialog::FormatTime(wxDateTime t) {
-  wxString r = t.Format(_T("%x %X"), DisplayedTimeZone());
-#if 0
-    // XXX add this?
-    if(m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->GetValue())
-        r += _(" (local)");
-    else
-        r += _T(" (UTC)");
-#endif
-  return r;
+  return m_WeatherRouting.m_SettingsDialog.FormatTime(t, _T("%x %X"));
 }
 
 void ReportDialog::GenerateRoutesReport() {
@@ -303,8 +293,11 @@ void ReportDialog::GenerateRoutesReport() {
           first_print = false;
         else
           page += _(" and ");
-        page += s.Format(_T("%d %B "), DisplayedTimeZone()) + _("to") +
-                e.Format(_T(" %d %B"), DisplayedTimeZone());
+        page += m_WeatherRouting.m_SettingsDialog.FormatTime(
+                    s, _T("%d %B "), false) +
+                _("to") +
+                m_WeatherRouting.m_SettingsDialog.FormatTime(
+                    e, _T(" %d %B"), false);
       }
     }
 
@@ -398,7 +391,8 @@ void ReportDialog::GenerateRoutesReport() {
         if (!*it2) continue;
         if (!first) page += _(" and ");
         first = false;
-        page += ((*it2)->StartTime()).Format(_T("%x"), DisplayedTimeZone());
+        page += m_WeatherRouting.m_SettingsDialog.FormatTime(
+            (*it2)->StartTime(), _T("%x"), false);
 
         if (++it2 == cyclone_safe_routes.end()) break;
 
@@ -407,7 +401,9 @@ void ReportDialog::GenerateRoutesReport() {
         while (*it2 && ++it2 != cyclone_safe_routes.end());
 
         it2--;
-        page += _(" to ") + ((*it2)->StartTime()).Format(_T("%x"), DisplayedTimeZone());
+        page += _(" to ") +
+                m_WeatherRouting.m_SettingsDialog.FormatTime(
+                    (*it2)->StartTime(), _T("%x"), false);
       }
     }
   cyclonesfailed:;

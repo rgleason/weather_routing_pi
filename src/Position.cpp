@@ -17,15 +17,19 @@
  *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,  USA.         *
  **************************************************************************/
 
-#include <algorithm>
-
 #include <wx/wx.h>
+
+#include <algorithm>
+#include <cmath>
+#include <set>
+#include <vector>
 
 #include "Position.h"
 #include "RouteMap.h"
 #include "Utilities.h"
 
 #include "georef.h"
+#include "ocpn_plugin.h"
 
 /* sufficient for routemap uses only.. is this faster than below? if not, remove
  * it */
@@ -67,7 +71,7 @@ int ComputeQuadrantFast(Position* p, Position* q) {
 Position::Position(double latitude, double longitude, Position* p,
                    double pheading, double pbearing, int polar_idx,
                    int tack_count, int jibe_count, int sail_plan_change_count,
-                   DataMask data_mask, bool data_deficient)
+                   int data_mask, bool data_deficient)
     : RoutePoint(latitude, longitude, polar_idx, tack_count, jibe_count,
                  sail_plan_change_count, data_mask, data_deficient),
       parent_heading(pheading),
@@ -83,25 +87,19 @@ Position::Position(double latitude, double longitude, Position* p,
   lon = EPSILON * std::round(lon / EPSILON);
 }
 
-Position::Position(const Position* p)
+Position::Position(Position* p)
     : RoutePoint(p->lat, p->lon, p->polar, p->tacks, p->jibes,
-                 p->sail_plan_changes, p->data_mask, p->grib_is_data_deficient),
+                 p->sail_plan_changes, p->data_mask,
+                 p->grib_is_data_deficient),
       parent_heading(p->parent_heading),
       parent_bearing(p->parent_bearing),
       parent(p->parent),
+      prev(nullptr),
+      next(nullptr),
       propagated(p->propagated),
+      drawn(false),
       copied(true),
       propagation_error(p->propagation_error) {}
-
-Position::Position(const Json::Value& json)
-    : RoutePoint(json),
-      parent_heading(json["parent_heading"].asDouble()),
-      parent_bearing(json["parent_bearing"].asDouble()),
-      parent(nullptr),  // parent is not serialized, will be set later
-      propagated(json["propagated"].asBool()),
-      copied(false),
-      propagation_error(static_cast<PropagationError>(json["propagation_error"].asInt())) {
-}
 
 SkipPosition* Position::BuildSkipList() {
   /* build skip list of positions, skipping over strings of positions in
@@ -183,7 +181,7 @@ bool Position::rk_step(double timeseconds, double cog, double dist, double twa,
                        RouteMapConfiguration& configuration,
                        WR_GribRecordSet* grib, const wxDateTime& time,
                        int newpolar, double& rk_cog, double& rk_dist,
-                       DataMask& data_mask) {
+                       int& data_mask) {
   double k1_lat, k1_lon;
   ll_gc_ll(lat, lon, cog, dist, &k1_lat, &k1_lon);
 
@@ -211,7 +209,7 @@ bool Position::rk_step(double timeseconds, double cog, double dist, double twa,
 /* propagate to the end position in the configuration, and return the number of
  * seconds it takes */
 double Position::PropagateToEnd(RouteMapConfiguration& cf, double& H,
-                                DataMask& data_mask) {
+                                int& data_mask) {
   return PropagateToPoint(cf.EndLat, cf.EndLon, cf, H, data_mask, true);
 }
 
@@ -228,7 +226,7 @@ bool Position::Propagate(IsoRouteList& routelist,
   Position* points = nullptr;
   /* through all angles relative to wind */
   int count = 0;
-  DataMask data_mask = DataMask::NONE;
+  int data_mask = 0;
   WeatherData weather_data(this);
   if (!weather_data.ReadWeatherDataAndCheckConstraints(
           configuration, this, data_mask, propagation_error, false /*end*/)) {
@@ -246,83 +244,132 @@ bool Position::Propagate(IsoRouteList& routelist,
 
   std::vector<double> degree_steps;
   degree_steps.reserve(configuration.DegreeSteps.size());
+  std::vector<double> refined_degree_steps;
+  refined_degree_steps.reserve(configuration.DegreeSteps.size());
+  std::set<int> seen_angles;
+  auto add_degree_step = [&degree_steps, &seen_angles](double angle) {
+    angle = heading_resolve(angle);
+    int key = static_cast<int>(std::lround(angle * 1000.0));
+    if (seen_angles.insert(key).second) degree_steps.push_back(angle);
+  };
+  auto add_refined_degree_step =
+      [&refined_degree_steps, &seen_angles](double angle) {
+        angle = heading_resolve(angle);
+        int key = static_cast<int>(std::lround(angle * 1000.0));
+        if (seen_angles.insert(key).second)
+          refined_degree_steps.push_back(angle);
+      };
 
-  // Do not waste time exploring directions outside the configured optimal
-  // angles
-  if (configuration.UseOptimalAngles) {
+  for (auto it = configuration.DegreeSteps.begin();
+       it != configuration.DegreeSteps.end(); it++) {
+    add_degree_step(*it);
+  }
+
+  bool optimal_angles_applied = false;
+  double starboard_upwind = NAN;
+  double starboard_downwind = NAN;
+  double port_downwind = NAN;
+  double port_upwind = NAN;
+  if (configuration.UseOptimalAngles &&
+      !configuration.boat.Polars.empty()) {
     int polar_idx = polar;
-    if (polar_idx < 0) {
-      // Find a reasonable polar for the first propagation
-      PolarSpeedStatus status;
+    if (polar_idx < 0 || polar_idx >= (int)configuration.boat.Polars.size()) {
+      PolarSpeedStatus status = POLAR_SPEED_SUCCESS;
       polar_idx = configuration.boat.FindBestPolarForCondition(
           polar, weather_data.twsOverWater, 90.0, weather_data.swell,
           configuration.OptimizeTacking, &status);
-      if (polar_idx < 0 || status != POLAR_SPEED_SUCCESS) polar_idx = 0;
+      if (status != POLAR_SPEED_SUCCESS) polar_idx = -1;
     }
-    Polar& the_polar = configuration.boat.Polars[polar_idx];
 
-    // Note: Optimal angles are in the range of 0 to 360, where values
-    // greater than 180 are for the port tack
-    SailingVMG opt_angles = the_polar.GetVMGTrueWind(weather_data.twsOverWater);
-    opt_angles.values[SailingVMG::PORT_DOWNWIND] -= 360.0;
-    opt_angles.values[SailingVMG::PORT_UPWIND] -= 360.0;
+    if (polar_idx >= 0 && polar_idx < (int)configuration.boat.Polars.size()) {
+      SailingVMG optimal = configuration.boat.Polars[polar_idx].GetVMGTrueWind(
+          weather_data.twsOverWater);
+      starboard_upwind = optimal.values[SailingVMG::STARBOARD_UPWIND];
+      starboard_downwind = optimal.values[SailingVMG::STARBOARD_DOWNWIND];
+      port_downwind = optimal.values[SailingVMG::PORT_DOWNWIND];
+      port_upwind = optimal.values[SailingVMG::PORT_UPWIND];
 
-    // If wind is too light etc. there may not be any optimal angles
-    // Check sanity to avoid indexing beyond limits of DegreeSteps
-    if (opt_angles.values[SailingVMG::PORT_DOWNWIND] != NAN &&
-        configuration.DegreeSteps.front() <
-            opt_angles.values[SailingVMG::PORT_DOWNWIND] &&
-        configuration.DegreeSteps.back() >
-            *std::max_element(opt_angles.values, opt_angles.values + 4)) {
-      size_t step_idx = 0;
-      while (configuration.DegreeSteps[step_idx] <
-             opt_angles.values[SailingVMG::PORT_DOWNWIND])
-        ++step_idx;
-      degree_steps.emplace_back(opt_angles.values[SailingVMG::PORT_DOWNWIND]);
-      while (configuration.DegreeSteps[step_idx] <
-             opt_angles.values[SailingVMG::PORT_UPWIND]) {
-        degree_steps.emplace_back(configuration.DegreeSteps[step_idx]);
-        ++step_idx;
+      // Polar VMG values use 0..360 degrees, while propagation uses
+      // -180..180 degrees for the port tack.
+      const double port_downwind_resolved = port_downwind - 360.0;
+      const double port_upwind_resolved = port_upwind - 360.0;
+      const bool valid = std::isfinite(starboard_upwind) &&
+                         std::isfinite(starboard_downwind) &&
+                         std::isfinite(port_downwind) &&
+                         std::isfinite(port_upwind) &&
+                         0.0 <= starboard_upwind &&
+                         starboard_upwind <= starboard_downwind &&
+                         starboard_downwind <= 180.0 &&
+                         180.0 <= port_downwind &&
+                         port_downwind <= port_upwind && port_upwind < 360.0 &&
+                         configuration.FromDegree <= starboard_upwind &&
+                         starboard_downwind <= configuration.ToDegree;
+      if (valid) {
+        const std::vector<double> configured_steps = degree_steps;
+        degree_steps.clear();
+        seen_angles.clear();
+        add_degree_step(starboard_upwind);
+        add_degree_step(starboard_downwind);
+        add_degree_step(port_downwind_resolved);
+        add_degree_step(port_upwind_resolved);
+        for (const double angle : configured_steps) {
+          if ((angle >= starboard_upwind && angle <= starboard_downwind) ||
+              (angle >= port_downwind_resolved &&
+               angle <= port_upwind_resolved))
+            add_degree_step(angle);
+        }
+        port_downwind = port_downwind_resolved;
+        port_upwind = port_upwind_resolved;
+        optimal_angles_applied = true;
       }
-      degree_steps.emplace_back(opt_angles.values[SailingVMG::PORT_UPWIND]);
-      while (configuration.DegreeSteps[step_idx] <
-             opt_angles.values[SailingVMG::STARBOARD_UPWIND])
-        ++step_idx;
-      degree_steps.emplace_back(
-          opt_angles.values[SailingVMG::STARBOARD_UPWIND]);
-      while (configuration.DegreeSteps[step_idx] <
-             opt_angles.values[SailingVMG::STARBOARD_DOWNWIND]) {
-        degree_steps.emplace_back(configuration.DegreeSteps[step_idx]);
-        ++step_idx;
-      }
-      degree_steps.emplace_back(
-          opt_angles.values[SailingVMG::STARBOARD_DOWNWIND]);
-
-      if (parent != nullptr) {
-        /* add a position behind the lines to ensure our route intersects
-        with the previous one to nicely merge the resulting graph */
-        first_avoid = false;
-        rp = new Position(this);
-        double dp = .95;
-        rp->lat = (1 - dp) * lat + dp * parent->lat;
-        rp->lon = (1 - dp) * lon + dp * parent->lon;
-        rp->propagated = true;
-        rp->prev = rp->next = rp;
-        points = rp;
-        ++count;
-      }
-    } else {
-      degree_steps = configuration.DegreeSteps;
     }
-  } else
-    degree_steps = configuration.DegreeSteps;
+  }
 
-  for (const double& twa : degree_steps) {
+  /*
+   * Chart-backed land checks can reject the fastest landward shortcuts, but
+   * the old coarse wind-angle step can still leave too few seaward detour
+   * choices.  Prepare one bounded half-step refinement between the user's
+   * configured true-wind course steps, but only run it after the normal pass
+   * has actually encountered chart land locally.  Running these extra branches
+   * everywhere is prohibitively expensive in open water and adds no safety.
+   */
+  if (configuration.DetectLand &&
+      ConstraintChecker::IsExperimentalChartSafetyEnforced() &&
+      configuration.ByDegrees > 0.2) {
+    double half_step = configuration.ByDegrees / 2.0;
+    for (double step = configuration.FromDegree + half_step;
+         step < configuration.ToDegree; step += configuration.ByDegrees) {
+      add_refined_degree_step(step);
+      if (step > 0 && step < 180) add_refined_degree_step(360 - step);
+    }
+  }
+
+  if (optimal_angles_applied) {
+    refined_degree_steps.erase(
+        std::remove_if(refined_degree_steps.begin(), refined_degree_steps.end(),
+                       [=](double angle) {
+                         return !((angle >= starboard_upwind &&
+                                   angle <= starboard_downwind) ||
+                                  (angle >= port_downwind &&
+                                   angle <= port_upwind));
+                       }),
+        refined_degree_steps.end());
+  }
+
+  std::sort(degree_steps.begin(), degree_steps.end());
+  std::sort(refined_degree_steps.begin(), refined_degree_steps.end());
+
+  long local_land_rejections = 0;
+
+  auto try_degree_step = [&](double degree_step, bool refined_angle) {
+    configuration.generated_candidate_count++;
     double timeseconds = configuration.UsedDeltaTime;
+    double twa = heading_resolve(degree_step);
+    if (refined_angle) configuration.chart_land_refinement_angles++;
     double ctw =
         weather_data.twdOverWater + twa; /* rotated relative to true wind */
 
-    // Do not waste time exploring directions outside the configured search
+    // Do no waste time exploring directions outside the configured search
     // angle.
     if (!std::isnan(bearing1)) {
       double bearing3 = heading_resolve(ctw);
@@ -335,16 +382,13 @@ bool Position::Propagate(IsoRouteList& routelist,
           first_avoid = false;
           rp = new Position(this);
           double dp = .95;
-          // NOLINTBEGIN: parent cannot be nullptr, because otherwise bearing1
-          // would be NAN and we would not reach this branch
           rp->lat = (1 - dp) * lat + dp * parent->lat;
           rp->lon = (1 - dp) * lon + dp * parent->lon;
-          // NOLINTEND
           rp->propagated =
               true;  // not a "real" position so we don't propagate it either.
           goto add_position;
         } else {
-          continue;
+          return;
         }
       }
     }
@@ -355,7 +399,8 @@ bool Position::Propagate(IsoRouteList& routelist,
       if (!boat_data.GetBestPolarAndBoatSpeed(
               configuration, weather_data, twa, ctw, parent_heading, data_mask,
               this->polar, newpolar, timeseconds)) {
-        continue;
+        configuration.rejection_counts[PROPAGATION_BOAT_SPEED_COMPUTATION_FAILED]++;
+        return;
       }
 
       // {dlat, dlon} represent the destination coordinates for a route point
@@ -380,7 +425,8 @@ bool Position::Propagate(IsoRouteList& routelist,
                      twa + k3_BG - boat_data.cog, configuration,
                      configuration.grib, rk_time, newpolar, k4_BG, k4_dist,
                      data_mask)) {
-          continue;
+          configuration.rejection_counts[PROPAGATION_BOAT_SPEED_COMPUTATION_FAILED]++;
+          return;
         }
 
         ll_gc_ll(lat, lon, boat_data.cog,
@@ -402,18 +448,21 @@ bool Position::Propagate(IsoRouteList& routelist,
       if (configuration.positive_longitudes && dlon < 0) dlon += 360;
       if (!ConstraintChecker::CheckMaxCourseAngleConstraint(configuration, dlat,
                                                             dlon)) {
-        continue;
+        configuration.rejection_counts[PROPAGATION_ANGLE_OUTSIDE_SEARCH_LIMITS]++;
+        return;
       }
       if (!ConstraintChecker::CheckMaxDivertedCourse(configuration, dlat,
                                                      dlon)) {
-        continue;
+        configuration.rejection_counts[PROPAGATION_ANGLE_OUTSIDE_SEARCH_LIMITS]++;
+        return;
       }
 
       /* quick test first to avoid slower calculation */
       if (!ConstraintChecker::CheckMaxApparentWindConstraint(
               configuration, boat_data.stw, twa, weather_data.twsOverWater,
               propagation_error)) {
-        continue;
+        configuration.rejection_counts[propagation_error]++;
+        return;
       }
 
       if (configuration.DetectLand || configuration.DetectBoundary) {
@@ -429,6 +478,7 @@ bool Position::Propagate(IsoRouteList& routelist,
           ll_gc_ll(lat, lon, heading_resolve(boat_data.cog), dist2test, &dlat1,
                    &dlon1);
         } else {
+          dist2test = boat_data.dist;
           dlat1 = dlat;
           dlon1 = dlon;
         }
@@ -437,21 +487,25 @@ bool Position::Propagate(IsoRouteList& routelist,
         if (!ConstraintChecker::CheckLandConstraint(
                 configuration, lat, lon, dlat1, dlon1, boat_data.cog)) {
           configuration.land_crossing = true;
-          continue;
+          configuration.rejection_counts[PROPAGATION_LAND_INTERSECTION]++;
+          local_land_rejections++;
+          return;
         }
 
         /* Boundary test */
         if (configuration.DetectBoundary) {
           if (EntersBoundary(dlat1, dlon1)) {
             configuration.boundary_crossing = true;
-            continue;
+            configuration.rejection_counts[PROPAGATION_BOUNDARY_INTERSECTION]++;
+            return;
           }
         }
       }
       /* crosses cyclone track(s)? */
       if (!ConstraintChecker::CheckCycloneTrackConstraint(configuration, lat,
                                                           lon, dlat, dlon)) {
-        continue;
+        configuration.rejection_counts[PROPAGATION_CYCLONE_TRACK_CROSSING]++;
+        return;
       }
 
       rp = new Position(dlat, dlon, this, twa, ctw, newpolar,
@@ -470,12 +524,32 @@ bool Position::Propagate(IsoRouteList& routelist,
       points = rp;
     }
     count++;
+    configuration.accepted_candidate_count++;
+    if (refined_angle) configuration.chart_land_refinement_accepted++;
+  };
+
+  for (auto it = degree_steps.begin(); it != degree_steps.end(); it++)
+    try_degree_step(*it, false);
+
+  if (!refined_degree_steps.empty() && local_land_rejections > 0 &&
+      count < 4) {
+    for (auto it = refined_degree_steps.begin();
+         it != refined_degree_steps.end(); it++)
+      try_degree_step(*it, true);
   }
 
-  if (count < 3) { /* would get eliminated anyway, but save the extra steps */
+  if (count < 3 &&
+      !(count > 0 && configuration.DetectLand &&
+        ConstraintChecker::IsExperimentalChartSafetyEnforced())) {
+    /* would get eliminated anyway, but save the extra steps */
     if (count) DeletePoints(points);
+    if (count > 0) configuration.sparse_legal_frontiers_dropped++;
     propagation_error = PROPAGATION_ANGLE_ERROR;
     return false;
+  }
+  if (count > 0 && count < 3 && configuration.DetectLand &&
+      ConstraintChecker::IsExperimentalChartSafetyEnforced()) {
+    configuration.sparse_legal_frontiers_retained++;
   }
 
   IsoRoute* nr = new IsoRoute(points->BuildSkipList());
@@ -483,11 +557,11 @@ bool Position::Propagate(IsoRouteList& routelist,
   return true;
 }
 
-double Position::Distance(const Position* p) const {
+double Position::Distance(Position* p) {
   return DistGreatCircle(lat, lon, p->lat, p->lon);
 }
 
-int Position::SailChanges() const {
+int Position::SailChanges() {
   if (!parent) return 0;
 
   return (polar != parent->polar) + parent->SailChanges();
@@ -506,6 +580,7 @@ wxString Position::GetErrorText(PropagationError error) {
                                    _("Boat speed computation failed"),
                                    _("Exceeded maximum apparent wind"),
                                    _("Land intersection detected"),
+                                   _("Land safety margin exceeded"),
                                    _("Boundary intersection detected"),
                                    _("Cyclone track crossing detected"),
                                    _("No valid angles found")};
@@ -540,20 +615,12 @@ wxString Position::GetDetailedErrorInfo() const {
     // Add wind and current data if available
     if (parent) {
       wxString s1 = _("Heading from parent"), s2 = _("Bearing from parent");
-      info += wxString::Format("  %s: %.1f\u00B0\n", s1, parent_heading);
-      info += wxString::Format("  %s: %.1f\u00B0\n", s2, parent_bearing);
+      info += wxString::Format("  %s: %.1f°\n", s1, parent_heading);
+      info += wxString::Format("  %s: %.1f°\n", s2, parent_bearing);
     }
   }
 
   return info;
-}
-
-void Position::toJson(Json::Value &json) const {
-    RoutePoint::toJson(json);
-    json["parent_heading"] = parent_heading;
-    json["parent_bearing"] = parent_bearing;
-    json["propagated"] = propagated;
-    json["propagation_error"] = static_cast<int>(propagation_error);
 }
 
 SkipPosition::SkipPosition(Position* p, int q) : point(p), quadrant(q) {}

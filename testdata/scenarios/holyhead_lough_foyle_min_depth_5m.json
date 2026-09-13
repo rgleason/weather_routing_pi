@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "name": "Holyhead to Mouth of Lough Foyle 5 m minimum-depth acceptance",
+  "start": {
+    "name": "Holyhead (outside TSS)",
+    "lat": 53.33780167,
+    "lon": -4.61454
+  },
+  "end": {
+    "name": "Mouth of Lough Foyle",
+    "lat": 55.21778325,
+    "lon": -6.84757615
+  },
+  "startTime": "2026-07-27T10:00:00Z",
+  "departureOptimization": {
+    "enabled": false,
+    "beforeMinutes": 0,
+    "afterMinutes": 0,
+    "stepMinutes": 60
+  },
+  "environment": {
+    "useGrib": true,
+    "useCurrents": true
+  },
+  "route": {
+    "boatFile": "~/.opencpn/plugins/weather_routing/boats/Nicholson_35_conservative.xml",
+    "timeStepSeconds": 3600,
+    "routingEffortPercent": 400,
+    "headingFromDegrees": 40,
+    "headingToDegrees": 160,
+    "headingStepDegrees": 5,
+    "maxTrueWindKnots": 50,
+    "maxApparentWindKnots": 50,
+    "optimizeTacking": true,
+    "upwindEfficiency": 1,
+    "downwindEfficiency": 1,
+    "nightEfficiency": 1,
+    "useMotor": true,
+    "motorSpeedThresholdKnots": 4.5,
+    "motorSpeedKnots": 5.5
+  },
+  "safety": {
+    "mode": "chart",
+    "enforce": true,
+    "landMarginNm": 0.4,
+    "minimumDepthM": 5,
+    "persistentCertifiedCacheEnabled": true
+  },
+  "reverseReachability": {
+    "enabled": true,
+    "searchBackIsochrones": 6,
+    "horizonHours": 0,
+    "diagnostics": true
+  }
+}

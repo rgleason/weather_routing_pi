@@ -1,4 +1,9 @@
 /***************************************************************************
+ *
+ * Project:  OpenCPN Weather Routing plugin
+ * Author:   Sean D'Epagnier
+ *
+ ***************************************************************************
  *   Copyright (C) 2016 by Sean D'Epagnier                                 *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
@@ -15,7 +20,8 @@
  *   along with this program; if not, write to the                         *
  *   Free Software Foundation, Inc.,                                       *
  *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,  USA.         *
- **************************************************************************/
+ ***************************************************************************
+ */
 
 #include <wx/wx.h>
 #include <wx/dcgraph.h>
@@ -48,41 +54,6 @@ static const int wind_speeds[] = {0,  2,  4,  6,  8,  10, 12, 15, 18, 21,
                                   24, 28, 32, 36, 40, 45, 50, 55, 60};
 static const int num_wind_speeds = (sizeof wind_speeds) / (sizeof *wind_speeds);
 
-// Generate gradient colors for wind speeds
-static wxColor GetWindSpeedColor(unsigned int windSpeedIndex,
-                                 unsigned int totalWindSpeeds) {
-  if (totalWindSpeeds <= 1) {
-    return wxColor(255, 0, 0);  // Default red for single wind speed
-  }
-
-  // Create a gradient from blue (low wind) to red (high wind)
-  double ratio = (double)windSpeedIndex / (double)(totalWindSpeeds - 1);
-
-  // Blue to green to yellow to red gradient
-  int r, g, b;
-  if (ratio < 0.33) {
-    // Blue to green
-    double localRatio = ratio / 0.33;
-    r = 0;
-    g = (int)(255 * localRatio);
-    b = (int)(255 * (1.0 - localRatio));
-  } else if (ratio < 0.66) {
-    // Green to yellow
-    double localRatio = (ratio - 0.33) / 0.33;
-    r = (int)(255 * localRatio);
-    g = 255;
-    b = 0;
-  } else {
-    // Yellow to red
-    double localRatio = (ratio - 0.66) / 0.34;
-    r = 255;
-    g = (int)(255 * (1.0 - localRatio));
-    b = 0;
-  }
-
-  return wxColor(r, g, b);
-}
-
 BoatDialog::BoatDialog(WeatherRouting& weatherrouting)
 #ifndef __WXOSX__
     : BoatDialogBase(&weatherrouting),
@@ -93,14 +64,6 @@ BoatDialog::BoatDialog(WeatherRouting& weatherrouting)
 #endif
       m_WeatherRouting(weatherrouting),
       m_PlotScale(0),
-      m_HoveredWindSpeedIndex(-1),
-      m_ShowHoverInfo(false),
-      m_CursorValid(false),
-      m_CursorWindAngle(0),
-      m_CursorWindSpeed(0),
-      m_CursorBoatSpeed(0),
-      m_CursorVMG(0),
-      m_CursorVMGAngle(0),
       m_CrossOverRegenerate(false),
       m_CrossOverGenerationThread(NULL) {
   // for small screens: don't let boat dialog be larger than screen
@@ -126,6 +89,12 @@ BoatDialog::BoatDialog(WeatherRouting& weatherrouting)
 }
 
 BoatDialog::~BoatDialog() {
+  if (getenv("WR_HEADLESS_ROUTE_TEST")) {
+    wxLogMessage(
+        "WR_HEADLESS_ROUTE_TEST shutdown: skipping BoatDialog config access "
+        "during headless app teardown.");
+    return;
+  }
   wxFileConfig* pConf = GetOCPNConfigObject();
   pConf->SetPath(_T( "/PlugIns/WeatherRouting/BoatDialog" ));
 }
@@ -154,269 +123,102 @@ void BoatDialog::LoadPolar(const wxString& filename) {
 }
 
 void BoatDialog::OnMouseEventsPolarPlot(wxMouseEvent& event) {
-  if (event.Leaving()) {
-    m_HoveredWindSpeedIndex = -1;
-    m_ShowHoverInfo = false;
-    m_CursorValid = false;
-    m_PlotWindow->Refresh();
-    UpdateCursorInfo();  // Reset cursor info display
-    return;
-  }
-
-  long index = SelectedPolar();
-  if (index < 0) {
-    m_CursorValid = false;
-    return;
-  }
-
-  wxPoint p = event.GetPosition();
-  int w, h;
-  m_PlotWindow->GetSize(&w, &h);
-
-  int plottype = m_cPlotType->GetSelection();
-  if (plottype == 0) {  // polar chart
-    if (!m_PlotScale) {
-      m_CursorValid = false;
-      return;
+#if 0
+    if(event.Leaving()) {
+        m_stTrueWindAngle->SetLabel(_("N/A"));
+        m_stTrueWindKnots->SetLabel(_("N/A"));
+        m_stApparentWindAngle->SetLabel(_("N/A"));
+        m_stApparentWindKnots->SetLabel(_("N/A"));
+        m_stBoatAngle->SetLabel(_("N/A"));
+        m_stBoatKnots->SetLabel(_("N/A"));
+        return;
     }
 
-    // Convert mouse position to polar coordinates
-    bool full = m_cbFullPlot->GetValue();
-    int cx = full ? w / 2 : 0;
-    double x = (double)p.x - cx;
-    double y = (double)p.y - int(h / 2);
+    wxPoint p = event.GetPosition();
+    int w, h;
+    m_PlotWindow->GetSize( &w, &h);
 
-    double mouse_distance = sqrt(x * x + y * y) / m_PlotScale;
-    double mouse_angle = rad2posdeg(atan2(x, -y));
+    /* range + to - */
+    double W, VW, ctw, stw, A, aws;
+    double windspeed;
 
-    // Store cursor position and calculate interpolated values
-    m_CursorPosition = p;
-    m_CursorValid = true;
-    m_CursorWindAngle = mouse_angle;
+    switch(m_lPlotType->GetSelection()) {
+    case 0:
+        if(m_cPlotType->GetSelection() == 0) { // polar
+            if(!m_PlotScale)
+                return;
 
-    Polar& polar = m_Boat.Polars[index];
-    int selection = m_cPlotVariable->GetSelection();
+            double x = (double)p.x - w/2;
+            double y = (double)p.y - h/2;
 
-    // Interpolate between wind speeds to get values at cursor position
-    double interpolated_wind_speed = 0;
-    double interpolated_boat_speed = 0;
-    bool found_interpolation = false;
+            /* range +- */
+            x /= m_PlotScale;
+            y /= m_PlotScale;
 
-    // Find the two closest wind speeds for interpolation
-    for (unsigned int VWi = 0; VWi < polar.wind_speeds.size() - 1; VWi++) {
-      double VW1 = polar.wind_speeds[VWi].tws;
-      double VW2 = polar.wind_speeds[VWi + 1].tws;
+            ctw = rad2posdeg(atan2(x, -y));
+        } else
+            ctw = (double)p.x/w*360;
 
-      double stw1 = 0, stw2 = 0;
-      if (selection < 2) {
-        stw1 = polar.Speed(mouse_angle, VW1);
-        stw2 = polar.Speed(mouse_angle, VW2);
-      } else {
-        stw1 = polar.SpeedAtApparentWindSpeed(mouse_angle, VW1);
-        stw2 = polar.SpeedAtApparentWindSpeed(mouse_angle, VW2);
-      }
-
-      if (std::isnan(stw1) || std::isnan(stw2)) continue;
-
-      // Check if mouse distance is between these two curves
-      if (mouse_distance >= stw1 && mouse_distance <= stw2) {
-        // Linear interpolation
-        double ratio = (mouse_distance - stw1) / (stw2 - stw1);
-        interpolated_wind_speed = VW1 + ratio * (VW2 - VW1);
-        interpolated_boat_speed = mouse_distance;
-        found_interpolation = true;
+        windspeed = m_sWindSpeed->GetValue();
         break;
-      }
+    case 1:
+    {
+        ctw = m_sWindDirection->GetValue();
+        double i = (double)p.x/w*num_wind_speeds;
+        int i0 = floor(i), i1 = ceil(i);
+        double d = i - i0;
+        windspeed = (1-d)*wind_speeds[i0] + d*wind_speeds[i1];
+    } break;
     }
 
-    if (found_interpolation) {
-      m_CursorWindSpeed = interpolated_wind_speed;
-      m_CursorBoatSpeed = interpolated_boat_speed;
-      m_CursorVMG = interpolated_boat_speed * cos(deg2rad(mouse_angle));
+    switch(m_cPlotVariable->GetSelection()) {
+    case 0: // true wind
+        W = ctw;
+        VW = windspeed;
+        stw = m_Boat.Plans[m_SelectedSailPlan].Speed(W, VW);
 
-      // Calculate optimal VMG angle for current wind speed
-      if (interpolated_wind_speed > 0) {
-        SailingVMG vmg = polar.GetVMGTrueWind(interpolated_wind_speed);
+        aws = BoatPlan::VelocityApparentWind(stw, W, VW);
+        A = rad2posdeg(BoatPlan::DirectionApparentWind(aws, stw, W, VW));
+        break;
+    case 1:
+        A = heading_resolve(ctw);
+        VW = windspeed;
+        stw = m_Boat.Plans[m_SelectedSailPlan].SpeedAtApparentWindDirection(A, VW, &W);
+        W = positive_degrees(W);
 
-        // Find the VMG angle closest to the cursor position
-        double min_angle_diff = 360.0;
-        m_CursorVMGAngle = NAN;
-
-        for (int i = 0; i < 4; i++) {
-          if (!std::isnan(vmg.values[i])) {
-            double angle_diff = fabs(mouse_angle - vmg.values[i]);
-            if (angle_diff > 180)
-              angle_diff = 360 - angle_diff;  // Handle wrap-around
-
-            if (angle_diff < min_angle_diff) {
-              min_angle_diff = angle_diff;
-              m_CursorVMGAngle = vmg.values[i];
-            }
-          }
-        }
-      } else {
-        m_CursorVMGAngle = NAN;
-      }
-    } else {
-      // If no interpolation found between curves, extrapolate wind speed based
-      // on cursor position Find the two closest wind speed curves to bracket
-      // the cursor position
-      double lower_wind_speed = 0, upper_wind_speed = 0;
-      double lower_boat_speed = 0, upper_boat_speed = 0;
-      bool found_lower = false, found_upper = false;
-
-      for (unsigned int VWi = 0; VWi < polar.wind_speeds.size(); VWi++) {
-        double VW = polar.wind_speeds[VWi].tws;
-        double stw = 0;
-        if (selection < 2)
-          stw = polar.Speed(mouse_angle, VW);
-        else
-          stw = polar.SpeedAtApparentWindSpeed(mouse_angle, VW);
-
-        if (std::isnan(stw)) continue;
-
-        if (stw <= mouse_distance) {
-          // This curve is inside the cursor position
-          if (!found_lower || stw > lower_boat_speed) {
-            lower_wind_speed = VW;
-            lower_boat_speed = stw;
-            found_lower = true;
-          }
-        } else {
-          // This curve is outside the cursor position
-          if (!found_upper || stw < upper_boat_speed) {
-            upper_wind_speed = VW;
-            upper_boat_speed = stw;
-            found_upper = true;
-          }
-        }
-      }
-
-      // Interpolate or extrapolate wind speed based on cursor position
-      if (found_lower && found_upper) {
-        // Interpolate between the two bracketing curves
-        double ratio = (mouse_distance - lower_boat_speed) /
-                       (upper_boat_speed - lower_boat_speed);
-        m_CursorWindSpeed =
-            lower_wind_speed + ratio * (upper_wind_speed - lower_wind_speed);
-      } else if (found_lower) {
-        // Cursor is outside all curves - extrapolate from the outermost curve
-        if (polar.wind_speeds.size() >= 2) {
-          // Use the trend from the two outermost curves for extrapolation
-          double outer_wind1 =
-              polar.wind_speeds[polar.wind_speeds.size() - 2].tws;
-          double outer_wind2 =
-              polar.wind_speeds[polar.wind_speeds.size() - 1].tws;
-          double outer_stw1 = polar.Speed(mouse_angle, outer_wind1);
-          double outer_stw2 = polar.Speed(mouse_angle, outer_wind2);
-
-          if (!std::isnan(outer_stw1) && !std::isnan(outer_stw2) &&
-              outer_stw2 != outer_stw1) {
-            double wind_per_speed =
-                (outer_wind2 - outer_wind1) / (outer_stw2 - outer_stw1);
-            m_CursorWindSpeed =
-                lower_wind_speed +
-                (mouse_distance - lower_boat_speed) * wind_per_speed;
-          } else {
-            m_CursorWindSpeed = lower_wind_speed;
-          }
-        } else {
-          m_CursorWindSpeed = lower_wind_speed;
-        }
-      } else if (found_upper) {
-        // Cursor is inside all curves - extrapolate from the innermost curve
-        if (polar.wind_speeds.size() >= 2) {
-          // Use the trend from the two innermost curves for extrapolation
-          double inner_wind1 = polar.wind_speeds[0].tws;
-          double inner_wind2 = polar.wind_speeds[1].tws;
-          double inner_stw1 = polar.Speed(mouse_angle, inner_wind1);
-          double inner_stw2 = polar.Speed(mouse_angle, inner_wind2);
-
-          if (!std::isnan(inner_stw1) && !std::isnan(inner_stw2) &&
-              inner_stw2 != inner_stw1) {
-            double wind_per_speed =
-                (inner_wind2 - inner_wind1) / (inner_stw2 - inner_stw1);
-            m_CursorWindSpeed =
-                upper_wind_speed -
-                (upper_boat_speed - mouse_distance) * wind_per_speed;
-            // Ensure we don't get negative wind speeds
-            if (m_CursorWindSpeed < 0) m_CursorWindSpeed = 0;
-          } else {
-            m_CursorWindSpeed = upper_wind_speed;
-          }
-        } else {
-          m_CursorWindSpeed = upper_wind_speed;
-        }
-      } else {
-        // No valid curves found - fallback
-        m_CursorWindSpeed = 0;
-      }
-
-      m_CursorBoatSpeed = mouse_distance;
-      m_CursorVMG = mouse_distance * cos(deg2rad(mouse_angle));
-
-      // Calculate VMG angle for the interpolated/extrapolated wind speed
-      if (m_CursorWindSpeed > 0) {
-        SailingVMG vmg = polar.GetVMGTrueWind(m_CursorWindSpeed);
-
-        // Find the VMG angle closest to the cursor position
-        double min_angle_diff = 360.0;
-        m_CursorVMGAngle = NAN;
-
-        for (int i = 0; i < 4; i++) {
-          if (!std::isnan(vmg.values[i])) {
-            double angle_diff = fabs(mouse_angle - vmg.values[i]);
-            if (angle_diff > 180)
-              angle_diff = 360 - angle_diff;  // Handle wrap-around
-
-            if (angle_diff < min_angle_diff) {
-              min_angle_diff = angle_diff;
-              m_CursorVMGAngle = vmg.values[i];
-            }
-          }
-        }
-      } else {
-        m_CursorVMGAngle = NAN;
-      }
+        aws = BoatPlan::VelocityApparentWind(stw, W, VW);
+        break;
+    case 2:
+        W = ctw;
+        aws = windspeed;
+        stw = m_Boat.Plans[m_SelectedSailPlan].SpeedAtApparentWindSpeed(W, aws);
+        VW = BoatPlan::VelocityTrueWind(aws, stw, W);
+        A = rad2posdeg(BoatPlan::DirectionApparentWind(aws, stw, W, VW));
+        break;
+    case 3:
+        A = heading_resolve(ctw);
+        aws = windspeed;
+        stw = m_Boat.Plans[m_SelectedSailPlan].SpeedAtApparentWind(A, aws, &W);
+        W = positive_degrees(W);
+        VW = BoatPlan::VelocityTrueWind(aws, stw, W);
     }
 
-    // Find closest wind speed line for highlighting
-    int closest_wind_index = -1;
-    double min_distance_diff = 1e6;
+    m_stBoatAngle->SetLabel(wxString::Format(_T("%03.0f"), ctw));
+    m_stBoatKnots->SetLabel(wxString::Format(_T("%.1f"), stw));
 
-    for (unsigned int VWi = 0; VWi < polar.wind_speeds.size(); VWi++) {
-      double VW = polar.wind_speeds[VWi].tws;
-
-      double stw = 0;
-      if (selection < 2)
-        stw = polar.Speed(mouse_angle, VW);
-      else
-        stw = polar.SpeedAtApparentWindSpeed(mouse_angle, VW);
-
-      if (std::isnan(stw)) continue;
-
-      double distance_diff = fabs(mouse_distance - stw);
-      if (distance_diff < min_distance_diff &&
-          distance_diff < 0.5) {  // within 0.5 knot tolerance
-        min_distance_diff = distance_diff;
-        closest_wind_index = VWi;
-      }
+    int newmousew = round(ctw);
+    if(newmousew != m_MouseW) {
+        m_MouseW = newmousew;
+        RefreshPlots();
     }
 
-    if (closest_wind_index != m_HoveredWindSpeedIndex) {
-      m_HoveredWindSpeedIndex = closest_wind_index;
-      m_ShowHoverInfo = (closest_wind_index >= 0);
-    }
+    m_stTrueWindAngle->SetLabel(wxString::Format(_T("%03.0f"), W));
+    m_stTrueWindKnots->SetLabel(wxString::Format(_T("%.1f"), VW));
 
-    // Always refresh to update cursor position
-    m_PlotWindow->Refresh();
+    m_stApparentWindAngle->SetLabel(wxString::Format(_T("%03.0f"), A));
 
-    // Always update cursor information display
-    UpdateCursorInfo();
-  } else {
-    m_CursorValid = false;
-    UpdateCursorInfo();
-  }
+    m_stApparentWindKnots->SetLabel(wxString::Format(_T("%.1f"), aws));
+#endif
 }
 
 void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
@@ -466,66 +268,27 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
   dc.SetTextForeground(wxColour(0, 55, 75));
 
   if (maxVB <= 0) maxVB = 1; /* avoid lock */
-  // Since 5.0 and all multiples of it have an exact representation as a floating
-  // point number, this is safe
   double Vstep = ceil(maxVB / 5);
-  double Vend = maxVB + Vstep;
+  maxVB += Vstep;
+
+  m_PlotScale = (w < h ? w : h) / 1.8 / (maxVB + 1);
+  //    m_PlotScale = h/1.8 / (maxVB+1);
 
   bool full = m_cbFullPlot->GetValue();
-
-  // Optimize scale based on full plot vs half plot
-  if (full) {
-    // Full plot needs square aspect ratio (both port and starboard)
-    m_PlotScale = (w < h ? w : h) / 1.8 / (maxVB + 1);
-  } else {
-    // Half plot can use rectangular aspect ratio (starboard side only)
-    // Use width more efficiently since we only show 0-180 degrees
-    double scale_from_width =
-        w / 1.2 / (maxVB + 1);  // Less margin since we use full width
-    double scale_from_height = h / 1.8 / (maxVB + 1);  // Same margin as before
-    m_PlotScale = (scale_from_width < scale_from_height ? scale_from_width
-                                                        : scale_from_height);
-  }
-
   int xc = full ? w / 2 : 0;
 
   if (plottype == 0) {
     /* polar circles */
-    // Note that Vstep is an integer and all integers have an exact representation
-    // as floating point numbers. Thus V never has any rounding errors.
-    // Vend can be an arbitrary value and may have rounding errors.
-    // The loop steps will be:
-    // maxVB < 5: 1 .. ceil(maxVB).  If maxVB is very close to 5, then there
-    // might be an extra loop step ceil(maxVB) + 1
-    // maxVB = 5: 2, 4, 6 (always)
-    // 5 < maxVB < 6: 2, 4, 6. If maxVB very close to 6, maybe extra step
-    // 6 <= maxVB < 8: 2, 4, 6, 8. If maxVB very close to 8, maybe extra step
-    // 8 <= maxVB < 10: 2, 4, 6, 8, 10. If maxVB very close to 10, maybe extra step
-    // maxVB = 10: 3, 6, 9, 12 (always)
-    // 10 < maxVB < 12: 3, 6, 9, 12. If maxVB very close to 12, maybe extra step
-    // 12 <= maxVB < 15: 3, 6, 9, 12, 15. If maxVB very close to 15, maybe extra step
-    // maxVB = 15: 4, 8, 12, 16 (always)
-    // 15 < maxVB < 16: 4, 8, 12, 16. If maxVB very close to 16, maybe extra step
-    // 16 <= maxVB < 20: 4, 8, 12, 16, 20. If maxVB very close to 20, maybe extra step
-    // maxVB = 20: 5, 10, 15, 20, 25 (always)
-    // 20 < maxVB < 25: 5, 10, 15, 20, 25. If maxVB very close to 25, maybe extra step
-    // maxVB = 25: 6, 12, 18, 24, 30 (always)
-    // 25 < maxVB < 30: 6, 12, 18, 24, 30. If maxVB very close to 30, maybe extra step
-    // etc.
-    double V = Vstep;
-    while (V <= Vend - 1E-3) {
+    for (double V = Vstep; V <= maxVB; V += Vstep) {
       dc.DrawCircle(xc, h / 2, V * m_PlotScale);
       dc.DrawText(wxString::Format(_T("%.0f"), V), xc,
-                  int(h / 2) + (int)V * m_PlotScale);
-      V += Vstep;
+                  h / 2 + (int)V * m_PlotScale);
     }
   } else {
-    double V = Vstep;
-    while (V <= Vend - 1E-3) {
+    for (double V = Vstep; V <= maxVB; V += Vstep) {
       int y = h - 2 * V * m_PlotScale;
       dc.DrawLine(0, y, w, y);
       dc.DrawText(wxString::Format(_T("%.0f"), V), 0, y);
-      V += Vstep;
     }
   }
 
@@ -533,23 +296,21 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
 
   if (plottype == 0) {
     /* polar meridians */
-    for (unsigned ctw = 0; ctw < DEGREES;
-         ctw += 15) {  // DEGREES must be integer, since it is used as index
-                       // into degree_step_index
+    for (double ctw = 0; ctw < DEGREES; ctw += 15) {
       double x = maxVB * m_PlotScale * sin(deg2rad(ctw));
       double y = maxVB * m_PlotScale * cos(deg2rad(ctw));
-      if (ctw < 180) dc.DrawLine(xc - x, int(h / 2) + y, xc + x, int(h / 2) - y);
+      if (ctw < 180) dc.DrawLine(xc - x, h / 2 + y, xc + x, h / 2 - y);
 
-      wxString str = wxString::Format(_T("%u"), ctw);
+      wxString str = wxString::Format(_T("%.0f"), ctw);
       int sw, sh;
       dc.GetTextExtent(str, &sw, &sh);
-      dc.DrawText(str, xc + .9 * x - int(sw / 2), int(h / 2) - .9 * y - int(sh / 2));
+      dc.DrawText(str, xc + .9 * x - sw / 2, h / 2 - .9 * y - sh / 2);
     }
   } else {
     for (int s = 0; s < num_wind_speeds; s++) {
       double windspeed = wind_speeds[s];
 
-      double x = int(s * w / num_wind_speeds);
+      double x = s * w / num_wind_speeds;
       dc.DrawLine(x, 0, x, h);
 
       wxString str = wxString::Format(_T("%.0f"), windspeed);
@@ -561,19 +322,11 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
 
   int cx = (full ? w / 2 : 0), cy = h / 2;
 
+  dc.SetPen(wxPen(wxColor(255, 0, 0), 2));
+
   /* boat speeds */
   if (plottype == 0) {
     for (unsigned int VWi = 0; VWi < polar.wind_speeds.size(); VWi++) {
-      // Set different color for each wind speed line
-      wxColor windColor = GetWindSpeedColor(VWi, polar.wind_speeds.size());
-
-      // Highlight hovered wind speed line
-      int penWidth = 2;
-      if (m_ShowHoverInfo && (int)VWi == m_HoveredWindSpeedIndex) {
-        penWidth = 4;  // Make hovered line thicker
-      }
-
-      dc.SetPen(wxPen(windColor, penWidth));
       double VW = 0, aws = 0;
       switch (selection) {
         case 0:
@@ -596,10 +349,7 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
       double W0 = polar.degree_steps[0];
       double Wn = polar.degree_steps[polar.degree_steps.size() - 1];
       double Wd = Wn - W0, Ws = Wd / floor(Wd);
-
-      double W = W0;
-      while (W <= Wn + 1E-3) {  // Avoid missing the last step by a tiny
-                                // fraction, due to rounding errors
+      for (double W = W0; W <= Wn; W += Ws) {
         double stw = 0;
         switch (selection) {
           case 0:
@@ -615,7 +365,6 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
 
         if (std::isnan(stw)) {
           lastvalid = false;
-          W += Ws;
           continue;
         }
 
@@ -645,15 +394,10 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
 
         lx = px, ly = py;
         lastvalid = true;
-        W += Ws;
       }
     }
   } else {
     for (unsigned int Wi = 0; Wi < polar.degree_steps.size(); Wi++) {
-      // Set different color for each wind angle line
-      wxColor windColor = GetWindSpeedColor(Wi, polar.degree_steps.size());
-      dc.SetPen(wxPen(windColor, 2));
-
       double W = polar.degree_steps[Wi], stw = 0;
 
       bool lastvalid = false;
@@ -681,10 +425,7 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
           case 2:
           case 3:
             stw = polar.SpeedAtApparentWindSpeed(W, aws);
-#if 0
-            // This result is only used in the #if 0 block below
             VW = Polar::VelocityTrueWind(aws, stw, W);
-#endif
             break;
         }
 
@@ -708,8 +449,8 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
           if (wind_speeds[s] > windspeed) break;
         {  // interpolate into non-linear windspeed space
           double x = windspeed, x1 = wind_speeds[s], x2 = wind_speeds[s + 1];
-          double y1 = int(s * w / num_wind_speeds);
-          double y2 = int((s + 1) * w / num_wind_speeds);
+          double y1 = s * w / num_wind_speeds;
+          double y2 = (s + 1) * w / num_wind_speeds;
 
           px = x2 - x1 ? (y2 - y1) * (x - x1) / (x2 - x1) + y1 : y1;
         }
@@ -744,24 +485,8 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
       double W = vmg.values[i];
       if (std::isnan(W)) continue;
 
-      // Calculate boat speed at VMG angle
-      double stw = 0;
-      switch (selection) {
-        case 0:
-        case 1:
-          stw = polar.Speed(W, VW);
-          break;
-        case 2:
-        case 3:
-          aws = windspeed;
-          stw = polar.SpeedAtApparentWindSpeed(W, aws);
-          break;
-      }
+      double stw = polar.Speed(W, VW);
 
-      // Skip if speed calculation failed
-      if (std::isnan(stw) || stw <= 0) continue;
-
-      // Calculate display angle
       double a = 0;
       switch (selection) {
         case 0:
@@ -771,6 +496,18 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
         case 1:
         case 3:
           a = Polar::DirectionApparentWind(stw, W, VW);
+          break;
+      }
+      switch (selection) {
+        case 0:
+        case 1:
+          stw = polar.Speed(W, VW);
+          break;
+        case 2:
+        case 3:
+          aws = windspeed;
+          stw = polar.SpeedAtApparentWindSpeed(W, aws);
+          // VW = Polar::VelocityTrueWind(aws, stw, W);
           break;
       }
 
@@ -784,8 +521,8 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
           if (wind_speeds[s] > windspeed) break;
         {  // interpolate into non-linear windspeed space
           double x = windspeed, x1 = wind_speeds[s], x2 = wind_speeds[s + 1];
-          double y1 = int(s * w / num_wind_speeds);
-          double y2 = int((s + 1) * w / num_wind_speeds);
+          double y1 = s * w / num_wind_speeds;
+          double y2 = (s + 1) * w / num_wind_speeds;
 
           p.x = x2 - x1 ? (y2 - y1) * (x - x1) / (x2 - x1) + y1 : y1;
         }
@@ -795,86 +532,6 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
       if (lastpvalid[i]) dc.DrawLine(lastp[i], p);
       lastp[i] = p;
       lastpvalid[i] = true;
-    }
-  }
-
-  // Draw cursor indicator and additional information
-  if (m_CursorValid && plottype == 0) {
-    bool full = m_cbFullPlot->GetValue();
-    int cx = full ? w / 2 : 0;
-    int cy = h / 2;
-
-    // Draw cursor cross with better contrast - use dark color with white
-    // outline
-    dc.SetBrush(*wxTRANSPARENT_BRUSH);
-
-    // Use actual mouse position for cursor cross to ensure it follows mouse
-    // exactly
-    double cursor_x = m_CursorPosition.x;
-    double cursor_y = m_CursorPosition.y;
-
-    // Draw cross at cursor position with better visibility
-    int cross_size = 8;
-
-    // Draw white outline for contrast
-    dc.SetPen(wxPen(wxColor(255, 255, 255), 3));  // Thick white outline
-    dc.DrawLine(cursor_x - cross_size, cursor_y, cursor_x + cross_size,
-                cursor_y);
-    dc.DrawLine(cursor_x, cursor_y - cross_size, cursor_x,
-                cursor_y + cross_size);
-
-    // Draw dark cross on top
-    dc.SetPen(wxPen(wxColor(0, 0, 0), 2));  // Black cross
-    dc.DrawLine(cursor_x - cross_size, cursor_y, cursor_x + cross_size,
-                cursor_y);
-    dc.DrawLine(cursor_x, cursor_y - cross_size, cursor_x,
-                cursor_y + cross_size);
-
-    // Draw a circle around the cross for better visibility
-    dc.SetPen(wxPen(wxColor(255, 255, 255), 2));  // White outline
-    dc.DrawCircle(cursor_x, cursor_y, cross_size + 2);
-    dc.SetPen(wxPen(wxColor(0, 0, 0), 1));  // Black inner circle
-    dc.DrawCircle(cursor_x, cursor_y, cross_size + 2);
-
-    // Draw VMG angle indicators for current cursor wind speed
-    if (m_CursorWindSpeed > 0) {
-      SailingVMG vmg = polar.GetVMGTrueWind(m_CursorWindSpeed);
-
-      // Draw VMG angle lines with better contrast
-      for (int i = 0; i < 4; i++) {
-        if (i % 2 == 1 && !full) continue;  // Skip port side if not full plot
-
-        double W = vmg.values[i];
-        if (std::isnan(W)) continue;
-
-        double stw = polar.Speed(W, m_CursorWindSpeed);
-        if (std::isnan(stw)) continue;
-
-        // Draw line from center to VMG point with white outline for contrast
-        double vmg_x = m_PlotScale * stw * sin(deg2rad(W)) + cx;
-        double vmg_y = -m_PlotScale * stw * cos(deg2rad(W)) + cy;
-
-        // Draw thick white outline
-        dc.SetPen(wxPen(wxColor(255, 255, 255), 4));
-        dc.DrawLine(cx, cy, vmg_x, vmg_y);
-
-        // Draw dark red line on top for good contrast
-        dc.SetPen(wxPen(wxColor(128, 0, 0), 2));
-        dc.DrawLine(cx, cy, vmg_x, vmg_y);
-
-        // Draw VMG point with better contrast
-        // White outline circle
-        dc.SetPen(wxPen(wxColor(255, 255, 255), 2));
-        dc.SetBrush(wxBrush(wxColor(255, 255, 255)));
-        dc.DrawCircle(vmg_x, vmg_y, 5);
-
-        // Dark red inner circle
-        dc.SetPen(wxPen(wxColor(128, 0, 0), 1));
-        dc.SetBrush(wxBrush(wxColor(128, 0, 0)));
-        dc.DrawCircle(vmg_x, vmg_y, 3);
-
-        dc.SetBrush(*wxTRANSPARENT_BRUSH);
-      }
     }
   }
 }
@@ -907,31 +564,32 @@ void BoatDialog::OnPaintCrossOverChart(wxPaintEvent& event) {
   int xc = full ? w / 2 : 0;
   if (polar) scale = wxMin(full ? w / 2 : w, h / 2) / 40.0;
 
-  for (unsigned VW = 0; VW < 40; VW += 10) {
+  for (double VW = 0; VW < 40; VW += 10) {
     if (polar) {
       dc.DrawCircle(xc, h / 2, VW * scale);
-      dc.DrawText(wxString::Format(_T("%u"), VW), xc, int(h / 2) + VW * scale);
+      dc.DrawText(wxString::Format(_T("%.0f"), VW), xc,
+                  h / 2 + (int)VW * scale);
     } else {
       int y = h - VW * h / 40;
       dc.DrawLine(0, y, w, y);
-      dc.DrawText(wxString::Format(_T("%u"), VW), 0, y);
+      dc.DrawText(wxString::Format(_T("%.0f"), VW), 0, y);
     }
   }
 
-  for (unsigned H = 0; H < 180; H += 10) {
+  for (double H = 0; H < 180; H += 10) {
     if (polar) {
       double x = scale * sin(deg2rad(H));
       double y = scale * cos(deg2rad(H));
-      if (H < 180) dc.DrawLine(xc - x, int(h / 2) + y, xc + x, int(h / 2) - y);
+      if (H < 180) dc.DrawLine(xc - x, h / 2 + y, xc + x, h / 2 - y);
 
-      wxString str = wxString::Format(_T("%u"), H);
+      wxString str = wxString::Format(_T("%.0f"), H);
       int sw, sh;
       dc.GetTextExtent(str, &sw, &sh);
-      dc.DrawText(str, xc + .9 * x - int(sw / 2), int(h / 2) - .9 * y - int(sh / 2));
+      dc.DrawText(str, xc + .9 * x - sw / 2, h / 2 - .9 * y - sh / 2);
     } else {
       int x = H * w / 180;
       dc.DrawLine(x, 0, x, h);
-      dc.DrawText(wxString::Format(_T("%u"), H), x, 0);
+      dc.DrawText(wxString::Format(_T("%.0f"), H), x, 0);
     }
   }
 
@@ -942,123 +600,6 @@ void BoatDialog::OnPaintCrossOverChart(wxPaintEvent& event) {
     bool bold = i == index;
     wxColour col(colors[c].Red(), colors[c].Green(), colors[c].Blue(),
                  bold ? 230 : 90);
-    if (++c == (sizeof colors) / (sizeof *colors)) c = 0;
-
-    // First, draw standalone regions with dotted outlines (no fill)
-    if (!m_Boat.Polars[i].StandaloneRegion.Empty()) {
-      // Set up dotted pen for standalone regions
-      wxPen dottedPen(col, bold ? 3 : 1, wxPENSTYLE_DOT);
-      dc.SetPen(dottedPen);
-      dc.SetBrush(*wxTRANSPARENT_BRUSH);
-
-      // Tessellate as boundary contours (not triangles)
-      TESStesselator* boundaryTess =
-          m_Boat.Polars[i].StandaloneRegion.Tesselate(false);
-
-      if (boundaryTess) {
-        const float* boundaryVerts = tessGetVertices(boundaryTess);
-        const int* boundaryElems = tessGetElements(boundaryTess);
-        const int boundaryNelems = tessGetElementCount(boundaryTess);
-
-        // Draw boundary contours
-        for (int j = 0; j < boundaryNelems; ++j) {
-          int b = boundaryElems[j * 2];      // Start index
-          int n = boundaryElems[j * 2 + 1];  // Number of vertices
-
-          if (n < 3) continue;  // Skip invalid contours
-
-          if (polar) {
-            // For polar coordinates, we need to interpolate along curves
-            // Convert boundary vertices to Cartesian points first
-            std::vector<wxPoint> cartesianPoints;
-            cartesianPoints.reserve(n);
-
-            for (int k = 0; k < n; k++) {
-              float H = boundaryVerts[2 * (b + k) + 0];   // True Wind Angle
-              float VW = boundaryVerts[2 * (b + k) + 1];  // True Wind Speed
-              wxPoint pt(H * w / 180, h - VW * h / 40);
-              cartesianPoints.push_back(pt);
-            }
-
-            // Now draw interpolated curves between consecutive points
-            for (size_t k = 0; k < cartesianPoints.size(); k++) {
-              size_t next = (k + 1) % cartesianPoints.size();
-              wxPoint p1 = cartesianPoints[k];
-              wxPoint p2 = cartesianPoints[next];
-
-              // Calculate number of interpolation points needed
-              int count = CalcPolarPoints(p1, p2);
-
-              // Interpolate and draw the curve
-              wxPoint lastPolarPoint;
-              bool first = true;
-
-              for (int l = 0; l <= count; l++) {
-                double d = count > 0 ? (double)l / count : 0;
-                double px = p1.x * (1 - d) + p2.x * d;
-                double py = p1.y * (1 - d) + p2.y * d;
-                double H = px / w * 180;
-                double VW = (h - py) / h * 40;
-
-                wxPoint polarPoint(xc + scale * VW * sin(deg2rad(H)),
-                                   int(h / 2) - scale * VW * cos(deg2rad(H)));
-
-                if (!first) {
-                  dc.DrawLine(lastPolarPoint, polarPoint);
-                }
-                lastPolarPoint = polarPoint;
-                first = false;
-              }
-
-              // Draw mirrored version if full plot
-              if (full) {
-                first = true;
-                for (int l = 0; l <= count; l++) {
-                  double d = count > 0 ? (double)l / count : 0;
-                  double px = p1.x * (1 - d) + p2.x * d;
-                  double py = p1.y * (1 - d) + p2.y * d;
-                  double H = px / w * 180;
-                  double VW = (h - py) / h * 40;
-
-                  wxPoint polarPoint(
-                      2 * xc - (xc + scale * VW * sin(deg2rad(H))),
-                      int(h / 2) - scale * VW * cos(deg2rad(H)));
-
-                  if (!first) {
-                    dc.DrawLine(lastPolarPoint, polarPoint);
-                  }
-                  lastPolarPoint = polarPoint;
-                  first = false;
-                }
-              }
-            }
-          } else {
-            // For rectangular coordinates, simple straight lines are fine
-            std::vector<wxPoint> points;
-            points.reserve(n);
-
-            // Convert boundary vertices to screen coordinates
-            for (int k = 0; k < n; k++) {
-              float H = boundaryVerts[2 * (b + k) + 0];   // True Wind Angle
-              float VW = boundaryVerts[2 * (b + k) + 1];  // True Wind Speed
-              wxPoint pt(H * w / 180, h - VW * h / 40);
-              points.push_back(pt);
-            }
-
-            // Draw the contour outline with straight lines
-            if (points.size() >= 3) {
-              for (size_t k = 0; k < points.size(); k++) {
-                size_t next = (k + 1) % points.size();
-                dc.DrawLine(points[k], points[next]);
-              }
-            }
-          }
-        }
-        tessDeleteTess(boundaryTess);
-      }
-    }
-
-    // Second, draw crossover regions with solid fill
 #if wxUSE_GRAPHICS_CONTEXT
     wxGCDC gdc(dc);
     gdc.SetPen(*wxTRANSPARENT_PEN);
@@ -1068,6 +609,7 @@ void BoatDialog::OnPaintCrossOverChart(wxPaintEvent& event) {
     if (bold) dc.SetBrush(*wxBLACK);
     dc.SetBrush(col);
 #endif
+    if (++c == (sizeof colors) / (sizeof *colors)) c = 0;
 
     bool tri = true;
     TESStesselator* tess = m_Boat.Polars[i].CrossOverRegion.Tesselate(tri);
@@ -1081,44 +623,44 @@ void BoatDialog::OnPaintCrossOverChart(wxPaintEvent& event) {
     const int nelems = tessGetElementCount(tess);
 
     // Draw polygons.
-    for (int j = 0; j < nelems; ++j) {
+    for (int i = 0; i < nelems; ++i) {
       if (tri) {
-        const int* p = &elems[j * 3];
+        const int* p = &elems[i * 3];
         wxPoint points[3];
-        for (unsigned k = 0; k < 3 && p[k] != TESS_UNDEF; ++k) {
-          double H = verts[p[k] * 2 + 0];
-          double VW = verts[p[k] * 2 + 1];
-          points[k] = wxPoint(H * w / 180, h - VW * h / 40);
+        for (unsigned j = 0; j < 3 && p[j] != TESS_UNDEF; ++j) {
+          double H = verts[p[j] * 2 + 0];
+          double VW = verts[p[j] * 2 + 1];
+          points[j] = wxPoint(H * w / 180, h - VW * h / 40);
         }
         if (polar) {
           int count[3] = {CalcPolarPoints(points[0], points[1]),
                           CalcPolarPoints(points[1], points[2]),
                           CalcPolarPoints(points[2], points[0])};
           wxPoint* pts = new wxPoint[count[0] + count[1] + count[2]];
-          int c_pts = 0;
-          for (int k = 0; k < 3; k++) {
-            int kp1 = k + 1 == 3 ? 0 : k + 1;
-            for (int l = 0; l < count[k]; l++) {
-              double d = (double)l / count[k];
-              double px = points[k].x * (1 - d) + points[kp1].x * d;
-              double py = points[k].y * (1 - d) + points[kp1].y * d;
+          int c = 0;
+          for (int j = 0; j < 3; j++) {
+            int jp1 = j + 1 == 3 ? 0 : j + 1;
+            for (int k = 0; k < count[j]; k++) {
+              double d = (double)k / count[j];
+              double px = points[j].x * (1 - d) + points[jp1].x * d;
+              double py = points[j].y * (1 - d) + points[jp1].y * d;
               double H = px / w * 180;
               double VW = (h - py) / h * 40;
-              pts[c_pts++] = wxPoint(xc + scale * VW * sin(deg2rad(H)),
-                                     int(h / 2) - scale * VW * cos(deg2rad(H)));
+              pts[c++] = wxPoint(xc + scale * VW * sin(deg2rad(H)),
+                                 h / 2 - scale * VW * cos(deg2rad(H)));
             }
           }
 #if wxUSE_GRAPHICS_CONTEXT
-          gdc.DrawPolygon(c_pts, pts);
+          gdc.DrawPolygon(c, pts);
 #else
-          dc.DrawPolygon(c_pts, pts);
+          dc.DrawPolygon(c, pts);
 #endif
           if (full) {
-            for (int k = 0; k < c_pts; k++) pts[k].x = 2 * xc - pts[k].x;
+            for (int j = 0; j < c; j++) pts[j].x = 2 * xc - pts[j].x;
 #if wxUSE_GRAPHICS_CONTEXT
-            gdc.DrawPolygon(c_pts, pts);
+            gdc.DrawPolygon(c, pts);
 #else
-            dc.DrawPolygon(c_pts, pts);
+            dc.DrawPolygon(c, pts);
 #endif
           }
           delete[] pts;
@@ -1130,21 +672,21 @@ void BoatDialog::OnPaintCrossOverChart(wxPaintEvent& event) {
 #endif
         }
       } else {
-        int b = elems[j * 2];
-        int n = elems[j * 2 + 1];
+        int b = elems[i * 2];
+        int n = elems[i * 2 + 1];
 
         wxPoint pl;
-        for (int k = 0; k <= n; k++) {
-          int l = k < n ? k : 0;
-          float H = verts[2 * (b + l) + 0], VW = verts[2 * (b + l) + 1];
+        for (int j = 0; j <= n; j++) {
+          int k = j < n ? j : 0;
+          float H = verts[2 * (b + k) + 0], VW = verts[2 * (b + k) + 1];
           wxPoint p0;
           if (polar)
             p0 = wxPoint(xc + scale * VW * sin(deg2rad(H)),
-                         int(h / 2) - scale * VW * cos(deg2rad(H)));
+                         h / 2 - scale * VW * cos(deg2rad(H)));
           else
             p0 = wxPoint(H * w / 180, h - VW * h / 40);
 
-          if (k > 0) dc.DrawLine(pl, p0);
+          if (j > 0) dc.DrawLine(pl, p0);
           pl = p0;
         }
       }
@@ -1152,37 +694,9 @@ void BoatDialog::OnPaintCrossOverChart(wxPaintEvent& event) {
 
     tessDeleteTess(tess);
   }
-
-  // Draw legend to explain the two types of regions
-  dc.SetPen(wxPen(*wxBLACK, 1, wxPENSTYLE_SOLID));
-  dc.SetBrush(*wxWHITE_BRUSH);
-  dc.SetTextForeground(*wxBLACK);
-
-  int legendX = 10;
-  int legendY = 10;
-  int legendWidth = 200;
-  int legendHeight = 60;
-
-  // Draw legend background
-  dc.DrawRectangle(legendX, legendY, legendWidth, legendHeight);
-
-  // Draw legend items
-  int lineY = legendY + 15;
-
-  // Solid fill legend item
-  dc.SetBrush(wxBrush(wxColour(255, 0, 0, 150)));
-  dc.DrawRectangle(legendX + 5, lineY - 5, 15, 10);
-  dc.DrawText(_("Optimal regions (solid)"), legendX + 25, lineY - 8);
-
-  // Dotted line legend item
-  lineY += 20;
-  dc.SetPen(wxPen(*wxRED, 2, wxPENSTYLE_DOT));
-  dc.SetBrush(*wxTRANSPARENT_BRUSH);
-  dc.DrawRectangle(legendX + 5, lineY - 5, 15, 10);
-  dc.DrawText(_("Standalone regions (dotted)"), legendX + 25, lineY - 8);
 }
 
-void BoatDialog::OnOverlapPercentage(wxSpinDoubleEvent& event) {
+void BoatDialog::OnOverlapPercentage(wxSpinEvent& event) {
   long i = SelectedPolar();
   if (i != -1)
     m_Boat.Polars[i].m_crossoverpercentage =
@@ -1286,11 +800,10 @@ void BoatDialog::OnPolarSelected() {
   m_sOverlapPercentage->Enable(i != -1);
   if (i != -1)
     m_sOverlapPercentage->SetValue(m_Boat.Polars[i].m_crossoverpercentage *
-                                   100.0);
+                                   100);
 
   RefreshPlots();
   UpdateVMG();
-  UpdateBestVMGInfo();  // Update best VMG info when polar selection changes
 }
 
 void BoatDialog::OnUpdatePlot() {
@@ -1503,7 +1016,7 @@ void BoatDialog::RepopulatePolars() {
 #if 0
     if(m_Boat.Polars.size() == 0) {
         Polar generic_polar;
-        wxString message, generic_polar_path = GetPluginDataDir("weather_routing_pi")
+        wxString message, generic_polar_path = GetPluginDataDir(PLUGIN_PACKAGE_NAME)
             + _T("plugins/weather_routing_pi/data/polars/60ft_mono.pol");
         bool success = generic_polar.Open(generic_polar_path, message);
         if(success)
@@ -1552,7 +1065,6 @@ void BoatDialog::UpdateVMG() {
                        ? polar.GetVMGApparentWind(windspeed)
                        : polar.GetVMGTrueWind(windspeed);
 
-  // Update the original VMG display labels (for backward compatibility)
   m_stBestCourseUpWindPortTack->SetLabel(
       FormatVMG(vmg.values[SailingVMG::PORT_UPWIND], windspeed));
   m_stBestCourseUpWindStarboardTack->SetLabel(
@@ -1561,113 +1073,4 @@ void BoatDialog::UpdateVMG() {
       FormatVMG(vmg.values[SailingVMG::PORT_DOWNWIND], windspeed));
   m_stBestCourseDownWindStarboardTack->SetLabel(
       FormatVMG(vmg.values[SailingVMG::STARBOARD_DOWNWIND], windspeed));
-
-  // Update the new best VMG info panel
-  UpdateBestVMGInfo();
-}
-
-void BoatDialog::UpdateCursorInfo() {
-  if (!m_stCursorWindAngle) return;  // Panel not created yet
-
-  if (m_CursorValid) {
-    m_stCursorWindAngle->SetLabel(
-        wxString::Format(_("%.1f\u00B0"), m_CursorWindAngle));
-    m_stCursorWindSpeed->SetLabel(
-        wxString::Format(_("%.1f kts"), m_CursorWindSpeed));
-    m_stCursorBoatSpeed->SetLabel(
-        wxString::Format(_("%.1f kts"), m_CursorBoatSpeed));
-    m_stCursorVMG->SetLabel(wxString::Format(_("%.1f kts"), m_CursorVMG));
-    if (m_stCursorVMGAngle) {
-      // Show the actual cursor angle (course angle)
-      m_stCursorVMGAngle->SetLabel(
-          wxString::Format(_("%.1f\u00B0"), m_CursorWindAngle));
-    }
-  } else {
-    m_stCursorWindAngle->SetLabel(_("N/A"));
-    m_stCursorWindSpeed->SetLabel(_("N/A"));
-    m_stCursorBoatSpeed->SetLabel(_("N/A"));
-    m_stCursorVMG->SetLabel(_("N/A"));
-    if (m_stCursorVMGAngle) {
-      m_stCursorVMGAngle->SetLabel(_("N/A"));
-    }
-  }
-
-  // Always update the best VMG information
-  UpdateBestVMGInfo();
-}
-
-void BoatDialog::UpdateBestVMGInfo() {
-  if (!m_stBestVMGWindSpeed) return;  // Panel not created yet
-
-  long index = SelectedPolar();
-  if (index < 0) {
-    // No polar selected, clear all fields
-    m_stBestVMGWindSpeed->SetLabel(_("N/A"));
-    m_stBestVMGUpwindAngle->SetLabel(_("N/A"));
-    m_stBestVMGUpwindSpeed->SetLabel(_("N/A"));
-    m_stBestVMGUpwindVMG->SetLabel(_("N/A"));
-    m_stBestVMGDownwindAngle->SetLabel(_("N/A"));
-    m_stBestVMGDownwindSpeed->SetLabel(_("N/A"));
-    m_stBestVMGDownwindVMG->SetLabel(_("N/A"));
-    return;
-  }
-
-  // Determine wind speed to use for best VMG calculation
-  double referenceWindSpeed;
-  if (m_CursorValid && m_CursorWindSpeed > 0) {
-    // Use wind speed from cursor position
-    referenceWindSpeed = m_CursorWindSpeed;
-  } else {
-    // Use wind speed from VMG control
-    referenceWindSpeed = m_sVMGWindSpeed->GetValue();
-  }
-
-  m_stBestVMGWindSpeed->SetLabel(
-      wxString::Format(_("%.1f kts"), referenceWindSpeed));
-
-  Polar& polar = m_Boat.Polars[index];
-  SailingVMG vmg = polar.GetVMGTrueWind(referenceWindSpeed);
-
-  // Upwind VMG (use starboard upwind as primary, port as backup)
-  double upwindAngle = vmg.values[SailingVMG::STARBOARD_UPWIND];
-  if (std::isnan(upwindAngle)) {
-    upwindAngle = vmg.values[SailingVMG::PORT_UPWIND];
-  }
-
-  if (!std::isnan(upwindAngle)) {
-    double upwindSpeed = polar.Speed(upwindAngle, referenceWindSpeed);
-    double upwindVMG = upwindSpeed * cos(deg2rad(upwindAngle));
-
-    m_stBestVMGUpwindAngle->SetLabel(
-        wxString::Format(_("%.1f\u00B0"), upwindAngle));
-    m_stBestVMGUpwindSpeed->SetLabel(
-        wxString::Format(_("%.1f kts"), upwindSpeed));
-    m_stBestVMGUpwindVMG->SetLabel(wxString::Format(_("%.1f kts"), upwindVMG));
-  } else {
-    m_stBestVMGUpwindAngle->SetLabel(_("N/A"));
-    m_stBestVMGUpwindSpeed->SetLabel(_("N/A"));
-    m_stBestVMGUpwindVMG->SetLabel(_("N/A"));
-  }
-
-  // Downwind VMG (use starboard downwind as primary, port as backup)
-  double downwindAngle = vmg.values[SailingVMG::STARBOARD_DOWNWIND];
-  if (std::isnan(downwindAngle)) {
-    downwindAngle = vmg.values[SailingVMG::PORT_DOWNWIND];
-  }
-
-  if (!std::isnan(downwindAngle)) {
-    double downwindSpeed = polar.Speed(downwindAngle, referenceWindSpeed);
-    double downwindVMG = downwindSpeed * cos(deg2rad(180.0 - downwindAngle));
-
-    m_stBestVMGDownwindAngle->SetLabel(
-        wxString::Format(_("%.1f\u00B0"), downwindAngle));  // "°"
-    m_stBestVMGDownwindSpeed->SetLabel(
-        wxString::Format(_("%.1f kts"), downwindSpeed));
-    m_stBestVMGDownwindVMG->SetLabel(
-        wxString::Format(_("%.1f kts"), downwindVMG));
-  } else {
-    m_stBestVMGDownwindAngle->SetLabel(_("N/A"));
-    m_stBestVMGDownwindSpeed->SetLabel(_("N/A"));
-    m_stBestVMGDownwindVMG->SetLabel(_("N/A"));
-  }
 }

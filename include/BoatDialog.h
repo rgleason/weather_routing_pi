@@ -43,7 +43,7 @@ private:
   void OnPaintPlot(wxPaintEvent& event);
   void OnUpdatePlot(wxSizeEvent& event) { OnUpdatePlot(); }
   void OnPaintCrossOverChart(wxPaintEvent& event);
-  void OnOverlapPercentage(wxSpinDoubleEvent& event);
+  void OnOverlapPercentage(wxSpinEvent& event);
   void OnSizePlot(wxSizeEvent& event) { RefreshPlots(); }
   void OnVMGWindSpeed(wxSpinEvent& event) { UpdateVMG(); }
   void OnUpdatePlot();
@@ -154,9 +154,6 @@ private:
 
   void RepopulatePolars();
 
-  void UpdateCursorInfo();
-  void UpdateBestVMGInfo();
-
   void RefreshPlots() {
     m_PlotWindow->Refresh();
     m_CrossOverChart->Refresh();
@@ -173,19 +170,6 @@ private:
 
   double m_PlotScale;
   int m_MouseW;
-
-  // Interactive hover state
-  int m_HoveredWindSpeedIndex;
-  bool m_ShowHoverInfo;
-
-  // Cursor tracking for information display
-  wxPoint m_CursorPosition;
-  bool m_CursorValid;
-  double m_CursorWindAngle;
-  double m_CursorWindSpeed;
-  double m_CursorBoatSpeed;
-  double m_CursorVMG;
-  double m_CursorVMGAngle;  // Optimal VMG angle at cursor position
 
   bool m_CrossOverRegenerate;
   CrossOverGenerationThread* m_CrossOverGenerationThread;

@@ -20,93 +20,12 @@
 #ifndef _WEATHER_ROUTING_ROUTEPOINT_H_
 #define _WEATHER_ROUTING_ROUTEPOINT_H_
 
-#include <cstdint>
 #include <vector>
-#include <json/json.h>
 
 #include "ConstraintChecker.h"
 
 struct RouteMapConfiguration;
 class PlotData;
-
-/**
- * Bit flags indicating what data sources were used for wind and current
- * calculations and other routing conditions.
- *
- * These flags track various aspects of each position in the routing
- * calculation:
- * 1. The origin of wind and current data (GRIB or climatology)
- * 2. Whether the data was "deficient" (outside optimal time/location range)
- * 3. Environmental conditions like day/night status
- *
- * The flags can be combined using bitwise OR operations to represent multiple
- * conditions simultaneously. For example, a position at night using GRIB
- * current data and climatology wind data would have a data_mask containing:
- * (GRIB_CURRENT | CLIMATOLOGY_WIND | NIGHT_TIME)
- *
- * These flags serve multiple purposes:
- * - Visual differentiation in the route display (different colors for data
- * sources)
- * - Performance adjustments (efficiency factors for different conditions)
- * - Analytical reporting of route segments and their data quality
- *
- * When examining a route, these flags provide important context about the
- * reliability and characteristics of each segment.
- */
-enum class DataMask : uint32_t {
-  NONE = 0,
-  /** Wind data originated from GRIB files. */
-  GRIB_WIND = 1,
-
-  /** Wind data originated from climatology data. */
-  CLIMATOLOGY_WIND = 2,
-
-  /**
-   * Wind data is from GRIB but is considered "data deficient".
-   * This typically means the data is from outside the requested time
-   * or location range but was used because better data was not available.
-   */
-  DATA_DEFICIENT_WIND = 4,
-
-  /** Current data originated from GRIB files. */
-  GRIB_CURRENT = 8,
-
-  /** Current data originated from climatology data. */
-  CLIMATOLOGY_CURRENT = 16,
-
-  /**
-   * Current data is from GRIB but is considered "data deficient".
-   * This typically means the data is from outside the requested time
-   * or location range but was used because better data was not available.
-   */
-  DATA_DEFICIENT_CURRENT = 32,
-
-  /**
-   * Indicates that this position occurs during nighttime.
-   * Used to apply nighttime efficiency factor and darker display colors.
-   */
-  NIGHT_TIME = 64,
-
-  /**
-   * Indicates that this segment was traveled using motor instead of sailing.
-   * Used for visual differentiation and tracking motor usage in routes.
-   */
-  MOTOR_USED = 128
-};
-
-inline DataMask operator|(DataMask a, DataMask b) {
-  // NOLINTBEGIN: Or'ing might generate values that are not listed in the enum
-  return static_cast<DataMask>(static_cast<uint32_t>(a) |
-                               static_cast<uint32_t>(b));
-  // NOLINTEND
-}
-inline DataMask& operator|=(DataMask& a, DataMask b) {
-  a = a | b;
-  return a;
-}
-inline bool operator&(DataMask a, DataMask b) {
-  return (static_cast<uint32_t>(a) & static_cast<uint32_t>(b)) != 0;
-}
 
 /**
  * Represents a wind rose summary of climatological wind data for a location.
@@ -154,8 +73,7 @@ public:
   WeatherData(RoutePoint* position);
 
   bool ReadWeatherDataAndCheckConstraints(RouteMapConfiguration& configuration,
-                                          RoutePoint* position,
-                                          DataMask& data_mask,
+                                          RoutePoint* position, int& data_mask,
                                           PropagationError& error_code,
                                           bool end);
 };
@@ -217,7 +135,7 @@ public:
   bool GetBoatSpeedForPolar(RouteMapConfiguration& configuration,
                             const WeatherData& weather, double timeseconds,
                             int newpolar, double twa, double ctw,
-                            DataMask& data_mask, bool bound = true,
+                            int& data_mask, bool bound = true,
                             const char* caller = "unknown");
 
   /**
@@ -239,7 +157,7 @@ public:
   bool GetBestPolarAndBoatSpeed(RouteMapConfiguration& configuration,
                                 const WeatherData& weather_data, double twa,
                                 double ctw, double parent_heading,
-                                DataMask& data_mask, int polar, int& newpolar,
+                                int& data_mask, int polar, int& newpolar,
                                 double& timeseconds);
 
 private:
@@ -270,8 +188,7 @@ class RoutePoint {
 public:
   RoutePoint(double latitude = 0., double longitude = 0., int polar_idx = -1,
              int tack_count = 0, int jibe_count = 0,
-
-             int sail_plan_change_count = 0, DataMask dm = DataMask::NONE,
+             int sail_plan_change_count = 0, int dm = 0,
              bool data_deficient = false)
       : lat(latitude),
         lon(longitude),
@@ -281,18 +198,6 @@ public:
         sail_plan_changes(sail_plan_change_count),
         grib_is_data_deficient(data_deficient),
         data_mask(dm) {}
-
-  // Constructor that initializes a RoutePoint from a serialized JSON object.
-  // See also toJson() method.
-  RoutePoint(const Json::Value& json)
-      : lat(json["lat"].asDouble()),
-        lon(json["lon"].asDouble()),
-        polar(json["polar"].asInt()),
-        tacks(json["tacks"].asInt()),
-        jibes(json["jibes"].asInt()),
-        sail_plan_changes(json["sail_plan_changes"].asInt()),
-        grib_is_data_deficient(json["grib_is_data_deficient"].asBool()),
-        data_mask(static_cast<DataMask>(json["data_mask"].asUInt())) {}
 
   virtual ~RoutePoint() {};
 
@@ -310,18 +215,18 @@ public:
   bool grib_is_data_deficient;
 
   bool GetPlotData(RoutePoint* next, double dt,
-                   RouteMapConfiguration& configuration, PlotData& data) const;
+                   RouteMapConfiguration& configuration, PlotData& data);
   // Return the wind data at the route point.
   bool GetWindData(RouteMapConfiguration& configuration, double& W, double& VW,
-                   DataMask& data_mask);
+                   int& data_mask);
   // Return the current data at the route point.
   bool GetCurrentData(RouteMapConfiguration& configuration, double& C,
-                      double& VC, DataMask& data_mask);
+                      double& VC, int& data_mask);
 
   // Return true if the route point crosses land.
-  bool CrossesLand(double dlat, double dlon) const;
+  bool CrossesLand(double dlat, double dlon);
   // Return true if the route point enters a boundary.
-  bool EntersBoundary(double dlat, double dlon) const;
+  bool EntersBoundary(double dlat, double dlon);
 
   /**
    * Propagates along a rhumb line to a destination point, handling long
@@ -355,7 +260,7 @@ public:
   double RhumbLinePropagateToPoint(double dlat, double dlon,
                                    RouteMapConfiguration& configuration,
                                    std::vector<RoutePoint*>& intermediatePoints,
-                                   DataMask& data_mask, double& totalDistance,
+                                   int& data_mask, double& totalDistance,
                                    double& averageSpeed,
                                    double maxSegmentLength = 10.0);
 
@@ -363,7 +268,7 @@ public:
    * Attempts to reach a specific target point from the current position.
    *
    * Calculates whether and how a vessel can reach a specified target point
-   * (dlat, dlon) from the current position. Uses an iterative
+   * (dlat, dlon) from the current position. This function uses an iterative
    * solver to determine the correct heading that accounts for current drift,
    * but does NOT optimize for best route - it simply tries to go directly to
    * the target.
@@ -388,20 +293,69 @@ public:
    * @return Time in seconds to reach target, or NAN if unreachable.
    */
   double PropagateToPoint(double dlat, double dlon, RouteMapConfiguration& cf,
-                          double& heading, DataMask& data_mask,
-                          bool end = true);
+                          double& heading, int& data_mask, bool end = true);
 
   /**
-   * Serializes the RoutePoint to JSON format.
-   * This method populates the provided JSON object with the
-   * RoutePoint's data, including latitude, longitude, polar index,
-   * tacks, jibes, sail plan changes, data deficiency status, and data mask
+   * Bit flags indicating what data sources were used for wind and current
+   * calculations and other routing conditions.
+   *
+   * These flags track various aspects of each position in the routing
+   * calculation:
+   * 1. The origin of wind and current data (GRIB or climatology)
+   * 2. Whether the data was "deficient" (outside optimal time/location range)
+   * 3. Environmental conditions like day/night status
+   *
+   * The flags can be combined using bitwise OR operations to represent multiple
+   * conditions simultaneously. For example, a position at night using GRIB
+   * current data and climatology wind data would have a data_mask containing:
+   * (GRIB_CURRENT | CLIMATOLOGY_WIND | NIGHT_TIME)
+   *
+   * These flags serve multiple purposes:
+   * - Visual differentiation in the route display (different colors for data
+   * sources)
+   * - Performance adjustments (efficiency factors for different conditions)
+   * - Analytical reporting of route segments and their data quality
+   *
+   * When examining a route, these flags provide important context about the
+   * reliability and characteristics of each segment.
    */
-  void toJson(Json::Value &json) const;
+  enum DataMask {
+    /** Wind data originated from GRIB files. */
+    GRIB_WIND = 1,
 
+    /** Wind data originated from climatology data. */
+    CLIMATOLOGY_WIND = 2,
 
+    /**
+     * Wind data is from GRIB but is considered "data deficient".
+     * This typically means the data is from outside the requested time
+     * or location range but was used because better data was not available.
+     */
+    DATA_DEFICIENT_WIND = 4,
 
-  DataMask data_mask;
+    /** Current data originated from GRIB files. */
+    GRIB_CURRENT = 8,
+
+    /** Current data originated from climatology data. */
+    CLIMATOLOGY_CURRENT = 16,
+
+    /**
+     * Current data is from GRIB but is considered "data deficient".
+     * This typically means the data is from outside the requested time
+     * or location range but was used because better data was not available.
+     */
+    DATA_DEFICIENT_CURRENT = 32,
+
+    /**
+     * Indicates that this position occurs during nighttime.
+     * Used to apply nighttime efficiency factor and darker display colors.
+     */
+    NIGHT_TIME = 64,
+
+    /** Indicates that this segment was travelled using the motor. */
+    MOTOR_USED = 128
+  };
+  int data_mask;
 };
 
 #endif

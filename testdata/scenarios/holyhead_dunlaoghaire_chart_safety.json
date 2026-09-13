@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "name": "Holyhead to Dun Laoghaire chart-safety regression",
+  "start": {
+    "name": "Holyhead outside TSS",
+    "lat": 53.3378017,
+    "lon": -4.6145400
+  },
+  "end": {
+    "name": "Dun Laoghaire outside harbour entrance",
+    "lat": 53.3000000,
+    "lon": -6.1300000
+  },
+  "startTime": "2026-07-14T09:00:00Z",
+  "departureOptimization": {
+    "enabled": false,
+    "beforeMinutes": 0,
+    "afterMinutes": 0,
+    "stepMinutes": 60
+  },
+  "environment": {
+    "useCurrents": true
+  },
+  "safety": {
+    "mode": "chart",
+    "enforce": true,
+    "landMarginNm": 0.3,
+    "minimumDepthM": 0,
+    "persistentCertifiedCacheEnabled": true
+  }
+}

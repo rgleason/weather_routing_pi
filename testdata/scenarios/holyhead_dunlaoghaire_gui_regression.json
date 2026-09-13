@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "name": "Holyhead to Dun Laoghaire GUI regression",
+  "start": {
+    "name": "Holyhead (outside TSS)",
+    "lat": 53.337802,
+    "lon": -4.614540
+  },
+  "end": {
+    "name": "Dun Laoghaire (outside harbour entrance)",
+    "lat": 53.305578,
+    "lon": -6.129343
+  },
+  "startTime": "2026-07-27T10:00:00Z",
+  "departureOptimization": {
+    "enabled": false,
+    "beforeMinutes": 0,
+    "afterMinutes": 0,
+    "stepMinutes": 60
+  },
+  "environment": {
+    "useGrib": true,
+    "useCurrents": true
+  },
+  "route": {
+    "boatFile": "~/.opencpn/plugins/weather_routing/boats/Nicholson_35_conservative.xml",
+    "timeStepSeconds": 3600,
+    "headingFromDegrees": 40,
+    "headingToDegrees": 160,
+    "headingStepDegrees": 5,
+    "maxDivertedCourseDegrees": 180,
+    "maxCourseAngleDegrees": 180,
+    "maxSearchAngleDegrees": 180,
+    "maxTrueWindKnots": 50,
+    "maxApparentWindKnots": 50,
+    "optimizeTacking": true,
+    "upwindEfficiency": 1,
+    "downwindEfficiency": 1,
+    "nightEfficiency": 1,
+    "useMotor": true,
+    "motorSpeedThresholdKnots": 4.5,
+    "motorSpeedKnots": 5.5
+  },
+  "safety": {
+    "mode": "chart",
+    "enforce": true,
+    "landMarginNm": 0.4,
+    "minimumDepthM": 0,
+    "persistentCertifiedCacheEnabled": true
+  },
+  "reverseReachability": {
+    "enabled": true,
+    "searchBackIsochrones": 6,
+    "horizonHours": 0,
+    "diagnostics": true
+  }
+}

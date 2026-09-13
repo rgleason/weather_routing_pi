@@ -71,15 +71,16 @@
 #define GetTimeCtrlValue GetValue
 // #endif
 
-
-
 #include "version.h"
 
 #define ABOUT_AUTHOR_URL "http://seandepagnier.users.sourceforge.net"
 
 #include "ocpn_plugin.h"
+#include "ChartSafetyCache.h"
 #include "pidc.h"
 #include "qtstylesheet.h"
+
+#include <wx/eventfilter.h>
 
 /* make some warnings go away */
 #ifdef MIN
@@ -95,6 +96,16 @@
 #ifdef __WXMSW__
 #include "AddressSpaceMonitor.h"
 #endif
+
+#include <atomic>
+#include <future>
+#include <memory>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
+
+class ExternalPlanningProvider;
 
 //----------------------------------------------------------------------------------------------------------
 //    The PlugIn Class Definition
@@ -112,7 +123,9 @@ class WeatherRouting;
  * weather routing capabilities to OpenCPN. It handles initialization,
  * UI management, and interactions with the OpenCPN application.
  */
-class weather_routing_pi : public wxEvtHandler, public opencpn_plugin_118 {
+class weather_routing_pi : public wxEvtHandler,
+                           public wxEventFilter,
+                           public opencpn_plugin_121 {
 public:
   weather_routing_pi(void* ppimgr);
   ~weather_routing_pi();
@@ -164,91 +177,106 @@ public:
   void OnContextMenuItemCallback(int id);
 
   void SetColorScheme(PI_ColorScheme cs);
-  /**
-   * Gets the plugin's private data directory path.
-   *
-   * Creates and returns the path where the Weather Routing plugin should store
-   * its private configuration and data files. The path is constructed as:
-   * [OpenCPN private data location]/plugins/weather_routing/
-   *
-   * Key behaviors:
-   * - Creates the directory structure if it doesn't exist
-   * - Always returns a path ending with a path separator
-   * - Ensures the returned path is user-writable
-   *
-   * @return A wxString containing the absolute path to the plugin's data
-   * directory, always ending with a path separator
-   */
+  int FilterEvent(wxEvent& event) override;
   static wxString StandardPath();
   void ShowMenuItems(bool show);
+  bool UsePersistentChartSafeCache() const {
+    return m_use_persistent_chart_safe_cache;
+  }
+  void SetUsePersistentChartSafeCache(bool enabled, bool save = true);
+  int ChartSafetyRamCacheMiB() const {
+    return m_chart_safety_ram_cache_mib;
+  }
+  int EffectiveChartSafetyRamCacheMiB() const {
+    return m_chart_safety_cache.EffectiveRamMiB();
+  }
+  void SetChartSafetyRamCacheMiB(int ram_mib);
+  bool ChartSafetyAtlasEnabled() const {
+    return m_chart_safety_atlas_enabled;
+  }
+  int ChartSafetyAtlasMaxDiskMiB() const {
+    return m_chart_safety_atlas_max_disk_mib;
+  }
+  bool ChartSafetyAtlasAllCharts() const {
+    return m_chart_safety_atlas_all_charts;
+  }
+  const std::set<std::string>& ChartSafetyAtlasSelectedPaths() const {
+    return m_chart_safety_atlas_selected_paths;
+  }
+  void SetChartSafetyAtlasSettings(bool enabled, int max_disk_mib,
+                                   bool all_charts,
+                                   std::set<std::string> selected_paths);
+  bool ClearChartSafetyCache();
+  bool FlushChartSafetyCache();
+  bool HasEnhancedChartSafety() const;
+  bool StartExternalPlanningScenario(const wxString& scenario_path,
+                                     const wxString& output_path,
+                                     long timeout_ms);
+  void CancelExternalPlanningScenario();
+  void ClearExternalPlanningScenario();
+  weather_routing::ChartSafetyCacheStats ChartSafetyCacheStatistics() const {
+    return m_chart_safety_cache.Stats();
+  }
 
-   /**
-   * @brief Gets the parent window for plugin dialogs.
-   * @return Pointer to the OpenCPN canvas window.
-   */
   wxWindow* GetParentWindow() { return m_parent_window; }
 
-  // ========== Position Tracking ==========
+#ifdef __WXMSW__
+  AddressSpaceMonitor& GetAddressSpaceMonitor() {
+    return m_addressSpaceMonitor;
+  }
+#endif
 
   double m_boat_lat;    //!< Latitude of the boat position, in degrees.
   double m_boat_lon;    //!< Longitude of the boat position, in degrees.
   double m_cursor_lat;  //!< Latitude of the cursor position, in degrees.
   double m_cursor_lon;  //!< Longitude of the cursor position, in degrees.
 
-#ifdef __WXMSW__
-  /**
-   * @brief Gets reference to the address space monitor (Windows only).
-   *
-   * @return Reference to the AddressSpaceMonitor instance.
-   *
-   * @details Provides access to the plugin's AddressSpaceMonitor for use by
-   * SettingsDialog. Returns a reference (not a copy) to allow direct access
-   * to the monitor's state and methods.
-   *
-   * @note This method is only available on Windows where 32-bit address space
-   * monitoring is necessary.
-   */
-    AddressSpaceMonitor& GetAddressSpaceMonitor() {  // Return REFERENCE, not copy
-        return m_addressSpaceMonitor; 
-    } 
-#endif
-
 private:
+  friend class HeadlessRouteTestStarter;
+
   void OnCursorLatLonTimer(wxTimerEvent&);
   void RequestOcpnDrawSetting();
   void NewWR();
-
-  /**
-   * Warns the user if a plugin version is outside the supported range.
-   * @param  plugin_name Name of the plugin to display.
-   * @param version_major Major version of the plugin.
-   * @param version_minor Minor version of the plugin.
-   * @param min_major Minimum supported major version.
-   * @param min_minor Minimum supported minor version.
-   * @param max_major Maximum supported major version (default 100, 
-   *  i.e. effectively none, for backwards compatible plugins).
-   * @param max_minor Maximum supported minor version (default 100).
-   * @param consequence_msg Message to display about potential consequences of 
-   *  using an unsupported version (default "otherwise unexpected results may occur").
-   * @param recommended_version_msg_prefix Prefix for the recommended version message 
-   *  (default "Use versions").
-   * @param version_msg_suffix Suffix for the version message 
-   *  (default "is not officially supported.").
-   * @return true if a warning was shown, false otherwise.
-   */
-  bool WarnAboutPluginVersion(
-    const std::string plugin_name,
-    int version_major, int version_minor, 
-    int min_major, int min_minor, 
-    int max_major = 100, int max_minor = 100,
-    const std::string consequence_msg = _(", otherwise unexpected results may occur.").ToStdString(),
-    const std::string recommended_version_msg_prefix = _("Use versions").ToStdString(), 
-    const std::string version_msg_suffix = _("is not officially supported.").ToStdString());
+  void MaybeStartHeadlessRouteTest();
+  void ScheduleChartSafetyAtlas(bool rebuild_plan, int delay_ms = 1000);
+  void OnChartSafetyAtlasTimer(wxTimerEvent&);
+  void ResetChartSafetyAtlasPlan();
+  bool ChartSafetyAtlasGuiIdle() const;
+  void WaitForChartSafetyAtlasInspection();
+#ifdef __WXMSW__
+  void OnAddressSpaceTimer(wxTimerEvent& event);
+#endif
 
   bool LoadConfig();
   bool SaveConfig();
 
   bool b_in_boundary_reply;
+  bool m_use_persistent_chart_safe_cache;
+  int m_chart_safety_ram_cache_mib;
+  bool m_chart_safety_atlas_enabled;
+  int m_chart_safety_atlas_max_disk_mib;
+  bool m_chart_safety_atlas_all_charts;
+  std::set<std::string> m_chart_safety_atlas_selected_paths;
+  std::string m_chart_safety_atlas_completed_identity;
+  std::string m_chart_safety_atlas_plan_identity;
+  std::vector<std::pair<long, long>> m_chart_safety_atlas_coverage_tiles;
+  std::vector<std::pair<long, long>> m_chart_safety_atlas_tiles;
+  std::size_t m_chart_safety_atlas_cursor{0};
+  int m_chart_safety_atlas_metadata_attempts{0};
+  int m_chart_safety_atlas_batch_retries{0};
+  std::size_t m_chart_safety_atlas_failed_batches{0};
+  bool m_chart_safety_atlas_logged_route_pause{false};
+  bool m_chart_safety_atlas_logged_user_pause{false};
+  bool m_chart_safety_atlas_plan_ready{false};
+  bool m_chart_safety_atlas_filter_installed{false};
+  std::size_t m_chart_safety_atlas_batch_limit{1};
+  std::size_t m_chart_safety_atlas_selected_charts{0};
+  double m_chart_safety_atlas_estimate_mib{0.0};
+  std::atomic<long long> m_chart_safety_atlas_last_input_ms{0};
+  std::future<weather_routing::ChartSafetyAtlasCacheStatus>
+      m_chart_safety_atlas_inspection;
+  weather_routing::ChartSafetyCache m_chart_safety_cache;
+  std::unique_ptr<ExternalPlanningProvider> m_external_planning_provider;
 
   wxFileConfig* m_pconfig;
   wxWindow* m_parent_window;
@@ -261,33 +289,13 @@ private:
   int m_position_menu_id;
   int m_waypoint_menu_id;
   int m_route_menu_id;
+  int m_route_multileg_menu_id;
 
   wxTimer m_tCursorLatLon;
-
-  #ifdef __WXMSW__
-  // ========== Windows-Only: Address Space Monitoring ==========
-
-  /**
-   * @name Address Space Monitoring (Windows Only)
-   * @{
-   */
-
-  AddressSpaceMonitor
-      m_addressSpaceMonitor;    ///< Tracks 32-bit address space usage
-  wxTimer m_addressSpaceTimer;  ///< 5-second timer for continuous monitoring
-
-  /**
-   * @brief Timer callback for address space monitoring.
-   *
-   * @param event Timer event (unused).
-   *
-   * @details Called every 5 seconds to check memory usage and display alerts
-   * if the threshold is exceeded. Validates monitor state before accessing
-   * to prevent use-after-destruction.
-   */
-  void OnAddressSpaceTimer(wxTimerEvent& event);
-
-  /** @} */
+  wxTimer m_chart_safety_atlas_timer;
+#ifdef __WXMSW__
+  AddressSpaceMonitor m_addressSpaceMonitor;
+  wxTimer m_addressSpaceTimer;
 #endif
 };
 

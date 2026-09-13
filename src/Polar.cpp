@@ -194,7 +194,8 @@ static char* strtok_polar(const char* line, char** saveptr) {
 #define MAX_WINDSPEEDS_IN_TABLE 200
 #define MESSAGE(S)                                                        \
   (wxString::FromUTF8(wxFileName(filename).GetFullName()) +               \
-   (linenum > 0 ? (_(" line ") + wxString::Format("%d", linenum)) : "") + \
+   (linenum > 0 ? (_(" line ") + wxString::Format("%d", linenum))          \
+                 : wxString()) +                                          \
    ": " + S + "\n")
 #define PARSE_WARNING(S)                             \
   do {                                               \
@@ -865,9 +866,6 @@ bool Polar::InsideCrossOverContour(float twa, float tws, bool optimize_tacking,
   // on the point of sail.
   if (!CrossOverRegion.Contains(twa, tws)) {
     if (status) *status = POLAR_SPEED_INVALID_SAIL_CONFIGURATION;
-    wxLogGeneric(wxLOG_Debug,
-                 "Outside cross over region: TWA=%.2f TWS=%.2f. Polar=", twa,
-                 tws, wxFileName(FileName).GetFullName());
     return false;
   }
   return true;
