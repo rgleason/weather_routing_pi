@@ -91,8 +91,16 @@ set(LONG_DESCRIPTION
 
 set(VERSION_MAJOR "1")
 set(VERSION_MINOR "17")
-set(VERSION_PATCH "5")
+set(VERSION_PATCH "6")
 set(VERSION_TWEAK "0")
+# Every platform and identity must ship the same offline full-resolution data.
+file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/data/shoreline/poly-f-2.3.7.dat.gz"
+     _shoreline_archive_hash)
+if(NOT _shoreline_archive_hash STREQUAL
+   "a36cb8c4fda7d56cfd851d92ed70a315d0a2ff81e10e99e8a0141ce9dc4e6d60")
+  message(FATAL_ERROR "Bundled full-resolution GSHHG data is missing or corrupt")
+endif()
+unset(_shoreline_archive_hash)
 set(VERSION_DATE  "13/09/2026") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov511")
 
@@ -210,6 +218,8 @@ add_definitions(-DUSE_S57)
 
 
 SET(SRCS
+            src/ShorelineDataset.cpp
+            src/ShorelineManager.cpp
             src/AppendOnlyCache.cpp
             src/ChartSafetyCache.cpp
             src/ChartSafetyAtlas.cpp

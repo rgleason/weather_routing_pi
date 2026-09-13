@@ -157,3 +157,6 @@ if not errorlevel 1 (
 )
 
 endlocal
+
+python ..\ci\verify-shoreline-package.py .
+if errorlevel 1 exit /b %errorlevel%

@@ -89,7 +89,11 @@ void* RouteMapOverlayThread::Entry() {
         {
           RouteMapOverlay::DestinationUpdateGuard destination_update_guard(
               m_RouteMapOverlay);
-          if (!m_RouteMapOverlay.Propagate()) {
+          const bool propagated = m_RouteMapOverlay.Propagate();
+          if (cf.DetectLand && !cf.chart_safety_runtime_available &&
+              cf.shoreline_dataset && !cf.shoreline_dataset->Error().empty())
+            throw weather_routing::ShorelineQueryError(cf.shoreline_dataset->Error());
+          if (!propagated) {
             wxThread::Sleep(50);
             continue;
           }
@@ -102,6 +106,9 @@ void* RouteMapOverlayThread::Entry() {
         }
       }
     }
+  } catch (const weather_routing::ShorelineQueryError& error) {
+    m_RouteMapOverlay.SetError(wxString::FromUTF8(error.what()));
+    wxLogError("WR_SHORELINE_ROUTE_ABORT %s", error.what());
   } catch (const std::bad_alloc&) {
 #ifdef __WXMSW__
     MEMORYSTATUSEX memory{};

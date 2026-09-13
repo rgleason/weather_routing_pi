@@ -43,6 +43,7 @@
 #include "RouteWaypointExtractor.h"
 #include "weather_routing_pi.h"
 #include "WeatherRouting.h"
+#include "ShorelineManager.h"
 #include "ChartSafetyDefaults.h"
 #include "AboutDialog.h"
 #include "ConstraintChecker.h"
@@ -1150,6 +1151,19 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
       wxCommandEventHandler(WeatherRouting::OnChartAwarenessSettings), this,
       m_mChartAwarenessSettings->GetId());
 
+  auto shorelineMenu = m_mView->Append(wxID_ANY, _("Shoreline data..."));
+  m_mView->Bind(
+      wxEVT_MENU,
+      [this](wxCommandEvent&) {
+        if (!CanStartExternalPlanningScenario()) {
+          wxMessageBox(_("Wait for routing calculations to finish before "
+                         "managing shoreline data."),
+                       _("Shoreline data"), wxOK | wxICON_INFORMATION, this);
+          return;
+        }
+        weather_routing::ShorelineManager::Show(this);
+      },
+      shorelineMenu->GetId());
   m_mView->AppendSeparator();
   m_mStabilityCorridorView =
       new wxMenuItem(m_mView, wxID_ANY, _("Show stability corridor"),
@@ -10796,6 +10810,10 @@ void WeatherRouting::ExportRoute(RouteMapOverlay& routemapoverlay) {
 
 void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
   if (!routemapoverlay) return;
+  if (weather_routing::ShorelineManager::Busy()) {
+    routemapoverlay->SetError(_("Close shoreline data management before computing."));
+    return;
+  }
   ScopedRoutePreparation route_preparation(m_RoutePreparationDepth);
 
   RouteMapConfiguration configuration = routemapoverlay->GetConfiguration();
@@ -11075,7 +11093,44 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
         configuration.Start, configuration.End, configuration.MultiLegGroupId,
         configuration.DepartureTimeOptimizationOffsetMinutes,
         configuration.MultiLegLegIndex, configuration.MultiLegLegCount));
-    PlugIn_GSHHS_CrossesLand(0, 0, 0, 0);
+    if (use_experimental_chart_safety) {
+      PlugIn_GSHHS_CrossesLand(0, 0, 0, 0);
+    } else {
+      try {
+        if (m_RoutingProgressDialog && m_RoutingProgressDialog->IsShown())
+          UpdateRoutingProgress(_("Preparing shoreline data"),
+                                _("Verifying the selected shoreline dataset"),
+                                -1, -1);
+        configuration.shoreline_dataset =
+            weather_routing::ShorelineManager::Prepare();
+        configuration.shoreline_description =
+            weather_routing::ShorelineManager::Description();
+        configuration.shoreline_error.clear();
+        if (configuration.shoreline_dataset->CrossesLand(
+                configuration.StartLat, configuration.StartLon,
+                configuration.StartLat, configuration.StartLon)) {
+          routemapoverlay->SetError(
+              _("Start position is on land in the selected GSHHG dataset. "
+                "Choose an offshore start position."));
+          return;
+        }
+        if (configuration.shoreline_dataset->CrossesLand(
+                configuration.EndLat, configuration.EndLon,
+                configuration.EndLat, configuration.EndLon)) {
+          routemapoverlay->SetError(
+              _("Destination is on land in the selected GSHHG dataset. Choose "
+                "an offshore destination."));
+          return;
+        }
+        routemapoverlay->SetConfiguration(configuration);
+        wxLogMessage("WR_ROUTE_SHORELINE route=\"%s to %s\" %s",
+                     configuration.Start, configuration.End,
+                     configuration.shoreline_description);
+      } catch (const std::exception& error) {
+        routemapoverlay->SetError(wxString::FromUTF8(error.what()));
+        return;
+      }
+    }
     if (prewarm_authoritative_chart_search) {
       PrewarmExperimentalChartSafetyForConfiguration(
           configuration, _("route start"),

@@ -279,10 +279,30 @@ wxString FormatChartLandCrossingReason(
   return reason;
 }
 
-bool GshhsSegmentSafetyHitsLand(double lat1, double lon1, double lat2,
+bool GshhsSegmentSafetyHitsLand(RouteMapConfiguration* configuration,
+                                double lat1, double lon1, double lat2,
                                 double lon2, double safety_margin_nm) {
   ++s_gshhsSafetyCalls;
-  if (PlugIn_GSHHS_CrossesLand(lat1, lon1, lat2, lon2)) return true;
+  auto crosses = [&](double a, double b, double c, double d) {
+    // Preserve all existing enhanced-core chart/scout/fallback behavior.
+    if (s_useExperimentalChartSafety)
+      return PlugIn_GSHHS_CrossesLand(a, b, c, d);
+    try {
+      if (!configuration || !configuration->shoreline_dataset)
+        throw std::runtime_error(
+            "Required plugin shoreline data was not prepared");
+      return configuration->shoreline_dataset->CrossesLand(a, b, c, d);
+    } catch (const std::bad_alloc&) {
+      throw;
+    } catch (const std::exception& error) {
+      if (configuration && configuration->shoreline_error.empty()) {
+        configuration->shoreline_error = wxString::FromUTF8(error.what());
+        wxLogError("WR_SHORELINE_ERROR %s", configuration->shoreline_error);
+      }
+      return true;  // Missing/invalid data must never mean clear water.
+    }
+  };
+  if (crosses(lat1, lon1, lat2, lon2)) return true;
 
   if (safety_margin_nm <= 0.0) return false;
 
@@ -301,17 +321,15 @@ bool GshhsSegmentSafetyHitsLand(double lat1, double lon1, double lat2,
   ll_gc_ll(lat2, lon2, heading_resolve(bearing + 90.0), safety_margin_nm,
            &lat_down2, &lon_down2);
 
-  return PlugIn_GSHHS_CrossesLand(lat_up1, lon_up1, lat_up2, lon_up2) ||
-         PlugIn_GSHHS_CrossesLand(lat_down1, lon_down1, lat_down2,
-                                  lon_down2) ||
-         PlugIn_GSHHS_CrossesLand(lat_up1, lon_up1, lat_down2, lon_down2) ||
-         PlugIn_GSHHS_CrossesLand(lat_down1, lon_down1, lat_up2, lon_up2);
+  return crosses(lat_up1, lon_up1, lat_up2, lon_up2) ||
+         crosses(lat_down1, lon_down1, lat_down2, lon_down2) ||
+         crosses(lat_up1, lon_up1, lat_down2, lon_down2) ||
+         crosses(lat_down1, lon_down1, lat_up2, lon_up2);
 }
 
 bool SegmentTouchesEndpointMarginZone(RouteMapConfiguration* configuration,
                                       double lat1, double lon1, double lat2,
-                                      double lon2,
-                                      double safety_margin_nm) {
+                                      double lon2, double safety_margin_nm) {
   if (!configuration || safety_margin_nm <= 0.0) return false;
 
   /*
@@ -447,7 +465,7 @@ bool SegmentSafetyRejectsLand(RouteMapConfiguration* configuration,
                 "Experimental chart-based land checks are disabled.");
       s_loggedGshhsDefault = true;
     }
-    return GshhsSegmentSafetyHitsLand(lat1, lon1, lat2, lon2,
+    return GshhsSegmentSafetyHitsLand(configuration, lat1, lon1, lat2, lon2,
                                       safety_margin_nm);
   }
 
@@ -481,7 +499,7 @@ bool SegmentSafetyRejectsLand(RouteMapConfiguration* configuration,
       }
       return true;
     }
-    return GshhsSegmentSafetyHitsLand(lat1, lon1, lat2, lon2,
+    return GshhsSegmentSafetyHitsLand(configuration, lat1, lon1, lat2, lon2,
                                       safety_margin_nm);
   }
   AccumulateSegmentSafetyDiagnostics(result);
@@ -644,7 +662,7 @@ bool SegmentSafetyRejectsLand(RouteMapConfiguration* configuration,
 
   if (s_enforceExperimentalChartSafety) return chart_rejects;
 
-  return GshhsSegmentSafetyHitsLand(lat1, lon1, lat2, lon2,
+  return GshhsSegmentSafetyHitsLand(configuration, lat1, lon1, lat2, lon2,
                                     safety_margin_nm);
 }
 
@@ -654,10 +672,11 @@ bool FinalRouteSegmentSafetyRejectsLand(RouteMapConfiguration* configuration,
                                         double safety_margin_nm,
                                         wxString* failure_reason) {
   if (!s_useExperimentalChartSafety || !s_enforceExperimentalChartSafety) {
-    bool rejects = GshhsSegmentSafetyHitsLand(lat1, lon1, lat2, lon2,
+    bool rejects = GshhsSegmentSafetyHitsLand(configuration, lat1, lon1, lat2, lon2,
                                              safety_margin_nm);
     if (rejects && failure_reason)
-      *failure_reason = _("Land crossing in final route");
+      *failure_reason = configuration && !configuration->shoreline_error.empty()
+          ? configuration->shoreline_error : _("Land crossing in final route");
     return rejects;
   }
 

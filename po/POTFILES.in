@@ -1,3 +1,5 @@
+src/ShorelineDataset.cpp
+src/ShorelineManager.cpp
 src/AppendOnlyCache.cpp
 src/ChartSafetyCache.cpp
 src/ChartSafetyAtlas.cpp

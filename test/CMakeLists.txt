@@ -39,6 +39,8 @@ aui
 REQUIRED)
 
 set(TEST_SRC
+    ShorelineDataset_tests.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/src/ShorelineDataset.cpp
     RoutingProgressState_tests.cpp
     ProcessAddressSpace_tests.cpp
     AppendOnlyCache_tests.cpp
@@ -103,6 +105,8 @@ set(TEST_SRC
    )
 
    add_executable(weather_routing_pi_tests ${TEST_SRC})
+   target_compile_definitions(weather_routing_pi_tests PRIVATE
+       WR_TEST_SHORELINE_DATA="${WEATHER_ROUTING_SOURCE_DIR}/data/shoreline")
 
    set(WEATHER_ROUTING_TEST_SANITIZER "" CACHE STRING
        "Optional sanitizer for Weather Routing tests: address, thread, or undefined")

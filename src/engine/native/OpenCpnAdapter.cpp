@@ -647,6 +647,9 @@ private:
     bool safe = ConstraintChecker::CheckLandConstraint(
         configuration, start.latitude, start.longitude, end.latitude,
         end.longitude, bearing);
+    if (!configuration.shoreline_error.empty())
+      throw weather_routing::ShorelineQueryError(
+          configuration.shoreline_error.ToStdString());
     if (configuration.chart_safety_missing_tile_rejections > 0) {
       if (!overlay_.AwaitChartSafetyData()) return true;
       configuration = configuration_;

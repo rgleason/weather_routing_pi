@@ -20,6 +20,7 @@
 #ifndef _WEATHER_ROUTING_ROUTE_MAP_H_
 #define _WEATHER_ROUTING_ROUTE_MAP_H_
 
+#include "ShorelineDataset.h"
 #include "wx/datetime.h"
 #include <wx/object.h>
 #include <wx/weakref.h>
@@ -221,6 +222,10 @@ struct RouteMapPosition {
  * position, timestamp, error flags, and intermediate calculation results.
  */
 struct RouteMapConfiguration {
+  // Pinned per calculation; optional chart-aware queries retain their host path.
+  std::shared_ptr<weather_routing::ShorelineDataset> shoreline_dataset;
+  wxString shoreline_description;
+  wxString shoreline_error;
   /**
    * Defines the source for the starting point of the route.
    */
