@@ -156,7 +156,8 @@ if not errorlevel 1 (
   exit /b 1
 )
 
-endlocal
-
-python ..\ci\verify-shoreline-package.py .
+rem Use script-relative paths while SCRIPTDIR is still in scope.
+python "%SCRIPTDIR%verify-shoreline-package.py" "%SCRIPTDIR%..\build"
 if errorlevel 1 exit /b %errorlevel%
+
+endlocal
