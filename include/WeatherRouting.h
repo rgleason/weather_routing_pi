@@ -49,6 +49,7 @@
 #include "RoutingTablePanel.h"
 #include "RouteSimplifier.h"
 #include "StabilityCorridorLifecycle.h"
+#include "GribTimelineFrameCache.h"
 #include "weather_routing_engine/StabilityCorridor.h"
 
 class weather_routing_pi;
@@ -346,6 +347,9 @@ public:
    * the number of concurrent computations is limited by settings).
    */
   std::list<RouteMapOverlay*> m_WaitingRouteMaps;
+  std::shared_ptr<weather_routing::GribTimelineFrameCache>
+      m_GribTimelineFrameCache;
+  bool m_GribTimelineCacheBatchActive{false};
   /**
    * Master list of all weather routes managed by the application.
    *
@@ -660,6 +664,8 @@ private:
    */
   void Start(RouteMapOverlay* routemapoverlay);
   void StartAll();
+  void BeginGribTimelineCacheBatch(const RouteMapConfiguration& configuration);
+  void ReleaseGribTimelineCacheBatch();
   bool CollectChartSafetyScoutGeometry(
       RouteMapOverlay* routemapoverlay,
       std::vector<std::pair<double, double> >* geometry,

@@ -318,3 +318,30 @@ TEST(RoutingScenarioJson, ShorelineResolutionInputsRejectInvalidTypesAndRanges) 
   }
   wxRemoveFile(path);
 }
+
+TEST(RoutingScenarioJson, GribTimelineCacheLimitIsExplicitAndValidated) {
+  const wxString path =
+      wxFileName::CreateTempFileName("wr-grib-timeline-cache-");
+  for (const char* value : {"15", "16", "2048", "8192", "8193", "1.5",
+                            "true", "\"large\""}) {
+    {
+      std::ofstream file(path.mb_str());
+      file << R"({"schemaVersion":1,"name":"cache","start":{"name":"A","lat":50,"lon":-5},"end":{"name":"B","lat":51,"lon":-4},"route":{"gribTimelineCacheMiB":)"
+           << value << "}}";
+    }
+    weather_routing_engine::RoutingScenario scenario;
+    wxString error;
+    const std::string text(value);
+    const bool expected = text == "16" ||
+        (sizeof(void*) > 4 && (text == "2048" || text == "8192"));
+    EXPECT_EQ(weather_routing_headless::LoadRoutingScenarioJson(path, scenario,
+                                                                error),
+              expected)
+        << value << ": " << error;
+    if (expected) {
+      EXPECT_TRUE(scenario.route.hasGribTimelineCacheMiB);
+      EXPECT_EQ(scenario.route.gribTimelineCacheMiB, std::stoi(text));
+    }
+  }
+  wxRemoveFile(path);
+}

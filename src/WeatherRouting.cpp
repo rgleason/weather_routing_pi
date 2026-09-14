@@ -61,6 +61,7 @@
 #include "RoutingResourcePolicy.h"
 #include "WeatherDataProvider.h"
 #include "StabilityRouteAdapter.h"
+#include "SystemMemory.h"
 #include "headless/HeadlessRouteRunner.h"
 #include "headless/HeadlessRouteMonitor.h"
 #include "georef.h"
@@ -4356,6 +4357,14 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
           if (scenario.route.hasQuickMemoryBudgetMiB) configuration.EngineSettings.quick.memoryBudgetMiB = scenario.route.quickMemoryBudgetMiB;
           if (scenario.route.hasRoutingEngine)
             configuration.EngineSettings.SetEngineId(scenario.route.routingEngine.ToStdString());
+          if (scenario.route.hasGribTimelineCacheMiB) {
+            if (configuration.IsQuick())
+              configuration.QuickGribTimelineCacheMiB =
+                  scenario.route.gribTimelineCacheMiB;
+            else
+              configuration.MainGribTimelineCacheMiB =
+                  scenario.route.gribTimelineCacheMiB;
+          }
           if (scenario.route.hasChartShorelineResolution) configuration.ChartShorelineResolution = scenario.route.chartShorelineResolution;
           if (scenario.route.hasShorelineResolution) {
             if (configuration.IsQuick()) configuration.QuickShorelineResolution = scenario.route.shorelineResolution;
@@ -7671,6 +7680,10 @@ void WeatherRouting::OnComputationTimer(wxTimerEvent&) {
       sectionTimer.Start();
       UpdateRouteMap(routemapoverlay);
       updateRouteMs += sectionTimer.Time();
+      // Completed routes retain their compact route/weather results. The
+      // aggregate timeline cache stays alive for other departure candidates
+      // and multileg continuations in this batch.
+      routemapoverlay->ReleaseGribTimelineFrameReference();
       completedRouteMaps.push_back(routemapoverlay);
       if (m_ChartSafetyComputeProgressActive && !m_ActiveMultiLegSequence &&
           !m_ActiveMultiLegDepartureOptimization) {
@@ -8034,6 +8047,16 @@ bool WeatherRouting::OpenXML(wxString filename, bool reportfailure) {
         configuration.ShorelineResolution = weather_routing::ReadShorelineResolution(*e, weather_routing::ShorelineManager::DefaultResolution());
         configuration.QuickShorelineResolution = weather_routing::ReadShorelineResolution(*e, 0, "QuickShorelineResolution");
         configuration.ChartShorelineResolution = weather_routing::ReadShorelineResolution(*e, 0, "ChartShorelineResolution");
+        configuration.MainGribTimelineCacheMiB =
+            weather_routing::NormalizeGribTimelineCacheMiB(
+                AttributeInt(e, "MainGribTimelineCacheMiB",
+                             weather_routing::kMainGribTimelineCacheDefaultMiB),
+                false);
+        configuration.QuickGribTimelineCacheMiB =
+            weather_routing::NormalizeGribTimelineCacheMiB(
+                AttributeInt(e, "QuickGribTimelineCacheMiB",
+                             weather_routing::kQuickGribTimelineCacheDefaultMiB),
+                true);
         configuration.RoutingEffortPercent =
             weather_routing::NormalizeRoutingEffortPercent(
                 AttributeInt(e, "RoutingEffortPercent",
@@ -8276,6 +8299,10 @@ void WeatherRouting::SaveXML(wxString filename) {
     c->SetAttribute("ShorelineResolution", configuration.ShorelineResolution);
     c->SetAttribute("QuickShorelineResolution", configuration.QuickShorelineResolution);
     c->SetAttribute("ChartShorelineResolution", configuration.ChartShorelineResolution);
+    c->SetAttribute("MainGribTimelineCacheMiB",
+                    configuration.MainGribTimelineCacheMiB);
+    c->SetAttribute("QuickGribTimelineCacheMiB",
+                    configuration.QuickGribTimelineCacheMiB);
     c->SetAttribute(
         "RoutingEffortPercent",
         weather_routing::NormalizeRoutingEffortPercent(
@@ -11101,7 +11128,7 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
       "course{max_diverted=%.1f max_course=%.1f max_search=%.1f} "
       "constraints{max_true_wind=%.1f max_apparent_wind=%.1f "
       "max_swell=%.1f max_latitude=%.1f wind_vs_current=%.1f} "
-      "routing_effort=%d%% workers=%d",
+      "routing_effort=%d%% workers=%d grib_timeline_cache_mib=%d",
       configuration.FromDegree, configuration.ToDegree, configuration.ByDegrees,
       static_cast<unsigned long>(configuration.DegreeSteps.size()),
       configuration.MaxDivertedCourse, configuration.MaxCourseAngle,
@@ -11110,7 +11137,8 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
       configuration.MaxLatitude, configuration.WindVSCurrent,
       weather_routing::NormalizeRoutingEffortPercent(
           configuration.RoutingEffortPercent),
-      m_SettingsDialog.m_sConcurrentThreads->GetValue());
+      m_SettingsDialog.m_sConcurrentThreads->GetValue(),
+      configuration.SelectedGribTimelineCacheMiB());
   wxLogMessage("%s", routeStartLog);
 
   if (prewarm_authoritative_chart_search &&
@@ -11280,6 +11308,9 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
     m_ChartSafetyComputeProgressStartedRoutes++;
   }
 
+  if (!m_GribTimelineCacheBatchActive)
+    BeginGribTimelineCacheBatch(configuration);
+  routemapoverlay->SetGribTimelineFrameCache(m_GribTimelineFrameCache);
   routemapoverlay->Reset();
   m_RoutesToRun++;
   m_WaitingRouteMaps.push_back(routemapoverlay);
@@ -11288,11 +11319,97 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
 }
 
 void WeatherRouting::StartAll() {
+  if (!m_GribTimelineCacheBatchActive) {
+    RouteMapConfiguration* largest = nullptr;
+    RouteMapConfiguration largestValue;
+    int largestEffectiveMiB = -1;
+    const std::uint64_t availableMiB =
+        weather_routing::AvailablePhysicalMemoryBytes() /
+        (1024ULL * 1024ULL);
+    for (int i = 0; i < m_panel->m_lWeatherRoutes->GetItemCount(); i++) {
+      WeatherRoute* weatherroute = reinterpret_cast<WeatherRoute*>(
+          wxUIntToPtr(m_panel->m_lWeatherRoutes->GetItemData(i)));
+      if (!weatherroute || !weatherroute->routemapoverlay) continue;
+      RouteMapConfiguration candidate =
+          weatherroute->routemapoverlay->GetConfiguration();
+      const auto admission =
+          weather_routing::EvaluateGribTimelineCacheAdmission(
+              candidate.SelectedGribTimelineCacheMiB(), candidate.IsQuick(),
+              availableMiB);
+      if (admission.effective_mib > largestEffectiveMiB) {
+        largestValue = candidate;
+        largestEffectiveMiB = admission.effective_mib;
+        largest = &largestValue;
+      }
+    }
+    if (largest) BeginGribTimelineCacheBatch(*largest);
+  }
   for (int i = 0; i < m_panel->m_lWeatherRoutes->GetItemCount(); i++) {
     WeatherRoute* weatherroute = reinterpret_cast<WeatherRoute*>(
         wxUIntToPtr(m_panel->m_lWeatherRoutes->GetItemData(i)));
+    if (!weatherroute || !weatherroute->routemapoverlay) continue;
     Start(weatherroute->routemapoverlay);
   }
+  if (m_RunningRouteMaps.empty() && m_WaitingRouteMaps.empty())
+    ReleaseGribTimelineCacheBatch();
+}
+
+void WeatherRouting::BeginGribTimelineCacheBatch(
+    const RouteMapConfiguration& configuration) {
+  if (!m_GribTimelineFrameCache)
+    m_GribTimelineFrameCache =
+        std::make_shared<weather_routing::GribTimelineFrameCache>();
+  m_GribTimelineFrameCache->Clear();
+  const std::uint64_t availableBytes =
+      weather_routing::AvailablePhysicalMemoryBytes();
+  const std::uint64_t availableMiB = availableBytes / (1024ULL * 1024ULL);
+  const auto admission = m_GribTimelineFrameCache->Configure(
+      configuration.SelectedGribTimelineCacheMiB(), configuration.IsQuick(),
+      availableMiB);
+  m_GribTimelineCacheBatchActive = true;
+  wxLogMessage(
+      "WR_GRIB_TIMELINE_CACHE_BEGIN engine=%s requested_mib=%d "
+      "effective_mib=%d available_mib=%llu required_before_mib=%llu "
+      "required_reserve_mib=%llu approved=%d shared_batch=1",
+      configuration.IsQuick() ? "quick" : "main", admission.requested_mib,
+      admission.effective_mib,
+      static_cast<unsigned long long>(admission.available_mib),
+      static_cast<unsigned long long>(admission.required_before_mib),
+      static_cast<unsigned long long>(admission.required_reserve_mib),
+      admission.approved ? 1 : 0);
+  if (!admission.approved && admission.large_cache_requested) {
+    wxLogWarning(
+        "Weather Routing: requested %d MiB GRIB timeline cache was reduced "
+        "to %d MiB because the physical-memory reserve requirement was not "
+        "met.",
+        admission.requested_mib, admission.effective_mib);
+  }
+}
+
+void WeatherRouting::ReleaseGribTimelineCacheBatch() {
+  if (!m_GribTimelineFrameCache || !m_GribTimelineCacheBatchActive) return;
+  const auto statistics = m_GribTimelineFrameCache->Stats();
+  const std::size_t frames = m_GribTimelineFrameCache->Size();
+  const std::size_t released = m_GribTimelineFrameCache->Clear(false);
+  wxLogMessage(
+      "WR_GRIB_TIMELINE_CACHE_END requested_mib=%d effective_mib=%d "
+      "frames=%lu distinct_keys=%lu hits=%llu misses=%llu publications=%llu "
+      "evictions=%llu reloads_after_eviction=%llu peak_entries=%lu "
+      "peak_mib=%.1f released_mib=%.1f",
+      m_GribTimelineFrameCache->RequestedMiB(),
+      m_GribTimelineFrameCache->EffectiveMiB(),
+      static_cast<unsigned long>(frames),
+      static_cast<unsigned long>(statistics.distinct_keys),
+      static_cast<unsigned long long>(statistics.hits),
+      static_cast<unsigned long long>(statistics.misses),
+      static_cast<unsigned long long>(statistics.publications),
+      static_cast<unsigned long long>(statistics.evictions),
+      static_cast<unsigned long long>(statistics.reloads_after_eviction),
+      static_cast<unsigned long>(statistics.peak_entries),
+      statistics.peak_weight / (1024.0 * 1024.0),
+      released / (1024.0 * 1024.0));
+  m_GribTimelineFrameCache->Clear();
+  m_GribTimelineCacheBatchActive = false;
 }
 
 bool WeatherRouting::RetryRouteAfterMissingChartSafetyTiles(
@@ -11415,8 +11532,18 @@ void WeatherRouting::StopAll() {
 
   delete progressdialog;
 
+  for (RouteMapOverlay* route : m_RunningRouteMaps)
+    if (route) route->ReleaseGribTimelineFrameReference();
+  for (RouteMapOverlay* route : m_WaitingRouteMaps)
+    if (route) route->ReleaseGribTimelineFrameReference();
+
+  for (WeatherRoute* weatherroute : m_WeatherRoutes)
+    if (weatherroute && weatherroute->routemapoverlay)
+      weatherroute->routemapoverlay->ReleaseGribTimelineFrameReference();
+
   m_RunningRouteMaps.clear();
   m_WaitingRouteMaps.clear();
+  ReleaseGribTimelineCacheBatch();
 
   s_chartSafetySharedPrewarmScopes.clear();
   s_chartSafetyPreparedScoutScopes.clear();
@@ -11591,6 +11718,10 @@ void WeatherRouting::SaveLastUsedConfigurationDefaults(
   pConf->Write("ShorelineResolution", configuration.ShorelineResolution);
   pConf->Write("QuickShorelineResolution", configuration.QuickShorelineResolution);
   pConf->Write("ChartShorelineResolution", configuration.ChartShorelineResolution);
+  pConf->Write("MainGribTimelineCacheMiB",
+               configuration.MainGribTimelineCacheMiB);
+  pConf->Write("QuickGribTimelineCacheMiB",
+               configuration.QuickGribTimelineCacheMiB);
   pConf->DeleteEntry("QuickRoute");
   pConf->Write(
       _T("RoutingEffortPercent"),
@@ -11717,6 +11848,18 @@ void WeatherRouting::ApplyLastUsedConfigurationDefaults(
   configuration.ShorelineResolution = weather_routing::ReadShorelineResolution(*pConf, weather_routing::ShorelineManager::DefaultResolution());
   configuration.QuickShorelineResolution = weather_routing::ReadShorelineResolution(*pConf, 0, "QuickShorelineResolution");
   configuration.ChartShorelineResolution = weather_routing::ReadShorelineResolution(*pConf, 0, "ChartShorelineResolution");
+  long main_grib_cache = configuration.MainGribTimelineCacheMiB;
+  long quick_grib_cache = configuration.QuickGribTimelineCacheMiB;
+  pConf->Read("MainGribTimelineCacheMiB", &main_grib_cache,
+              main_grib_cache);
+  pConf->Read("QuickGribTimelineCacheMiB", &quick_grib_cache,
+              quick_grib_cache);
+  configuration.MainGribTimelineCacheMiB =
+      weather_routing::NormalizeGribTimelineCacheMiB(
+          static_cast<int>(main_grib_cache), false);
+  configuration.QuickGribTimelineCacheMiB =
+      weather_routing::NormalizeGribTimelineCacheMiB(
+          static_cast<int>(quick_grib_cache), true);
   if (!hasSavedDefaults)
     configuration.EngineSettings.mainPreset = {"balanced", 1};
   long routing_effort_percent = configuration.RoutingEffortPercent;

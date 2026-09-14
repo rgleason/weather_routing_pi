@@ -461,6 +461,8 @@ protected:
   wxSpinCtrlDouble* m_sQuickHeadingStepDegrees;
   wxSpinCtrl* m_sQuickMaximumSearchAngle;
   wxSpinCtrl* m_sQuickMemoryBudgetMiB;
+  wxSpinCtrl* m_sMainGribTimelineCacheMiB;
+  wxSpinCtrl* m_sQuickGribTimelineCacheMiB;
   wxSpinCtrl* m_sTimeStepHours;
   wxStaticText* m_staticText110;
   wxSpinCtrl* m_sTimeStepMinutes;

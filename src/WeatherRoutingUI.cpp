@@ -1953,9 +1953,39 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
       "isochrones. This is experimental and disabled by default."));
   mainEngineSizer->Add(m_cbUseReverseReachabilityRecovery, 0, wxALL, 5);
 
+  auto mainResources = new wxStaticBoxSizer(
+      new wxStaticBox(m_pMainEngine, wxID_ANY, _("Resources")), wxVERTICAL);
+  auto mainGribCacheRow = new wxBoxSizer(wxHORIZONTAL);
+  mainGribCacheRow->Add(
+      new wxStaticText(mainResources->GetStaticBox(), wxID_ANY,
+                       _("GRIB timeline cache limit")),
+      0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
+  m_sMainGribTimelineCacheMiB = new wxSpinCtrl(
+      mainResources->GetStaticBox(), wxID_ANY,
+      wxString::Format("%d", sizeof(void*) <= 4 ? 192 : 512),
+      wxDefaultPosition, wxSize(140, -1), wxSP_ARROW_KEYS, 16,
+      sizeof(void*) <= 4 ? 192 : 8192, sizeof(void*) <= 4 ? 192 : 512);
+  mainGribCacheRow->Add(m_sMainGribTimelineCacheMiB, 0,
+                        wxALL | wxALIGN_CENTER_VERTICAL, 5);
+  mainGribCacheRow->Add(
+      new wxStaticText(mainResources->GetStaticBox(), wxID_ANY, _("MiB")),
+      0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
+  mainResources->Add(mainGribCacheRow, 0, wxEXPAND, 0);
+  auto mainGribCacheHelp = new wxStaticText(
+      mainResources->GetStaticBox(), wxID_ANY,
+      _("Maximum RAM used to retain interpolated GRIB timeline frames. "
+        "Increasing this can greatly accelerate routes using large or "
+        "high-resolution GRIBs. Memory is allocated only as required. "
+        "Larger limits are applied only when enough physical RAM remains."));
+  mainGribCacheHelp->Wrap(430);
+  mainResources->Add(mainGribCacheHelp, 0, wxLEFT | wxRIGHT | wxBOTTOM, 5);
+  m_sMainGribTimelineCacheMiB->SetToolTip(mainGribCacheHelp->GetLabel());
+  mainEngineSizer->Add(mainResources, 0, wxEXPAND, 0);
+
   m_pMainEngine->SetSizer(mainEngineSizer);
   engineSettingsBox->Add(m_pMainEngine, 0, wxEXPAND, 0);
   m_pQuickEngine = new wxPanel(engineSettingsBox->GetStaticBox());
+  auto quickPanelSizer = new wxBoxSizer(wxVERTICAL);
   auto quickEngineSizer = new wxFlexGridSizer(0, 2, 0, 0);
   const auto quickLabel = [&](const wxString& label) {
     quickEngineSizer->Add(new wxStaticText(m_pQuickEngine, wxID_ANY, label),
@@ -1981,7 +2011,35 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   m_sQuickMaximumSearchAngle = new wxSpinCtrl(m_pQuickEngine, wxID_ANY,
       "120", wxDefaultPosition, wxSize(160, -1), wxSP_ARROW_KEYS, 0, 180, 120);
   quickEngineSizer->Add(m_sQuickMaximumSearchAngle, 0, wxALL, 5);
-  m_pQuickEngine->SetSizer(quickEngineSizer);
+  quickPanelSizer->Add(quickEngineSizer, 0, wxEXPAND, 0);
+  auto quickResources = new wxStaticBoxSizer(
+      new wxStaticBox(m_pQuickEngine, wxID_ANY, _("Resources")), wxVERTICAL);
+  auto quickGribCacheRow = new wxBoxSizer(wxHORIZONTAL);
+  quickGribCacheRow->Add(
+      new wxStaticText(quickResources->GetStaticBox(), wxID_ANY,
+                       _("GRIB timeline cache limit")),
+      0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
+  m_sQuickGribTimelineCacheMiB = new wxSpinCtrl(
+      quickResources->GetStaticBox(), wxID_ANY, "64", wxDefaultPosition,
+      wxSize(140, -1), wxSP_ARROW_KEYS, 16,
+      sizeof(void*) <= 4 ? 192 : 8192, 64);
+  quickGribCacheRow->Add(m_sQuickGribTimelineCacheMiB, 0,
+                         wxALL | wxALIGN_CENTER_VERTICAL, 5);
+  quickGribCacheRow->Add(
+      new wxStaticText(quickResources->GetStaticBox(), wxID_ANY, _("MiB")),
+      0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
+  quickResources->Add(quickGribCacheRow, 0, wxEXPAND, 0);
+  auto quickGribCacheHelp = new wxStaticText(
+      quickResources->GetStaticBox(), wxID_ANY,
+      _("Maximum RAM used to retain interpolated GRIB timeline frames. "
+        "Increasing this can greatly accelerate routes using large or "
+        "high-resolution GRIBs. Memory is allocated only as required. "
+        "Larger limits are applied only when enough physical RAM remains."));
+  quickGribCacheHelp->Wrap(430);
+  quickResources->Add(quickGribCacheHelp, 0, wxLEFT | wxRIGHT | wxBOTTOM, 5);
+  m_sQuickGribTimelineCacheMiB->SetToolTip(quickGribCacheHelp->GetLabel());
+  quickPanelSizer->Add(quickResources, 0, wxEXPAND, 0);
+  m_pQuickEngine->SetSizer(quickPanelSizer);
   engineSettingsBox->Add(m_pQuickEngine, 0, wxEXPAND, 0);
   m_pQuickEngine->Hide();
   advancedLeft->Add(engineSettingsBox, 0, wxEXPAND | wxALL, 5);
@@ -2707,6 +2765,10 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
       wxCommandEventHandler(ConfigurationDialogBase::OnUpdate), NULL, this);
   m_sQuickMemoryBudgetMiB->Connect(wxEVT_COMMAND_SPINCTRL_UPDATED,
       wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
+  m_sMainGribTimelineCacheMiB->Connect(wxEVT_COMMAND_SPINCTRL_UPDATED,
+      wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
+  m_sQuickGribTimelineCacheMiB->Connect(wxEVT_COMMAND_SPINCTRL_UPDATED,
+      wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
   m_sQuickOffshoreStepMinutes->Connect(wxEVT_COMMAND_SPINCTRL_UPDATED,
       wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
   m_sQuickMaximumSearchAngle->Connect(wxEVT_COMMAND_SPINCTRL_UPDATED,
@@ -3389,6 +3451,10 @@ ConfigurationDialogBase::~ConfigurationDialogBase() {
   m_cRoutingEngine->Disconnect(wxEVT_COMMAND_CHOICE_SELECTED,
       wxCommandEventHandler(ConfigurationDialogBase::OnUpdate), NULL, this);
   m_sQuickMemoryBudgetMiB->Disconnect(wxEVT_COMMAND_SPINCTRL_UPDATED,
+      wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
+  m_sMainGribTimelineCacheMiB->Disconnect(wxEVT_COMMAND_SPINCTRL_UPDATED,
+      wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
+  m_sQuickGribTimelineCacheMiB->Disconnect(wxEVT_COMMAND_SPINCTRL_UPDATED,
       wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
   m_sQuickOffshoreStepMinutes->Disconnect(wxEVT_COMMAND_SPINCTRL_UPDATED,
       wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);

@@ -72,6 +72,8 @@ struct RoutingScenarioRouteSettings {
   bool hasQuickRoute{false};
   int quickMemoryBudgetMiB{256};
   bool hasQuickMemoryBudgetMiB{false};
+  int gribTimelineCacheMiB{0};
+  bool hasGribTimelineCacheMiB{false};
   wxString boatFile;
   bool hasBoatFile;
   int timeStepSeconds;

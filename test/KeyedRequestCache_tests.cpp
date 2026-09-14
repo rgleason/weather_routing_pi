@@ -261,3 +261,32 @@ TEST(KeyedRequestCache, LoweredQuickBudgetEvictsAndRestoresMainCapacity) {
   EXPECT_EQ(cache.Size(), 1U);
   EXPECT_EQ(cache.TotalWeight(), 20U);
 }
+
+TEST(KeyedRequestCache, ReportsReloadsAndExplicitlyReleasesAllStorage) {
+  weather_routing::KeyedRequestCache<int, int> cache(
+      2, 8, [](const int&) { return 4U; });
+  ASSERT_TRUE(cache.Publish(1, 10, true));
+  ASSERT_TRUE(cache.Publish(2, 20, true));
+
+  int value = 0;
+  EXPECT_TRUE(cache.Acquire(1, &value, 10, [](const int&) {},
+                            [] { return false; }));
+  EXPECT_EQ(value, 10);
+  ASSERT_TRUE(cache.Publish(3, 30, true));
+  EXPECT_EQ(cache.Stats().evictions, 1U);
+
+  EXPECT_TRUE(cache.Acquire(
+      2, &value, 10,
+      [&](const int& key) { cache.Publish(key, 20, true); },
+      [] { return false; }));
+  EXPECT_EQ(cache.Stats().reloads_after_eviction, 1U);
+  EXPECT_GT(cache.TotalWeight(), 0U);
+
+  cache.Clear();
+  EXPECT_EQ(cache.Size(), 0U);
+  EXPECT_EQ(cache.TotalWeight(), 0U);
+  EXPECT_EQ(cache.Stats().hits, 0U);
+  EXPECT_EQ(cache.Stats().misses, 0U);
+  EXPECT_EQ(cache.Stats().evictions, 0U);
+  EXPECT_EQ(cache.Stats().reloads_after_eviction, 0U);
+}

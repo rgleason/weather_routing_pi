@@ -52,6 +52,7 @@ set(TEST_SRC
     ChartSafetyDefaults_tests.cpp
     HeadlessRouteMonitor_tests.cpp
     KeyedRequestCache_tests.cpp
+    GribTimelineCachePolicy_tests.cpp
     OceanPrewarmPolicy_tests.cpp
     ReachabilityPrewarmPolicy_tests.cpp
     RouteDisplayPolicy_tests.cpp
