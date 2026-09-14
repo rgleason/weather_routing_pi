@@ -52,6 +52,7 @@
 #include "ConstraintChecker.h"
 #include "ChartSafetyAtlas.h"
 #include "ChartSafetyHost.h"
+#include "ChartLongitude.h"
 #include "ChartSafetyPolicy.h"
 #include "OceanPrewarmPolicy.h"
 #include "ReachabilityPrewarmPolicy.h"
@@ -70,6 +71,7 @@
 #include "ocpn_plugin.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <functional>
 #include <limits>
@@ -723,6 +725,44 @@ static wxString ChartSafetyScoutEnvelopeGroupKey(
   return key;
 }
 
+using RoutingProgressCallback =
+    std::function<void(const wxString&, const wxString&, int, int)>;
+
+static weather_routing::chart_safety_host::PrewarmProgressCallback
+ChartTileProgress(const RoutingProgressCallback& progress,
+                  const wxString& phase, const wxString& item_label) {
+  if (!progress)
+    return weather_routing::chart_safety_host::PrewarmProgressCallback();
+  auto last_paint = std::make_shared<std::chrono::steady_clock::time_point>();
+  return [progress, phase, item_label, last_paint](std::size_t completed,
+                                                   std::size_t total) {
+    const auto now = std::chrono::steady_clock::now();
+    const bool first = completed == 0;
+    const bool finished = completed >= total;
+    const bool repaint_due =
+        *last_paint == std::chrono::steady_clock::time_point() ||
+        now - *last_paint >= std::chrono::milliseconds(250);
+    if (!first && !finished && !repaint_due) return;
+    *last_paint = now;
+    const int range = static_cast<int>(std::min<std::size_t>(
+        total, static_cast<std::size_t>(std::numeric_limits<int>::max())));
+    const int value = static_cast<int>(std::min<std::size_t>(
+        completed, static_cast<std::size_t>(range)));
+    const int percent = total == 0
+                            ? 100
+                            : static_cast<int>((100 * completed) / total);
+    progress(phase,
+             wxString::Format(_("%s %lu of %lu — %d%%"), item_label,
+                              static_cast<unsigned long>(completed),
+                              static_cast<unsigned long>(total), percent),
+             value, std::max(1, range));
+    // Raw chart extraction must run on the GUI thread. Yield only after a
+    // complete tile, when no chart API call is active, so Stop can set the
+    // cooperative cancellation flag and the dialog can repaint.
+    wxYieldIfNeeded();
+  };
+}
+
 static void PrewarmExperimentalChartSafetyForConfiguration(
     const RouteMapConfiguration& configuration, const wxString& context,
     const std::function<void(const wxString&, const wxString&, int, int)>&
@@ -898,12 +938,15 @@ static void PrewarmExperimentalChartSafetyForConfiguration(
         context, configuration.Start, configuration.End);
     return;
   }
+  const auto corridor_progress = ChartTileProgress(
+      progress, _("Building chart safety grid"),
+      _("Preparing scout corridor\nChart tile"));
   prewarm_ok = weather_routing::chart_safety_host::
       PrewarmRouteMaskForPolylinesWithTileHalo(
           corridor_latitudes.data(), corridor_longitudes.data(),
           corridor_point_counts.data(),
           static_cast<int>(corridor_point_counts.size()), prewarm_margin_nm, 1,
-          &options, &result);
+          &options, &result, corridor_progress);
   PlugInSegmentSafetyOptions search_options =
       ChartSafetySearchRouteMaskOptions(configuration);
   const bool search_mask_differs = std::fabs(search_options.safety_margin_nm -
@@ -915,7 +958,9 @@ static void PrewarmExperimentalChartSafetyForConfiguration(
               corridor_latitudes.data(), corridor_longitudes.data(),
               corridor_point_counts.data(),
               static_cast<int>(corridor_point_counts.size()),
-              prewarm_margin_nm, 1, &search_options, &search_result);
+              prewarm_margin_nm, 1, &search_options, &search_result,
+              ChartTileProgress(progress, _("Building chart safety grid"),
+                                _("Preparing scout search margin\nChart tile")));
   prewarm_ok = prewarm_ok && search_prewarm_ok;
   if (enforce_chart_safety)
     prewarm_mode =
@@ -1144,6 +1189,8 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
       m_weather_routing_pi(plugin),
       m_positionOnRoute(nullptr),
       m_RoutingTablePanel(nullptr) {
+  weather_routing::chart_safety_host::SetInteractivePrewarmCancellationFlag(
+      &m_ChartSafetyPreparationCancelled);
   wxFileConfig* pConf = GetOCPNConfigObject();
   pConf->SetPath(_T( "/Plugins/WeatherRouting" ));
 
@@ -1543,6 +1590,8 @@ WeatherRouting::~WeatherRouting() {
       NULL, this);
 
   StopAll();
+  weather_routing::chart_safety_host::SetInteractivePrewarmCancellationFlag(
+      nullptr);
   if (m_RoutingProgressDialog) {
     m_RoutingProgressDialog->Destroy();
     m_RoutingProgressDialog = NULL;
@@ -2562,6 +2611,16 @@ bool WeatherRouting::ShouldShowComputeProgress(
 
 void WeatherRouting::BeginChartSafetyComputeProgress(
     bool computeAll, const std::list<RouteMapOverlay*>& routemapoverlays) {
+  m_ChartSafetyPreparationCancelled.store(false, std::memory_order_relaxed);
+  m_ChartSafetyPreparationFailure.Clear();
+  m_PreparingChartSafetyRoutes.clear();
+  bool use_chart_safety = false;
+  bool enforce_chart_safety = false;
+  ReadExperimentalChartSafetySettings(use_chart_safety, enforce_chart_safety);
+  if (use_chart_safety && enforce_chart_safety)
+    for (RouteMapOverlay* route : routemapoverlays)
+      if (route && route->GetConfiguration().DetectLand)
+        m_PreparingChartSafetyRoutes.insert(route);
   m_ChartSafetyComputeProgressActive = true;
   m_ChartSafetyComputeProgressAll = computeAll;
   m_ChartSafetyComputeProgressTotalRoutes =
@@ -2581,6 +2640,89 @@ void WeatherRouting::BeginChartSafetyComputeProgress(
   wxLogMessage("WR_PROGRESS mode=%s stage=\"%s\" routes=%d",
                computeAll ? "compute-all" : "single", stage,
                m_ChartSafetyComputeProgressTotalRoutes);
+  UpdateStates();
+}
+
+void WeatherRouting::RecordChartSafetyPreparationFailure(
+    RouteMapOverlay* route, const wxString& reason) {
+  if (reason.IsEmpty()) return;
+  m_ChartSafetyPreparationFailure = reason;
+  if (route) {
+    m_PreparingChartSafetyRoutes.erase(route);
+    UpdateRouteMap(route);
+  }
+  if (m_RoutingProgressDialog)
+    UpdateRoutingProgress(_("Cannot compute route"), reason, -1, -1);
+}
+
+bool WeatherRouting::ValidateChartSafetyEndpoints(
+    RouteMapOverlay* route, const RouteMapConfiguration& configuration,
+    bool useChartSafety, bool enforceChartSafety) {
+  if (!route || configuration.chart_safety_scout_preview ||
+      configuration.MinimumDepthMeters <= 0.0 || !configuration.DetectLand ||
+      !useChartSafety || !enforceChartSafety)
+    return true;
+
+  const double endpoint_latitudes[2] = {configuration.StartLat,
+                                        configuration.EndLat};
+  const double endpoint_longitudes[2] = {configuration.StartLon,
+                                         configuration.EndLon};
+  const int endpoint_point_counts[2] = {1, 1};
+  PlugInSegmentSafetyOptions endpoint_options =
+      ChartSafetyRouteMaskOptions(configuration);
+  endpoint_options.safety_margin_nm = 0.0;
+  PlugInSegmentSafetyResult endpoint_prewarm = {};
+  endpoint_prewarm.struct_size = sizeof(endpoint_prewarm);
+  RoutingProgressCallback endpoint_progress;
+  if (m_RoutingProgressDialog) {
+    endpoint_progress =
+        [this](const wxString& stage, const wxString& detail, int value,
+               int range) {
+          UpdateRoutingProgress(stage, detail, value, range);
+        };
+  }
+  const bool endpoint_prewarm_ok =
+      weather_routing::chart_safety_host::
+          PrewarmRouteMaskForPolylinesWithTileHalo(
+              endpoint_latitudes, endpoint_longitudes, endpoint_point_counts,
+              2, 0.0, 0, &endpoint_options, &endpoint_prewarm,
+              ChartTileProgress(endpoint_progress,
+                                _("Checking route endpoints"),
+                                _("Preparing endpoint checks\nChart tile")));
+  wxLogMessage(
+      "WR_ENDPOINT_PREWARM route=\"%s -> %s\" ok=%d requested_tiles=%d "
+      "base_built=%d base_reused=%d",
+      configuration.Start, configuration.End, endpoint_prewarm_ok ? 1 : 0,
+      endpoint_prewarm.prewarm_requested_tiles,
+      endpoint_prewarm.prewarm_base_tiles_built,
+      endpoint_prewarm.prewarm_base_tiles_reused);
+  if (weather_routing::chart_safety_host::PrewarmCancellationRequested()) {
+    const wxString cancelled = _("Chart safety preparation was stopped.");
+    route->SetError(cancelled);
+    RecordChartSafetyPreparationFailure(route, cancelled);
+    return false;
+  }
+
+  wxString endpoint_failure;
+  const wxString start_endpoint = wxString::Format(
+      _("Route start \"%s\" at %.6f, %.6f"), configuration.Start,
+      configuration.StartLat,
+      weather_routing::CanonicalChartLongitude(configuration.StartLon));
+  const wxString end_endpoint = wxString::Format(
+      _("Route destination \"%s\" at %.6f, %.6f"), configuration.End,
+      configuration.EndLat,
+      weather_routing::CanonicalChartLongitude(configuration.EndLon));
+  if (EndpointMeetsMinimumDepth(configuration, configuration.StartLat,
+                                configuration.StartLon, start_endpoint,
+                                &endpoint_failure) &&
+      EndpointMeetsMinimumDepth(configuration, configuration.EndLat,
+                                configuration.EndLon, end_endpoint,
+                                &endpoint_failure))
+    return true;
+
+  route->SetError(endpoint_failure);
+  RecordChartSafetyPreparationFailure(route, endpoint_failure);
+  return false;
 }
 
 void WeatherRouting::UpdateChartSafetyComputeProgress(
@@ -2628,13 +2770,20 @@ void WeatherRouting::FinishChartSafetyComputeProgressIfDone() {
   if (!m_ChartSafetyComputeProgressActive) return;
   if (!m_RunningRouteMaps.empty() || !m_WaitingRouteMaps.empty()) return;
 
-  wxString stage = _("Computation finished");
-  wxString detail =
-      m_ChartSafetyComputeProgressAll
-          ? wxString::Format(_("Completed %d weather route computations."),
-                             m_ChartSafetyComputeProgressCompletedRoutes)
-          : _("Weather route computation finished. See the route State for "
-              "its result or failure reason.");
+  wxString stage = m_ChartSafetyPreparationFailure.IsEmpty()
+                       ? _("Computation finished")
+                       : _("Cannot compute route");
+  wxString detail;
+  if (!m_ChartSafetyPreparationFailure.IsEmpty()) {
+    detail = m_ChartSafetyPreparationFailure;
+  } else {
+    detail =
+        m_ChartSafetyComputeProgressAll
+            ? wxString::Format(_("Completed %d weather route computations."),
+                               m_ChartSafetyComputeProgressCompletedRoutes)
+            : _("Weather route computation finished. See the route State for "
+                "its result or failure reason.");
+  }
   FinishRoutingProgress(stage, detail);
   wxLogMessage(
       "WR_PROGRESS mode=%s stage=\"%s\" completed_routes=%d",
@@ -2645,6 +2794,9 @@ void WeatherRouting::FinishChartSafetyComputeProgressIfDone() {
   m_ChartSafetyComputeProgressTotalRoutes = 0;
   m_ChartSafetyComputeProgressStartedRoutes = 0;
   m_ChartSafetyComputeProgressCompletedRoutes = 0;
+  m_PreparingChartSafetyRoutes.clear();
+  m_ChartSafetyPreparationFailure.Clear();
+  UpdateStates();
 }
 
 wxString WeatherRouting::SafeMultiLegFailureReason(
@@ -2808,6 +2960,8 @@ void WeatherRouting::CancelDeferredRoutingStart() {
     m_ChartSafetyComputeProgressTotalRoutes = 0;
     m_ChartSafetyComputeProgressStartedRoutes = 0;
     m_ChartSafetyComputeProgressCompletedRoutes = 0;
+    m_PreparingChartSafetyRoutes.clear();
+    UpdateStates();
   }
 }
 
@@ -6618,6 +6772,8 @@ void WeatherRouting::StartCurrentRouteComputations() {
       configuration.chart_safety_missing_tile_max_lon = NAN;
       (*it)->SetConfiguration(configuration);
       Start(*it);
+      m_PreparingChartSafetyRoutes.erase(*it);
+      UpdateRouteMap(*it);
     }
   }
   UpdateComputeState();
@@ -6650,11 +6806,19 @@ void WeatherRouting::StartAllRouteComputations() {
     all_routes.push_back(weatherroute->routemapoverlay);
   }
   PrepareChartSafetyScoutEnvelopes(all_routes, _("compute all scouts"));
+  if (weather_routing::chart_safety_host::PrewarmCancellationRequested())
+    return;
   StartAll();
+  m_PreparingChartSafetyRoutes.clear();
+  UpdateStates();
   UpdateComputeState();
 }
 
 void WeatherRouting::OnCompute(wxCommandEvent& event) {
+  // Chart extraction yields between complete tiles so the progress window and
+  // Stop button remain live. Do not allow that yield to start a second,
+  // re-entrant preparation pass through the main window.
+  if (m_RoutePreparationDepth > 0 || m_DeferredRoutingStartPending) return;
   CancelMultiLegSequence();
   CancelMultiLegDepartureOptimization(true);
   std::list<RouteMapOverlay*> currentroutemaps = CurrentRouteMaps();
@@ -6706,7 +6870,8 @@ void WeatherRouting::OnEditMultiLegGroupSettings(wxCommandEvent& event) {
 void WeatherRouting::OnShowRoutingStatus(wxCommandEvent& event) {
   if (m_RoutingProgressDialog && !m_RoutingProgressFinished &&
       (m_DeferredRoutingStartPending || !m_RunningRouteMaps.empty() ||
-       !m_WaitingRouteMaps.empty())) {
+       !m_WaitingRouteMaps.empty() || m_RoutePreparationDepth > 0 ||
+       !m_PreparingChartSafetyRoutes.empty())) {
     m_RoutingProgressDialog->Show();
     m_RoutingProgressDialog->Raise();
     return;
@@ -6715,6 +6880,7 @@ void WeatherRouting::OnShowRoutingStatus(wxCommandEvent& event) {
 }
 
 void WeatherRouting::OnComputeAll(wxCommandEvent& event) {
+  if (m_RoutePreparationDepth > 0 || m_DeferredRoutingStartPending) return;
   CancelMultiLegSequence();
   CancelMultiLegDepartureOptimization(true);
   std::list<RouteMapOverlay*> allroutemaps;
@@ -6738,6 +6904,7 @@ void WeatherRouting::OnComputeAll(wxCommandEvent& event) {
 }
 
 void WeatherRouting::OnStop(wxCommandEvent& event) {
+  m_ChartSafetyPreparationCancelled.store(true, std::memory_order_relaxed);
   CancelDeferredRoutingStart();
   CancelMultiLegSequence();
   CancelMultiLegDepartureOptimization(true);
@@ -8838,7 +9005,9 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
                                    WeatherSource, WeatherSourceDetail);
   }
 
-  if (!routemapoverlay->Valid()) {
+  if (wr->IsPreparingChartSafety(routemapoverlay)) {
+    State = _("Preparing chart safety grid");
+  } else if (!routemapoverlay->Valid()) {
     State = _("Cannot compute");
     wxString error = routemapoverlay->GetError();
     wxString weatherError = routemapoverlay->GetWeatherForecastError();
@@ -9554,8 +9723,11 @@ static void SetChartSafetyScoutEndpointReach(
 
 void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
     const std::vector<RouteMapOverlay*>& routemapoverlays,
-    const wxString& context) {
+    const wxString& context, bool endpointsAlreadyValidated) {
   if (routemapoverlays.empty()) return;
+  if (m_RoutePreparationDepth == 0)
+    m_ChartSafetyPreparationCancelled.store(false,
+                                             std::memory_order_relaxed);
   ScopedRoutePreparation route_preparation(m_RoutePreparationDepth);
 
   bool use_chart_safety = false;
@@ -9563,11 +9735,28 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
   ReadExperimentalChartSafetySettings(use_chart_safety, enforce_chart_safety);
   if (!use_chart_safety || !enforce_chart_safety) return;
 
+  std::vector<RouteMapOverlay*> eligible_routes;
+  eligible_routes.reserve(routemapoverlays.size());
+  if (endpointsAlreadyValidated) {
+    eligible_routes = routemapoverlays;
+  } else {
+    for (RouteMapOverlay* route : routemapoverlays) {
+      if (!route) continue;
+      if (ValidateChartSafetyEndpoints(route, route->GetConfiguration(),
+                                       use_chart_safety,
+                                       enforce_chart_safety))
+        eligible_routes.push_back(route);
+      if (weather_routing::chart_safety_host::PrewarmCancellationRequested())
+        return;
+    }
+  }
+  if (eligible_routes.empty()) return;
+
   std::vector<RouteMapConfiguration> snapshot_configurations;
   bool legacy_full_chart_propagation = false;
   for (std::vector<RouteMapOverlay*>::const_iterator route =
-           routemapoverlays.begin();
-       route != routemapoverlays.end(); ++route)
+           eligible_routes.begin();
+       route != eligible_routes.end(); ++route)
     if (*route && (*route)->GetConfiguration().DetectLand) {
       const RouteMapConfiguration configuration = (*route)->GetConfiguration();
       snapshot_configurations.push_back(configuration);
@@ -9590,8 +9779,8 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
   std::map<wxString, ScoutEnvelope> reusable_scouts;
   int scout_total = 0;
   for (std::vector<RouteMapOverlay*>::const_iterator route =
-           routemapoverlays.begin();
-       route != routemapoverlays.end(); ++route) {
+           eligible_routes.begin();
+       route != eligible_routes.end(); ++route) {
     if (!*route) continue;
     const RouteMapConfiguration configuration = (*route)->GetConfiguration();
     if (!configuration.DetectLand || configuration.IsQuick() ||
@@ -9605,8 +9794,8 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
   int scouts_completed = 0;
   wxStopWatch scout_progress_timer;
   for (std::vector<RouteMapOverlay*>::const_iterator route =
-           routemapoverlays.begin();
-       route != routemapoverlays.end(); ++route) {
+           eligible_routes.begin();
+       route != eligible_routes.end(); ++route) {
     if (!*route) continue;
     RouteMapConfiguration configuration = (*route)->GetConfiguration();
     if (!configuration.DetectLand || configuration.IsQuick() ||
@@ -9875,6 +10064,14 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
     wxStopWatch timer;
     const bool prewarm_full_corridor =
         representative.UseChartSafetyForPropagation;
+    RoutingProgressCallback chart_progress;
+    if (m_RoutingProgressDialog) {
+      chart_progress =
+          [this](const wxString& stage, const wxString& detail, int value,
+                 int range) {
+            UpdateRoutingProgress(stage, detail, value, range);
+          };
+    }
 
     // Union the scout footprint with a filled geodesic reachability envelope.
     // For the logged maximum path length, every possible route point obeys
@@ -9901,7 +10098,10 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
               representative.StartLat, representative.StartLon,
               representative.EndLat, representative.EndLon,
               reachability.maximum_path_length_nm, &reachability_options,
-              &reachability_result);
+              &reachability_result,
+              ChartTileProgress(chart_progress,
+                                _("Building chart safety grid"),
+                                _("Prewarming wider chart area\nChart tile")));
       wxLogMessage(
           "WR_ROUTE_MASK_REACHABILITY_PREWARM context=%s scope=%s ok=%d "
           "direct_nm=%.3f maximum_path_nm=%.3f cross_track_nm=%.3f "
@@ -9916,6 +10116,8 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
           reachability_result.prewarm_base_tiles_built,
           reachability_result.prewarm_base_tiles_reused,
           reachability_result.grid_build_ms);
+      if (weather_routing::chart_safety_host::PrewarmCancellationRequested())
+        return;
     }
 
     if (m_RoutingProgressDialog && m_RoutingProgressDialog->IsShown())
@@ -9929,7 +10131,12 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
                   PrewarmRouteMaskForPolylinesWithTileHalo(
                   latitudes.data(), longitudes.data(), point_counts.data(),
                   (int)point_counts.size(), footprint_dilation_nm,
-                  footprint_fine_tile_halo, &options, &result);
+                  footprint_fine_tile_halo, &options, &result,
+                  ChartTileProgress(chart_progress,
+                                    _("Building chart safety grid"),
+                                    _("Preparing scout corridor\nChart tile")));
+    if (weather_routing::chart_safety_host::PrewarmCancellationRequested())
+      return;
     PlugInSegmentSafetyResult search_result = {};
     search_result.struct_size = sizeof(search_result);
     const bool search_ok =
@@ -9938,7 +10145,12 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
             PrewarmRouteMaskForPolylinesWithTileHalo(
             latitudes.data(), longitudes.data(), point_counts.data(),
             (int)point_counts.size(), footprint_dilation_nm,
-            footprint_fine_tile_halo, &search_options, &search_result);
+            footprint_fine_tile_halo, &search_options, &search_result,
+            ChartTileProgress(chart_progress,
+                              _("Building chart safety grid"),
+                              _("Preparing scout search margin\nChart tile")));
+    if (weather_routing::chart_safety_host::PrewarmCancellationRequested())
+      return;
 
     PlugInSegmentSafetyOptions endpoint_options = options;
     endpoint_options.safety_margin_nm = 0.0;
@@ -9955,7 +10167,12 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
             endpoint_latitudes.data(), endpoint_longitudes.data(),
             endpoint_point_counts.data(), (int)endpoint_point_counts.size(),
             footprint_dilation_nm, footprint_fine_tile_halo, &endpoint_options,
-            &endpoint_result);
+            &endpoint_result,
+            ChartTileProgress(chart_progress,
+                              _("Building chart safety grid"),
+                              _("Preparing endpoint approaches\nChart tile")));
+    if (weather_routing::chart_safety_host::PrewarmCancellationRequested())
+      return;
 
     // The union includes every selected chain, retained nearby alternatives,
     // a direct spine and a fine-tile halo. Mark each exact candidate scope as
@@ -10910,6 +11127,9 @@ void WeatherRouting::ExportRoute(RouteMapOverlay& routemapoverlay) {
 
 void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
   if (!routemapoverlay) return;
+  if (m_RoutePreparationDepth == 0)
+    m_ChartSafetyPreparationCancelled.store(false,
+                                             std::memory_order_relaxed);
   if (weather_routing::ShorelineManager::Busy()) {
     routemapoverlay->SetError(_("Close shoreline data management before computing."));
     return;
@@ -11141,6 +11361,13 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
       configuration.SelectedGribTimelineCacheMiB());
   wxLogMessage("%s", routeStartLog);
 
+  // Decide endpoint depth suitability before any potentially large chart
+  // reachability/scout prewarm.
+  if (!ValidateChartSafetyEndpoints(routemapoverlay, configuration,
+                                    use_chart_safety,
+                                    enforce_chart_safety))
+    return;
+
   if (prewarm_authoritative_chart_search &&
       s_chartSafetySharedPrewarmScopes.find(ChartSafetySharedPrewarmScopeKey(
           configuration)) == s_chartSafetySharedPrewarmScopes.end() &&
@@ -11152,7 +11379,7 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
         configuration.UseReverseReachabilityRecovery;
     PrepareChartSafetyScoutEnvelopes(
         std::vector<RouteMapOverlay*>(1, routemapoverlay),
-        _("route start scout"));
+        _("route start scout"), true);
     configuration = routemapoverlay->GetConfiguration();
     // PrepareChartSafetyScoutEnvelopes restores and resets the route overlay.
     // Re-apply the routing policy established above after the bounded scout
@@ -11165,7 +11392,9 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
   }
 
   if (weather_routing::chart_safety_host::PrewarmCancellationRequested()) {
-    routemapoverlay->SetError(_("routing cancelled"));
+    const wxString cancelled = _("Chart safety preparation was stopped.");
+    routemapoverlay->SetError(cancelled);
+    RecordChartSafetyPreparationFailure(routemapoverlay, cancelled);
     return;
   }
 
@@ -11245,20 +11474,6 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
           "route=\"%s to %s\" policy=scout-or-bounded-tile-refinement",
           configuration.Start, configuration.End);
     }
-    if (!configuration.chart_safety_scout_preview &&
-        configuration.MinimumDepthMeters > 0.0 &&
-        use_experimental_chart_safety && enforce_experimental_chart_safety) {
-      wxString endpoint_failure;
-      if (!EndpointMeetsMinimumDepth(
-              configuration, configuration.StartLat, configuration.StartLon,
-              _("Route start"), &endpoint_failure) ||
-          !EndpointMeetsMinimumDepth(
-              configuration, configuration.EndLat, configuration.EndLon,
-              _("Route destination"), &endpoint_failure)) {
-        routemapoverlay->SetError(endpoint_failure);
-        return;
-      }
-    }
     if (!s_loggedDetectLandGshhsWarning) {
       wxLogMessage(
           use_experimental_chart_safety
@@ -11314,6 +11529,7 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
   routemapoverlay->Reset();
   m_RoutesToRun++;
   m_WaitingRouteMaps.push_back(routemapoverlay);
+  m_PreparingChartSafetyRoutes.erase(routemapoverlay);
   SetEnableConfigurationMenu();
   UpdateRouteMap(routemapoverlay);
 }
@@ -11509,6 +11725,7 @@ void WeatherRouting::Stop(RouteMapOverlay* routemapoverlay) {
 }
 
 void WeatherRouting::StopAll() {
+  m_ChartSafetyPreparationCancelled.store(true, std::memory_order_relaxed);
   CancelDeferredRoutingStart();
   CancelMultiLegSequence();
 
@@ -11549,6 +11766,7 @@ void WeatherRouting::StopAll() {
   s_chartSafetyPreparedScoutScopes.clear();
   weather_routing::chart_safety_host::ReleaseRouteMaskPins();
 
+  m_PreparingChartSafetyRoutes.clear();
   UpdateStates();
 
   m_RoutesToRun = 0;

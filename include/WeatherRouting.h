@@ -25,11 +25,13 @@
 #include <wx/collpane.h>
 #include <wx/listctrl.h>
 
+#include <atomic>
 #include <map>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <vector>
 
 #ifdef __OCPN__ANDROID__
@@ -675,7 +677,7 @@ private:
           std::function<void(long)>());
   void PrepareChartSafetyScoutEnvelopes(
       const std::vector<RouteMapOverlay*>& routemapoverlays,
-      const wxString& context);
+      const wxString& context, bool endpointsAlreadyValidated = false);
   bool RetryRouteWithChartSafetyPropagation(
       RouteMapOverlay* routemapoverlay);
   bool RetryRouteAfterMissingChartSafetyTiles(RouteMapOverlay* routemapoverlay);
@@ -727,6 +729,12 @@ private:
   void OnRoutingProgressTimer(wxTimerEvent&);
   void RefreshRoutingProgressTiming();
   void PaintRoutingProgressNow();
+  void RecordChartSafetyPreparationFailure(RouteMapOverlay* route,
+                                           const wxString& reason);
+  bool ValidateChartSafetyEndpoints(RouteMapOverlay* route,
+                                    const RouteMapConfiguration& configuration,
+                                    bool useChartSafety,
+                                    bool enforceChartSafety);
 
 public:
   bool ApplyMultiLegOptimizationCandidate(int candidateIndex);
@@ -777,6 +785,9 @@ public:
   }
   int ChartSafetyRamCacheMiB() const;
   int EffectiveChartSafetyRamCacheMiB() const;
+  bool IsPreparingChartSafety(RouteMapOverlay* route) const {
+    return route && m_PreparingChartSafetyRoutes.count(route) != 0;
+  }
   bool HasEnhancedChartSafety() const;
   void ApplyChartSafetySettings(bool use, bool enforce);
   void SetChartSafetyRamCacheMiB(int ramMiB);
@@ -896,6 +907,9 @@ private:
   int m_ChartSafetyComputeProgressTotalRoutes;
   int m_ChartSafetyComputeProgressStartedRoutes;
   int m_ChartSafetyComputeProgressCompletedRoutes;
+  std::atomic_bool m_ChartSafetyPreparationCancelled{false};
+  std::set<RouteMapOverlay*> m_PreparingChartSafetyRoutes;
+  wxString m_ChartSafetyPreparationFailure;
   wxDialog* m_RoutingProgressDialog;
   wxStaticText* m_RoutingProgressStage;
   wxTextCtrl* m_RoutingProgressDetail;

@@ -93,6 +93,8 @@ HostFunctions g_host;
 weather_routing::ChartSafetyCache* g_cache = nullptr;
 std::unique_ptr<weather_routing::ChartHazardEvaluator> g_evaluator;
 std::atomic<const std::atomic_bool*> g_prewarm_cancellation{nullptr};
+std::atomic<const std::atomic_bool*> g_interactive_prewarm_cancellation{
+    nullptr};
 std::atomic<std::int64_t> g_prewarm_deadline_ms{0};
 
 bool ConfirmHostIdentity() {
@@ -229,7 +231,9 @@ double NormalizeLongitude(double longitude) {
 
 bool RequestRawTiles(const std::set<std::pair<long, long>>& raw_tiles,
                      const PlugInSegmentSafetyOptions* options,
-                     PlugInSegmentSafetyResult* result) {
+                     PlugInSegmentSafetyResult* result,
+                     const weather_routing::chart_safety_host::
+                         PrewarmProgressCallback& progress) {
   if (raw_tiles.empty() || !options || !ConfirmHostIdentity()) return false;
 
   std::vector<long> lat_tiles;
@@ -247,6 +251,7 @@ bool RequestRawTiles(const std::set<std::pair<long, long>>& raw_tiles,
   PlugInSegmentSafetyResult batch_result = {};
   batch_result.struct_size = sizeof(batch_result);
   PlugInSegmentSafetyResult totals = {};
+  if (progress) progress(0, lat_tiles.size());
   for (std::size_t offset = 0; offset < lat_tiles.size();
        offset += kExternalPrewarmBatchTiles) {
     if (weather_routing::chart_safety_host::PrewarmCancellationRequested())
@@ -262,6 +267,7 @@ bool RequestRawTiles(const std::set<std::pair<long, long>>& raw_tiles,
     totals.prewarm_masks_built += batch_result.prewarm_masks_built;
     totals.prewarm_masks_reused += batch_result.prewarm_masks_reused;
     totals.prewarm_fine_tiles_avoided += batch_result.prewarm_fine_tiles_avoided;
+    if (progress) progress(offset + count, lat_tiles.size());
   }
   if (result) {
     *result = batch_result;
@@ -279,7 +285,9 @@ bool PrewarmRawTiles(
     const double* latitudes, const double* longitudes,
     const int* point_counts, int polyline_count, double corridor_margin_nm,
     int fine_tile_halo, const PlugInSegmentSafetyOptions* options,
-    PlugInSegmentSafetyResult* result) {
+    PlugInSegmentSafetyResult* result,
+    const weather_routing::chart_safety_host::PrewarmProgressCallback&
+        progress) {
   if (!g_host.available || !g_host.raw_tiles || !latitudes || !longitudes ||
       !point_counts || polyline_count <= 0 || !options)
     return false;
@@ -331,7 +339,7 @@ bool PrewarmRawTiles(
     AddTileHalo(tile.first, tile.second, margin_tile_halo, &raw_tiles);
   }
 
-  return RequestRawTiles(raw_tiles, options, result);
+  return RequestRawTiles(raw_tiles, options, result, progress);
 }
 
 }  // namespace
@@ -538,6 +546,10 @@ void SetPrewarmCancellationFlag(const std::atomic_bool* flag) {
   g_prewarm_cancellation.store(flag, std::memory_order_release);
 }
 
+void SetInteractivePrewarmCancellationFlag(const std::atomic_bool* flag) {
+  g_interactive_prewarm_cancellation.store(flag, std::memory_order_release);
+}
+
 void SetPrewarmDeadline(std::chrono::steady_clock::time_point deadline) {
   g_prewarm_deadline_ms.store(std::chrono::duration_cast<
       std::chrono::milliseconds>(deadline.time_since_epoch()).count(),
@@ -547,10 +559,14 @@ void SetPrewarmDeadline(std::chrono::steady_clock::time_point deadline) {
 bool PrewarmCancellationRequested() {
   const auto* flag =
       g_prewarm_cancellation.load(std::memory_order_acquire);
+  const auto* interactive_flag =
+      g_interactive_prewarm_cancellation.load(std::memory_order_acquire);
   const auto deadline = g_prewarm_deadline_ms.load(std::memory_order_acquire);
   const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::steady_clock::now().time_since_epoch()).count();
   return (flag && flag->load(std::memory_order_relaxed)) ||
+         (interactive_flag &&
+          interactive_flag->load(std::memory_order_relaxed)) ||
          (deadline != 0 && now >= deadline);
 }
 
@@ -590,19 +606,21 @@ bool PrewarmHazardSnapshot(double min_lat, double min_lon, double max_lat,
 bool PrewarmRouteMaskForSegment(
     double lat1, double lon1, double lat2, double lon2,
     double corridor_margin_nm, const PlugInSegmentSafetyOptions* options,
-    PlugInSegmentSafetyResult* result) {
+    PlugInSegmentSafetyResult* result,
+    const PrewarmProgressCallback& progress) {
   const double latitudes[2] = {lat1, lat2};
   const double longitudes[2] = {lon1, lon2};
   const int point_count = 2;
   return PrewarmRawTiles(latitudes, longitudes, &point_count, 1,
-                         corridor_margin_nm, 0, options, result);
+                         corridor_margin_nm, 0, options, result, progress);
 }
 
 bool PrewarmReachabilityEnvelope(
     double start_lat, double start_lon, double end_lat, double end_lon,
     double maximum_path_length_nm,
     const PlugInSegmentSafetyOptions* options,
-    PlugInSegmentSafetyResult* result) {
+    PlugInSegmentSafetyResult* result,
+    const PrewarmProgressCallback& progress) {
   if (!g_host.available || !g_host.raw_tiles || !options ||
       !std::isfinite(start_lat) || !std::isfinite(start_lon) ||
       !std::isfinite(end_lat) || !std::isfinite(end_lon) ||
@@ -689,26 +707,29 @@ bool PrewarmReachabilityEnvelope(
       if (tiles.size() > kMaximumEnvelopeTiles) return false;
     }
   }
-  return RequestRawTiles(tiles, options, result);
+  return RequestRawTiles(tiles, options, result, progress);
 }
 
 bool PrewarmAtlasTiles(
     const std::vector<std::pair<long, long>>& tiles,
     const PlugInSegmentSafetyOptions* options,
-    PlugInSegmentSafetyResult* result) {
+    PlugInSegmentSafetyResult* result,
+    const PrewarmProgressCallback& progress) {
   if (tiles.empty()) return true;
   return RequestRawTiles(
       std::set<std::pair<long, long>>(tiles.begin(), tiles.end()), options,
-      result);
+      result, progress);
 }
 
 bool PrewarmRouteMaskForPolylinesWithTileHalo(
     const double* latitudes, const double* longitudes,
     const int* point_counts, int polyline_count, double corridor_margin_nm,
     int fine_tile_halo, const PlugInSegmentSafetyOptions* options,
-    PlugInSegmentSafetyResult* result) {
+    PlugInSegmentSafetyResult* result,
+    const PrewarmProgressCallback& progress) {
   return PrewarmRawTiles(latitudes, longitudes, point_counts, polyline_count,
-                         corridor_margin_nm, fine_tile_halo, options, result);
+                         corridor_margin_nm, fine_tile_halo, options, result,
+                         progress);
 }
 
 bool ServicePendingRequests(
