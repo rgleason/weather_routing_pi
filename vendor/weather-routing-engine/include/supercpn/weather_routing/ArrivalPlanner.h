@@ -19,6 +19,7 @@ struct ArrivalPlanningOptions {
   Duration refinementStep{std::chrono::minutes{5}};
   Duration arrivalTolerance{std::chrono::minutes{1}};
   unsigned maximumRouteEvaluations{24};
+  bool retainOnlyBestResult{false};
   double nominalPassageSpeedKnots{5.0};
 };
 

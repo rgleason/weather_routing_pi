@@ -49,3 +49,5 @@ test "${#metadata[@]}" -eq 1
 grep -q "<name> ${plugin_name} </name>" "${metadata[0]}"
 grep -q '<api-version> 1.21 </api-version>' "${metadata[0]}"
 echo "Catalogue archive and stock-host ABI contract validated: $archive"
+
+python3 "$(dirname "$0")/verify-shoreline-package.py" "$archive"

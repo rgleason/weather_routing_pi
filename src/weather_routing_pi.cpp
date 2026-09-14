@@ -1331,6 +1331,13 @@ void weather_routing_pi::SetColorScheme(PI_ColorScheme cs) {
 }
 
 wxString weather_routing_pi::StandardPath() {
+  // Keep GUI migration tests and headless runs independent of the host API's
+  // private-data path (some hosts ignore --configdir for that API).
+  wxString testDataDir;
+  if (wxGetEnv("WR_HEADLESS_DATA_DIR", &testDataDir) && !testDataDir.empty()) {
+    wxFileName directory = wxFileName::DirName(testDataDir);
+    if (directory.IsAbsolute()) return directory.GetPathWithSep();
+  }
   wxString s = wxFileName::GetPathSeparator();
   wxString stdPath = *GetpPrivateApplicationDataLocation();
 

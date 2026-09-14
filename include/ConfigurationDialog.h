@@ -98,6 +98,7 @@ protected:
   }
   void OnChartSafetyChanged(wxCommandEvent& event);
   void OnUpdate(wxCommandEvent& event) {
+    if (HandleEngineEdit(event.GetEventObject())) return;
     OnValueChange(event);
     Update();
   }
@@ -115,6 +116,7 @@ protected:
   void OnGribTime(wxCommandEvent& event);
   void OnCurrentTime(wxCommandEvent& event);
   void OnUpdateSpin(wxSpinEvent& event) {
+    if (HandleEngineEdit(event.GetEventObject())) return;
     OnValueChange(event);
     Update();
   }
@@ -150,6 +152,9 @@ protected:
 
 private:
   void UpdateCycloneControls();
+  void UpdateEngineControls();
+  bool HandleEngineEdit(wxObject* control);
+  void RefreshEnginePresetStatus();
 
   void SetStartDateTime(wxDateTime datetime);
 

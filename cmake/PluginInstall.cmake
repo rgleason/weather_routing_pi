@@ -149,17 +149,10 @@ if (APPLE)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/data/")
   endif ()
 
-  message(STATUS "${CMLOC}Globbing for data files in ${PROJECT_SOURCE_DIR}/data/*")
-  file(
-    GLOB_RECURSE PACKAGE_DATA_FILES
-    LIST_DIRECTORIES true
-    ${PROJECT_SOURCE_DIR}/data/*
-  )
-
-  foreach (_currentDataFile ${PACKAGE_DATA_FILES})
-    message(STATUS "${CMLOC}Copying ${_currentDataFile} to ${CMAKE_CURRENT_BINARY_DIR}/data")
-    file(COPY ${_currentDataFile} DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/data)
-  endforeach (_currentDataFile)
+  # Preserve subdirectories; a recursive glob copied nested files again at
+  # the root and would duplicate the 55 MiB shoreline archive in Mac packages.
+  file(COPY "${PROJECT_SOURCE_DIR}/data/"
+       DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/data")
 
   if (EXISTS ${PROJECT_SOURCE_DIR}/UserIcons)
     if (NOT EXISTS "${CMAKE_CURRENT_BINARY_DIR}/UserIcons/")

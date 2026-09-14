@@ -1502,10 +1502,11 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
       sbConstraints->GetStaticBox(), wxID_ANY, wxEmptyString, wxDefaultPosition,
       wxSize(-1, -1), wxSP_ARROW_KEYS, 0, 180, 180);
   m_sMaxDivertedCourse->SetToolTip(
-      _("Maximum course variation from great circle (shortest) route in "
-        "degrees.\nLarger values allow finding alternate routes but increase "
-        "computation time.\nNote: Alternate routes may be necessary to avoid "
-        "land or find better weather."));
+      _("Hard limit on how far route geometry may divert from the great-circle "
+        "route. This is separate from Advanced > Max Search Angle: increasing "
+        "the search angle does not override this limit. Use 180 degrees when "
+        "the route may need to begin away from the destination or pass around "
+        "an island, peninsula or other land obstruction."));
   m_sMaxDivertedCourse->SetMaxSize(wxSize(140, -1));
 
   fgSizer110->Add(m_sMaxDivertedCourse, 1,
@@ -1634,46 +1635,18 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
 
   fgSizer112->Add(sbEnd, 1, wxEXPAND | wxALL, 5);
 
-  wxStaticBoxSizer* sbTime_Step;
-  sbTime_Step = new wxStaticBoxSizer(
-      new wxStaticBox(m_pBasic, wxID_ANY, _("Time Step")), wxVERTICAL);
-
-  wxFlexGridSizer* fgSizer921;
-  fgSizer921 = new wxFlexGridSizer(1, 0, 0, 0);
-  fgSizer921->SetFlexibleDirection(wxBOTH);
-  fgSizer921->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
-
-  m_sTimeStepHours = new wxSpinCtrl(
-      sbTime_Step->GetStaticBox(), wxID_ANY, wxEmptyString, wxDefaultPosition,
-      wxSize(-1, -1), wxALIGN_RIGHT | wxSP_ARROW_KEYS, 0, 1000, 1);
-  m_sTimeStepHours->SetToolTip(_("Hours between each calculation step"));
-  m_sTimeStepHours->SetMaxSize(wxSize(140, -1));
-
-  fgSizer921->Add(m_sTimeStepHours, 0, wxALL, 5);
-
-  m_staticText110 =
-      new wxStaticText(sbTime_Step->GetStaticBox(), wxID_ANY, _("h"),
-                       wxDefaultPosition, wxDefaultSize, 0);
-  m_staticText110->Wrap(-1);
-  fgSizer921->Add(m_staticText110, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
-
-  m_sTimeStepMinutes = new wxSpinCtrl(
-      sbTime_Step->GetStaticBox(), wxID_ANY, wxEmptyString, wxDefaultPosition,
-      wxSize(-1, -1), wxALIGN_RIGHT | wxSP_ARROW_KEYS, 0, 60, 1);
-  m_sTimeStepMinutes->SetToolTip(_("Minutes between each calculation step"));
-  m_sTimeStepMinutes->SetMaxSize(wxSize(140, -1));
-
-  fgSizer921->Add(m_sTimeStepMinutes, 0, wxALL, 5);
-
-  m_staticText111 =
-      new wxStaticText(sbTime_Step->GetStaticBox(), wxID_ANY, _("m"),
-                       wxDefaultPosition, wxDefaultSize, 0);
-  m_staticText111->Wrap(-1);
-  fgSizer921->Add(m_staticText111, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
-
-  sbTime_Step->Add(fgSizer921, 1, wxEXPAND, 5);
-
-  fgSizer112->Add(sbTime_Step, 1, wxEXPAND | wxALL, 5);
+  auto engineBox = new wxStaticBoxSizer(
+      new wxStaticBox(m_pBasic, wxID_ANY, _("Routing engine")), wxVERTICAL);
+  m_cRoutingEngine = new wxChoice(engineBox->GetStaticBox(), wxID_ANY);
+  m_cRoutingEngine->Append(_("Main"));
+  m_cRoutingEngine->Append(_("Quick"));
+  m_cRoutingEngine->SetSelection(0);
+  engineBox->Add(m_cRoutingEngine, 0, wxALL | wxEXPAND, 5);
+  m_tRoutingEngineDescription = new wxStaticText(engineBox->GetStaticBox(), wxID_ANY,
+      _("Main: broader search with multiple recovery methods."));
+  m_tRoutingEngineDescription->Wrap(430);
+  engineBox->Add(m_tRoutingEngineDescription, 0, wxALL | wxEXPAND, 5);
+  fgSizer112->Add(engineBox, 0, wxEXPAND | wxALL, 5);
 
   wxStaticBoxSizer* sbOptions;
   sbOptions = new wxStaticBoxSizer(
@@ -1819,14 +1792,199 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
       wxVSCROLL | wxTAB_TRAVERSAL);
   m_pAdvanced->SetScrollRate(0, 10);
   wxBoxSizer* bSizer8;
-  bSizer8 = new wxBoxSizer(wxVERTICAL);
+  bSizer8 = new wxBoxSizer(wxHORIZONTAL);
+  // Independent columns keep Options level with Engine settings and avoid
+  // stretching short groups to the height of the opposite column.
+  auto advancedLeft = new wxBoxSizer(wxVERTICAL);
+  auto advancedRight = new wxBoxSizer(wxVERTICAL);
 
-  wxFlexGridSizer* fgSizer1072;
-  fgSizer1072 = new wxFlexGridSizer(0, 2, 0, 0);
-  fgSizer1072->AddGrowableCol(0);
-  fgSizer1072->AddGrowableCol(1);
-  fgSizer1072->SetFlexibleDirection(wxBOTH);
-  fgSizer1072->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
+  auto engineSettingsBox = new wxStaticBoxSizer(
+      new wxStaticBox(m_pAdvanced, wxID_ANY, _("Engine settings")), wxVERTICAL);
+  m_tEnginePresetStatus = new wxStaticText(engineSettingsBox->GetStaticBox(), wxID_ANY,
+      _("Current settings: Custom"));
+  engineSettingsBox->Add(m_tEnginePresetStatus, 0, wxALL, 5);
+  auto presetRow = new wxBoxSizer(wxHORIZONTAL);
+  presetRow->Add(new wxStaticText(engineSettingsBox->GetStaticBox(), wxID_ANY,
+      _("Reset preset")), 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
+  m_cEnginePreset = new wxChoice(engineSettingsBox->GetStaticBox(), wxID_ANY);
+  m_cEnginePreset->Append(_("Balanced"));
+  m_cEnginePreset->SetSelection(0);
+  m_cEnginePreset->SetToolTip(_("Choose a preset, then press Reset engine to preset to review and apply it."));
+  presetRow->Add(m_cEnginePreset, 0, wxALL, 5);
+  m_bResetAdvanced = new wxButton(engineSettingsBox->GetStaticBox(), wxID_ANY,
+      _("Reset engine to preset"));
+  presetRow->Add(m_bResetAdvanced, 0, wxALL, 5);
+  engineSettingsBox->Add(presetRow, 0, wxEXPAND, 0);
+  m_pMainEngine = new wxPanel(engineSettingsBox->GetStaticBox());
+  auto mainEngineSizer = new wxBoxSizer(wxVERTICAL);
+  wxStaticBoxSizer* sbTime_Step;
+  sbTime_Step = new wxStaticBoxSizer(
+      new wxStaticBox(m_pMainEngine, wxID_ANY, _("Time Step")), wxVERTICAL);
+
+  wxFlexGridSizer* fgSizer921;
+  fgSizer921 = new wxFlexGridSizer(1, 0, 0, 0);
+  fgSizer921->SetFlexibleDirection(wxBOTH);
+  fgSizer921->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
+
+  m_sTimeStepHours = new wxSpinCtrl(
+      sbTime_Step->GetStaticBox(), wxID_ANY, wxEmptyString, wxDefaultPosition,
+      wxSize(-1, -1), wxALIGN_RIGHT | wxSP_ARROW_KEYS, 0, 1000, 1);
+  m_sTimeStepHours->SetToolTip(_("Hours between each calculation step"));
+  m_sTimeStepHours->SetMaxSize(wxSize(140, -1));
+
+  fgSizer921->Add(m_sTimeStepHours, 0, wxALL, 5);
+
+  m_staticText110 =
+      new wxStaticText(sbTime_Step->GetStaticBox(), wxID_ANY, _("h"),
+                       wxDefaultPosition, wxDefaultSize, 0);
+  m_staticText110->Wrap(-1);
+  fgSizer921->Add(m_staticText110, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
+
+  m_sTimeStepMinutes = new wxSpinCtrl(
+      sbTime_Step->GetStaticBox(), wxID_ANY, wxEmptyString, wxDefaultPosition,
+      wxSize(-1, -1), wxALIGN_RIGHT | wxSP_ARROW_KEYS, 0, 60, 1);
+  m_sTimeStepMinutes->SetToolTip(_("Minutes between each calculation step"));
+  m_sTimeStepMinutes->SetMaxSize(wxSize(140, -1));
+
+  fgSizer921->Add(m_sTimeStepMinutes, 0, wxALL, 5);
+
+  m_staticText111 =
+      new wxStaticText(sbTime_Step->GetStaticBox(), wxID_ANY, _("m"),
+                       wxDefaultPosition, wxDefaultSize, 0);
+  m_staticText111->Wrap(-1);
+  fgSizer921->Add(m_staticText111, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
+
+  sbTime_Step->Add(fgSizer921, 1, wxEXPAND, 5);
+  mainEngineSizer->Add(sbTime_Step, 0, wxEXPAND, 0);
+  wxBoxSizer* bSizer3;
+  bSizer3 = new wxBoxSizer(wxHORIZONTAL);
+
+  m_staticText117 =
+      new wxStaticText(m_pMainEngine, wxID_ANY, _("Heading separation"),
+                       wxDefaultPosition, wxDefaultSize, 0);
+  m_staticText117->Wrap(-1);
+  bSizer3->Add(m_staticText117, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
+
+  m_sByDegrees = new wxSpinCtrlDouble(
+      m_pMainEngine, wxID_ANY, wxEmptyString, wxDefaultPosition,
+      wxSize(140, -1), wxSP_ARROW_KEYS, 0.1, 60., 5., 0.1 /*inc*/);
+  bSizer3->Add(m_sByDegrees, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
+
+  m_staticText118 =
+      new wxStaticText(m_pMainEngine, wxID_ANY, _("Degrees"),
+                       wxDefaultPosition, wxDefaultSize, 0);
+  m_staticText118->Wrap(-1);
+  bSizer3->Add(m_staticText118, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
+
+  mainEngineSizer->Add(bSizer3, 0, wxEXPAND, 5);
+
+  wxFlexGridSizer* fgSizerRoutingEffort;
+  fgSizerRoutingEffort = new wxFlexGridSizer(0, 3, 0, 0);
+  fgSizerRoutingEffort->SetFlexibleDirection(wxBOTH);
+  fgSizerRoutingEffort->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
+
+  wxStaticText* routingEffortLabel =
+      new wxStaticText(m_pMainEngine, wxID_ANY,
+                       _("Routing effort"), wxDefaultPosition, wxDefaultSize,
+                       0);
+  routingEffortLabel->Wrap(-1);
+  fgSizerRoutingEffort->Add(routingEffortLabel, 0,
+                            wxALIGN_CENTER_VERTICAL | wxALL, 5);
+
+  m_cRoutingEffortPercent =
+      new wxChoice(m_pMainEngine, wxID_ANY, wxDefaultPosition,
+                   wxSize(180, -1));
+  m_cRoutingEffortPercent->Append(_("100% — Standard"));
+  m_cRoutingEffortPercent->Append(_("150% — Extended"));
+  m_cRoutingEffortPercent->Append(_("200% — Thorough"));
+  m_cRoutingEffortPercent->Append(_("400% — Exhaustive"));
+  m_cRoutingEffortPercent->SetSelection(0);
+  m_cRoutingEffortPercent->SetMinSize(wxDefaultSize);
+  m_cRoutingEffortPercent->InvalidateBestSize();
+  m_cRoutingEffortPercent->SetMinSize(m_cRoutingEffortPercent->GetBestSize());
+  m_cRoutingEffortPercent->SetToolTip(_(
+      "Search allowance for each complete route. Higher settings scale "
+      "generated states, retained states and graph labels together. They can "
+      "find routes through difficult tidal or coastal passages but use more "
+      "CPU time and memory. Departure-time candidates each receive the full "
+      "selected allowance."));
+  fgSizerRoutingEffort->Add(m_cRoutingEffortPercent, 0,
+                            wxALIGN_CENTER_VERTICAL | wxALL, 5);
+
+  wxStaticText* routingEffortUnits =
+      new wxStaticText(m_pMainEngine, wxID_ANY,
+                       _("per route"), wxDefaultPosition, wxDefaultSize, 0);
+  routingEffortUnits->Wrap(-1);
+  fgSizerRoutingEffort->Add(routingEffortUnits, 0,
+                            wxALIGN_CENTER_VERTICAL | wxALL, 5);
+
+  mainEngineSizer->Add(fgSizerRoutingEffort, 0, wxEXPAND, 5);
+
+  auto mainSearchAngle = new wxBoxSizer(wxHORIZONTAL);
+  m_staticText124 = new wxStaticText(m_pMainEngine, wxID_ANY,
+                                     _("Max Search Angle"), wxDefaultPosition,
+                                     wxDefaultSize, 0);
+  m_staticText124->Wrap(-1);
+  mainSearchAngle->Add(m_staticText124, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
+
+  m_sMaxSearchAngle = new wxSpinCtrl(
+      m_pMainEngine, wxID_ANY, wxEmptyString,
+      wxDefaultPosition, wxSize(140, -1), wxSP_ARROW_KEYS, 0, 180, 120);
+  m_sMaxSearchAngle->SetToolTip(
+      _("Maximum heading angle sampled on either side of the bearing to the "
+        "destination. Basic > Max Diverted Course is a separate hard limit on "
+        "the resulting route geometry; the lower applicable limit still "
+        "applies."));
+  mainSearchAngle->Add(m_sMaxSearchAngle, 0, wxALL | wxALIGN_CENTER_VERTICAL, 3);
+
+  m_staticText125 =
+      new wxStaticText(m_pMainEngine, wxID_ANY, _("degrees"),
+                       wxDefaultPosition, wxDefaultSize, 0);
+  m_staticText125->Wrap(-1);
+  mainSearchAngle->Add(m_staticText125, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
+  mainEngineSizer->Add(mainSearchAngle, 0, wxEXPAND, 0);
+  m_cbUseReverseReachabilityRecovery = new wxCheckBox(
+      m_pMainEngine, wxID_ANY,
+      _("Use reverse reachability for final approach recovery"),
+      wxDefaultPosition, wxDefaultSize, wxCHK_3STATE);
+  m_cbUseReverseReachabilityRecovery->SetToolTip(_(
+      "When enabled, failed final approaches may run a bounded destination "
+      "reachability check and try a chart-safe connection from recent "
+      "isochrones. This is experimental and disabled by default."));
+  mainEngineSizer->Add(m_cbUseReverseReachabilityRecovery, 0, wxALL, 5);
+
+  m_pMainEngine->SetSizer(mainEngineSizer);
+  engineSettingsBox->Add(m_pMainEngine, 0, wxEXPAND, 0);
+  m_pQuickEngine = new wxPanel(engineSettingsBox->GetStaticBox());
+  auto quickEngineSizer = new wxFlexGridSizer(0, 2, 0, 0);
+  const auto quickLabel = [&](const wxString& label) {
+    quickEngineSizer->Add(new wxStaticText(m_pQuickEngine, wxID_ANY, label),
+        0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
+  };
+  quickLabel(_("Search memory budget (MiB)"));
+  m_sQuickMemoryBudgetMiB = new wxSpinCtrl(m_pQuickEngine, wxID_ANY,
+      "256", wxDefaultPosition, wxSize(160, -1), wxSP_ARROW_KEYS, 1,
+      sizeof(void*) <= 4 ? 4095 : 4096, 256);
+  m_sQuickMemoryBudgetMiB->SetToolTip(_("Budget for Quick's tracked search storage. Weather, charts and OpenCPN require additional memory. Presets preserve this budget."));
+  quickEngineSizer->Add(m_sQuickMemoryBudgetMiB, 0, wxALL, 5);
+  quickLabel(_("Offshore time step (minutes)"));
+  m_sQuickOffshoreStepMinutes = new wxSpinCtrl(m_pQuickEngine, wxID_ANY,
+      "180", wxDefaultPosition, wxSize(160, -1), wxSP_ARROW_KEYS, 10, 360, 180);
+  m_sQuickOffshoreStepMinutes->SetToolTip(_("Nominal offshore step. Quick automatically uses finer steps near departure, destination and coastal regions."));
+  quickEngineSizer->Add(m_sQuickOffshoreStepMinutes, 0, wxALL, 5);
+  quickLabel(_("Heading separation (degrees)"));
+  m_sQuickHeadingStepDegrees = new wxSpinCtrlDouble(m_pQuickEngine, wxID_ANY,
+      "20", wxDefaultPosition, wxSize(160, -1), wxSP_ARROW_KEYS, 5, 30, 20, 1);
+  m_sQuickHeadingStepDegrees->SetToolTip(_("Nominal separation. Quick refines headings during approach and recovery."));
+  quickEngineSizer->Add(m_sQuickHeadingStepDegrees, 0, wxALL, 5);
+  quickLabel(_("Maximum search angle (degrees)"));
+  m_sQuickMaximumSearchAngle = new wxSpinCtrl(m_pQuickEngine, wxID_ANY,
+      "120", wxDefaultPosition, wxSize(160, -1), wxSP_ARROW_KEYS, 0, 180, 120);
+  quickEngineSizer->Add(m_sQuickMaximumSearchAngle, 0, wxALL, 5);
+  m_pQuickEngine->SetSizer(quickEngineSizer);
+  engineSettingsBox->Add(m_pQuickEngine, 0, wxEXPAND, 0);
+  m_pQuickEngine->Hide();
+  advancedLeft->Add(engineSettingsBox, 0, wxEXPAND | wxALL, 5);
 
   wxStaticBoxSizer* sbConstraints1;
   sbConstraints1 = new wxStaticBoxSizer(
@@ -1893,27 +2051,12 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   m_staticText1251->Wrap(-1);
   fgSizer951->Add(m_staticText1251, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
-  m_staticText124 = new wxStaticText(sbConstraints1->GetStaticBox(), wxID_ANY,
-                                     _("Max Search Angle"), wxDefaultPosition,
-                                     wxDefaultSize, 0);
-  m_staticText124->Wrap(-1);
-  fgSizer951->Add(m_staticText124, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
-  m_sMaxSearchAngle = new wxSpinCtrl(
-      sbConstraints1->GetStaticBox(), wxID_ANY, wxEmptyString,
-      wxDefaultPosition, wxSize(140, -1), wxSP_ARROW_KEYS, 0, 180, 120);
-  m_sMaxSearchAngle->SetToolTip(
-      _("Maximum search angle to allow during routing.\nRoutes with search "
-        "angles above this value will be avoided."));
-  fgSizer951->Add(m_sMaxSearchAngle, 1, wxALL | wxEXPAND, 3);
+  sbConstraints1->Add(fgSizer951, 0, wxEXPAND, 5);
+  advancedLeft->Add(sbConstraints1, 0, wxALL | wxEXPAND, 5);
 
-  m_staticText125 =
-      new wxStaticText(sbConstraints1->GetStaticBox(), wxID_ANY, _("degrees"),
-                       wxDefaultPosition, wxDefaultSize, 0);
-  m_staticText125->Wrap(-1);
-  fgSizer951->Add(m_staticText125, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
-
-  sbConstraints1->Add(fgSizer951, 1, wxEXPAND, 5);
+  auto cycloneBox = new wxStaticBoxSizer(
+      new wxStaticBox(m_pAdvanced, wxID_ANY, _("Cyclone avoidance")), wxVERTICAL);
 
   wxFlexGridSizer* fgSizer941;
   fgSizer941 = new wxFlexGridSizer(0, 1, 0, 0);
@@ -1921,7 +2064,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   fgSizer941->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
 
   m_cbAvoidCycloneTracks =
-      new wxCheckBox(sbConstraints1->GetStaticBox(), wxID_ANY,
+      new wxCheckBox(cycloneBox->GetStaticBox(), wxID_ANY,
                      _("Avoid cyclone tracks (climatology)"), wxDefaultPosition,
                      wxDefaultSize, wxCHK_3STATE);
   m_cbAvoidCycloneTracks->SetValue(true);
@@ -1933,48 +2076,37 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   fgSizer952->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
 
   m_staticText1281 =
-      new wxStaticText(sbConstraints1->GetStaticBox(), wxID_ANY, _("within"),
+      new wxStaticText(cycloneBox->GetStaticBox(), wxID_ANY, _("within"),
                        wxDefaultPosition, wxDefaultSize, 0);
   m_staticText1281->Wrap(-1);
   fgSizer952->Add(m_staticText1281, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
 
-  m_sCycloneMonths = new wxSpinCtrl(sbConstraints1->GetStaticBox(), wxID_ANY,
+  m_sCycloneMonths = new wxSpinCtrl(cycloneBox->GetStaticBox(), wxID_ANY,
                                     wxEmptyString, wxDefaultPosition,
                                     wxSize(140, -1), wxSP_ARROW_KEYS, 0, 6, 3);
   fgSizer952->Add(m_sCycloneMonths, 0, wxALL, 5);
 
   m_staticText1291 =
-      new wxStaticText(sbConstraints1->GetStaticBox(), wxID_ANY, _("Months"),
+      new wxStaticText(cycloneBox->GetStaticBox(), wxID_ANY, _("Months"),
                        wxDefaultPosition, wxDefaultSize, 0);
   m_staticText1291->Wrap(-1);
   fgSizer952->Add(m_staticText1291, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
-  m_sCycloneDays = new wxSpinCtrl(sbConstraints1->GetStaticBox(), wxID_ANY,
+  m_sCycloneDays = new wxSpinCtrl(cycloneBox->GetStaticBox(), wxID_ANY,
                                   wxEmptyString, wxDefaultPosition,
                                   wxSize(140, -1), wxSP_ARROW_KEYS, 0, 183, 0);
   fgSizer952->Add(m_sCycloneDays, 0, wxALL, 5);
 
   m_staticText130 =
-      new wxStaticText(sbConstraints1->GetStaticBox(), wxID_ANY, _("Days"),
+      new wxStaticText(cycloneBox->GetStaticBox(), wxID_ANY, _("Days"),
                        wxDefaultPosition, wxDefaultSize, 0);
   m_staticText130->Wrap(-1);
   fgSizer952->Add(m_staticText130, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
   fgSizer941->Add(fgSizer952, 1, wxEXPAND, 5);
 
-  sbConstraints1->Add(fgSizer941, 1, wxEXPAND, 5);
-
-  fgSizer1072->Add(sbConstraints1, 1, wxALL | wxEXPAND, 5);
-
-  wxFlexGridSizer* fgSizer109;
-  fgSizer109 = new wxFlexGridSizer(0, 1, 0, 0);
-  fgSizer109->AddGrowableCol(0);
-  fgSizer109->AddGrowableRow(0);
-  fgSizer109->AddGrowableRow(1);
-  fgSizer109->AddGrowableRow(2);
-  fgSizer109->AddGrowableRow(3);
-  fgSizer109->SetFlexibleDirection(wxBOTH);
-  fgSizer109->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
+  cycloneBox->Add(fgSizer941, 0, wxEXPAND, 5);
+  advancedLeft->Add(cycloneBox, 0, wxALL | wxEXPAND, 5);
 
   wxStaticBoxSizer* sbOptions1;
   sbOptions1 = new wxStaticBoxSizer(
@@ -2014,56 +2146,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
         "periods when facing strong currents."));
   fgSizer1121->Add(m_cbAnchoring, 0, wxALL, 5);
 
-  m_cbUseReverseReachabilityRecovery = new wxCheckBox(
-      sbOptions1->GetStaticBox(), wxID_ANY,
-      _("Use reverse reachability for final approach recovery"),
-      wxDefaultPosition, wxDefaultSize, wxCHK_3STATE);
-  m_cbUseReverseReachabilityRecovery->SetToolTip(_(
-      "When enabled, failed final approaches may run a bounded destination "
-      "reachability check and try a chart-safe connection from recent "
-      "isochrones. This is experimental and disabled by default."));
-  fgSizer1121->Add(m_cbUseReverseReachabilityRecovery, 0, wxALL, 5);
-
   fgSizer113->Add(fgSizer1121, 1, wxEXPAND, 5);
-
-  wxFlexGridSizer* fgSizerRoutingEffort;
-  fgSizerRoutingEffort = new wxFlexGridSizer(0, 3, 0, 0);
-  fgSizerRoutingEffort->SetFlexibleDirection(wxBOTH);
-  fgSizerRoutingEffort->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
-
-  wxStaticText* routingEffortLabel =
-      new wxStaticText(sbOptions1->GetStaticBox(), wxID_ANY,
-                       _("Routing effort"), wxDefaultPosition, wxDefaultSize,
-                       0);
-  routingEffortLabel->Wrap(-1);
-  fgSizerRoutingEffort->Add(routingEffortLabel, 0,
-                            wxALIGN_CENTER_VERTICAL | wxALL, 5);
-
-  m_cRoutingEffortPercent =
-      new wxChoice(sbOptions1->GetStaticBox(), wxID_ANY, wxDefaultPosition,
-                   wxSize(180, -1));
-  m_cRoutingEffortPercent->Append(_("100% — Standard"));
-  m_cRoutingEffortPercent->Append(_("150% — Extended"));
-  m_cRoutingEffortPercent->Append(_("200% — Thorough"));
-  m_cRoutingEffortPercent->Append(_("400% — Exhaustive"));
-  m_cRoutingEffortPercent->SetSelection(0);
-  m_cRoutingEffortPercent->SetToolTip(_(
-      "Search allowance for each complete route. Higher settings scale "
-      "generated states, retained states and graph labels together. They can "
-      "find routes through difficult tidal or coastal passages but use more "
-      "CPU time and memory. Departure-time candidates each receive the full "
-      "selected allowance."));
-  fgSizerRoutingEffort->Add(m_cRoutingEffortPercent, 0,
-                            wxALIGN_CENTER_VERTICAL | wxALL, 5);
-
-  wxStaticText* routingEffortUnits =
-      new wxStaticText(sbOptions1->GetStaticBox(), wxID_ANY,
-                       _("per route"), wxDefaultPosition, wxDefaultSize, 0);
-  routingEffortUnits->Wrap(-1);
-  fgSizerRoutingEffort->Add(routingEffortUnits, 0,
-                            wxALIGN_CENTER_VERTICAL | wxALL, 5);
-
-  fgSizer113->Add(fgSizerRoutingEffort, 1, wxEXPAND, 5);
 
   wxFlexGridSizer* fgSizerDepartureConcurrency;
   fgSizerDepartureConcurrency = new wxFlexGridSizer(0, 3, 0, 0);
@@ -2084,11 +2167,10 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
       wxSize(140, -1), wxSP_ARROW_KEYS, 0, 64, 0);
   m_sDepartureTimeOptimizationConcurrentRoutes->SetToolTip(_(
       "Maximum number of optimised departure-time candidate routes to "
-      "calculate concurrently. Use 0 for Auto. Native authoritative routes "
-      "are deliberately calculated one at a time because OpenCPN's shared "
-      "GRIB, shoreline and chart services are not isolated between route "
-      "workers; this setting remains available for legacy calculations. "
-      "Chart-safety scouts still use bounded parallel work."));
+      "calculate concurrently. Use 0 for Auto. The global concurrent-route "
+      "limit still applies. Chart-aware routing can further limit concurrency, "
+      "and boundary checks can require one route at a time. Higher values "
+      "can increase peak memory use."));
   fgSizerDepartureConcurrency->Add(
       m_sDepartureTimeOptimizationConcurrentRoutes, 0,
       wxALIGN_CENTER_VERTICAL | wxALL, 5);
@@ -2294,6 +2376,21 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   fgSizer11511->SetFlexibleDirection(wxBOTH);
   fgSizer11511->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
 
+  m_tShorelineResolution = new wxStaticText(sbOptions1->GetStaticBox(), wxID_ANY,
+                                          _("Shoreline resolution"));
+  fgSizer11511->Add(m_tShorelineResolution, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
+  m_cShorelineResolution = new wxChoice(sbOptions1->GetStaticBox(), wxID_ANY);
+  for (const auto& label : {_("0 — Crude"), _("1 — Low"), _("2 — Intermediate"),
+                            _("3 — High"), _("4 — Full")})
+    m_cShorelineResolution->Append(label);
+  m_cShorelineResolution->SetSelection(4);
+  m_cShorelineResolution->SetMinSize(wxSize(
+      wxMax(FromDIP(190), m_cShorelineResolution->GetBestSize().x), -1));
+  m_cShorelineResolution->SetToolTip(_("GSHHG shoreline detail for the selected engine; Main and Quick remember independent choices. "
+      "Chart geometry and minimum-depth checks are separate."));
+  fgSizer11511->Add(m_cShorelineResolution, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
+  fgSizer11511->Add(0, 0);
+
   m_staticText241 = new wxStaticText(sbOptions1->GetStaticBox(), wxID_ANY,
                                      _("Safety Margin From Land"),
                                      wxDefaultPosition, wxDefaultSize, 0);
@@ -2343,7 +2440,12 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   fgSizer11511->Add(minimumDepthUnit, 0,
                     wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
-  fgSizer113->Add(fgSizer11511, 1, wxEXPAND, 5);
+  fgSizer113->Insert(0, fgSizer11511, 0, wxEXPAND, 5);
+  auto shorelineNote = new wxStaticText(sbOptions1->GetStaticBox(), wxID_ANY,
+      _("Lower shoreline resolutions omit smaller coastal features and may allow "
+        "routes through land shown at higher resolutions. Chart and depth checks are separate."));
+  shorelineNote->Wrap(FromDIP(440));
+  fgSizer113->Insert(1, shorelineNote, 0, wxALL, 5);
 
   sbOptions1->Add(fgSizer113, 1, wxEXPAND, 5);
   wxStaticText* depthExplanation = new wxStaticText(
@@ -2354,7 +2456,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   depthExplanation->Wrap(440);
   sbOptions1->Add(depthExplanation, 0, wxEXPAND | wxALL, 5);
 
-  fgSizer109->Add(sbOptions1, 1, wxEXPAND | wxALL, 5);
+  advancedRight->Add(sbOptions1, 0, wxEXPAND | wxALL, 5);
 
   wxStaticBoxSizer* sbMotor = new wxStaticBoxSizer(
       new wxStaticBox(m_pAdvanced, wxID_ANY, _("Motoring")), wxVERTICAL);
@@ -2395,7 +2497,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
                                      _("knots")),
                     0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
   sbMotor->Add(fgSizerMotor, 1, wxEXPAND, 5);
-  fgSizer109->Add(sbMotor, 1, wxEXPAND | wxALL, 5);
+  advancedLeft->Add(sbMotor, 0, wxEXPAND | wxALL, 5);
 
   // Efficiency section
   wxStaticBoxSizer* sbEfficiency;
@@ -2474,7 +2576,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
                          wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
   sbEfficiency->Add(fgSizerEfficiency, 1, wxEXPAND, 5);
-  fgSizer109->Add(sbEfficiency, 1, wxEXPAND | wxALL, 5);
+  advancedRight->Add(sbEfficiency, 0, wxEXPAND | wxALL, 5);
 
   wxStaticBoxSizer* sbCourses;
   sbCourses = new wxStaticBoxSizer(
@@ -2513,42 +2615,13 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   m_cbUseOptimalAngles->SetToolTip(_(
       "Limit sailing headings to the best upwind and downwind VMG angles "
       "calculated from the active polar."));
-  bSizer4->Add(m_cbUseOptimalAngles, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
+  sbCourses->Add(bSizer4, 0, wxEXPAND, 5);
+  sbCourses->Add(m_cbUseOptimalAngles, 0, wxALL, 5);
 
-  sbCourses->Add(bSizer4, 1, wxEXPAND, 5);
+  advancedLeft->Add(sbCourses, 0, wxEXPAND | wxALL, 5);
 
-  wxBoxSizer* bSizer3;
-  bSizer3 = new wxBoxSizer(wxHORIZONTAL);
-
-  m_staticText117 =
-      new wxStaticText(sbCourses->GetStaticBox(), wxID_ANY, _("By"),
-                       wxDefaultPosition, wxDefaultSize, 0);
-  m_staticText117->Wrap(-1);
-  bSizer3->Add(m_staticText117, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
-
-  m_sByDegrees = new wxSpinCtrlDouble(
-      sbCourses->GetStaticBox(), wxID_ANY, wxEmptyString, wxDefaultPosition,
-      wxSize(140, -1), wxSP_ARROW_KEYS, 0.1, 60., 5., 0.1 /*inc*/);
-  bSizer3->Add(m_sByDegrees, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
-
-  m_staticText118 =
-      new wxStaticText(sbCourses->GetStaticBox(), wxID_ANY, _("Degrees"),
-                       wxDefaultPosition, wxDefaultSize, 0);
-  m_staticText118->Wrap(-1);
-  bSizer3->Add(m_staticText118, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
-
-  sbCourses->Add(bSizer3, 1, wxEXPAND, 5);
-
-  fgSizer109->Add(sbCourses, 1, wxEXPAND | wxALL, 5);
-
-  fgSizer1072->Add(fgSizer109, 1, wxEXPAND | wxALL, 5);
-
-  bSizer8->Add(fgSizer1072, 0, wxEXPAND, 5);
-
-  m_bResetAdvanced =
-      new wxButton(m_pAdvanced, wxID_ANY, _("Reset all Advanced Parameters"),
-                   wxDefaultPosition, wxDefaultSize, 0);
-  bSizer8->Add(m_bResetAdvanced, 0, wxALL | wxALIGN_CENTER_HORIZONTAL, 10);
+  bSizer8->Add(advancedLeft, 1, wxEXPAND);
+  bSizer8->Add(advancedRight, 1, wxEXPAND);
 
   m_pAdvanced->SetSizer(bSizer8);
   m_pAdvanced->Layout();
@@ -2629,6 +2702,14 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
       wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
   m_sArrivalSafetyMarginMinutes->Connect(
       wxEVT_COMMAND_SPINCTRL_UPDATED,
+      wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
+  m_cRoutingEngine->Connect(wxEVT_COMMAND_CHOICE_SELECTED,
+      wxCommandEventHandler(ConfigurationDialogBase::OnUpdate), NULL, this);
+  m_sQuickMemoryBudgetMiB->Connect(wxEVT_COMMAND_SPINCTRL_UPDATED,
+      wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
+  m_sQuickOffshoreStepMinutes->Connect(wxEVT_COMMAND_SPINCTRL_UPDATED,
+      wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
+  m_sQuickMaximumSearchAngle->Connect(wxEVT_COMMAND_SPINCTRL_UPDATED,
       wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
   m_cRoutingEffortPercent->Connect(
       wxEVT_COMMAND_CHOICE_SELECTED,
@@ -3304,6 +3385,14 @@ ConfigurationDialogBase::~ConfigurationDialogBase() {
       wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
   m_sArrivalSafetyMarginMinutes->Disconnect(
       wxEVT_COMMAND_SPINCTRL_UPDATED,
+      wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
+  m_cRoutingEngine->Disconnect(wxEVT_COMMAND_CHOICE_SELECTED,
+      wxCommandEventHandler(ConfigurationDialogBase::OnUpdate), NULL, this);
+  m_sQuickMemoryBudgetMiB->Disconnect(wxEVT_COMMAND_SPINCTRL_UPDATED,
+      wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
+  m_sQuickOffshoreStepMinutes->Disconnect(wxEVT_COMMAND_SPINCTRL_UPDATED,
+      wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
+  m_sQuickMaximumSearchAngle->Disconnect(wxEVT_COMMAND_SPINCTRL_UPDATED,
       wxSpinEventHandler(ConfigurationDialogBase::OnUpdateSpin), NULL, this);
   m_cRoutingEffortPercent->Disconnect(
       wxEVT_COMMAND_CHOICE_SELECTED,

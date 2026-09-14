@@ -138,3 +138,5 @@ jq -n \
     package_status: "passed", metadata_validation_status: "passed",
     stock_api_status: "passed", package_filename: $package,
     package_checksum_sha256: $checksum}' >"$artifact/result.json"
+
+python3 "$repo/ci/verify-shoreline-package.py" "$archive"

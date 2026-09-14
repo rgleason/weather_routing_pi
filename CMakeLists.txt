@@ -87,12 +87,30 @@ set(PACKAGE_CONTACT "Sean d'Epagnier; Weather Routing Plugin Team")
 set(SHORT_DESCRIPTION
     "Advanced deterministic weather routing with departure and arrival planning.")
 set(LONG_DESCRIPTION
-    "WeatherRouting computes land-aware sailing routes using deterministic forward isochrones, reverse recovery, graph fallback, concurrent departure optimisation, and planned-arrival routing. Stock OpenCPN uses GSHHS land checks; optional chart-backed safety is available only when the host provides it.")
+    "WeatherRouting offers Main and Quick engines with independent saved settings and explicit search presets. It computes land-aware sailing routes using deterministic forward isochrones, reverse recovery, graph fallback, concurrent departure optimisation, and planned-arrival routing. Stock OpenCPN uses GSHHS land checks; optional chart-backed safety is available only when the host provides it.")
 
 set(VERSION_MAJOR "1")
 set(VERSION_MINOR "17")
-set(VERSION_PATCH "5")
+set(VERSION_PATCH "7")
 set(VERSION_TWEAK "0")
+# Every platform and identity ships all five verified offline resolutions.
+set(_shoreline_archives
+  "poly-c-2.3.7.dat.gz|933d111ff352c8b505181e6a2d2888c093222fcccd5f3b455bfbb6f1df217891"
+  "poly-l-2.3.7.dat.gz|51a1ae4874df513f25447d26740221d4b2a984fabbce9d3f84b29b2e25ff4ab9"
+  "poly-i-2.3.7.dat.gz|9de2a76bed06711443466c7832798784b45e5a54c752a7c260ee50de00bf0a5e"
+  "poly-h-2.3.7.dat.gz|065a10f49c72426cb295ddb076e1d54a1f985d75a759c552a0a93c3d4e1cf71a"
+  "poly-f-2.3.7.dat.gz|a36cb8c4fda7d56cfd851d92ed70a315d0a2ff81e10e99e8a0141ce9dc4e6d60"
+)
+foreach(_archive IN LISTS _shoreline_archives)
+  string(REPLACE "|" ";" _parts "${_archive}")
+  list(GET _parts 0 _file)
+  list(GET _parts 1 _expected)
+  file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/data/shoreline/${_file}" _actual)
+  if(NOT _actual STREQUAL _expected)
+    message(FATAL_ERROR "Bundled GSHHG data is missing or corrupt: ${_file}")
+  endif()
+endforeach()
+unset(_shoreline_archives)
 set(VERSION_DATE  "13/09/2026") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov511")
 
@@ -210,6 +228,8 @@ add_definitions(-DUSE_S57)
 
 
 SET(SRCS
+            src/ShorelineDataset.cpp
+            src/ShorelineManager.cpp
             src/AppendOnlyCache.cpp
             src/ChartSafetyCache.cpp
             src/ChartSafetyAtlas.cpp
@@ -268,6 +288,7 @@ SET(SRCS
             vendor/weather-routing-engine/src/Polar.cpp
             vendor/weather-routing-engine/src/EnvironmentResolver.cpp
             vendor/weather-routing-engine/src/Engine.cpp
+            vendor/weather-routing-engine/src/QuickEngine.cpp
             vendor/weather-routing-engine/src/Validator.cpp
             vendor/weather-routing-engine/src/Ensemble.cpp
             src/engine/native/OpenCpnAdapter.cpp

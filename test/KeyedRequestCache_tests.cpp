@@ -246,3 +246,18 @@ TEST(KeyedRequestCache, RetainsOneReplyLargerThanWeightBudget) {
   EXPECT_EQ(value, 20);
   EXPECT_EQ(requests, 0);
 }
+
+TEST(KeyedRequestCache, LoweredQuickBudgetEvictsAndRestoresMainCapacity) {
+  weather_routing::KeyedRequestCache<int, int> cache(10, 100, [](const int&) { return 20U; });
+  for (int i=0; i<5; ++i) ASSERT_TRUE(cache.Publish(i, i, true));
+  EXPECT_EQ(cache.TotalWeight(), 100U);
+  cache.SetMaximumWeight(40);
+  EXPECT_EQ(cache.Size(), 2U);
+  EXPECT_EQ(cache.TotalWeight(), 40U);
+  cache.SetMaximumWeight(100);
+  for (int i=5; i<8; ++i) ASSERT_TRUE(cache.Publish(i, i, true));
+  EXPECT_EQ(cache.Size(), 5U);
+  cache.SetMaximumWeight(1);
+  EXPECT_EQ(cache.Size(), 1U);
+  EXPECT_EQ(cache.TotalWeight(), 20U);
+}

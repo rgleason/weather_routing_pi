@@ -1,3 +1,5 @@
+src/ShorelineDataset.cpp
+src/ShorelineManager.cpp
 src/AppendOnlyCache.cpp
 src/ChartSafetyCache.cpp
 src/ChartSafetyAtlas.cpp
@@ -56,6 +58,7 @@ vendor/weather-routing-engine/src/Providers.cpp
 vendor/weather-routing-engine/src/Polar.cpp
 vendor/weather-routing-engine/src/EnvironmentResolver.cpp
 vendor/weather-routing-engine/src/Engine.cpp
+vendor/weather-routing-engine/src/QuickEngine.cpp
 vendor/weather-routing-engine/src/Validator.cpp
 vendor/weather-routing-engine/src/Ensemble.cpp
 src/engine/native/OpenCpnAdapter.cpp

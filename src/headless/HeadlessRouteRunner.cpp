@@ -17,6 +17,7 @@
 #include <wx/filename.h>
 
 #include "RouteMapOverlay.h"
+#include "ModernNativeRoute.h"
 #include "RouteDisplayPolicy.h"
 #include "RoutingScenarioJson.h"
 #include "StabilityRouteAdapter.h"
@@ -40,6 +41,21 @@ weather_routing_engine::RoutingCandidateResult CandidateFromRoute(
   }
 
   RouteMapConfiguration configuration = route->GetConfiguration();
+  auto search = route->GetComputedSearchSettings();
+  if (!search.valid)
+    search = weather_routing::RoutingSearchSnapshot::Capture(
+        configuration, ModernNativeRouteEnabled(configuration));
+  candidate.engine = wxString::FromUTF8(search.engine);
+  candidate.searchPreset = wxString::FromUTF8(search.preset.id);
+  candidate.searchPresetRevision = search.preset.revision;
+  candidate.searchTimeStepSeconds = search.timeStepSeconds;
+  candidate.searchHeadingStepDegrees = search.headingStepDegrees;
+  candidate.searchMemoryBudgetMiB = search.memoryBudgetMiB;
+  candidate.searchMaximumAngleDegrees = search.maximumSearchAngle;
+  candidate.searchEffortPercent = search.effortPercent;
+  candidate.shorelineResolution = search.shorelineResolution;
+  candidate.detectLand = search.detectLand;
+  candidate.shorelineDataset = configuration.shoreline_description;
   candidate.departure = configuration.StartTime;
   candidate.offsetMinutes = configuration.DepartureTimeOptimizationOffsetMinutes;
   candidate.failureReason = route->GetDiagnosticError();

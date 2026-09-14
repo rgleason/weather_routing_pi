@@ -17,6 +17,9 @@
  *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,  USA.         *
  ***************************************************************************/
 
+#include "RoutingEngineSettingsPersistence.h"
+#include "ShorelineSettings.h"
+
 #include <wx/wx.h>
 #include <wx/aui/aui.h>
 #include <wx/imaglist.h>
@@ -43,6 +46,7 @@
 #include "RouteWaypointExtractor.h"
 #include "weather_routing_pi.h"
 #include "WeatherRouting.h"
+#include "ShorelineManager.h"
 #include "ChartSafetyDefaults.h"
 #include "AboutDialog.h"
 #include "ConstraintChecker.h"
@@ -660,6 +664,7 @@ static wxString ChartSafetyRouteFamilyKey(
       configuration.EndLon, options.safety_margin_nm, options.check_land,
       options.check_depth, options.minimum_depth_m, configuration.DeltaTime,
       configuration.boatFileName);
+  key += wxString::Format(":shoreline%d", configuration.EffectiveShorelineResolution());
   key += wxString::Format(":propagation%d",
                           configuration.UseChartSafetyForPropagation ? 1 : 0);
   return key;
@@ -770,7 +775,8 @@ static void PrewarmExperimentalChartSafetyForConfiguration(
   const weather_routing::OceanPrewarmPlan ocean_prewarm =
       weather_routing::BuildOceanPrewarmPlan(direct_distance_nm);
   const bool ocean_passage = ocean_prewarm.enabled;
-  const bool direct_crosses_land = PlugIn_GSHHS_CrossesLand(
+  const auto shoreline = weather_routing::ShorelineManager::Prepare(configuration.EffectiveShorelineResolution());
+  const bool direct_crosses_land = shoreline->CrossesLand(
       configuration.StartLat, configuration.StartLon, configuration.EndLat,
       configuration.EndLon);
   double prewarm_margin_nm =
@@ -827,7 +833,7 @@ static void PrewarmExperimentalChartSafetyForConfiguration(
     }
     if (require_gshhs_clear) {
       for (int step = 1; step <= direct_steps; ++step) {
-        if (PlugIn_GSHHS_CrossesLand(
+        if (shoreline->CrossesLand(
                 latitudes[step - 1], longitudes[step - 1], latitudes[step],
                 longitudes[step]))
           return false;
@@ -1150,6 +1156,19 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
       wxCommandEventHandler(WeatherRouting::OnChartAwarenessSettings), this,
       m_mChartAwarenessSettings->GetId());
 
+  auto shorelineMenu = m_mView->Append(wxID_ANY, _("Shoreline data..."));
+  m_mView->Bind(
+      wxEVT_MENU,
+      [this](wxCommandEvent&) {
+        if (!CanStartExternalPlanningScenario()) {
+          wxMessageBox(_("Wait for routing calculations to finish before "
+                         "managing shoreline data."),
+                       _("Shoreline data"), wxOK | wxICON_INFORMATION, this);
+          return;
+        }
+        weather_routing::ShorelineManager::Show(this);
+      },
+      shorelineMenu->GetId());
   m_mView->AppendSeparator();
   m_mStabilityCorridorView =
       new wxMenuItem(m_mView, wxID_ANY, _("Show stability corridor"),
@@ -4332,6 +4351,26 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
               boat_file = wxFileName::GetHomeDir() + boat_file.Mid(1);
             configuration.boatFileName = boat_file;
           }
+          if (scenario.route.hasQuickRoute) configuration.EngineSettings.engine = scenario.route.quickRoute
+              ? weather_routing::RoutingEngine::Quick : weather_routing::RoutingEngine::Main;
+          if (scenario.route.hasQuickMemoryBudgetMiB) configuration.EngineSettings.quick.memoryBudgetMiB = scenario.route.quickMemoryBudgetMiB;
+          if (scenario.route.hasRoutingEngine)
+            configuration.EngineSettings.SetEngineId(scenario.route.routingEngine.ToStdString());
+          if (scenario.route.hasChartShorelineResolution) configuration.ChartShorelineResolution = scenario.route.chartShorelineResolution;
+          if (scenario.route.hasShorelineResolution) {
+            if (configuration.IsQuick()) configuration.QuickShorelineResolution = scenario.route.shorelineResolution;
+            else configuration.ShorelineResolution = scenario.route.shorelineResolution;
+          }
+          if (scenario.route.hasQuickOffshoreStepMinutes)
+            configuration.EngineSettings.quick.offshoreStepMinutes = scenario.route.quickOffshoreStepMinutes;
+          if (scenario.route.hasQuickHeadingStepDegrees)
+            configuration.EngineSettings.quick.headingStepDegrees = scenario.route.quickHeadingStepDegrees;
+          if (scenario.route.hasQuickMaximumSearchAngle)
+            configuration.EngineSettings.quick.maximumSearchAngle = scenario.route.quickMaximumSearchAngle;
+          if (scenario.route.hasQuickOffshoreStepMinutes || scenario.route.hasQuickHeadingStepDegrees || scenario.route.hasQuickMaximumSearchAngle)
+            configuration.EngineSettings.quick.preset = {};
+          if (scenario.route.hasTimeStepSeconds || scenario.route.hasHeadingStepDegrees || scenario.route.hasRoutingEffortPercent)
+            configuration.EngineSettings.mainPreset = {};
           if (scenario.route.hasRoutingEffortPercent)
             configuration.RoutingEffortPercent =
                 weather_routing::NormalizeRoutingEffortPercent(
@@ -7991,6 +8030,10 @@ bool WeatherRouting::OpenXML(wxString filename, bool reportfailure) {
                    weather_routing::kMaximumParallelDepartureCandidates,
                    AttributeInt(
                        e, "DepartureTimeOptimizationConcurrentRoutes", 0)));
+        configuration.EngineSettings = weather_routing::ReadRoutingEngineSettings(*e);
+        configuration.ShorelineResolution = weather_routing::ReadShorelineResolution(*e, weather_routing::ShorelineManager::DefaultResolution());
+        configuration.QuickShorelineResolution = weather_routing::ReadShorelineResolution(*e, 0, "QuickShorelineResolution");
+        configuration.ChartShorelineResolution = weather_routing::ReadShorelineResolution(*e, 0, "ChartShorelineResolution");
         configuration.RoutingEffortPercent =
             weather_routing::NormalizeRoutingEffortPercent(
                 AttributeInt(e, "RoutingEffortPercent",
@@ -8229,6 +8272,10 @@ void WeatherRouting::SaveXML(wxString filename) {
                     configuration.DepartureTimeOptimizationStepMinutes);
     c->SetAttribute("DepartureTimeOptimizationConcurrentRoutes",
                     configuration.DepartureTimeOptimizationConcurrentRoutes);
+    weather_routing::WriteRoutingEngineSettings(configuration.EngineSettings, *c);
+    c->SetAttribute("ShorelineResolution", configuration.ShorelineResolution);
+    c->SetAttribute("QuickShorelineResolution", configuration.QuickShorelineResolution);
+    c->SetAttribute("ChartShorelineResolution", configuration.ChartShorelineResolution);
     c->SetAttribute(
         "RoutingEffortPercent",
         weather_routing::NormalizeRoutingEffortPercent(
@@ -8778,9 +8825,11 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
                 ? _("Computing: ") + stage : _("Computing...");
   } else {
     if (routemapoverlay->Finished()) {
-      if (routemapoverlay->ReachedDestination())
-        State = _("Complete");
-      else
+      if (routemapoverlay->ReachedDestination()) {
+        const auto engine = routemapoverlay->GetComputedSearchSettings().engine;
+        State = engine == "quick" ? _("Complete — Quick")
+            : engine == "main" ? _("Complete — Main") : _("Complete");
+      } else
         State = BuildRouteFailureState(routemapoverlay);
     } else {
       for (std::list<RouteMapOverlay*>::iterator it =
@@ -8790,7 +8839,11 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
           State = _("Waiting...");
           return;
         }
-      State = _("Not Computed");
+      const auto computed = routemapoverlay->GetComputedSearchSettings();
+      State = computed.valid
+          ? _("Settings changed — recompute (previous engine: ") +
+                wxString::FromUTF8(computed.engine) + ")"
+          : _("Not Computed");
     }
   }
 }
@@ -9252,6 +9305,14 @@ bool WeatherRouting::CollectChartSafetyScoutGeometry(
       original.MultiLegLegIndex, original.MultiLegLegCount,
       original.UseGrib ? 1 : 0, original.DeltaTime);
 
+  try {
+    scout.shoreline_dataset = weather_routing::ShorelineManager::Prepare(scout.ChartShorelineResolution);
+    scout.shoreline_description = weather_routing::ShorelineManager::Description(scout.ChartShorelineResolution);
+    scout.shoreline_error.clear();
+  } catch (const std::exception& error) {
+    wxLogError("WR_SHORELINE_ERROR scout: %s", wxString::FromUTF8(error.what()));
+    return false;
+  }
   routemapoverlay->SetConfiguration(scout);
   routemapoverlay->Reset();
 
@@ -9268,6 +9329,10 @@ bool WeatherRouting::CollectChartSafetyScoutGeometry(
   }
 
   bool watchdog_expired = false;
+  const long scout_watchdog_ms =
+      wxMax(kChartSafetyScoutWatchdogMs,
+            EnvLong("WR_HEADLESS_CHART_SCOUT_WATCHDOG_MS",
+                    kChartSafetyScoutWatchdogMs));
   long next_heartbeat_ms = 250;
   while (routemapoverlay->Running()) {
     if (routemapoverlay->NeedsGrib() && !routemapoverlay->Finished()) {
@@ -9280,7 +9345,7 @@ bool WeatherRouting::CollectChartSafetyScoutGeometry(
       next_heartbeat_ms = elapsed_ms + 250;
     }
 
-    if (elapsed_ms > kChartSafetyScoutWatchdogMs) {
+    if (elapsed_ms > scout_watchdog_ms) {
       watchdog_expired = true;
       routemapoverlay->Stop();
       break;
@@ -9502,7 +9567,7 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
        route != routemapoverlays.end(); ++route) {
     if (!*route) continue;
     const RouteMapConfiguration configuration = (*route)->GetConfiguration();
-    if (!configuration.DetectLand ||
+    if (!configuration.DetectLand || configuration.IsQuick() ||
         configuration.chart_safety_missing_tile_retry_count > 0)
       continue;
     const wxString scope = ChartSafetySharedPrewarmScopeKey(configuration);
@@ -9517,7 +9582,7 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
        route != routemapoverlays.end(); ++route) {
     if (!*route) continue;
     RouteMapConfiguration configuration = (*route)->GetConfiguration();
-    if (!configuration.DetectLand ||
+    if (!configuration.DetectLand || configuration.IsQuick() ||
         configuration.chart_safety_missing_tile_retry_count > 0)
       continue;
     wxString scope = ChartSafetySharedPrewarmScopeKey(configuration);
@@ -9605,6 +9670,28 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
     SetChartSafetyScoutEndpointReach(&envelope.configuration, envelope.points,
                                      envelope.retained_segments,
                                      envelope.complete);
+    // A headless integration run can start before the GRIB plug-in has warmed
+    // its timeline.  In that case the bounded scout may time out even though
+    // the same route's warm GUI scout has already established its endpoint
+    // reach.  Allow the harness to supply that observed reach so the
+    // authoritative chart-backed production solve can be tested in isolation.
+    if (!EnvString("WR_HEADLESS_SCENARIO").IsEmpty()) {
+      const double headless_endpoint_reach =
+          EnvDouble("WR_HEADLESS_CHART_ENDPOINT_REACH_NM", NAN);
+      if (std::isfinite(headless_endpoint_reach)) {
+        const double bounded_reach =
+            wxMax(0.0, wxMin(2.0, headless_endpoint_reach));
+        envelope.configuration.chart_safety_start_endpoint_reach_nm =
+            bounded_reach;
+        envelope.configuration.chart_safety_end_endpoint_reach_nm =
+            bounded_reach;
+        wxLogMessage(
+            "WR_SCOUT_ENDPOINT_REACH headless_override route=\"%s to %s\" "
+            "reach_nm=%.3f source=integration-harness",
+            envelope.configuration.Start, envelope.configuration.End,
+            bounded_reach);
+      }
+    }
     (*route)->SetConfiguration(envelope.configuration);
     (*route)->Reset();
     s_chartSafetyPreparedScoutScopes.insert(scope);
@@ -10796,6 +10883,10 @@ void WeatherRouting::ExportRoute(RouteMapOverlay& routemapoverlay) {
 
 void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
   if (!routemapoverlay) return;
+  if (weather_routing::ShorelineManager::Busy()) {
+    routemapoverlay->SetError(_("Close shoreline data management before computing."));
+    return;
+  }
   ScopedRoutePreparation route_preparation(m_RoutePreparationDepth);
 
   RouteMapConfiguration configuration = routemapoverlay->GetConfiguration();
@@ -11075,7 +11166,42 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
         configuration.Start, configuration.End, configuration.MultiLegGroupId,
         configuration.DepartureTimeOptimizationOffsetMinutes,
         configuration.MultiLegLegIndex, configuration.MultiLegLegCount));
-    PlugIn_GSHHS_CrossesLand(0, 0, 0, 0);
+    {
+      try {
+        if (m_RoutingProgressDialog && m_RoutingProgressDialog->IsShown())
+          UpdateRoutingProgress(_("Preparing shoreline data"),
+                                _("Verifying the selected shoreline dataset"),
+                                -1, -1);
+        configuration.shoreline_dataset =
+            weather_routing::ShorelineManager::Prepare(configuration.EffectiveShorelineResolution());
+        configuration.shoreline_description =
+            weather_routing::ShorelineManager::Description(configuration.EffectiveShorelineResolution());
+        configuration.shoreline_error.clear();
+        if (!use_experimental_chart_safety && configuration.shoreline_dataset->CrossesLand(
+                configuration.StartLat, configuration.StartLon,
+                configuration.StartLat, configuration.StartLon)) {
+          routemapoverlay->SetError(
+              _("Start position is on land in the selected GSHHG dataset. "
+                "Choose an offshore start position."));
+          return;
+        }
+        if (!use_experimental_chart_safety && configuration.shoreline_dataset->CrossesLand(
+                configuration.EndLat, configuration.EndLon,
+                configuration.EndLat, configuration.EndLon)) {
+          routemapoverlay->SetError(
+              _("Destination is on land in the selected GSHHG dataset. Choose "
+                "an offshore destination."));
+          return;
+        }
+        routemapoverlay->SetConfiguration(configuration);
+        wxLogMessage("WR_ROUTE_SHORELINE route=\"%s to %s\" %s",
+                     configuration.Start, configuration.End,
+                     configuration.shoreline_description);
+      } catch (const std::exception& error) {
+        routemapoverlay->SetError(wxString::FromUTF8(error.what()));
+        return;
+      }
+    }
     if (prewarm_authoritative_chart_search) {
       PrewarmExperimentalChartSafetyForConfiguration(
           configuration, _("route start"),
@@ -11461,6 +11587,11 @@ void WeatherRouting::SaveLastUsedConfigurationDefaults(
                configuration.ArrivalSearchHorizonMinutes);
   pConf->Write(_T("ArrivalSafetyMarginMinutes"),
                configuration.ArrivalSafetyMarginMinutes);
+  weather_routing::WriteRoutingEngineSettings(configuration.EngineSettings, *pConf);
+  pConf->Write("ShorelineResolution", configuration.ShorelineResolution);
+  pConf->Write("QuickShorelineResolution", configuration.QuickShorelineResolution);
+  pConf->Write("ChartShorelineResolution", configuration.ChartShorelineResolution);
+  pConf->DeleteEntry("QuickRoute");
   pConf->Write(
       _T("RoutingEffortPercent"),
       weather_routing::NormalizeRoutingEffortPercent(
@@ -11581,6 +11712,13 @@ void WeatherRouting::ApplyLastUsedConfigurationDefaults(
   configuration.ArrivalSafetyMarginMinutes =
       static_cast<int>(std::max(0L, std::min(360L,
                                             arrival_safety_margin)));
+  const bool hasSavedDefaults = pConf->GetNumberOfEntries() > 0;
+  configuration.EngineSettings = weather_routing::ReadRoutingEngineSettings(*pConf);
+  configuration.ShorelineResolution = weather_routing::ReadShorelineResolution(*pConf, weather_routing::ShorelineManager::DefaultResolution());
+  configuration.QuickShorelineResolution = weather_routing::ReadShorelineResolution(*pConf, 0, "QuickShorelineResolution");
+  configuration.ChartShorelineResolution = weather_routing::ReadShorelineResolution(*pConf, 0, "ChartShorelineResolution");
+  if (!hasSavedDefaults)
+    configuration.EngineSettings.mainPreset = {"balanced", 1};
   long routing_effort_percent = configuration.RoutingEffortPercent;
   pConf->Read(_T("RoutingEffortPercent"), &routing_effort_percent,
               routing_effort_percent);

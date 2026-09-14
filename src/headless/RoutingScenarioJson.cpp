@@ -7,6 +7,7 @@
  *   (at your option) any later version.                                   *
  ***************************************************************************/
 
+#include <cmath>
 #include "RoutingScenarioJson.h"
 
 #include <algorithm>
@@ -159,6 +160,47 @@ bool LoadRoutingScenarioJson(const wxString& path,
 
   const Json::Value& route = root["route"];
   if (route.isObject()) {
+    if (route.isMember("routingEngine")) {
+      scenario.route.routingEngine = JsonString(route, "routingEngine");
+      scenario.route.hasRoutingEngine = true;
+      if (scenario.route.routingEngine != "main" && scenario.route.routingEngine != "quick") {
+        error = "routingEngine must be main or quick";
+        return false;
+      }
+    }
+    scenario.route.hasChartShorelineResolution = JsonInt(route, "chartShorelineResolution", scenario.route.chartShorelineResolution);
+    if (route.isMember("chartShorelineResolution") &&
+        (!scenario.route.hasChartShorelineResolution || scenario.route.chartShorelineResolution < 0 || scenario.route.chartShorelineResolution > 4)) {
+      error = "route.chartShorelineResolution must be an integer from 0 to 4";
+      return false;
+    }
+    scenario.route.hasShorelineResolution = JsonInt(route, "shorelineResolution", scenario.route.shorelineResolution);
+    if (route.isMember("shorelineResolution") &&
+        (!scenario.route.hasShorelineResolution || scenario.route.shorelineResolution < 0 || scenario.route.shorelineResolution > 4)) {
+      error = "route.shorelineResolution must be an integer from 0 to 4";
+      return false;
+    }
+    scenario.route.hasQuickOffshoreStepMinutes = JsonInt(route, "quickOffshoreStepMinutes", scenario.route.quickOffshoreStepMinutes);
+    scenario.route.hasQuickHeadingStepDegrees = JsonDouble(route, "quickHeadingStepDegrees", scenario.route.quickHeadingStepDegrees);
+    scenario.route.hasQuickMaximumSearchAngle = JsonInt(route, "quickMaximumSearchAngle", scenario.route.quickMaximumSearchAngle);
+    if ((route.isMember("quickOffshoreStepMinutes") && !scenario.route.hasQuickOffshoreStepMinutes) ||
+        (route.isMember("quickHeadingStepDegrees") && !scenario.route.hasQuickHeadingStepDegrees) ||
+        (route.isMember("quickMaximumSearchAngle") && !scenario.route.hasQuickMaximumSearchAngle) ||
+        scenario.route.quickOffshoreStepMinutes < 10 || scenario.route.quickOffshoreStepMinutes > 360 ||
+        !std::isfinite(scenario.route.quickHeadingStepDegrees) ||
+        scenario.route.quickHeadingStepDegrees < 5 || scenario.route.quickHeadingStepDegrees > 30 ||
+        scenario.route.quickMaximumSearchAngle < 0 || scenario.route.quickMaximumSearchAngle > 180) {
+      error = "Invalid Quick sampling settings";
+      return false;
+    }
+    scenario.route.hasQuickRoute = JsonBool(route, "quickRoute", scenario.route.quickRoute);
+    scenario.route.hasQuickMemoryBudgetMiB = JsonInt(route, "quickMemoryBudgetMiB", scenario.route.quickMemoryBudgetMiB);
+    if ((route.isMember("quickRoute") && !scenario.route.hasQuickRoute) ||
+        (route.isMember("quickMemoryBudgetMiB") && !scenario.route.hasQuickMemoryBudgetMiB) ||
+        scenario.route.quickMemoryBudgetMiB < 1 || scenario.route.quickMemoryBudgetMiB > 4096) {
+      error = "Invalid Quick route or memory-budget setting";
+      return false;
+    }
     wxString boat_file = JsonString(route, "boatFile");
     if (!boat_file.IsEmpty()) {
       scenario.route.boatFile = boat_file;
@@ -332,6 +374,19 @@ bool SaveRoutingResultJson(const wxString& path,
     if (candidate.departure.IsValid())
       value["departure"] = TimeToJson(candidate.departure).ToUTF8().data();
     value["state"] = candidate.state.ToUTF8().data();
+    if (!candidate.engine.IsEmpty()) value["engine"] = candidate.engine.ToUTF8().data();
+    value["shoreline"]["resolution"] = candidate.shorelineResolution;
+    value["shoreline"]["enabled"] = candidate.detectLand;
+    value["shoreline"]["dataset"] = candidate.shorelineDataset.ToStdString();
+    value["searchSettings"]["preset"] = candidate.searchPreset.ToStdString();
+    value["searchSettings"]["presetRevision"] = candidate.searchPresetRevision;
+    value["searchSettings"]["timeStepSeconds"] = candidate.searchTimeStepSeconds;
+    value["searchSettings"]["headingStepDegrees"] = candidate.searchHeadingStepDegrees;
+    value["searchSettings"]["maximumSearchAngleDegrees"] = candidate.searchMaximumAngleDegrees;
+    if (candidate.engine == "main")
+      value["searchSettings"]["effortPercent"] = candidate.searchEffortPercent;
+    if (candidate.engine == "quick")
+      value["searchSettings"]["searchMemoryBudgetMiB"] = candidate.searchMemoryBudgetMiB;
     if (candidate.eta.IsValid())
       value["eta"] = TimeToJson(candidate.eta).ToUTF8().data();
     AddOptionalLong(value, "elapsed", candidate.elapsedSeconds);

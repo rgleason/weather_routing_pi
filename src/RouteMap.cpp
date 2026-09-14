@@ -1091,9 +1091,12 @@ Position* RouteMap::ClosestPosition(double lat, double lon, wxDateTime* t,
 }
 
 void RouteMap::Reset() {
+  m_GribTimelineCache.SetMaximumWeight(GetConfiguration().IsQuick()
+      ? 64ULL * 1024ULL * 1024ULL : kGribTimelineCacheMaximumBytes);
   m_CancellationFlag->store(false, std::memory_order_relaxed);
   Lock();
   Clear();
+  m_ComputedSearchSettings = {};
 
   m_NewGrib = nullptr;
   m_SharedNewGrib.SetGribRecordSet(0);

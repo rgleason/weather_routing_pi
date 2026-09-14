@@ -282,6 +282,10 @@ struct ResourceLimits {
   // the legacy split of maximumGeneratedStates for API compatibility.
   std::uint64_t maximumCoastalEndpointGeneratedStates{};
   std::uint64_t maximumForwardGeneratedStates{};
+  // Optional separate allowance for a forward search already near arrival.
+  // Callers include this in maximumGeneratedStates; no other stage loses its
+  // allocation and maximumRetainedStates remains a hard ceiling.
+  std::uint64_t maximumForwardArrivalGeneratedStates{};
   // Reverse bridge recovery does not generate ordinary isochrone states, so
   // bound both the number of retained lineages inspected and the more
   // expensive chronological bridge integrations independently.
@@ -442,7 +446,8 @@ enum class SolverPath {
   AdaptiveIsochrone,
   ReverseRecovery,
   FrontierRecovery,
-  GraphFallback
+  GraphFallback,
+  QuickBeam
 };
 
 struct ConstraintMargins {
@@ -574,6 +579,13 @@ struct RoutingDiagnostics {
   std::uint64_t xtdCoverageExpansions{};
   std::uint64_t landChecks{};
   std::uint64_t landRejections{};
+  // Fine, bounded propagation layers used only when an otherwise complete
+  // heading fan is rejected by land. These layers preserve both sides of the
+  // obstruction and stop as soon as the ordinary cadence is viable again.
+  std::uint64_t landGuidedRecoveryLayers{};
+  std::uint64_t landGuidedGeneratedStates{};
+  std::uint64_t landGuidedPortStates{};
+  std::uint64_t landGuidedStarboardStates{};
   std::uint64_t constraintRejections{};
   std::uint64_t propulsionRejections{};
   std::uint64_t reverseLayers{};

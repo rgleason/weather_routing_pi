@@ -56,6 +56,22 @@ struct RoutingScenarioEnvironment {
 };
 
 struct RoutingScenarioRouteSettings {
+  int chartShorelineResolution{0};
+  bool hasChartShorelineResolution{false};
+  int shorelineResolution{4};
+  bool hasShorelineResolution{false};
+  wxString routingEngine;
+  bool hasRoutingEngine{false};
+  int quickOffshoreStepMinutes{180};
+  bool hasQuickOffshoreStepMinutes{false};
+  double quickHeadingStepDegrees{20.0};
+  bool hasQuickHeadingStepDegrees{false};
+  int quickMaximumSearchAngle{120};
+  bool hasQuickMaximumSearchAngle{false};
+  bool quickRoute{false};
+  bool hasQuickRoute{false};
+  int quickMemoryBudgetMiB{256};
+  bool hasQuickMemoryBudgetMiB{false};
   wxString boatFile;
   bool hasBoatFile;
   int timeStepSeconds;

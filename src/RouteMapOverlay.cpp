@@ -89,7 +89,11 @@ void* RouteMapOverlayThread::Entry() {
         {
           RouteMapOverlay::DestinationUpdateGuard destination_update_guard(
               m_RouteMapOverlay);
-          if (!m_RouteMapOverlay.Propagate()) {
+          const bool propagated = m_RouteMapOverlay.Propagate();
+          if (cf.DetectLand && !cf.chart_safety_runtime_available &&
+              cf.shoreline_dataset && !cf.shoreline_dataset->Error().empty())
+            throw weather_routing::ShorelineQueryError(cf.shoreline_dataset->Error());
+          if (!propagated) {
             wxThread::Sleep(50);
             continue;
           }
@@ -102,6 +106,9 @@ void* RouteMapOverlayThread::Entry() {
         }
       }
     }
+  } catch (const weather_routing::ShorelineQueryError& error) {
+    m_RouteMapOverlay.SetError(wxString::FromUTF8(error.what()));
+    wxLogError("WR_SHORELINE_ROUTE_ABORT %s", error.what());
   } catch (const std::bad_alloc&) {
 #ifdef __WXMSW__
     MEMORYSTATUSEX memory{};
@@ -169,6 +176,15 @@ bool RouteMapOverlay::Start(wxString& error) {
   if (error.size()) return false;
 
   RouteMapConfiguration configuration = GetConfiguration();
+  if (configuration.EngineSettings.engine == weather_routing::RoutingEngine::Unsupported) {
+    error = _("Unsupported routing engine: ") +
+        wxString::FromUTF8(configuration.EngineSettings.EngineId());
+    return false;
+  }
+  if (configuration.IsQuick() && !ModernNativeRouteEnabled(configuration)) {
+    error = _("Quick Route cannot analyse an existing route or use cumulative climatology/legacy routing. Select the main engine for this configuration.");
+    return false;
+  }
   /* test for cyclone data if needed */
   if (configuration.AvoidCycloneTracks &&
       (!ClimatologyCycloneTrackCrossings ||
@@ -199,6 +215,7 @@ bool RouteMapOverlay::Start(wxString& error) {
   m_ModernProgress.Begin();
   Unlock();
 
+  CaptureSearchSettings(configuration, ModernNativeRouteEnabled(configuration));
   m_Thread = new RouteMapOverlayThread(*this);
   m_Thread->Run();
   return true;

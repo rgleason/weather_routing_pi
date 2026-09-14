@@ -39,6 +39,8 @@ aui
 REQUIRED)
 
 set(TEST_SRC
+    ShorelineDataset_tests.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/src/ShorelineDataset.cpp
     RoutingProgressState_tests.cpp
     ProcessAddressSpace_tests.cpp
     AppendOnlyCache_tests.cpp
@@ -60,6 +62,7 @@ set(TEST_SRC
     RouteSimplifier_tests.cpp
     StabilityCorridor_tests.cpp
     StabilityCorridorLifecycle_tests.cpp
+    RoutingEngineSettings_tests.cpp
     RoutingScenarioJson_tests.cpp
     DepartureScheduler_tests.cpp
     RoutingQualityPolicy_tests.cpp
@@ -97,12 +100,15 @@ set(TEST_SRC
     ${WEATHER_ROUTING_ENGINE_DIR}/src/EnvironmentResolver.cpp
     ${WEATHER_ROUTING_ENGINE_DIR}/src/ArrivalPlanner.cpp
     ${WEATHER_ROUTING_ENGINE_DIR}/src/Engine.cpp
+    ${WEATHER_ROUTING_ENGINE_DIR}/src/QuickEngine.cpp
     ${WEATHER_ROUTING_ENGINE_DIR}/src/Validator.cpp
     ${WEATHER_ROUTING_ENGINE_DIR}/src/Ensemble.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/zuFile.cpp
    )
 
    add_executable(weather_routing_pi_tests ${TEST_SRC})
+   target_compile_definitions(weather_routing_pi_tests PRIVATE
+       WR_TEST_SHORELINE_DATA="${WEATHER_ROUTING_SOURCE_DIR}/data/shoreline")
 
    set(WEATHER_ROUTING_TEST_SANITIZER "" CACHE STRING
        "Optional sanitizer for Weather Routing tests: address, thread, or undefined")
