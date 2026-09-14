@@ -1181,6 +1181,13 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
   unsigned layer = 0;
   unsigned stalledApproachLayers = 0;
   unsigned stalledCoastalLayers = 0;
+  unsigned landGuidedLayersThisSearch = 0;
+  const std::uint64_t landGuidedGeneratedAtSearchStart =
+      diagnostics.landGuidedGeneratedStates;
+  constexpr unsigned kMaximumLandGuidedLayersPerSearch = 8;
+  const std::uint64_t landGuidedGeneratedAllowance = std::min<std::uint64_t>(
+      50000U, std::max<std::uint64_t>(4096U,
+                                     forwardGeneratedStateCeiling / 10U));
   double lastCoastalProgressNm = std::numeric_limits<double>::infinity();
   double lastApproachProgressNm = std::numeric_limits<double>::infinity();
   RoutingStatus dataFailure = RoutingStatus::Complete;
@@ -1543,6 +1550,92 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
     }
     auto retainedNodes = pruneLayer(request, environment, std::move(candidates),
                                     labelCap, diagnostics);
+    // A long offshore step can leave a perfectly usable coastal frontier with
+    // every heading rejected: each chord cuts the same headland or island even
+    // though shorter motions can follow the water around either side. Treat
+    // those land rejections as information. Before declaring the layer
+    // collapsed, repeat only this failed layer at the authoritative minimum
+    // time step and with the refined full heading fan. The ordinary result is
+    // therefore untouched whenever it can advance, while a bounded coastal
+    // recovery retains both port and starboard ways around the obstruction.
+    if (retainedNodes.empty() && environment.landAndBoundaries &&
+        environment.landAndBoundaries->supportsLandRejectionGuidance() &&
+        layerStep > request.options.minimumTimeStep &&
+        landGuidedLayersThisSearch < kMaximumLandGuidedLayersPerSearch &&
+        diagnostics.landGuidedGeneratedStates -
+                landGuidedGeneratedAtSearchStart <
+            landGuidedGeneratedAllowance &&
+        diagnostics.landRejections > landRejectionsBeforeLayer &&
+        dataFailure == RoutingStatus::Complete) {
+      std::vector<Node> landGuidedCandidates;
+      bool generatedLimitReached = false;
+      for (const std::size_t index : result.retained) {
+        if (generatedLimitReached) break;
+        const Node& from = result.nodes[index];
+        const double bearing =
+            initialBearingDegrees(from.position, request.destination);
+        for (double heading : headings(
+                 request.options.refinedHeadingStepDegrees, bearing,
+                 request.options.adaptiveHeadings,
+                 request.options.refinedHeadingStepDegrees,
+                 request.options.maximumSearchAngleDegrees)) {
+          if (generatedLimitReached) break;
+          workerProgress.tick(request,
+                              RoutingProgressStage::ForwardIsochrone,
+                              diagnostics, attempt, totalAttempts);
+          for (auto& next : propagate(
+                   request, environment, performance, from, heading,
+                   request.options.minimumTimeStep, diagnostics,
+                   Duration{std::chrono::minutes{5}}, &dataFailure)) {
+            const std::uint64_t ordinaryForwardGenerated =
+                diagnostics.generatedStates -
+                diagnostics.coastalEndpointGeneratedStates;
+            if (diagnostics.generatedStates >=
+                    request.limits.maximumGeneratedStates ||
+                diagnostics.landGuidedGeneratedStates -
+                        landGuidedGeneratedAtSearchStart >=
+                    landGuidedGeneratedAllowance ||
+                (coastalDepartureEgress &&
+                 diagnostics.coastalEndpointGeneratedStates >=
+                     endpointGeneratedStateCeiling) ||
+                (!coastalDepartureEgress &&
+                 ordinaryForwardGenerated >= forwardGeneratedStateCeiling)) {
+              generatedLimitReached = true;
+              break;
+            }
+            ++diagnostics.generatedStates;
+            ++diagnostics.landGuidedGeneratedStates;
+            if (coastalDepartureEgress)
+              ++diagnostics.coastalEndpointGeneratedStates;
+            next.predecessor = index;
+            landGuidedCandidates.push_back(std::move(next));
+          }
+        }
+      }
+      if (!landGuidedCandidates.empty()) {
+        retainedNodes = pruneLayer(request, environment,
+                                   std::move(landGuidedCandidates), labelCap,
+                                   diagnostics);
+        if (!retainedNodes.empty()) {
+          ++diagnostics.landGuidedRecoveryLayers;
+          ++landGuidedLayersThisSearch;
+          for (const Node& retained : retainedNodes) {
+            const double side = crossTrackDistanceNm(
+                request.start, request.destination, retained.position);
+            if (side < -1e-6)
+              ++diagnostics.landGuidedPortStates;
+            else if (side > 1e-6)
+              ++diagnostics.landGuidedStarboardStates;
+          }
+          diagnostics.stageStopReasons.push_back(
+              "land-guided coastal recovery retained " +
+              std::to_string(retainedNodes.size()) +
+              " states after the ordinary layer was rejected; step=" +
+              std::to_string(request.options.minimumTimeStep.count()) +
+              " seconds, both obstacle sides eligible");
+        }
+      }
+    }
     if (coastalDepartureEgress && environment.landAndBoundaries) {
       const auto clearedStandOff = [&](const Node& candidate) {
         return !candidate.departureEgressActive;

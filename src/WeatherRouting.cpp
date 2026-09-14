@@ -9329,6 +9329,10 @@ bool WeatherRouting::CollectChartSafetyScoutGeometry(
   }
 
   bool watchdog_expired = false;
+  const long scout_watchdog_ms =
+      wxMax(kChartSafetyScoutWatchdogMs,
+            EnvLong("WR_HEADLESS_CHART_SCOUT_WATCHDOG_MS",
+                    kChartSafetyScoutWatchdogMs));
   long next_heartbeat_ms = 250;
   while (routemapoverlay->Running()) {
     if (routemapoverlay->NeedsGrib() && !routemapoverlay->Finished()) {
@@ -9341,7 +9345,7 @@ bool WeatherRouting::CollectChartSafetyScoutGeometry(
       next_heartbeat_ms = elapsed_ms + 250;
     }
 
-    if (elapsed_ms > kChartSafetyScoutWatchdogMs) {
+    if (elapsed_ms > scout_watchdog_ms) {
       watchdog_expired = true;
       routemapoverlay->Stop();
       break;
@@ -9666,6 +9670,28 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
     SetChartSafetyScoutEndpointReach(&envelope.configuration, envelope.points,
                                      envelope.retained_segments,
                                      envelope.complete);
+    // A headless integration run can start before the GRIB plug-in has warmed
+    // its timeline.  In that case the bounded scout may time out even though
+    // the same route's warm GUI scout has already established its endpoint
+    // reach.  Allow the harness to supply that observed reach so the
+    // authoritative chart-backed production solve can be tested in isolation.
+    if (!EnvString("WR_HEADLESS_SCENARIO").IsEmpty()) {
+      const double headless_endpoint_reach =
+          EnvDouble("WR_HEADLESS_CHART_ENDPOINT_REACH_NM", NAN);
+      if (std::isfinite(headless_endpoint_reach)) {
+        const double bounded_reach =
+            wxMax(0.0, wxMin(2.0, headless_endpoint_reach));
+        envelope.configuration.chart_safety_start_endpoint_reach_nm =
+            bounded_reach;
+        envelope.configuration.chart_safety_end_endpoint_reach_nm =
+            bounded_reach;
+        wxLogMessage(
+            "WR_SCOUT_ENDPOINT_REACH headless_override route=\"%s to %s\" "
+            "reach_nm=%.3f source=integration-harness",
+            envelope.configuration.Start, envelope.configuration.End,
+            bounded_reach);
+      }
+    }
     (*route)->SetConfiguration(envelope.configuration);
     (*route)->Reset();
     s_chartSafetyPreparedScoutScopes.insert(scope);

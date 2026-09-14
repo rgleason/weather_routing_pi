@@ -579,6 +579,13 @@ struct RoutingDiagnostics {
   std::uint64_t xtdCoverageExpansions{};
   std::uint64_t landChecks{};
   std::uint64_t landRejections{};
+  // Fine, bounded propagation layers used only when an otherwise complete
+  // heading fan is rejected by land. These layers preserve both sides of the
+  // obstruction and stop as soon as the ordinary cadence is viable again.
+  std::uint64_t landGuidedRecoveryLayers{};
+  std::uint64_t landGuidedGeneratedStates{};
+  std::uint64_t landGuidedPortStates{};
+  std::uint64_t landGuidedStarboardStates{};
   std::uint64_t constraintRejections{};
   std::uint64_t propulsionRejections{};
   std::uint64_t reverseLayers{};

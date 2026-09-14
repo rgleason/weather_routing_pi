@@ -1502,10 +1502,11 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
       sbConstraints->GetStaticBox(), wxID_ANY, wxEmptyString, wxDefaultPosition,
       wxSize(-1, -1), wxSP_ARROW_KEYS, 0, 180, 180);
   m_sMaxDivertedCourse->SetToolTip(
-      _("Maximum course variation from great circle (shortest) route in "
-        "degrees.\nLarger values allow finding alternate routes but increase "
-        "computation time.\nNote: Alternate routes may be necessary to avoid "
-        "land or find better weather."));
+      _("Hard limit on how far route geometry may divert from the great-circle "
+        "route. This is separate from Advanced > Max Search Angle: increasing "
+        "the search angle does not override this limit. Use 180 degrees when "
+        "the route may need to begin away from the destination or pass around "
+        "an island, peninsula or other land obstruction."));
   m_sMaxDivertedCourse->SetMaxSize(wxSize(140, -1));
 
   fgSizer110->Add(m_sMaxDivertedCourse, 1,
@@ -1930,8 +1931,10 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
       m_pMainEngine, wxID_ANY, wxEmptyString,
       wxDefaultPosition, wxSize(140, -1), wxSP_ARROW_KEYS, 0, 180, 120);
   m_sMaxSearchAngle->SetToolTip(
-      _("Maximum search angle to allow during routing.\nRoutes with search "
-        "angles above this value will be avoided."));
+      _("Maximum heading angle sampled on either side of the bearing to the "
+        "destination. Basic > Max Diverted Course is a separate hard limit on "
+        "the resulting route geometry; the lower applicable limit still "
+        "applies."));
   mainSearchAngle->Add(m_sMaxSearchAngle, 0, wxALL | wxALIGN_CENTER_VERTICAL, 3);
 
   m_staticText125 =

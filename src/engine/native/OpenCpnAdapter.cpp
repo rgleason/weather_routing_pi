@@ -735,7 +735,9 @@ public:
             wr::destinationPoint(point, bearing, kProbeLengthNm);
         if (!ConstraintChecker::CheckLandConstraint(
                 configuration, point.latitude, point.longitude, end.latitude,
-                end.longitude, bearing)) {
+                end.longitude, bearing,
+                false /* endpoint relaxation would make every probe inside the
+                         scout-derived reach appear clear */)) {
           clear = false;
           break;
         }
@@ -748,6 +750,15 @@ public:
     if (missing > 0 && overlay_.AwaitChartSafetyData())
       std::tie(clear, missing) = pointClearAtConfiguredMargin();
     return clear ? std::numeric_limits<double>::infinity() : 0.0;
+  }
+  bool supportsLandRejectionGuidance() const override {
+    // This adapter's segment hook also enforces these non-coastline limits.
+    // With any of them active, a generic rejection cannot safely be treated
+    // as evidence of a shoreline edge.
+    return configuration_.MaxDivertedCourse >= 180.0 &&
+           configuration_.MaxCourseAngle >= 180.0 &&
+           !configuration_.DetectBoundary &&
+           !configuration_.AvoidCycloneTracks;
   }
   std::string identity() const override {
     return "OpenCPN chart semantics, GSHHS fallback and exclusion boundaries";
@@ -1161,7 +1172,9 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
       "candidate_offset=%d departure=\"%s\" "
       "elapsed_ms=%lld legs=%llu generated=%llu retained=%llu "
       "graph_labels=%llu wait_states=%llu land_checks=%llu "
-      "land_rejections=%llu constraint_rejections=%llu "
+      "land_rejections=%llu land_guided_layers=%llu "
+      "land_guided_generated=%llu land_guided_port=%llu "
+      "land_guided_starboard=%llu constraint_rejections=%llu "
       "validation_samples=%llu closest_nm=%.3f effort=%d "
       "completed_effort=%u cumulative_generated=%llu "
       "generated_limit=%llu retained_limit=%llu graph_label_limit=%llu "
@@ -1179,6 +1192,14 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
       static_cast<unsigned long long>(result.diagnostics.waitStates),
       static_cast<unsigned long long>(result.diagnostics.landChecks),
       static_cast<unsigned long long>(result.diagnostics.landRejections),
+      static_cast<unsigned long long>(
+          result.diagnostics.landGuidedRecoveryLayers),
+      static_cast<unsigned long long>(
+          result.diagnostics.landGuidedGeneratedStates),
+      static_cast<unsigned long long>(
+          result.diagnostics.landGuidedPortStates),
+      static_cast<unsigned long long>(
+          result.diagnostics.landGuidedStarboardStates),
       static_cast<unsigned long long>(result.diagnostics.constraintRejections),
       static_cast<unsigned long long>(result.diagnostics.validationSamples),
       result.diagnostics.closestApproachNm,
@@ -1268,7 +1289,18 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
     ConstraintChecker::LogSegmentSafetyDiagnostics(
         wxString::Format("native candidate offset=%d",
                          configuration.DepartureTimeOptimizationOffsetMinutes));
+  if (!Complete(result.status)) {
+    error = wxString::FromUTF8(result.message);
+    if (configuration.MaxSearchAngle > configuration.MaxDivertedCourse) {
+      error += wxString::Format(
+          _(". Max Diverted Course (%d°) is a separate hard route-geometry "
+            "limit and is narrower than Max Search Angle (%d°). Increase it "
+            "to permit wider detours around land"),
+          static_cast<int>(configuration.MaxDivertedCourse),
+          static_cast<int>(configuration.MaxSearchAngle));
+    }
+  }
   overlay.InstallModernNativeResult(result);
-  if (!Complete(result.status)) error = wxString::FromUTF8(result.message);
+  if (!Complete(result.status)) overlay.SetFailureReason(error);
   return Complete(result.status);
 }

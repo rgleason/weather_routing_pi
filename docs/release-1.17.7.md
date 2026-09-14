@@ -65,3 +65,26 @@ Short shoreline checks wholly inside one spatial bin now avoid repeated work
 while retaining the same intersection and land-containment tests. The older
 reader's missed crossings are not restored for speed: matching 1.17.5 settings
 and resolution does not promise identical geometry under the corrected reader.
+
+Main now retries a fully land-rejected offshore-scale layer at the configured
+minimum time step. This bounded recovery is used only after the ordinary layer
+has collapsed, keeps viable states on both sides of the obstruction, and stops
+as soon as the normal cadence can continue. It has an eight-layer and 50,000
+generated-state ceiling per search. Providers which combine coastline tests
+with active route-geometry, boundary or cyclone constraints disable this
+guidance so those hard limits cannot be mistaken for shoreline.
+
+Chart-safety stand-off probes no longer inherit the scout's endpoint-only margin
+relaxation. The relaxation remains available for a legitimate coastal departure
+or arrival, while clearance measurements now use the full configured margin.
+
+Max Diverted Course and Max Search Angle are described explicitly as independent
+controls. A failed Main route reports when Max Diverted Course is narrower than
+Max Search Angle, because sampling a heading does not override the resulting
+route-geometry limit. In the captured Holyhead-to-Conwy chart-aware regression
+(0.4 NM land margin, one-hour step, five-degree heading separation), all three
+angular limits at 100 degrees failed. At 101 degrees the case completed, but by
+an inefficient 78.78 NM route. At 110 degrees it completed at the 100% effort
+tier in 6.17 seconds of engine time with a 37.78 NM route; 120 degrees also
+completed at the 100% tier. The practical regression setting is therefore 110
+degrees or more rather than the brittle one-degree boundary.

@@ -447,7 +447,8 @@ bool EndpointMarginOnlyHitIsZeroMarginSafe(RouteMapConfiguration* configuration,
 
 bool SegmentSafetyRejectsLand(RouteMapConfiguration* configuration,
                               double lat1, double lon1, double lat2,
-                              double lon2, double safety_margin_nm) {
+                              double lon2, double safety_margin_nm,
+                              bool allow_endpoint_margin_relaxation = true) {
   if (!s_useExperimentalChartSafety || !configuration ||
       !configuration->UseChartSafetyForPropagation ||
       (s_forceGshhsForPerformance && !s_enforceExperimentalChartSafety)) {
@@ -605,7 +606,7 @@ bool SegmentSafetyRejectsLand(RouteMapConfiguration* configuration,
                  result.status == PI_SEGMENT_SAFETY_NO_DATA ||
                  result.status == PI_SEGMENT_SAFETY_ERROR;
 
-  if (chart_rejects &&
+  if (allow_endpoint_margin_relaxation && chart_rejects &&
       result.status == PI_SEGMENT_SAFETY_WITHIN_LAND_MARGIN &&
       EndpointMarginOnlyHitIsZeroMarginSafe(configuration, lat1, lon1, lat2,
                                             lon2, safety_margin_nm,
@@ -912,7 +913,7 @@ bool ConstraintChecker::CheckMaxDivertedCourse(
 
 bool ConstraintChecker::CheckLandConstraint(
     RouteMapConfiguration& configuration, double lat, double lon, double dlat1,
-    double dlon1, double cog) {
+    double dlon1, double cog, bool allow_endpoint_margin_relaxation) {
   if (configuration.DetectLand) {
     double ndlon1 = dlon1;
 
@@ -921,7 +922,8 @@ bool ConstraintChecker::CheckLandConstraint(
       ndlon1 -= 360;
     }
     if (SegmentSafetyRejectsLand(&configuration, lat, lon, dlat1, ndlon1,
-                                 configuration.SafetyMarginLand)) {
+                                 configuration.SafetyMarginLand,
+                                 allow_endpoint_margin_relaxation)) {
       return false;
     }
   }
