@@ -48,6 +48,7 @@ TEST(GribTimelineCachePolicy, ThirtyTwoBitProcessesNeverEnableLargeCache) {
 
 TEST(GribTimelineCachePolicy, ValuesAreNormalizedPerEngine) {
   EXPECT_EQ(wr::NormalizeGribTimelineCacheMiB(0, false, 64), 512);
+  EXPECT_EQ(wr::NormalizeGribTimelineCacheMiB(0, false, 32), 192);
   EXPECT_EQ(wr::NormalizeGribTimelineCacheMiB(0, true, 64), 64);
   EXPECT_EQ(wr::NormalizeGribTimelineCacheMiB(99999, false, 64), 8192);
   EXPECT_EQ(wr::NormalizeGribTimelineCacheMiB(99999, false, 32), 192);
