@@ -4,6 +4,12 @@ Adds the optional Quick engine alongside Main. Choose the engine in Basic and
 configure it in Advanced. Existing 1.17.6 routes and saved defaults stay on Main
 with their tuning preserved; each engine remembers its own settings.
 
+Advanced uses two columns: Engine settings, Constraints, Cyclone avoidance,
+Motoring and Courses on the left; Options and Polar Efficiency on the right.
+Options starts at the top, and cyclone avoidance has its own compact group.
+All earlier Basic and Advanced controls remain available in their relevant
+engine or compatibility mode; this rearrangement does not reset saved values.
+
 Quick reduces retained search state and calculation work using a separate C++
 bounded beam search. It shares Main's physical propagation and independent final
 validation. Its pruning can miss a feasible or faster route. Its configurable

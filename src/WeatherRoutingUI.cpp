@@ -1791,7 +1791,11 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
       wxVSCROLL | wxTAB_TRAVERSAL);
   m_pAdvanced->SetScrollRate(0, 10);
   wxBoxSizer* bSizer8;
-  bSizer8 = new wxBoxSizer(wxVERTICAL);
+  bSizer8 = new wxBoxSizer(wxHORIZONTAL);
+  // Independent columns keep Options level with Engine settings and avoid
+  // stretching short groups to the height of the opposite column.
+  auto advancedLeft = new wxBoxSizer(wxVERTICAL);
+  auto advancedRight = new wxBoxSizer(wxVERTICAL);
 
   auto engineSettingsBox = new wxStaticBoxSizer(
       new wxStaticBox(m_pAdvanced, wxID_ANY, _("Engine settings")), wxVERTICAL);
@@ -1977,15 +1981,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   m_pQuickEngine->SetSizer(quickEngineSizer);
   engineSettingsBox->Add(m_pQuickEngine, 0, wxEXPAND, 0);
   m_pQuickEngine->Hide();
-  bSizer8->Add(engineSettingsBox, 0, wxEXPAND | wxALL, 5);
-
-
-  wxFlexGridSizer* fgSizer1072;
-  fgSizer1072 = new wxFlexGridSizer(0, 2, 0, 0);
-  fgSizer1072->AddGrowableCol(0);
-  fgSizer1072->AddGrowableCol(1);
-  fgSizer1072->SetFlexibleDirection(wxBOTH);
-  fgSizer1072->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
+  advancedLeft->Add(engineSettingsBox, 0, wxEXPAND | wxALL, 5);
 
   wxStaticBoxSizer* sbConstraints1;
   sbConstraints1 = new wxStaticBoxSizer(
@@ -2053,7 +2049,11 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   fgSizer951->Add(m_staticText1251, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
 
-  sbConstraints1->Add(fgSizer951, 1, wxEXPAND, 5);
+  sbConstraints1->Add(fgSizer951, 0, wxEXPAND, 5);
+  advancedLeft->Add(sbConstraints1, 0, wxALL | wxEXPAND, 5);
+
+  auto cycloneBox = new wxStaticBoxSizer(
+      new wxStaticBox(m_pAdvanced, wxID_ANY, _("Cyclone avoidance")), wxVERTICAL);
 
   wxFlexGridSizer* fgSizer941;
   fgSizer941 = new wxFlexGridSizer(0, 1, 0, 0);
@@ -2061,7 +2061,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   fgSizer941->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
 
   m_cbAvoidCycloneTracks =
-      new wxCheckBox(sbConstraints1->GetStaticBox(), wxID_ANY,
+      new wxCheckBox(cycloneBox->GetStaticBox(), wxID_ANY,
                      _("Avoid cyclone tracks (climatology)"), wxDefaultPosition,
                      wxDefaultSize, wxCHK_3STATE);
   m_cbAvoidCycloneTracks->SetValue(true);
@@ -2073,48 +2073,37 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   fgSizer952->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
 
   m_staticText1281 =
-      new wxStaticText(sbConstraints1->GetStaticBox(), wxID_ANY, _("within"),
+      new wxStaticText(cycloneBox->GetStaticBox(), wxID_ANY, _("within"),
                        wxDefaultPosition, wxDefaultSize, 0);
   m_staticText1281->Wrap(-1);
   fgSizer952->Add(m_staticText1281, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
 
-  m_sCycloneMonths = new wxSpinCtrl(sbConstraints1->GetStaticBox(), wxID_ANY,
+  m_sCycloneMonths = new wxSpinCtrl(cycloneBox->GetStaticBox(), wxID_ANY,
                                     wxEmptyString, wxDefaultPosition,
                                     wxSize(140, -1), wxSP_ARROW_KEYS, 0, 6, 3);
   fgSizer952->Add(m_sCycloneMonths, 0, wxALL, 5);
 
   m_staticText1291 =
-      new wxStaticText(sbConstraints1->GetStaticBox(), wxID_ANY, _("Months"),
+      new wxStaticText(cycloneBox->GetStaticBox(), wxID_ANY, _("Months"),
                        wxDefaultPosition, wxDefaultSize, 0);
   m_staticText1291->Wrap(-1);
   fgSizer952->Add(m_staticText1291, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
-  m_sCycloneDays = new wxSpinCtrl(sbConstraints1->GetStaticBox(), wxID_ANY,
+  m_sCycloneDays = new wxSpinCtrl(cycloneBox->GetStaticBox(), wxID_ANY,
                                   wxEmptyString, wxDefaultPosition,
                                   wxSize(140, -1), wxSP_ARROW_KEYS, 0, 183, 0);
   fgSizer952->Add(m_sCycloneDays, 0, wxALL, 5);
 
   m_staticText130 =
-      new wxStaticText(sbConstraints1->GetStaticBox(), wxID_ANY, _("Days"),
+      new wxStaticText(cycloneBox->GetStaticBox(), wxID_ANY, _("Days"),
                        wxDefaultPosition, wxDefaultSize, 0);
   m_staticText130->Wrap(-1);
   fgSizer952->Add(m_staticText130, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
   fgSizer941->Add(fgSizer952, 1, wxEXPAND, 5);
 
-  sbConstraints1->Add(fgSizer941, 1, wxEXPAND, 5);
-
-  fgSizer1072->Add(sbConstraints1, 1, wxALL | wxEXPAND, 5);
-
-  wxFlexGridSizer* fgSizer109;
-  fgSizer109 = new wxFlexGridSizer(0, 1, 0, 0);
-  fgSizer109->AddGrowableCol(0);
-  fgSizer109->AddGrowableRow(0);
-  fgSizer109->AddGrowableRow(1);
-  fgSizer109->AddGrowableRow(2);
-  fgSizer109->AddGrowableRow(3);
-  fgSizer109->SetFlexibleDirection(wxBOTH);
-  fgSizer109->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
+  cycloneBox->Add(fgSizer941, 0, wxEXPAND, 5);
+  advancedLeft->Add(cycloneBox, 0, wxALL | wxEXPAND, 5);
 
   wxStaticBoxSizer* sbOptions1;
   sbOptions1 = new wxStaticBoxSizer(
@@ -2465,7 +2454,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   depthExplanation->Wrap(440);
   sbOptions1->Add(depthExplanation, 0, wxEXPAND | wxALL, 5);
 
-  fgSizer109->Add(sbOptions1, 1, wxEXPAND | wxALL, 5);
+  advancedRight->Add(sbOptions1, 0, wxEXPAND | wxALL, 5);
 
   wxStaticBoxSizer* sbMotor = new wxStaticBoxSizer(
       new wxStaticBox(m_pAdvanced, wxID_ANY, _("Motoring")), wxVERTICAL);
@@ -2506,7 +2495,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
                                      _("knots")),
                     0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
   sbMotor->Add(fgSizerMotor, 1, wxEXPAND, 5);
-  fgSizer109->Add(sbMotor, 1, wxEXPAND | wxALL, 5);
+  advancedLeft->Add(sbMotor, 0, wxEXPAND | wxALL, 5);
 
   // Efficiency section
   wxStaticBoxSizer* sbEfficiency;
@@ -2585,7 +2574,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
                          wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
   sbEfficiency->Add(fgSizerEfficiency, 1, wxEXPAND, 5);
-  fgSizer109->Add(sbEfficiency, 1, wxEXPAND | wxALL, 5);
+  advancedRight->Add(sbEfficiency, 0, wxEXPAND | wxALL, 5);
 
   wxStaticBoxSizer* sbCourses;
   sbCourses = new wxStaticBoxSizer(
@@ -2624,15 +2613,13 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   m_cbUseOptimalAngles->SetToolTip(_(
       "Limit sailing headings to the best upwind and downwind VMG angles "
       "calculated from the active polar."));
-  bSizer4->Add(m_cbUseOptimalAngles, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
+  sbCourses->Add(bSizer4, 0, wxEXPAND, 5);
+  sbCourses->Add(m_cbUseOptimalAngles, 0, wxALL, 5);
 
-  sbCourses->Add(bSizer4, 1, wxEXPAND, 5);
+  advancedLeft->Add(sbCourses, 0, wxEXPAND | wxALL, 5);
 
-  fgSizer109->Add(sbCourses, 1, wxEXPAND | wxALL, 5);
-
-  fgSizer1072->Add(fgSizer109, 1, wxEXPAND | wxALL, 5);
-
-  bSizer8->Add(fgSizer1072, 0, wxEXPAND, 5);
+  bSizer8->Add(advancedLeft, 1, wxEXPAND);
+  bSizer8->Add(advancedRight, 1, wxEXPAND);
 
   m_pAdvanced->SetSizer(bSizer8);
   m_pAdvanced->Layout();
