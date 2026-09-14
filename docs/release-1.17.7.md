@@ -9,6 +9,9 @@ Motoring and Courses on the left; Options and Polar Efficiency on the right.
 Options starts at the top, and cyclone avoidance has its own compact group.
 All earlier Basic and Advanced controls remain available in their relevant
 engine or compatibility mode; this rearrangement does not reset saved values.
+Departure-time route workers and Optimize Tacking remain editable for Main and
+Quick. The shared scheduler uses the worker setting, subject to global and
+chart/boundary limits; the shared polar evaluator uses Optimize Tacking.
 
 Quick reduces retained search state and calculation work using a separate C++
 bounded beam search. It shares Main's physical propagation and independent final

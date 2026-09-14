@@ -912,9 +912,11 @@ void ConfigurationDialog::UpdateEngineControls() {
   for (auto* route : m_WeatherRouting.CurrentRouteMaps(false))
     allNative = allNative && ModernNativeRouteEnabled(route->GetConfiguration());
   m_cbInvertedRegions->Enable(!allNative);
-  m_cbOptimizeTacking->Enable(!allNative);
+  // Both native engines pass this option to the shared polar evaluator.
+  m_cbOptimizeTacking->Enable(!running);
   m_cIntegrator->Enable(!allNative);
-  m_sDepartureTimeOptimizationConcurrentRoutes->Enable(!allNative);
+  // Departure concurrency is a scheduler setting shared by both native engines.
+  m_sDepartureTimeOptimizationConcurrentRoutes->Enable(!running);
   m_pAdvanced->Layout();
   m_pAdvanced->FitInside();
   m_pBasic->Layout();
