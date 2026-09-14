@@ -46,6 +46,11 @@ The scenario can name a boat/polar file through `route.boatFile`. GRIB data is
 still supplied by the existing OpenCPN/Weather Routing configuration or the
 headless GRIB override below.
 
+`route.gribTimelineCacheMiB` optionally sets the selected engine's aggregate
+timeline-frame cache for the run. Values are 16–8192 MiB on 64-bit builds and
+16–192 MiB on 32-bit builds. Enlarged limits are still subject to the physical
+RAM admission and runtime reserve rules.
+
 For repeatable integration tests, `WR_HEADLESS_GRIB_FILE` can name an existing
 GRIB file. The runner asks the GRIB plugin to open it through the plugin's
 public message interface before routing starts. Weather Routing does not parse

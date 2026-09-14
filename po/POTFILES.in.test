@@ -9,6 +9,8 @@ src/OceanPrewarmPolicy.cpp
 src/ReachabilityPrewarmPolicy.cpp
 src/ExternalPlanningProvider.cpp
 src/AddressSpaceMonitor.cpp
+src/SystemMemory.cpp
+src/GribTimelineFrameCache.cpp
 src/weather_routing_pi.cpp
 src/WeatherRouting.cpp
 src/SunCalculator.cpp
@@ -72,6 +74,9 @@ include/OceanPrewarmPolicy.h
 include/ReachabilityPrewarmPolicy.h
 include/ExternalPlanningProvider.h
 include/ProcessAddressSpace.h
+include/GribTimelineCachePolicy.h
+include/SystemMemory.h
+include/GribTimelineFrameCache.h
 include/AddressSpaceMonitor.h
 include/ChartSafetyDefaults.h
 include/ClimatologyThreadGuard.h

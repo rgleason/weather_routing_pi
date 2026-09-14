@@ -590,6 +590,8 @@ void ConfigurationDialog::SetConfigurations(
       firstEngine == weather_routing::RoutingEngine::Main ? 0 :
       firstEngine == weather_routing::RoutingEngine::Quick ? 1 : wxNOT_FOUND);
   SET_SPIN_VALUE(QuickMemoryBudgetMiB, (*it).EngineSettings.quick.memoryBudgetMiB);
+  SET_SPIN(MainGribTimelineCacheMiB);
+  SET_SPIN(QuickGribTimelineCacheMiB);
   SET_SPIN_VALUE(QuickOffshoreStepMinutes, (*it).EngineSettings.quick.offshoreStepMinutes);
   SET_SPIN_DOUBLE_VALUE(QuickHeadingStepDegrees, (*it).EngineSettings.quick.headingStepDegrees);
   SET_SPIN_VALUE(QuickMaximumSearchAngle, (*it).EngineSettings.quick.maximumSearchAngle);
@@ -814,7 +816,10 @@ bool ConfigurationDialog::HandleEngineEdit(wxObject* control) {
   const bool quickField = control == m_sQuickOffshoreStepMinutes ||
       control == m_sQuickHeadingStepDegrees || control == m_sQuickMaximumSearchAngle;
   if (!mainField && !quickField && control != m_cRoutingEngine &&
-      control != m_sQuickMemoryBudgetMiB && control != m_cShorelineResolution) return false;
+      control != m_sQuickMemoryBudgetMiB &&
+      control != m_sMainGribTimelineCacheMiB &&
+      control != m_sQuickGribTimelineCacheMiB &&
+      control != m_cShorelineResolution) return false;
   if (m_bBlockUpdate) return true;
   // Engine edits must not round-trip unrelated controls: some old controls
   // display rounded percentages or mixed values. Keep their exact saved data.
@@ -853,6 +858,14 @@ bool ConfigurationDialog::HandleEngineEdit(wxObject* control) {
       config.UseReverseReachabilityRecovery = m_cbUseReverseReachabilityRecovery->IsChecked();
     if (control == m_sQuickMemoryBudgetMiB)
       config.EngineSettings.quick.memoryBudgetMiB = m_sQuickMemoryBudgetMiB->GetValue();
+    if (control == m_sMainGribTimelineCacheMiB)
+      config.MainGribTimelineCacheMiB =
+          weather_routing::NormalizeGribTimelineCacheMiB(
+              m_sMainGribTimelineCacheMiB->GetValue(), false);
+    if (control == m_sQuickGribTimelineCacheMiB)
+      config.QuickGribTimelineCacheMiB =
+          weather_routing::NormalizeGribTimelineCacheMiB(
+              m_sQuickGribTimelineCacheMiB->GetValue(), true);
     if (control == m_sQuickOffshoreStepMinutes)
       config.EngineSettings.quick.offshoreStepMinutes = m_sQuickOffshoreStepMinutes->GetValue();
     if (control == m_sQuickHeadingStepDegrees)
@@ -953,7 +966,7 @@ void ConfigurationDialog::OnResetAdvanced(wxCommandEvent&) {
       ? _("Main — Balanced\nTime step: 1 hour\nHeading separation: 5 degrees\nRouting effort: 100%\nMaximum search angle: 120 degrees\nOptional reverse reachability recovery: off")
       : _("Quick — Balanced\nOffshore time step: 3 hours (adaptive)\nHeading separation: 20 degrees (adaptive)\nMaximum search angle: 120 degrees");
   wxMessageDialog preview(this, values +
-      _("\n\nApplies to all selected routes. Memory budget, vessel, weather and safety settings are preserved."),
+      _("\n\nApplies to all selected routes. Memory and GRIB cache budgets, vessel, weather and safety settings are preserved."),
       _("Reset engine to preset"), wxOK | wxCANCEL);
   preview.SetOKLabel(_("Apply preset"));
   if (preview.ShowModal() != wxID_OK) return;
@@ -1247,6 +1260,14 @@ void ConfigurationDialog::Update() {
     }
     if (edited(m_sQuickMemoryBudgetMiB))
       configuration.EngineSettings.quick.memoryBudgetMiB = m_sQuickMemoryBudgetMiB->GetValue();
+    if (edited(m_sMainGribTimelineCacheMiB))
+      configuration.MainGribTimelineCacheMiB =
+          weather_routing::NormalizeGribTimelineCacheMiB(
+              m_sMainGribTimelineCacheMiB->GetValue(), false);
+    if (edited(m_sQuickGribTimelineCacheMiB))
+      configuration.QuickGribTimelineCacheMiB =
+          weather_routing::NormalizeGribTimelineCacheMiB(
+              m_sQuickGribTimelineCacheMiB->GetValue(), true);
     if (edited(m_sQuickOffshoreStepMinutes))
       configuration.EngineSettings.quick.offshoreStepMinutes = m_sQuickOffshoreStepMinutes->GetValue();
     if (edited(m_sQuickHeadingStepDegrees))

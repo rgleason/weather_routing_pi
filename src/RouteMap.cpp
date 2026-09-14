@@ -324,6 +324,8 @@ RouteMap::RouteMap()
     : m_bNeedsGrib(false),
       m_bNeedsChartSafetyData(false),
       m_NewGrib(NULL),
+      m_GribTimelineCache(
+          std::make_shared<weather_routing::GribTimelineFrameCache>()),
       m_CancellationFlag(std::make_shared<std::atomic_bool>(false)) {}
 
 RouteMap::~RouteMap() { Clear(); }
@@ -339,7 +341,7 @@ bool RouteMap::AcquireGribTimelineFrame(const wxDateTime& time,
                                         long timeoutMilliseconds) {
   const std::int64_t key = GribTimelineKey(time);
   if (key < 0) return false;
-  return m_GribTimelineCache.Acquire(
+  return m_GribTimelineCache->Acquire(
       key, &frame, timeoutMilliseconds,
       [this, time](const std::int64_t&) {
         Lock();
@@ -353,7 +355,7 @@ bool RouteMap::AcquireGribTimelineFrame(const wxDateTime& time,
 bool RouteMap::PublishTimelineFrame(std::int64_t timeline_key,
                                     const Shared_GribRecordSet& frame) {
   if (timeline_key < 0) return true;
-  const bool published = m_GribTimelineCache.Publish(
+  const bool published = m_GribTimelineCache->Publish(
       timeline_key, frame, frame.GetGribRecordSet() != nullptr);
   if (!published) {
     MarkResourceExhaustionLocked(_("caching a GRIB timeline frame"));
@@ -378,7 +380,7 @@ void RouteMap::ReportResourceExhaustion(const wxString& context) {
   MarkResourceExhaustionLocked(context);
   Unlock();
   m_CancellationFlag->store(true, std::memory_order_relaxed);
-  m_GribTimelineCache.NotifyAll();
+  m_GribTimelineCache->NotifyAll();
 }
 
 static long CountIsoRouteListPositions(const IsoRouteList& routes) {
@@ -1091,8 +1093,6 @@ Position* RouteMap::ClosestPosition(double lat, double lon, wxDateTime* t,
 }
 
 void RouteMap::Reset() {
-  m_GribTimelineCache.SetMaximumWeight(GetConfiguration().IsQuick()
-      ? 64ULL * 1024ULL * 1024ULL : kGribTimelineCacheMaximumBytes);
   m_CancellationFlag->store(false, std::memory_order_relaxed);
   Lock();
   Clear();

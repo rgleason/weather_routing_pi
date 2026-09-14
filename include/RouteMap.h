@@ -39,6 +39,7 @@
 #include "ODAPI.h"
 #include "GribRecordSet.h"
 #include "KeyedRequestCache.h"
+#include "GribTimelineFrameCache.h"
 #include "ConstraintChecker.h"
 #include "RoutePoint.h"
 #include "Position.h"
@@ -230,6 +231,13 @@ struct RouteMapConfiguration {
   int ShorelineResolution{4};  // Main, including migrated pre-1.17.7 preference.
   int QuickShorelineResolution{0};
   int ChartShorelineResolution{0};  // Preliminary shoreline work in enforced chart mode.
+  int MainGribTimelineCacheMiB{
+      weather_routing::kMainGribTimelineCacheDefaultMiB};
+  int QuickGribTimelineCacheMiB{
+      weather_routing::kQuickGribTimelineCacheDefaultMiB};
+  int SelectedGribTimelineCacheMiB() const {
+    return IsQuick() ? QuickGribTimelineCacheMiB : MainGribTimelineCacheMiB;
+  }
   int SelectedShorelineResolution() const {
     return IsQuick() ? QuickShorelineResolution : ShorelineResolution;
   }
@@ -1020,6 +1028,16 @@ public:
   bool AcquireGribTimelineFrame(const wxDateTime& time,
                                 Shared_GribRecordSet& frame,
                                 long timeoutMilliseconds = 30000);
+  void SetGribTimelineFrameCache(
+      const std::shared_ptr<weather_routing::GribTimelineFrameCache>& cache) {
+    if (cache) m_GribTimelineCache = cache;
+  }
+  void ReleaseGribTimelineFrameReference() {
+    Lock();
+    m_NewGrib = nullptr;
+    m_SharedNewGrib.SetGribRecordSet(nullptr);
+    Unlock();
+  }
   /**
    * Thread-safe accessor to get the time when new weather data is needed.
    *
@@ -1132,7 +1150,7 @@ public:
     m_bFinished = true;
     Unlock();
     m_CancellationFlag->store(true, std::memory_order_relaxed);
-    m_GribTimelineCache.NotifyAll();
+    m_GribTimelineCache->NotifyAll();
   }
   void ResetFinished() {
     Lock();
@@ -1348,20 +1366,8 @@ private:
   void MarkResourceExhaustionLocked(const wxString& context);
   bool PublishTimelineFrame(std::int64_t timeline_key,
                             const Shared_GribRecordSet& frame);
-  // Count remains a backstop for small regional frames. The byte ceiling is
-  // the primary bound because a 0.25-degree ocean-scale frame can own many
-  // tens of megabytes while a local frame can be tiny. Retaining one frame
-  // larger than the ceiling is intentional and handled by KeyedRequestCache.
-  static constexpr std::size_t kGribTimelineFrameCapacity = 512;
-  static constexpr std::size_t kGribTimelineCacheMaximumBytes =
-      sizeof(void*) <= 4 ? 192ULL * 1024ULL * 1024ULL
-                         : 512ULL * 1024ULL * 1024ULL;
-  weather_routing::KeyedRequestCache<std::int64_t, Shared_GribRecordSet>
-      m_GribTimelineCache{kGribTimelineFrameCapacity,
-                          kGribTimelineCacheMaximumBytes,
-                          [](const Shared_GribRecordSet& frame) {
-                            return frame.EstimatedMemoryBytes();
-                          }};
+  std::shared_ptr<weather_routing::GribTimelineFrameCache>
+      m_GribTimelineCache;
   std::shared_ptr<std::atomic_bool> m_CancellationFlag;
 };
 

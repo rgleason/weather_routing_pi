@@ -201,6 +201,17 @@ bool LoadRoutingScenarioJson(const wxString& path,
       error = "Invalid Quick route or memory-budget setting";
       return false;
     }
+    scenario.route.hasGribTimelineCacheMiB = JsonInt(
+        route, "gribTimelineCacheMiB", scenario.route.gribTimelineCacheMiB);
+    if (route.isMember("gribTimelineCacheMiB") &&
+        (!scenario.route.hasGribTimelineCacheMiB ||
+         scenario.route.gribTimelineCacheMiB < 16 ||
+         scenario.route.gribTimelineCacheMiB >
+             (sizeof(void*) <= 4 ? 192 : 8192))) {
+      error = "route.gribTimelineCacheMiB must be an integer from 16 to the "
+              "process cache limit";
+      return false;
+    }
     wxString boat_file = JsonString(route, "boatFile");
     if (!boat_file.IsEmpty()) {
       scenario.route.boatFile = boat_file;

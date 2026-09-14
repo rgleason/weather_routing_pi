@@ -91,7 +91,7 @@ set(LONG_DESCRIPTION
 
 set(VERSION_MAJOR "1")
 set(VERSION_MINOR "17")
-set(VERSION_PATCH "7")
+set(VERSION_PATCH "8")
 set(VERSION_TWEAK "0")
 # Every platform and identity ships all five verified offline resolutions.
 set(_shoreline_archives
@@ -111,7 +111,7 @@ foreach(_archive IN LISTS _shoreline_archives)
   endif()
 endforeach()
 unset(_shoreline_archives)
-set(VERSION_DATE  "13/09/2026") # DD/MM/YYYY format
+set(VERSION_DATE  "14/09/2026") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov511")
 
 set(OCPN_API_VERSION_MAJOR "1")
@@ -239,6 +239,8 @@ SET(SRCS
             src/ReachabilityPrewarmPolicy.cpp
             src/ExternalPlanningProvider.cpp
             src/AddressSpaceMonitor.cpp
+            src/SystemMemory.cpp
+            src/GribTimelineFrameCache.cpp
             src/weather_routing_pi.cpp
             src/WeatherRouting.cpp
             src/SunCalculator.cpp
@@ -305,6 +307,9 @@ SET (HDRS
             include/ReachabilityPrewarmPolicy.h
             include/ExternalPlanningProvider.h
             include/ProcessAddressSpace.h
+            include/GribTimelineCachePolicy.h
+            include/SystemMemory.h
+            include/GribTimelineFrameCache.h
             include/AddressSpaceMonitor.h
             include/ChartSafetyDefaults.h
             include/ClimatologyThreadGuard.h

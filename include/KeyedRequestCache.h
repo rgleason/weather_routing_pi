@@ -13,12 +13,14 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <functional>
 #include <limits>
 #include <map>
 #include <mutex>
 #include <new>
+#include <set>
 #include <utility>
 
 namespace weather_routing {
@@ -35,6 +37,17 @@ template <typename Key, typename Value>
 class KeyedRequestCache {
 public:
   using WeightFunction = std::function<std::size_t(const Value&)>;
+
+  struct Statistics {
+    std::uint64_t hits{};
+    std::uint64_t misses{};
+    std::uint64_t evictions{};
+    std::uint64_t reloads_after_eviction{};
+    std::uint64_t publications{};
+    std::size_t distinct_keys{};
+    std::size_t peak_entries{};
+    std::size_t peak_weight{};
+  };
 
   explicit KeyedRequestCache(std::size_t capacity)
       : capacity_(capacity),
@@ -61,6 +74,7 @@ public:
       std::unique_lock<std::mutex> lock(mutex_);
       const auto found = entries_.find(key);
       if (found != entries_.end()) {
+        ++statistics_.hits;
         *value = found->second.value;
         TouchLocked(key);
         return found->second.valid;
@@ -71,6 +85,9 @@ public:
         request_active_ = true;
         active_key_ = key;
         owns_request = true;
+        ++statistics_.misses;
+        if (seen_keys_.find(key) != seen_keys_.end())
+          ++statistics_.reloads_after_eviction;
       }
 
       if (owns_request) {
@@ -97,6 +114,7 @@ public:
     std::lock_guard<std::mutex> lock(mutex_);
     try {
       StoreLocked(key, value, valid);
+      ++statistics_.publications;
     } catch (const std::bad_alloc&) {
       if (request_active_ && active_key_ == key) request_active_ = false;
       condition_.notify_all();
@@ -119,6 +137,25 @@ public:
     return total_weight_;
   }
 
+  Statistics Stats() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    Statistics result = statistics_;
+    result.distinct_keys = seen_keys_.size();
+    return result;
+  }
+
+  void Clear(bool reset_statistics = true) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    entries_.clear();
+    lru_.clear();
+    seen_keys_.clear();
+    total_weight_ = 0;
+    request_active_ = false;
+    active_key_ = Key{};
+    if (reset_statistics) statistics_ = {};
+    condition_.notify_all();
+  }
+
   // Adjust only between routes. Eviction retains one oversized reply, as Publish does.
   void SetMaximumWeight(std::size_t maximum) {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -128,6 +165,7 @@ public:
       if (victim != entries_.end()) {
         total_weight_ -= victim->second.weight;
         entries_.erase(victim);
+        ++statistics_.evictions;
       }
       lru_.pop_front();
     }
@@ -160,6 +198,7 @@ private:
     else
       total_weight_ += weight;
     TouchLocked(key);
+    seen_keys_.insert(key);
     while ((entries_.size() > capacity_ || total_weight_ > maximum_weight_) &&
            !lru_.empty()) {
       // Retain a single valid result even when it is larger than the byte
@@ -172,9 +211,14 @@ private:
       if (victim != entries_.end()) {
         total_weight_ -= victim->second.weight;
         entries_.erase(victim);
+        ++statistics_.evictions;
       }
       lru_.pop_front();
     }
+    statistics_.peak_entries =
+        std::max(statistics_.peak_entries, entries_.size());
+    statistics_.peak_weight =
+        std::max(statistics_.peak_weight, total_weight_);
   }
 
   const std::size_t capacity_;
@@ -184,7 +228,9 @@ private:
   std::condition_variable condition_;
   std::map<Key, Entry> entries_;
   std::deque<Key> lru_;
+  std::set<Key> seen_keys_;
   std::size_t total_weight_{0};
+  Statistics statistics_;
   bool request_active_{false};
   Key active_key_{};
 };
