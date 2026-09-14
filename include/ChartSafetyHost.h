@@ -12,6 +12,8 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstddef>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -50,9 +52,14 @@ std::vector<std::pair<long, long>> AtlasCoverageTiles(
  * prewarm. A null flag restores the normal GUI route behaviour.
  */
 void SetPrewarmCancellationFlag(const std::atomic_bool* flag);
+/** Install the independent cancellation flag used by interactive routing. */
+void SetInteractivePrewarmCancellationFlag(const std::atomic_bool* flag);
 bool PrewarmCancellationRequested();
 // A zero time point disables the cooperative preparation deadline.
 void SetPrewarmDeadline(std::chrono::steady_clock::time_point deadline);
+
+using PrewarmProgressCallback =
+    std::function<void(std::size_t completed, std::size_t total)>;
 
 bool CheckSegment(double lat1, double lon1, double lat2, double lon2,
                   const PlugInSegmentSafetyOptions* options,
@@ -65,22 +72,26 @@ bool PrewarmHazardSnapshot(double min_lat, double min_lon, double max_lat,
 bool PrewarmRouteMaskForSegment(
     double lat1, double lon1, double lat2, double lon2,
     double corridor_margin_nm, const PlugInSegmentSafetyOptions* options,
-    PlugInSegmentSafetyResult* result);
+    PlugInSegmentSafetyResult* result,
+    const PrewarmProgressCallback& progress = PrewarmProgressCallback());
 bool PrewarmReachabilityEnvelope(
     double start_lat, double start_lon, double end_lat, double end_lon,
     double maximum_path_length_nm,
     const PlugInSegmentSafetyOptions* options,
-    PlugInSegmentSafetyResult* result);
+    PlugInSegmentSafetyResult* result,
+    const PrewarmProgressCallback& progress = PrewarmProgressCallback());
 /** Prebuild an exact, bounded set of 0.05-degree semantic base tiles. */
 bool PrewarmAtlasTiles(
     const std::vector<std::pair<long, long>>& tiles,
     const PlugInSegmentSafetyOptions* options,
-    PlugInSegmentSafetyResult* result);
+    PlugInSegmentSafetyResult* result,
+    const PrewarmProgressCallback& progress = PrewarmProgressCallback());
 bool PrewarmRouteMaskForPolylinesWithTileHalo(
     const double* latitudes, const double* longitudes,
     const int* point_counts, int polyline_count, double corridor_margin_nm,
     int fine_tile_halo, const PlugInSegmentSafetyOptions* options,
-    PlugInSegmentSafetyResult* result);
+    PlugInSegmentSafetyResult* result,
+    const PrewarmProgressCallback& progress = PrewarmProgressCallback());
 bool ServicePendingRequests(
     int max_requests, int max_milliseconds,
     PlugInSegmentSafetyRequestServiceResult* result);

@@ -55,18 +55,26 @@ TEST(ChartSafetyHostLongitude, QuintonFinalLegIsShortAndStaysNearTonga) {
   EXPECT_LT(std::abs(parts.segments[0].lon2 - parts.segments[0].lon1), .01);
 }
 
-TEST(ChartSafetyHost, PreparationDeadlineAndExternalCancellationAreIndependent) {
+TEST(ChartSafetyHost,
+     PreparationDeadlineAndInteractiveAndExternalCancellationAreIndependent) {
   using namespace weather_routing::chart_safety_host;
-  std::atomic_bool cancel{false};
-  SetPrewarmCancellationFlag(&cancel);
+  std::atomic_bool external_cancel{false};
+  std::atomic_bool interactive_cancel{false};
+  SetPrewarmCancellationFlag(&external_cancel);
+  SetInteractivePrewarmCancellationFlag(&interactive_cancel);
   SetPrewarmDeadline(std::chrono::steady_clock::now() + std::chrono::hours(1));
   EXPECT_FALSE(PrewarmCancellationRequested());
-  cancel = true;
+  interactive_cancel = true;
   EXPECT_TRUE(PrewarmCancellationRequested());
-  cancel = false;
+  interactive_cancel = false;
+  EXPECT_FALSE(PrewarmCancellationRequested());
+  external_cancel = true;
+  EXPECT_TRUE(PrewarmCancellationRequested());
+  external_cancel = false;
   SetPrewarmDeadline(std::chrono::steady_clock::now() - std::chrono::seconds(1));
   EXPECT_TRUE(PrewarmCancellationRequested());
   SetPrewarmDeadline({});
   EXPECT_FALSE(PrewarmCancellationRequested());
   SetPrewarmCancellationFlag(nullptr);
+  SetInteractivePrewarmCancellationFlag(nullptr);
 }

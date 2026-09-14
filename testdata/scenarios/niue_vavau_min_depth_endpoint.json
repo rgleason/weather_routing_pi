@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "name": "Niue to Vava'u minimum-depth endpoint regression",
+  "start": {
+    "name": "Niue NW",
+    "lat": -18.9454186,
+    "lon": 190.0067664
+  },
+  "end": {
+    "name": "Vava'u (N)",
+    "lat": -18.4752197,
+    "lon": 186.0455519
+  },
+  "startTime": "2026-09-14T22:50:46Z",
+  "departureOptimization": {
+    "enabled": false,
+    "beforeMinutes": 0,
+    "afterMinutes": 0,
+    "stepMinutes": 60
+  },
+  "environment": {
+    "useGrib": false,
+    "useCurrents": false,
+    "allowClimatologyFallback": true
+  },
+  "route": {
+    "routingEngine": "main",
+    "timeStepSeconds": 3600,
+    "routingEffortPercent": 200,
+    "headingFromDegrees": 40,
+    "headingToDegrees": 160,
+    "headingStepDegrees": 10,
+    "maxDivertedCourseDegrees": 90,
+    "maxCourseAngleDegrees": 180,
+    "maxSearchAngleDegrees": 120
+  },
+  "safety": {
+    "mode": "chart",
+    "enforce": true,
+    "landMarginNm": 0.5,
+    "minimumDepthM": 2.0,
+    "persistentCertifiedCacheEnabled": true
+  }
+}
