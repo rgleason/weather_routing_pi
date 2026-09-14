@@ -347,6 +347,21 @@ bool ShorelineDataset::CrossesLand(double lat1, double lon1, double lat2,
     lon1 = std::fmod(std::fmod(lon1, 360.) + 360., 360.);
     lon2 = lon1 + std::remainder(lon2 - lon1, 360.);
     Edge segment{{lon1, lat1}, {lon2, lat2}};
+    const double x1 = lon1 * 16, x2 = lon2 * 16;
+    const double y1 = (lat1 + 90) * 16, y2 = (lat2 + 90) * 16;
+    const int bx = int(std::floor(x1)), by = int(std::floor(y1));
+    const auto interior = [](double a, double b, int cell) {
+      return std::min(a, b) > cell + eps &&
+             std::max(a, b) < cell + 1 - eps;
+    };
+    // Most integration segments stay strictly inside one indexed subcell.
+    // Its midpoint containment and complete segment/edge intersections also
+    // cover land at either endpoint. Avoid rebuilding a traversal and checking
+    // that same subcell three times. Boundary and multi-cell queries retain
+    // the full traversal below, including adjacent-cell corner touches.
+    if (interior(x1, x2, bx) && interior(y1, y2, by))
+      return impl_->CheckBin(bx, by, segment,
+                             {(lon1 + lon2) * .5, (lat1 + lat2) * .5});
     std::vector<double> cuts{0, 1};
     auto cut = [&](double a, double b) {
       if (std::abs(b - a) < eps) return;

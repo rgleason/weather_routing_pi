@@ -72,6 +72,20 @@ TEST(ShorelineDataset, LandContainmentAndWater) {
   EXPECT_FALSE(d.CrossesLand(.1, .1, .1, .9));
   EXPECT_FALSE(d.CrossesLand(40, -40, 40.1, -39.9));
 }
+TEST(ShorelineDataset, ShortSegmentsRetainEndpointAndCornerProtection) {
+  Files f;
+  Fixture(f / "data");
+  ShorelineDataset d(f / "data");
+  // Each query lies strictly inside one 1/16-degree index bin. A midpoint
+  // alone would miss the first crossing and the island-corner touch.
+  EXPECT_TRUE(d.CrossesLand(.45, .21, .45, .189));
+  EXPECT_TRUE(d.CrossesLand(.45, .189, .45, .21));
+  EXPECT_TRUE(d.CrossesLand(.45, .2, .45, .189));
+  EXPECT_TRUE(d.CrossesLand(.789, .811, .811, .789));
+  EXPECT_FALSE(d.CrossesLand(.79, .811, .811, .79));
+  EXPECT_TRUE(d.CrossesLand(.45, .21, .45, .21));
+  EXPECT_FALSE(d.CrossesLand(.45, .19, .45, .19));
+}
 TEST(ShorelineDataset, GridBoundariesAndZeroLength) {
   Files f;
   Fixture(f / "data");

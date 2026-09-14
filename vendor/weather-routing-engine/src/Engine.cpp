@@ -1161,6 +1161,7 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
                               bool refineIntegration,
                               std::uint64_t endpointGeneratedStateCeiling,
                               std::uint64_t forwardGeneratedStateCeiling,
+                              std::uint64_t arrivalGeneratedStateReserve,
                               RoutingDiagnostics& diagnostics) {
   SearchArtifacts result;
   WorkProgress workerProgress;
@@ -1306,6 +1307,100 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
       result.solution = result.alternativeSolutions.front();
       return result;
     }
+    const auto finishGeneratedArrival = [&]() {
+      if (!allowCompletion || candidates.empty()) return false;
+      // A stage limit can interrupt a layer after a useful arrival state has
+      // already been generated. Check a bounded set of these states before
+      // discarding the layer. This does not generate more search states or
+      // borrow from another stage; every returned route still undergoes the
+      // ordinary independent validation.
+      std::vector<std::size_t> order;
+      order.reserve(candidates.size());
+      for (std::size_t i = 0; i < candidates.size(); ++i) order.push_back(i);
+      const auto rank = [&](std::size_t i) {
+        return std::tuple{distanceNm(candidates[i].position, request.destination),
+                          stateCost(request, candidates[i]), i};
+      };
+      const auto count = std::min<std::size_t>(64, order.size());
+      std::partial_sort(order.begin(), order.begin() + count, order.end(),
+                        [&](std::size_t a, std::size_t b) {
+                          return rank(a) < rank(b);
+                        });
+      std::vector<std::pair<Node, Node>> arrivals;
+      for (std::size_t n = 0; n < count; ++n) {
+        if (request.cancellation.cancelled()) break;
+        Node& from = candidates[order[n]];
+        if (distanceNm(from.position, request.destination) >
+            std::max(request.options.destinationToleranceNm,
+                     static_cast<double>(step.count()) / 3600.0 * 20.0))
+          break;
+        if (from.time >= deadline ||
+            nodeMotionForbidden(request, environment, from, diagnostics))
+          continue;
+        auto direct = directConnection(
+            request, environment, performance, from,
+            directConnectionWindow(request, from, layerStep * 2), diagnostics);
+        if (!direct) continue;
+        if (result.nodes.size() >= request.limits.maximumRetainedStates ||
+            request.limits.maximumRetainedStates - result.nodes.size() <
+                2 * (arrivals.size() + 1))
+          break;
+        arrivals.emplace_back(std::move(from), std::move(*direct));
+        if (arrivals.size() >= kMaximumDirectCandidates) break;
+      }
+      if (arrivals.empty()) return false;
+      std::stable_sort(arrivals.begin(), arrivals.end(),
+                       [&](const auto& a, const auto& b) {
+                         const auto& x = a.second;
+                         const auto& y = b.second;
+                         return std::tuple{stateCost(request, x), x.time,
+                                           a.first.predecessor} <
+                                std::tuple{stateCost(request, y), y.time,
+                                           b.first.predecessor};
+                       });
+      // Keep final connections contiguous and last, just like ordinary
+      // completions, so a rejected replay removes every completion node.
+      for (auto& arrival : arrivals) {
+        arrival.second.predecessor = result.nodes.size();
+        result.nodes.push_back(std::move(arrival.first));
+        ++diagnostics.retainedStates;
+      }
+      for (auto& arrival : arrivals) {
+        result.alternativeSolutions.push_back(result.nodes.size());
+        result.nodes.push_back(std::move(arrival.second));
+      }
+      result.solution = result.alternativeSolutions.front();
+      diagnostics.stageStopReasons.push_back(
+          "forward budget boundary: checking an already generated arrival");
+      return true;
+    };
+    const auto extendArrivalSearch = [&]() {
+      if (!allowCompletion || coastalDepartureEgress ||
+          arrivalGeneratedStateReserve == 0)
+        return false;
+      const double radius = std::max(
+          request.options.destinationToleranceNm * 4.0,
+          std::min(30.0, distanceNm(request.start, request.destination) * .1));
+      if (!std::any_of(result.retained.begin(), result.retained.end(),
+                       [&](std::size_t i) {
+                         return distanceNm(result.nodes[i].position,
+                                            request.destination) <= radius;
+                       }))
+        return false;
+      const auto remainingTotal = request.limits.maximumGeneratedStates -
+          std::min(request.limits.maximumGeneratedStates,
+                   diagnostics.coastalEndpointGeneratedStates);
+      const auto available = remainingTotal > forwardGeneratedStateCeiling
+          ? remainingTotal - forwardGeneratedStateCeiling : 0;
+      const auto extra = std::min(arrivalGeneratedStateReserve, available);
+      if (extra == 0) return false;
+      forwardGeneratedStateCeiling += extra;
+      arrivalGeneratedStateReserve = 0;
+      diagnostics.stageStopReasons.push_back(
+          "near arrival: using up to " + std::to_string(extra) +
+          " generated states from the separate arrival allowance");
+      return true;
+    };
     for (const std::size_t index : result.retained) {
       const Node& from = result.nodes[index];
       const std::size_t candidatesBefore = candidates.size();
@@ -1332,20 +1427,27 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
           const std::uint64_t ordinaryForwardGenerated =
               diagnostics.generatedStates -
               diagnostics.coastalEndpointGeneratedStates;
-          if ((coastalDepartureEgress &&
+          const bool totalLimitReached =
+              diagnostics.generatedStates >= request.limits.maximumGeneratedStates;
+          if (totalLimitReached || (coastalDepartureEgress &&
                diagnostics.coastalEndpointGeneratedStates >=
                    endpointGeneratedStateCeiling) ||
               (!coastalDepartureEgress &&
                ordinaryForwardGenerated >= forwardGeneratedStateCeiling)) {
-            result.failure = RoutingStatus::ResourceLimitReached;
-            result.reason = coastalDepartureEgress
-                                ? "coastal endpoint generated-state budget "
-                                  "reached"
-                                : "forward-stage generated-state budget "
-                                  "reached; preserving recovery capacity";
-            result.resourceLimited = true;
-            diagnostics.resourceLimitEvents.push_back(result.reason);
-            return result;
+            if (finishGeneratedArrival()) return result;
+            if (totalLimitReached || !extendArrivalSearch()) {
+              result.failure = RoutingStatus::ResourceLimitReached;
+              result.reason = totalLimitReached
+                  ? "maximum generated states reached during forward search"
+                  : coastalDepartureEgress
+                                  ? "coastal endpoint generated-state budget "
+                                    "reached"
+                                  : "forward-stage generated-state budget "
+                                    "reached; preserving recovery capacity";
+              result.resourceLimited = true;
+              diagnostics.resourceLimitEvents.push_back(result.reason);
+              return result;
+            }
           }
           ++diagnostics.generatedStates;
           if (coastalDepartureEgress)
@@ -1363,20 +1465,27 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
           const std::uint64_t ordinaryForwardGenerated =
               diagnostics.generatedStates -
               diagnostics.coastalEndpointGeneratedStates;
-          if ((coastalDepartureEgress &&
+          const bool totalLimitReached =
+              diagnostics.generatedStates >= request.limits.maximumGeneratedStates;
+          if (totalLimitReached || (coastalDepartureEgress &&
                diagnostics.coastalEndpointGeneratedStates >=
                    endpointGeneratedStateCeiling) ||
               (!coastalDepartureEgress &&
                ordinaryForwardGenerated >= forwardGeneratedStateCeiling)) {
-            result.failure = RoutingStatus::ResourceLimitReached;
-            result.reason = coastalDepartureEgress
-                                ? "coastal endpoint generated-state budget "
-                                  "reached"
-                                : "forward-stage generated-state budget "
-                                  "reached; preserving recovery capacity";
-            result.resourceLimited = true;
-            diagnostics.resourceLimitEvents.push_back(result.reason);
-            return result;
+            if (finishGeneratedArrival()) return result;
+            if (totalLimitReached || !extendArrivalSearch()) {
+              result.failure = RoutingStatus::ResourceLimitReached;
+              result.reason = totalLimitReached
+                  ? "maximum generated states reached during forward search"
+                  : coastalDepartureEgress
+                                  ? "coastal endpoint generated-state budget "
+                                    "reached"
+                                  : "forward-stage generated-state budget "
+                                    "reached; preserving recovery capacity";
+              result.resourceLimited = true;
+              diagnostics.resourceLimitEvents.push_back(result.reason);
+              return result;
+            }
           }
           ++diagnostics.generatedStates;
           if (coastalDepartureEgress)
@@ -1892,6 +2001,11 @@ SearchArtifacts graphSearch(const RoutingRequest& request,
                             std::uint64_t graphLabelBudget,
                             GraphSearchKind kind,
                             RoutingDiagnostics& diagnostics) {
+  generatedStateBudget = std::min(
+      generatedStateBudget,
+      request.limits.maximumGeneratedStates -
+          std::min(request.limits.maximumGeneratedStates,
+                   diagnostics.generatedStates));
   SearchArtifacts result;
   WorkProgress workerProgress;
   const bool frontierRecovery = kind == GraphSearchKind::FrontierRecovery;
@@ -2711,6 +2825,8 @@ RoutingResult RoutingEngine::route(
         scale(request.limits.maximumCoastalEndpointGeneratedStates, tier);
     tierRequest.limits.maximumForwardGeneratedStates =
         scale(request.limits.maximumForwardGeneratedStates, tier);
+    tierRequest.limits.maximumForwardArrivalGeneratedStates =
+        scale(request.limits.maximumForwardArrivalGeneratedStates, tier);
     tierRequest.limits.maximumReverseCandidates =
         scale(request.limits.maximumReverseCandidates, tier);
     tierRequest.limits.maximumReverseBridgeAttempts =
@@ -2954,6 +3070,8 @@ RoutingResult RoutingEngine::routeMember(
       request.limits.maximumGraphGeneratedStates > 0
           ? request.limits.maximumGraphGeneratedStates
           : legacyGraphReserve;
+  const std::uint64_t arrivalGeneratedStateReserve =
+      request.limits.maximumForwardArrivalGeneratedStates;
   std::uint64_t previousAttemptGenerated{};
   double forwardCorridorWidth = request.options.graphCorridorWidthNm;
   unsigned forwardRefinementBase = 0;
@@ -3030,7 +3148,7 @@ RoutingResult RoutingEngine::routeMember(
         attemptRequest, environment, performance, headingStep, step, labels,
         !request.options.forceForwardFailureForTesting, attempt + 1, attempts,
         refinement > 0, endpointGeneratedStateCeiling, forwardGeneratedStateCeiling,
-        result.diagnostics);
+        arrivalGeneratedStateReserve, result.diagnostics);
     previousAttemptGenerated =
         (result.diagnostics.generatedStates - generatedBefore) -
         (result.diagnostics.coastalEndpointGeneratedStates -
@@ -3090,6 +3208,14 @@ RoutingResult RoutingEngine::routeMember(
   result.diagnostics.forwardGeneratedStates =
       result.diagnostics.generatedStates -
       result.diagnostics.coastalEndpointGeneratedStates;
+  const auto arrivalStatesUsed =
+      result.diagnostics.forwardGeneratedStates > forwardGeneratedStateCeiling
+          ? result.diagnostics.forwardGeneratedStates - forwardGeneratedStateCeiling
+          : 0;
+  if (arrivalStatesUsed > 0)
+    result.diagnostics.stageStopReasons.push_back(
+        "arrival search used " + std::to_string(arrivalStatesUsed) +
+        " additional states; graph fallback allowance preserved");
 
   // Keep the final forward frontier geometry available to inspection clients
   // even when production recovery subsequently replaces SearchArtifacts with

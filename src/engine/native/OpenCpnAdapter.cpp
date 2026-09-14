@@ -878,6 +878,12 @@ wr::RoutingRequest BuildRequest(RouteMapOverlay& overlay,
       resources.maximum_coastal_endpoint_generated_states;
   request.limits.maximumForwardGeneratedStates =
       resources.maximum_forward_generated_states;
+  if (!configuration.IsQuick() && !configuration.chart_safety_scout_preview) {
+    request.limits.maximumForwardArrivalGeneratedStates =
+        resources.maximum_forward_generated_states / 10;
+    request.limits.maximumGeneratedStates +=
+        request.limits.maximumForwardArrivalGeneratedStates;
+  }
   request.limits.maximumReverseCandidates =
       resources.maximum_reverse_candidates;
   request.limits.maximumReverseBridgeAttempts =
@@ -1192,6 +1198,7 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
       "reverse_bridges=%llu "
       "frontier_generated=%llu frontier_labels=%llu "
       "global_graph_generated=%llu endpoint_limit=%llu forward_limit=%llu "
+      "arrival_limit=%llu "
       "reverse_candidate_limit=%llu reverse_bridge_limit=%llu "
       "frontier_limit=%llu frontier_label_limit=%llu "
       "global_graph_limit=%llu",
@@ -1212,6 +1219,8 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
           request.limits.maximumCoastalEndpointGeneratedStates),
       static_cast<unsigned long long>(
           request.limits.maximumForwardGeneratedStates),
+      static_cast<unsigned long long>(
+          request.limits.maximumForwardArrivalGeneratedStates),
       static_cast<unsigned long long>(request.limits.maximumReverseCandidates),
       static_cast<unsigned long long>(
           request.limits.maximumReverseBridgeAttempts),

@@ -43,3 +43,16 @@ headless results record the effective resolution and dataset identity.
 View / Shoreline data manages the bundled datasets and per-dataset tile-cache
 limit. Its default selection is used for importing older routes; it does not
 change existing route selections. Dataset repair is available offline.
+
+Main can use a small separate arrival allowance when its forward search reaches
+the normal work limit close to the destination. This can finish a coastal
+approach without exhausting recovery stages and restarting at a higher effort.
+The allowance is 10% of the original forward budget, added to the total work
+ceiling; the original fallback allocations and retained-state limits are
+preserved. Already generated arrival candidates are also checked at a budget
+boundary. Normal motion checks and independent final validation still apply.
+
+Short shoreline checks wholly inside one spatial bin now avoid repeated work
+while retaining the same intersection and land-containment tests. The older
+reader's missed crossings are not restored for speed: matching 1.17.5 settings
+and resolution does not promise identical geometry under the corrected reader.

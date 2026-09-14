@@ -282,6 +282,10 @@ struct ResourceLimits {
   // the legacy split of maximumGeneratedStates for API compatibility.
   std::uint64_t maximumCoastalEndpointGeneratedStates{};
   std::uint64_t maximumForwardGeneratedStates{};
+  // Optional separate allowance for a forward search already near arrival.
+  // Callers include this in maximumGeneratedStates; no other stage loses its
+  // allocation and maximumRetainedStates remains a hard ceiling.
+  std::uint64_t maximumForwardArrivalGeneratedStates{};
   // Reverse bridge recovery does not generate ordinary isochrone states, so
   // bound both the number of retained lineages inspected and the more
   // expensive chronological bridge integrations independently.
