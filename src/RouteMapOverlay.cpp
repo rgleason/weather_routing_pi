@@ -24,6 +24,7 @@
 #include <cmath>
 #include <functional>
 #include <list>
+#include <new>
 #include <vector>
 
 #include "ocpn_plugin.h"
@@ -54,49 +55,81 @@ RouteMapOverlayThread::RouteMapOverlayThread(RouteMapOverlay& routemapoverlay)
 }
 
 void* RouteMapOverlayThread::Entry() {
-  RouteMapConfiguration cf = m_RouteMapOverlay.GetConfiguration();
-  const bool defer_destination_update_to_main =
-      cf.DetectLand && ConstraintChecker::IsExperimentalChartSafetyEnforced();
+  try {
+    RouteMapConfiguration cf = m_RouteMapOverlay.GetConfiguration();
+    const bool defer_destination_update_to_main =
+        cf.DetectLand && ConstraintChecker::IsExperimentalChartSafetyEnforced();
 
-  if (!cf.RouteGUID.IsEmpty()) {
-    std::unique_ptr<PlugIn_Route> rte = GetRoute_Plugin(cf.RouteGUID);
-    PlugIn_Route* proute = rte.get();
-    if (proute == nullptr) return 0;
+    if (!cf.RouteGUID.IsEmpty()) {
+      std::unique_ptr<PlugIn_Route> rte = GetRoute_Plugin(cf.RouteGUID);
+      PlugIn_Route* proute = rte.get();
+      if (proute == nullptr) return 0;
 
-    m_RouteMapOverlay.RouteAnalysis(proute);
-  } else {
-    const bool cumulativeClimatology =
-        cf.ClimatologyType == RouteMapConfiguration::CUMULATIVE_MAP ||
-        cf.ClimatologyType == RouteMapConfiguration::CUMULATIVE_MINUS_CALMS;
-    if (ModernNativeRouteEnabled(cf)) {
-      wxString modernError;
-      RunModernNativeRoute(m_RouteMapOverlay, modernError);
-      if (!modernError.IsEmpty())
-        wxLogMessage("WR_MODERN_NATIVE_RESULT route=\"%s -> %s\" error=\"%s\"",
-                     cf.Start, cf.End, modernError);
-      return nullptr;
-    }
-    if (cumulativeClimatology)
-      wxLogMessage(
-          "WR_MODERN_NATIVE_FALLBACK route=\"%s -> %s\" reason=\"cumulative "
-          "climatology distribution requires legacy probabilistic semantics\"",
-          cf.Start, cf.End);
-    while (!TestDestroy() && !m_RouteMapOverlay.Finished()) {
-      {
-        RouteMapOverlay::DestinationUpdateGuard destination_update_guard(
-            m_RouteMapOverlay);
-        if (!m_RouteMapOverlay.Propagate()) {
-          wxThread::Sleep(50);
+      m_RouteMapOverlay.RouteAnalysis(proute);
+    } else {
+      const bool cumulativeClimatology =
+          cf.ClimatologyType == RouteMapConfiguration::CUMULATIVE_MAP ||
+          cf.ClimatologyType == RouteMapConfiguration::CUMULATIVE_MINUS_CALMS;
+      if (ModernNativeRouteEnabled(cf)) {
+        wxString modernError;
+        RunModernNativeRoute(m_RouteMapOverlay, modernError);
+        if (!modernError.IsEmpty())
+          wxLogMessage(
+              "WR_MODERN_NATIVE_RESULT route=\"%s -> %s\" error=\"%s\"",
+              cf.Start, cf.End, modernError);
+        return nullptr;
+      }
+      if (cumulativeClimatology)
+        wxLogMessage(
+            "WR_MODERN_NATIVE_FALLBACK route=\"%s -> %s\" "
+            "reason=\"cumulative climatology distribution requires legacy "
+            "probabilistic semantics\"",
+            cf.Start, cf.End);
+      while (!TestDestroy() && !m_RouteMapOverlay.Finished()) {
+        {
+          RouteMapOverlay::DestinationUpdateGuard destination_update_guard(
+              m_RouteMapOverlay);
+          const bool propagated = m_RouteMapOverlay.Propagate();
+          if (cf.DetectLand && !cf.chart_safety_runtime_available &&
+              cf.shoreline_dataset && !cf.shoreline_dataset->Error().empty())
+            throw weather_routing::ShorelineQueryError(cf.shoreline_dataset->Error());
+          if (!propagated) {
+            wxThread::Sleep(50);
+            continue;
+          }
+          // don't do it inside worker thread, race
+          // m_RouteMapOverlay.UpdateCursorPosition();
+          if (!defer_destination_update_to_main)
+            m_RouteMapOverlay.UpdateDestination();
+          wxThread::Sleep(5);
           continue;
         }
-        // don't do it inside worker thread, race
-        // m_RouteMapOverlay.UpdateCursorPosition();
-        if (!defer_destination_update_to_main)
-          m_RouteMapOverlay.UpdateDestination();
-        wxThread::Sleep(5);
-        continue;
       }
     }
+  } catch (const weather_routing::ShorelineQueryError& error) {
+    m_RouteMapOverlay.SetError(wxString::FromUTF8(error.what()));
+    wxLogError("WR_SHORELINE_ROUTE_ABORT %s", error.what());
+  } catch (const std::bad_alloc&) {
+#ifdef __WXMSW__
+    MEMORYSTATUSEX memory{};
+    memory.dwLength = sizeof(memory);
+    if (GlobalMemoryStatusEx(&memory)) {
+      // Capture process headroom at the failure, not physical RAM alone.
+      // Free address space may still be fragmented; this does not identify
+      // the failed allocation or establish a leak.
+      wxLogError("WR_ALLOCATION_FAILURE process_bits=%u "
+                 "virtual_total_bytes=%llu virtual_available_bytes=%llu "
+                 "commit_available_bytes=%llu physical_available_bytes=%llu",
+                 static_cast<unsigned>(sizeof(void*) * 8),
+                 static_cast<unsigned long long>(memory.ullTotalVirtual),
+                 static_cast<unsigned long long>(memory.ullAvailVirtual),
+                 static_cast<unsigned long long>(memory.ullAvailPageFile),
+                 static_cast<unsigned long long>(memory.ullAvailPhys));
+    }
+#endif
+    m_RouteMapOverlay.ReportResourceExhaustion(
+        _("calculating the weather route"));
+    wxLogError("Weather Routing stopped after a memory allocation failed");
   }
   //    m_RouteMapOverlay.m_Thread = nullptr;
   return 0;
@@ -143,6 +176,15 @@ bool RouteMapOverlay::Start(wxString& error) {
   if (error.size()) return false;
 
   RouteMapConfiguration configuration = GetConfiguration();
+  if (configuration.EngineSettings.engine == weather_routing::RoutingEngine::Unsupported) {
+    error = _("Unsupported routing engine: ") +
+        wxString::FromUTF8(configuration.EngineSettings.EngineId());
+    return false;
+  }
+  if (configuration.IsQuick() && !ModernNativeRouteEnabled(configuration)) {
+    error = _("Quick Route cannot analyse an existing route or use cumulative climatology/legacy routing. Select the main engine for this configuration.");
+    return false;
+  }
   /* test for cyclone data if needed */
   if (configuration.AvoidCycloneTracks &&
       (!ClimatologyCycloneTrackCrossings ||
@@ -170,11 +212,10 @@ bool RouteMapOverlay::Start(wxString& error) {
   }
 
   Lock();
-  m_ModernProgressStage.clear();
-  m_ModernProgressDetail.clear();
-  m_ModernProgressUpdated = false;
+  m_ModernProgress.Begin();
   Unlock();
 
+  CaptureSearchSettings(configuration, ModernNativeRouteEnabled(configuration));
   m_Thread = new RouteMapOverlayThread(*this);
   m_Thread->Run();
   return true;
@@ -255,7 +296,8 @@ void RouteMapOverlay::RouteAnalysis(PlugIn_Route* proute) {
 }
 
 void RouteMapOverlay::SetModernNativeProgress(
-    const supercpn::weather_routing::RoutingProgressUpdate& progress) {
+    const supercpn::weather_routing::RoutingProgressUpdate& progress,
+    std::uint64_t generation) {
   using supercpn::weather_routing::RoutingProgressStage;
   wxString stage;
   switch (progress.stage) {
@@ -269,7 +311,7 @@ void RouteMapOverlay::SetModernNativeProgress(
       stage = _("Forward isochrone");
       break;
     case RoutingProgressStage::ReverseRecovery:
-      stage = _("Reverse-isocrone recovery");
+      stage = _("Reverse-isochrone recovery");
       break;
     case RoutingProgressStage::FrontierRecovery:
       stage = _("Isochrone graph recovery");
@@ -284,40 +326,53 @@ void RouteMapOverlay::SetModernNativeProgress(
       stage = _("Route complete");
       break;
   }
-  const wxString detail = wxString::Format(
-      _("Attempt %u/%u — %llu states generated, %llu retained, %llu chart "
-        "checks"),
-      progress.attempt, progress.totalAttempts,
+  wxString detail = wxString::Format(
+      _("Effort %u%% — %llu states generated, %llu retained, %llu land checks"),
+      progress.effortPercent,
       static_cast<unsigned long long>(progress.generatedStates),
       static_cast<unsigned long long>(progress.retainedStates),
       static_cast<unsigned long long>(progress.landChecks));
-  Lock();
-  m_ModernProgressStage = stage;
-  m_ModernProgressDetail = detail;
-  m_ModernProgressUpdated = true;
-  Unlock();
+  if (progress.totalAttempts > 0)
+    detail += wxString::Format(_("; stage attempt %u/%u"),
+                              progress.attempt, progress.totalAttempts);
+  if (std::isfinite(progress.closestApproachNm))
+    detail += wxString::Format(_("; closest approach %.1f NM remaining"),
+                              progress.closestApproachNm);
+  m_ModernProgress.Publish(generation, {stage, detail});
 }
 
 bool RouteMapOverlay::GetModernNativeProgress(wxString& stage,
                                               wxString& detail) {
-  Lock();
-  stage = m_ModernProgressStage;
-  detail = m_ModernProgressDetail;
-  const bool available = !stage.IsEmpty() && m_ModernProgressUpdated;
-  m_ModernProgressUpdated = false;
-  Unlock();
-  return available;
+  const auto snapshot = m_ModernProgress.Read();
+  stage = snapshot.value.stage;
+  detail = snapshot.value.detail;
+  if (!snapshot.sequence) return false;
+  const auto now = std::chrono::steady_clock::now();
+  const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+      now - snapshot.started).count();
+  const auto age = std::chrono::duration_cast<std::chrono::seconds>(
+      now - snapshot.updated).count();
+  detail += wxString::Format(_("\nWorker elapsed: %lld s; last update: %lld s ago"),
+                             static_cast<long long>(elapsed),
+                             static_cast<long long>(age));
+  if (NeedsChartSafetyData()) stage = _("Waiting for chart data");
+  else if (NeedsGrib()) stage = _("Waiting for weather data");
+  return true;
 }
 
 void RouteMapOverlay::InstallModernNativeResult(
     const supercpn::weather_routing::RoutingResult& result) {
   namespace wr = supercpn::weather_routing;
-  const bool complete =
+  const bool resultComplete =
       result.status == wr::RoutingStatus::Complete ||
       result.status == wr::RoutingStatus::CompleteUsingReverseRecovery ||
       result.status == wr::RoutingStatus::CompleteUsingFrontierRecovery ||
       result.status == wr::RoutingStatus::CompleteUsingGraphFallback;
-  SetFailureReason(complete ? wxString() : wxString::FromUTF8(result.message));
+  const bool resourceExhausted = ResourceExhausted();
+  const bool complete = resultComplete && !resourceExhausted;
+  if (!resourceExhausted)
+    SetFailureReason(complete ? wxString()
+                              : wxString::FromUTF8(result.message));
 
   RouteMapConfiguration configuration = GetConfiguration();
   configuration.ReverseRecoveryUsed =
@@ -407,12 +462,15 @@ void RouteMapOverlay::InstallModernNativeResult(
       data.WVHT = leg.waves.available
                       ? leg.waves.significantHeightMetres
                       : std::numeric_limits<double>::quiet_NaN();
-      data.WVDIR = leg.waves.directionFromDegrees;
-      data.WVPER = leg.waves.periodSeconds;
+      data.WVDIR = leg.waves.available
+                       ? leg.waves.directionFromDegrees
+                       : std::numeric_limits<double>::quiet_NaN();
+      data.WVPER = leg.waves.available
+                       ? leg.waves.periodSeconds
+                       : std::numeric_limits<double>::quiet_NaN();
       data.WVREL = std::isfinite(data.WVDIR)
                        ? heading_resolve(data.WVDIR - data.ctw)
                        : std::numeric_limits<double>::quiet_NaN();
-      data.VW_GUST = 0.0;
       data.coastalDepartureEgress = leg.coastalDepartureEgress;
       if (leg.tackTransition) ++tacks;
       if (leg.gybeTransition) ++jibes;
@@ -2115,14 +2173,13 @@ double RouteMapOverlay::RouteInfo(enum RouteInfoType type, bool cursor_route) {
     case JIBES:
       return plotdata.size() ? plotdata.back().jibes : 0;
     case DISTANCE:
-      if (total == 0)
-        total = NAN;
-      else if (Finished()) {
+      if (!plotdata.empty() && !cursor_route && Finished() &&
+          ReachedDestination()) {
         RouteMapConfiguration configuration = GetConfiguration();
         total += DistGreatCircle_Plugin(lat0, lon0, configuration.EndLat,
                                         configuration.EndLon);
       }
-      return total;
+      return plotdata.empty() ? NAN : total;
     case COMFORT:
       return comfort;
     case PERCENTAGE_UPWIND:
@@ -2207,9 +2264,7 @@ void RouteMapOverlay::Clear() {
   // clear_cursor_plotdata = false;
   last_cursor_plotdata.clear();
   last_destination_plotdata.clear();
-  m_ModernProgressStage.clear();
-  m_ModernProgressDetail.clear();
-  m_ModernProgressUpdated = false;
+  m_ModernProgress.Begin();
   m_UpdateOverlay = true;
 }
 

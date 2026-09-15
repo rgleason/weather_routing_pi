@@ -62,3 +62,19 @@ that commit in `vendor/weather-routing-engine.version`.
 
 Apache License 2.0. This is compatible with both the Apache-licensed SuperCPN
 application and GPL applications which vendor the engine.
+
+## Separate Quick engine
+
+`QuickEngine.h` exposes an optional bounded beam-search engine. Link
+`weather_routing_engine::quick_weather_routing_engine`; the Main target and
+`RoutingEngine` entry point retain their existing behavior. The two engines share
+physical operations and independent route validation. Quick has a configurable
+per-route search-memory ceiling (256 MiB by default), compact retained labels and
+bounded search work. Its narrower search can miss or lengthen routes.
+
+The plugin's [Quick Route documentation](../../docs/quick-routing.md) describes
+settings, limits, embedding and the headless comparison suite. Run
+`weather_routing_head_to_head main ocean` and
+`weather_routing_head_to_head quick ocean 256` from the standalone build's `tests`
+directory for a synthetic comparison; each successful result is independently
+revalidated and emitted as JSON.

@@ -182,6 +182,22 @@ void weather_routing_pi::OnAddressSpaceTimer(wxTimerEvent&) {
 
 int weather_routing_pi::Init() {
   AddLocaleCatalog(PLUGIN_CATALOG_NAME);
+  wxLogMessage("WR_BUILD version=%d.%d.%d.%d api=%d.%d process_bits=%u",
+               PLUGIN_VERSION_MAJOR, PLUGIN_VERSION_MINOR,
+               PLUGIN_VERSION_PATCH, PLUGIN_VERSION_TWEAK,
+               OCPN_API_VERSION_MAJOR, OCPN_API_VERSION_MINOR,
+               static_cast<unsigned>(sizeof(void*) * 8));
+#ifdef __WXMSW__
+  if (const auto space = m_addressSpaceMonitor.GetAddressSpace()) {
+    wxLogMessage("WR_ADDRESS_SPACE total_bytes=%llu available_bytes=%llu "
+                 "reserved_committed_bytes=%llu",
+                 static_cast<unsigned long long>(space->total),
+                 static_cast<unsigned long long>(space->available),
+                 static_cast<unsigned long long>(space->UsedBytes()));
+  } else {
+    wxLogWarning("WR_ADDRESS_SPACE query failed");
+  }
+#endif
 
   //    Get a pointer to the opencpn configuration object
   m_pconfig = GetOCPNConfigObject();
@@ -1326,6 +1342,13 @@ void weather_routing_pi::SetColorScheme(PI_ColorScheme cs) {
 }
 
 wxString weather_routing_pi::StandardPath() {
+  // Keep GUI migration tests and headless runs independent of the host API's
+  // private-data path (some hosts ignore --configdir for that API).
+  wxString testDataDir;
+  if (wxGetEnv("WR_HEADLESS_DATA_DIR", &testDataDir) && !testDataDir.empty()) {
+    wxFileName directory = wxFileName::DirName(testDataDir);
+    if (directory.IsAbsolute()) return directory.GetPathWithSep();
+  }
   wxString s = wxFileName::GetPathSeparator();
   wxString stdPath = *GetpPrivateApplicationDataLocation();
 

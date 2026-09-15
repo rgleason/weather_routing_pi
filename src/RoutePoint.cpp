@@ -550,7 +550,6 @@ double RoutePoint::PropagateToPoint(double dlat, double dlon,
   int newpolar = polar;
   bool old = configuration.OptimizeTacking;
   if (end) configuration.OptimizeTacking = true;
-  PolarSpeedStatus status;
   BoatData boat_data;
   do {
     // (bearing - cog) represents the angle between the destination and the

@@ -32,6 +32,14 @@ set(CMLOC "CMakeLists: ")
 
 # Option to enable/disable testing
 option(OCPN_BUILD_TEST "Build plugin tests" OFF)
+set(_xweather_identity_default OFF)
+if("$ENV{CIRCLE_PROJECT_REPONAME}" STREQUAL "xweather_routing_pi")
+  set(_xweather_identity_default ON)
+endif()
+option(WEATHER_ROUTING_XWEATHER_IDENTITY
+       "Build the separately installable xWeatherRouting variant"
+       ${_xweather_identity_default})
+unset(_xweather_identity_default)
 
 # define minimum cmake version
 cmake_minimum_required(VERSION 3.10)
@@ -64,21 +72,46 @@ endif (COMMAND cmake_policy)
 set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
 
 # define plugin name, owner and versions
-set(VERBOSE_NAME "WeatherRouting")
-set(COMMON_NAME "WeatherRouting")  # Search "getcommonname"in <plugin_pi>.cpp
-set(TITLE_NAME "weatherrouting")
+if(WEATHER_ROUTING_XWEATHER_IDENTITY)
+  set(VERBOSE_NAME "xWeatherRouting")
+  set(COMMON_NAME "xWeatherRouting")
+  set(TITLE_NAME "xweatherrouting")
+  set(PACKAGE "xweather_routing_pi")
+else()
+  set(VERBOSE_NAME "WeatherRouting")
+  set(COMMON_NAME "WeatherRouting")  # Search "getcommonname"in <plugin_pi>.cpp
+  set(TITLE_NAME "weatherrouting")
+  set(PACKAGE "weather_routing_pi")
+endif()
 set(PACKAGE_CONTACT "Sean d'Epagnier; Weather Routing Plugin Team")
-set(PACKAGE "weather_routing_pi")
 set(SHORT_DESCRIPTION
     "Advanced deterministic weather routing with departure and arrival planning.")
 set(LONG_DESCRIPTION
-    "WeatherRouting computes land-aware sailing routes using deterministic forward isochrones, reverse recovery, graph fallback, concurrent departure optimisation, and planned-arrival routing. Stock OpenCPN uses GSHHS land checks; optional chart-backed safety is available only when the host provides it.")
+    "WeatherRouting offers Main and Quick engines with independent saved settings and explicit search presets. It computes land-aware sailing routes using deterministic forward isochrones, reverse recovery, graph fallback, concurrent departure optimisation, and planned-arrival routing. Stock OpenCPN uses GSHHS land checks; optional chart-backed safety is available only when the host provides it.")
 
 set(VERSION_MAJOR "1")
-set(VERSION_MINOR "16")
-set(VERSION_PATCH "0")
+set(VERSION_MINOR "17")
+set(VERSION_PATCH "7")
 set(VERSION_TWEAK "0")
-set(VERSION_DATE  "01/09/2026") # DD/MM/YYYY format
+# Every platform and identity ships all five verified offline resolutions.
+set(_shoreline_archives
+  "poly-c-2.3.7.dat.gz|933d111ff352c8b505181e6a2d2888c093222fcccd5f3b455bfbb6f1df217891"
+  "poly-l-2.3.7.dat.gz|51a1ae4874df513f25447d26740221d4b2a984fabbce9d3f84b29b2e25ff4ab9"
+  "poly-i-2.3.7.dat.gz|9de2a76bed06711443466c7832798784b45e5a54c752a7c260ee50de00bf0a5e"
+  "poly-h-2.3.7.dat.gz|065a10f49c72426cb295ddb076e1d54a1f985d75a759c552a0a93c3d4e1cf71a"
+  "poly-f-2.3.7.dat.gz|a36cb8c4fda7d56cfd851d92ed70a315d0a2ff81e10e99e8a0141ce9dc4e6d60"
+)
+foreach(_archive IN LISTS _shoreline_archives)
+  string(REPLACE "|" ";" _parts "${_archive}")
+  list(GET _parts 0 _file)
+  list(GET _parts 1 _expected)
+  file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/data/shoreline/${_file}" _actual)
+  if(NOT _actual STREQUAL _expected)
+    message(FATAL_ERROR "Bundled GSHHG data is missing or corrupt: ${_file}")
+  endif()
+endforeach()
+unset(_shoreline_archives)
+set(VERSION_DATE  "13/09/2026") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov511")
 
 set(OCPN_API_VERSION_MAJOR "1")
@@ -100,15 +133,17 @@ set(ALPHA "alpha") #Standard Repos
 #set (CLOUDSMITH_BASE_REPOSITORY "${GIT_REPOSITORY_NAME}")
 #set (CLOUDSMITH_BASE_REPOSITORY "opencpn-plugins")  # Ricks's customization
 set(CLOUDSMITH_BASE_REPOSITORY "weather-routing")
-set(PLUGIN_GIT_REPOSITORY "pob220/weather_routing_pi")
+if(WEATHER_ROUTING_XWEATHER_IDENTITY)
+  set(PLUGIN_GIT_REPOSITORY "pob220/xweather_routing_pi")
+else()
+  set(PLUGIN_GIT_REPOSITORY "pob220/weather_routing_pi")
+endif()
 
 # Keep validation independent of the OpenCPN publishing repositories.  Alpha
 # publication remains a separate, explicitly approved later step.
 set(CLOUDSMITH_USER "opencpn")
 
-set(XML_INFO_URL
-    "https://github.com/pob220/weather_routing_pi"
-)
+set(XML_INFO_URL "https://github.com/${PLUGIN_GIT_REPOSITORY}")
 set(XML_SUMMARY ${SHORT_DESCRIPTION})
 set(XML_DESCRIPTION ${LONG_DESCRIPTION})
 
@@ -193,6 +228,8 @@ add_definitions(-DUSE_S57)
 
 
 SET(SRCS
+            src/ShorelineDataset.cpp
+            src/ShorelineManager.cpp
             src/AppendOnlyCache.cpp
             src/ChartSafetyCache.cpp
             src/ChartSafetyAtlas.cpp
@@ -251,6 +288,7 @@ SET(SRCS
             vendor/weather-routing-engine/src/Polar.cpp
             vendor/weather-routing-engine/src/EnvironmentResolver.cpp
             vendor/weather-routing-engine/src/Engine.cpp
+            vendor/weather-routing-engine/src/QuickEngine.cpp
             vendor/weather-routing-engine/src/Validator.cpp
             vendor/weather-routing-engine/src/Ensemble.cpp
             src/engine/native/OpenCpnAdapter.cpp
@@ -266,6 +304,7 @@ SET (HDRS
             include/OceanPrewarmPolicy.h
             include/ReachabilityPrewarmPolicy.h
             include/ExternalPlanningProvider.h
+            include/ProcessAddressSpace.h
             include/AddressSpaceMonitor.h
             include/ChartSafetyDefaults.h
             include/ClimatologyThreadGuard.h

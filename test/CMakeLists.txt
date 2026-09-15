@@ -39,6 +39,10 @@ aui
 REQUIRED)
 
 set(TEST_SRC
+    ShorelineDataset_tests.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/src/ShorelineDataset.cpp
+    RoutingProgressState_tests.cpp
+    ProcessAddressSpace_tests.cpp
     AppendOnlyCache_tests.cpp
     ChartSafetyCache_tests.cpp
     ChartSafetyHost_tests.cpp
@@ -58,6 +62,7 @@ set(TEST_SRC
     RouteSimplifier_tests.cpp
     StabilityCorridor_tests.cpp
     StabilityCorridorLifecycle_tests.cpp
+    RoutingEngineSettings_tests.cpp
     RoutingScenarioJson_tests.cpp
     DepartureScheduler_tests.cpp
     RoutingQualityPolicy_tests.cpp
@@ -95,12 +100,15 @@ set(TEST_SRC
     ${WEATHER_ROUTING_ENGINE_DIR}/src/EnvironmentResolver.cpp
     ${WEATHER_ROUTING_ENGINE_DIR}/src/ArrivalPlanner.cpp
     ${WEATHER_ROUTING_ENGINE_DIR}/src/Engine.cpp
+    ${WEATHER_ROUTING_ENGINE_DIR}/src/QuickEngine.cpp
     ${WEATHER_ROUTING_ENGINE_DIR}/src/Validator.cpp
     ${WEATHER_ROUTING_ENGINE_DIR}/src/Ensemble.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/zuFile.cpp
    )
 
    add_executable(weather_routing_pi_tests ${TEST_SRC})
+   target_compile_definitions(weather_routing_pi_tests PRIVATE
+       WR_TEST_SHORELINE_DATA="${WEATHER_ROUTING_SOURCE_DIR}/data/shoreline")
 
    set(WEATHER_ROUTING_TEST_SANITIZER "" CACHE STRING
        "Optional sanitizer for Weather Routing tests: address, thread, or undefined")
@@ -198,6 +206,14 @@ add_test(
     COMMAND ${CMAKE_COMMAND}
         -DROUTING_SOURCE=${WEATHER_ROUTING_SOURCE_DIR}/src/WeatherRouting.cpp
         -P ${CMAKE_CURRENT_LIST_DIR}/HeadlessRouteLifecycleContract.cmake
+)
+add_test(
+    NAME weather_routing_table_lifecycle_contract
+    COMMAND ${CMAKE_COMMAND}
+        -DROUTING_SOURCE=${WEATHER_ROUTING_SOURCE_DIR}/src/WeatherRouting.cpp
+        -DTABLE_SOURCE=${WEATHER_ROUTING_SOURCE_DIR}/src/RoutingTablePanel.cpp
+        -DTABLE_HEADER=${WEATHER_ROUTING_SOURCE_DIR}/include/RoutingTablePanel.h
+        -P ${CMAKE_CURRENT_LIST_DIR}/RoutingTableLifecycleContract.cmake
 )
 add_test(
     NAME weather_routing_msvc_cplusplus_contract

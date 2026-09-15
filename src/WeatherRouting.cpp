@@ -17,6 +17,9 @@
  *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,  USA.         *
  ***************************************************************************/
 
+#include "RoutingEngineSettingsPersistence.h"
+#include "ShorelineSettings.h"
+
 #include <wx/wx.h>
 #include <wx/aui/aui.h>
 #include <wx/imaglist.h>
@@ -43,6 +46,7 @@
 #include "RouteWaypointExtractor.h"
 #include "weather_routing_pi.h"
 #include "WeatherRouting.h"
+#include "ShorelineManager.h"
 #include "ChartSafetyDefaults.h"
 #include "AboutDialog.h"
 #include "ConstraintChecker.h"
@@ -52,6 +56,7 @@
 #include "OceanPrewarmPolicy.h"
 #include "ReachabilityPrewarmPolicy.h"
 #include "RouteDisplayPolicy.h"
+#include "RouteExportFileName.h"
 #include "DepartureScheduler.h"
 #include "RoutingResourcePolicy.h"
 #include "WeatherDataProvider.h"
@@ -553,11 +558,23 @@ static bool EndpointMeetsMinimumDepth(
           _("%s charted depth %.1f m is below the configured minimum %.1f m"),
           endpoint_name, result.hit_depth_m,
           configuration.MinimumDepthMeters);
-    } else if (queried &&
-               result.status == PI_SEGMENT_SAFETY_UNKNOWN_DEPTH) {
+    } else if (queried && result.status == PI_SEGMENT_SAFETY_TOO_SHALLOW) {
       *failure_reason = wxString::Format(
-          _("%s has no charted depth proving the configured minimum %.1f m"),
+          _("%s is charted too shallow for the configured minimum %.1f m"),
           endpoint_name, configuration.MinimumDepthMeters);
+    } else if (queried &&
+               (result.status == PI_SEGMENT_SAFETY_UNKNOWN_DEPTH ||
+                result.status == PI_SEGMENT_SAFETY_NO_DATA)) {
+      *failure_reason = wxString::Format(
+          _("%s lacks chart/depth coverage proving the configured minimum "
+            "%.1f m. Load charts with depth coverage at this position."),
+          endpoint_name, configuration.MinimumDepthMeters);
+    } else if (!queried || result.status == PI_SEGMENT_SAFETY_ERROR ||
+               result.status == PI_SEGMENT_SAFETY_PENDING_DATA) {
+      *failure_reason = wxString::Format(
+          _("%s depth check could not be completed. Required chart data or "
+            "the chart-safety service is unavailable; retry after loading charts."),
+          endpoint_name);
     } else {
       *failure_reason = wxString::Format(
           _("%s does not satisfy the configured minimum depth %.1f m"),
@@ -647,6 +664,7 @@ static wxString ChartSafetyRouteFamilyKey(
       configuration.EndLon, options.safety_margin_nm, options.check_land,
       options.check_depth, options.minimum_depth_m, configuration.DeltaTime,
       configuration.boatFileName);
+  key += wxString::Format(":shoreline%d", configuration.EffectiveShorelineResolution());
   key += wxString::Format(":propagation%d",
                           configuration.UseChartSafetyForPropagation ? 1 : 0);
   return key;
@@ -757,7 +775,8 @@ static void PrewarmExperimentalChartSafetyForConfiguration(
   const weather_routing::OceanPrewarmPlan ocean_prewarm =
       weather_routing::BuildOceanPrewarmPlan(direct_distance_nm);
   const bool ocean_passage = ocean_prewarm.enabled;
-  const bool direct_crosses_land = PlugIn_GSHHS_CrossesLand(
+  const auto shoreline = weather_routing::ShorelineManager::Prepare(configuration.EffectiveShorelineResolution());
+  const bool direct_crosses_land = shoreline->CrossesLand(
       configuration.StartLat, configuration.StartLon, configuration.EndLat,
       configuration.EndLon);
   double prewarm_margin_nm =
@@ -814,7 +833,7 @@ static void PrewarmExperimentalChartSafetyForConfiguration(
     }
     if (require_gshhs_clear) {
       for (int step = 1; step <= direct_steps; ++step) {
-        if (PlugIn_GSHHS_CrossesLand(
+        if (shoreline->CrossesLand(
                 latitudes[step - 1], longitudes[step - 1], latitudes[step],
                 longitudes[step]))
           return false;
@@ -1137,6 +1156,19 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
       wxCommandEventHandler(WeatherRouting::OnChartAwarenessSettings), this,
       m_mChartAwarenessSettings->GetId());
 
+  auto shorelineMenu = m_mView->Append(wxID_ANY, _("Shoreline data..."));
+  m_mView->Bind(
+      wxEVT_MENU,
+      [this](wxCommandEvent&) {
+        if (!CanStartExternalPlanningScenario()) {
+          wxMessageBox(_("Wait for routing calculations to finish before "
+                         "managing shoreline data."),
+                       _("Shoreline data"), wxOK | wxICON_INFORMATION, this);
+          return;
+        }
+        weather_routing::ShorelineManager::Show(this);
+      },
+      shorelineMenu->GetId());
   m_mView->AppendSeparator();
   m_mStabilityCorridorView =
       new wxMenuItem(m_mView, wxID_ANY, _("Show stability corridor"),
@@ -1146,6 +1178,10 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
   m_mView->Bind(wxEVT_COMMAND_MENU_SELECTED,
                 wxCommandEventHandler(WeatherRouting::OnViewStabilityCorridor),
                 this, m_mStabilityCorridorView->GetId());
+
+  wxMenuItem* progressItem = m_mView->Append(wxID_ANY, _("Routing progress..."));
+  m_mView->Bind(wxEVT_MENU, &WeatherRouting::OnShowRoutingStatus, this,
+               progressItem->GetId());
 
   wxIcon icon;
   icon.CopyFromBitmap(*_img_WeatherRouting);
@@ -1546,19 +1582,20 @@ WeatherRouting::~WeatherRouting() {
         "tearing down.");
   }
 
-  for (std::list<WeatherRoute*>::iterator it = m_WeatherRoutes.begin();
-       it != m_WeatherRoutes.end(); it++)
-    delete *it;
-  delete m_panel;
-  delete m_colpane;
-
   // Clean up routing table panel if it exists
   if (m_RoutingTablePanel) {
+    m_RoutingTablePanel->SetRouteMap(nullptr);
     wxAuiManager* pauimgr = ::GetFrameAuiManager();
     pauimgr->DetachPane(m_RoutingTablePanel);
     m_RoutingTablePanel->Destroy();
     m_RoutingTablePanel = nullptr;
   }
+
+  for (std::list<WeatherRoute*>::iterator it = m_WeatherRoutes.begin();
+       it != m_WeatherRoutes.end(); it++)
+    delete *it;
+  delete m_panel;
+  delete m_colpane;
 }
 
 void WeatherRouting::RequestGribTimelineFrame(
@@ -1774,9 +1811,15 @@ void WeatherRouting::Render(piDC& dc, PlugIn_ViewPort& vp) {
 
   RenderStabilityCorridor(dc, vp);
 
-  // Update highlighted row in the routing table panel if it exists
+  // A hidden table does not need timeline repaint work. In particular, do not
+  // let a retained AUI pane dereference route data while routes are replaced.
   if (m_RoutingTablePanel) {
-    m_RoutingTablePanel->UpdateTimeHighlight(time);
+    wxAuiManager* pauimgr = ::GetFrameAuiManager();
+    if (pauimgr) {
+      wxAuiPaneInfo& pane = pauimgr->GetPane(m_RoutingTablePanel);
+      if (pane.IsOk() && pane.IsShown())
+        m_RoutingTablePanel->UpdateTimeHighlight(time);
+    }
   }
 
   for (int i = 0; i < m_panel->m_lWeatherRoutes->GetItemCount(); i++) {
@@ -2301,10 +2344,9 @@ void WeatherRouting::ShowRoutingProgress(const wxString& title) {
         new wxStaticText(m_RoutingProgressDialog, wxID_ANY, wxEmptyString);
     m_RoutingProgressStage->SetFont(m_RoutingProgressStage->GetFont().Bold());
     topSizer->Add(m_RoutingProgressStage, 0, wxALL | wxEXPAND, 8);
-    m_RoutingProgressDetail =
-        new wxStaticText(m_RoutingProgressDialog, wxID_ANY, wxEmptyString,
-                         wxDefaultPosition, wxSize(kProgressTextWidth, -1));
-    m_RoutingProgressDetail->Wrap(kProgressTextWidth);
+    m_RoutingProgressDetail = new wxTextCtrl(
+        m_RoutingProgressDialog, wxID_ANY, wxEmptyString, wxDefaultPosition,
+        wxSize(kProgressTextWidth, 220), wxTE_MULTILINE | wxTE_READONLY);
     topSizer->Add(m_RoutingProgressDetail, 0,
                   wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 8);
     m_RoutingProgressTiming =
@@ -2319,17 +2361,28 @@ void WeatherRouting::ShowRoutingProgress(const wxString& title) {
                   wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 8);
     wxStaticText* note = new wxStaticText(
         m_RoutingProgressDialog, wxID_ANY,
-        _("Use the Weather Routing Stop button to cancel active route "
-          "computations."));
+        _("Hide keeps computations running. Reopen with View > Routing progress. "
+          "Worker update age reports activity; it is not a completion estimate."));
     note->Wrap(kProgressTextWidth);
     topSizer->Add(note, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 8);
+    wxBoxSizer* buttons = new wxBoxSizer(wxHORIZONTAL);
+    wxButton* hide = new wxButton(m_RoutingProgressDialog, wxID_ANY, _("Hide"));
+    wxButton* stop = new wxButton(m_RoutingProgressDialog, wxID_ANY,
+                                  _("Stop all computations"));
+    hide->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+      m_RoutingProgressDialog->Hide();
+    });
+    stop->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+      CancelMultiLegDepartureOptimization(true);
+      StopAll();
+      FinishRoutingProgress(_("Stopped"), _("Route computations stopped."));
+    });
+    buttons->Add(hide, 0, wxALL, 5);
+    buttons->Add(stop, 0, wxALL, 5);
+    topSizer->Add(buttons, 0, wxALIGN_RIGHT);
     m_RoutingProgressDialog->SetSizerAndFit(topSizer);
     m_RoutingProgressDialog->Bind(wxEVT_CLOSE_WINDOW,
                                   [this](wxCloseEvent& event) {
-                                    if (m_DeferredRoutingStartPending)
-                                      CancelDeferredRoutingStart();
-                                    if (m_tRoutingProgress.IsRunning())
-                                      m_tRoutingProgress.Stop();
                                     if (m_RoutingProgressDialog)
                                       m_RoutingProgressDialog->Hide();
                                   });
@@ -2343,6 +2396,7 @@ void WeatherRouting::ShowRoutingProgress(const wxString& title) {
   m_RoutingProgressPreviousStage.Clear();
   m_RoutingProgressPreviousStageDuration = wxTimeSpan(0);
   m_RoutingProgressFinished = false;
+  m_RoutingProgressGauge->Show();
   m_RoutingProgressDialog->Show();
   m_RoutingProgressDialog->Raise();
   RefreshRoutingProgressTiming();
@@ -2371,8 +2425,7 @@ void WeatherRouting::UpdateRoutingProgress(const wxString& stage,
         wxMin(value, m_RoutingProgressGauge->GetRange()));
   if (!stage.IsEmpty()) m_RoutingProgressStage->SetLabel(stage);
 
-  m_RoutingProgressDetail->SetLabel(detail);
-  m_RoutingProgressDetail->Wrap(540);
+  m_RoutingProgressDetail->ChangeValue(detail);
   RefreshRoutingProgressTiming();
   wxLogMessage("WR_PROGRESS stage=\"%s\" detail=\"%s\" value=%d range=%d",
                stage, detail, value, range);
@@ -2394,6 +2447,51 @@ void WeatherRouting::CloseRoutingProgress() {
 
 void WeatherRouting::OnRoutingProgressTimer(wxTimerEvent&) {
   RefreshRoutingProgressTiming();
+  if (m_RoutingProgressFinished || m_RunningRouteMaps.empty()) return;
+  UpdateStates();
+  if (!m_RoutingProgressDialog || !m_RoutingProgressDialog->IsShown()) return;
+  // Preparation counts are not a percentage of the route search.
+  m_RoutingProgressGauge->Hide();
+  wxString details, currentStage;
+  size_t shown = 0;
+  for (RouteMapOverlay* route : m_RunningRouteMaps) {
+    if (!route || shown++ >= 6) continue;
+    const auto configuration = route->GetConfiguration();
+    wxString stage, detail;
+    if (!route->GetModernNativeProgress(stage, detail)) {
+      stage = _("Computing");
+      detail = _("No worker progress update available yet.");
+    }
+    currentStage = stage;
+    if (!details.IsEmpty()) details += "\n\n";
+    details += wxString::Format(_("%s to %s — %s\n%s"),
+                               configuration.Start, configuration.End,
+                               stage, detail);
+  }
+  if (m_RunningRouteMaps.size() > 6)
+    details += _("\nMore active routes are listed in the routing table.");
+  if (!m_WaitingRouteMaps.empty())
+    details += wxString::Format(_("\n%lu routes waiting."),
+               static_cast<unsigned long>(m_WaitingRouteMaps.size()));
+  const wxString displayedStage =
+      m_RunningRouteMaps.size() == 1 ? currentStage : _("Computing routes");
+  if (displayedStage != m_RoutingProgressCurrentStage) {
+    // Worker/service-wait transitions may alternate every refresh. Update the
+    // clock without logging those transient snapshots every second.
+    const wxDateTime now = wxDateTime::Now();
+    m_RoutingProgressPreviousStage = m_RoutingProgressCurrentStage;
+    m_RoutingProgressPreviousStageDuration = now - m_RoutingProgressStageStartTime;
+    m_RoutingProgressCurrentStage = displayedStage;
+    m_RoutingProgressStageStartTime = now;
+    m_RoutingProgressStage->SetLabel(displayedStage);
+    m_RoutingProgressDetail->ChangeValue(details);
+    RefreshRoutingProgressTiming();
+  } else {
+    m_RoutingProgressDetail->ChangeValue(details);
+  }
+  // Refreshing the UI is not proof that the worker advanced. No synthetic
+  // percentage or heartbeat is generated here, and no per-second log spam.
+  m_RoutingProgressDialog->Layout();
 }
 
 void WeatherRouting::RefreshRoutingProgressTiming() {
@@ -2455,21 +2553,10 @@ void WeatherRouting::PaintRoutingProgressNow() {
   painting = false;
 }
 
-bool WeatherRouting::ShouldShowChartSafetyComputeProgress(
+bool WeatherRouting::ShouldShowComputeProgress(
     const std::list<RouteMapOverlay*>& routemapoverlays) const {
-  bool use_experimental_chart_safety = false;
-  bool enforce_experimental_chart_safety = false;
-  ReadExperimentalChartSafetySettings(use_experimental_chart_safety,
-                                      enforce_experimental_chart_safety);
-  if (!use_experimental_chart_safety || !enforce_experimental_chart_safety)
-    return false;
-
-  for (auto routemapoverlay : routemapoverlays) {
-    if (!routemapoverlay) continue;
-    RouteMapConfiguration configuration = routemapoverlay->GetConfiguration();
-    if (configuration.DetectLand) return true;
-  }
-  return false;
+  return std::any_of(routemapoverlays.begin(), routemapoverlays.end(),
+                     [](RouteMapOverlay* route) { return route != nullptr; });
 }
 
 void WeatherRouting::BeginChartSafetyComputeProgress(
@@ -2485,13 +2572,12 @@ void WeatherRouting::BeginChartSafetyComputeProgress(
   wxString stage = computeAll ? _("Preparing routes") : _("Preparing route");
   wxString detail =
       computeAll
-          ? wxString::Format(_("Preparing %d weather routes with chart-backed "
-                               "safety checks."),
+          ? wxString::Format(_("Preparing %d weather routes."),
                              m_ChartSafetyComputeProgressTotalRoutes)
-          : _("Preparing weather route with chart-backed safety checks.");
+          : _("Preparing weather route with the selected safety settings.");
   UpdateRoutingProgress(stage, detail, 0,
                         m_ChartSafetyComputeProgressTotalRoutes);
-  wxLogMessage("WR_PROGRESS mode=%s stage=\"%s\" routes=%d chart_enforcement=1",
+  wxLogMessage("WR_PROGRESS mode=%s stage=\"%s\" routes=%d",
                computeAll ? "compute-all" : "single", stage,
                m_ChartSafetyComputeProgressTotalRoutes);
 }
@@ -2532,8 +2618,7 @@ void WeatherRouting::UpdateChartSafetyComputeProgress(
                     .GetMilliseconds()
                     .ToLong();
   wxLogMessage(
-      "WR_PROGRESS mode=%s route=\"%s\" stage=\"%s\" elapsed_ms=%ld "
-      "chart_enforcement=1",
+      "WR_PROGRESS mode=%s route=\"%s\" stage=\"%s\" elapsed_ms=%ld",
       m_ChartSafetyComputeProgressAll ? "compute-all" : "single", routeName,
       stage, elapsedMs);
 }
@@ -2542,17 +2627,16 @@ void WeatherRouting::FinishChartSafetyComputeProgressIfDone() {
   if (!m_ChartSafetyComputeProgressActive) return;
   if (!m_RunningRouteMaps.empty() || !m_WaitingRouteMaps.empty()) return;
 
-  wxString stage = m_ChartSafetyComputeProgressAll ? _("All routes complete")
-                                                   : _("Route complete");
+  wxString stage = _("Computation finished");
   wxString detail =
       m_ChartSafetyComputeProgressAll
           ? wxString::Format(_("Completed %d weather route computations."),
                              m_ChartSafetyComputeProgressCompletedRoutes)
-          : _("Weather route computation finished.");
+          : _("Weather route computation finished. See the route State for "
+              "its result or failure reason.");
   FinishRoutingProgress(stage, detail);
   wxLogMessage(
-      "WR_PROGRESS mode=%s stage=\"%s\" completed_routes=%d "
-      "chart_enforcement=1",
+      "WR_PROGRESS mode=%s stage=\"%s\" completed_routes=%d",
       m_ChartSafetyComputeProgressAll ? "compute-all" : "single", stage,
       m_ChartSafetyComputeProgressCompletedRoutes);
   m_ChartSafetyComputeProgressActive = false;
@@ -3810,6 +3894,7 @@ void WeatherRouting::CompleteHeadlessSingleRouteTest(bool timed_out,
     StopAll();
   }
 
+  wxString first_failure;
   int complete = 0;
   int failed = 0;
   int running = 0;
@@ -3830,8 +3915,13 @@ void WeatherRouting::CompleteHeadlessSingleRouteTest(bool timed_out,
       if (running_route == route) is_running = true;
     for (auto waiting_route : m_WaitingRouteMaps)
       if (waiting_route == route) is_waiting = true;
-    const bool is_complete = route->Finished() && route->ReachedDestination();
-    const bool is_failed = route->Finished() && !route->ReachedDestination();
+    const wxString diagnostic = route->GetDiagnosticError();
+    const auto outcome = weather_routing::ClassifyRouteOutcome(
+        is_running || is_waiting, route->Valid(), route->Finished(),
+        route->ReachedDestination(), !diagnostic.IsEmpty());
+    const bool is_complete = outcome == weather_routing::RouteOutcome::Complete;
+    const bool is_failed = outcome == weather_routing::RouteOutcome::Failed;
+    if (is_failed && first_failure.IsEmpty()) first_failure = diagnostic;
     if (is_complete) complete++;
     if (is_failed) failed++;
     if (is_running) running++;
@@ -3842,11 +3932,12 @@ void WeatherRouting::CompleteHeadlessSingleRouteTest(bool timed_out,
                            : is_waiting ? _("Waiting")
                                         : _("Not running");
     long elapsed_seconds = -1;
-    if (route->EndTime().IsValid() && configuration.StartTime.IsValid()) {
+    if (is_complete && route->EndTime().IsValid() && configuration.StartTime.IsValid()) {
       const wxTimeSpan elapsed = route->EndTime() - configuration.StartTime;
       elapsed_seconds = elapsed.GetSeconds().ToLong();
     }
-    const double distance_nm = route->RouteInfo(RouteMapOverlay::DISTANCE);
+    const double distance_nm =
+        is_complete ? route->RouteInfo(RouteMapOverlay::DISTANCE) : NAN;
     wxLogMessage(
         "WR_HEADLESS_ROUTE_TEST route_result index=%lu offset=%d "
         "start=\"%s\" end=\"%s\" complete=%d failed=%d running=%d "
@@ -3856,9 +3947,10 @@ void WeatherRouting::CompleteHeadlessSingleRouteTest(bool timed_out,
         configuration.DepartureTimeOptimizationOffsetMinutes,
         configuration.Start, configuration.End, is_complete ? 1 : 0,
         is_failed ? 1 : 0, is_running ? 1 : 0, is_waiting ? 1 : 0, state,
-        route->EndTime().IsValid() ? route->EndTime().FormatISOCombined()
+        is_complete && route->EndTime().IsValid()
+            ? route->EndTime().FormatISOCombined()
                                    : wxString("invalid"),
-        elapsed_seconds, distance_nm, route->GetFailureReason());
+        elapsed_seconds, distance_nm, diagnostic);
   }
 
   wxLogMessage(
@@ -3875,7 +3967,9 @@ void WeatherRouting::CompleteHeadlessSingleRouteTest(bool timed_out,
                                                 : _("unknown");
   const wxString result_failure =
       timed_out ? _("timeout")
-                : (complete > 0 ? wxString() : _("no_completed_routes"));
+                : (complete > 0 ? wxString()
+                   : !first_failure.IsEmpty() ? first_failure
+                                              : _("no_completed_routes"));
   if (m_HeadlessRouteTestState->scenarioLoaded &&
       !m_HeadlessRouteTestState->scenarioOutputPath.IsEmpty()) {
     wxString write_error;
@@ -4257,6 +4351,26 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
               boat_file = wxFileName::GetHomeDir() + boat_file.Mid(1);
             configuration.boatFileName = boat_file;
           }
+          if (scenario.route.hasQuickRoute) configuration.EngineSettings.engine = scenario.route.quickRoute
+              ? weather_routing::RoutingEngine::Quick : weather_routing::RoutingEngine::Main;
+          if (scenario.route.hasQuickMemoryBudgetMiB) configuration.EngineSettings.quick.memoryBudgetMiB = scenario.route.quickMemoryBudgetMiB;
+          if (scenario.route.hasRoutingEngine)
+            configuration.EngineSettings.SetEngineId(scenario.route.routingEngine.ToStdString());
+          if (scenario.route.hasChartShorelineResolution) configuration.ChartShorelineResolution = scenario.route.chartShorelineResolution;
+          if (scenario.route.hasShorelineResolution) {
+            if (configuration.IsQuick()) configuration.QuickShorelineResolution = scenario.route.shorelineResolution;
+            else configuration.ShorelineResolution = scenario.route.shorelineResolution;
+          }
+          if (scenario.route.hasQuickOffshoreStepMinutes)
+            configuration.EngineSettings.quick.offshoreStepMinutes = scenario.route.quickOffshoreStepMinutes;
+          if (scenario.route.hasQuickHeadingStepDegrees)
+            configuration.EngineSettings.quick.headingStepDegrees = scenario.route.quickHeadingStepDegrees;
+          if (scenario.route.hasQuickMaximumSearchAngle)
+            configuration.EngineSettings.quick.maximumSearchAngle = scenario.route.quickMaximumSearchAngle;
+          if (scenario.route.hasQuickOffshoreStepMinutes || scenario.route.hasQuickHeadingStepDegrees || scenario.route.hasQuickMaximumSearchAngle)
+            configuration.EngineSettings.quick.preset = {};
+          if (scenario.route.hasTimeStepSeconds || scenario.route.hasHeadingStepDegrees || scenario.route.hasRoutingEffortPercent)
+            configuration.EngineSettings.mainPreset = {};
           if (scenario.route.hasRoutingEffortPercent)
             configuration.RoutingEffortPercent =
                 weather_routing::NormalizeRoutingEffortPercent(
@@ -4424,6 +4538,17 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
         (mode.IsSameAs("single-opt", false) ||
          mode.IsSameAs("departure-opt", false) ||
          selected_config.DepartureTimeOptimizationEnabled);
+    const wxLongLong preparation_started_ms = wxGetUTCTimeMillis();
+    struct PreparationDeadline {
+      explicit PreparationDeadline(long milliseconds) {
+        weather_routing::chart_safety_host::SetPrewarmDeadline(
+            std::chrono::steady_clock::now() +
+            std::chrono::milliseconds(milliseconds));
+      }
+      ~PreparationDeadline() {
+        weather_routing::chart_safety_host::SetPrewarmDeadline({});
+      }
+    } preparation_deadline(timeout_ms);
     bool started = false;
     if (departure_opt) {
       started = ComputeDepartureTimeOptimization(selected_route);
@@ -4455,6 +4580,15 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
       started = true;
     }
 
+    if (weather_routing::chart_safety_host::PrewarmCancellationRequested()) {
+      StopAll();
+      wxLogMessage("WR_HEADLESS_ROUTE_TEST timeout during chart preparation.");
+      write_scenario_result("timeout", "timeout during chart preparation",
+                            {selected_route});
+      FinishHeadlessRouteTestProcess(2);
+      return;
+    }
+
     if (!started) {
       wxLogMessage(
           "WR_HEADLESS_ROUTE_TEST abort route=\"%s to %s\" "
@@ -4470,7 +4604,7 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
     m_HeadlessRouteTestState->kind =
         HeadlessRouteTestState::Kind::SingleRoute;
     m_HeadlessRouteTestState->timeoutMs = timeout_ms;
-    m_HeadlessRouteTestState->startedMs = wxGetUTCTimeMillis();
+    m_HeadlessRouteTestState->startedMs = preparation_started_ms;
     m_HeadlessRouteTestState->selectedRoute = selected_route;
     m_HeadlessRouteTestState->departureOptimization = departure_opt;
     m_HeadlessRouteTestState->scenarioLoaded = scenario_loaded;
@@ -5235,18 +5369,11 @@ void WeatherRouting::OnWeatherRouteSelected() {
 
   UpdateDialogs();
 
-  // Update the Routing Table panel if it exists and is shown
+  // Keep the table's route reference synchronized even while its AUI pane is
+  // hidden. An empty selection must clear the previous route reference.
   if (m_RoutingTablePanel) {
-    wxAuiManager* pauimgr = ::GetFrameAuiManager();
-    wxAuiPaneInfo& pane = pauimgr->GetPane(m_RoutingTablePanel);
-    if (pane.IsOk() && pane.IsShown()) {
-      if (!currentroutemaps.empty()) {
-        // Update with the first selected route
-        ((RoutingTablePanel*)m_RoutingTablePanel)->m_RouteMap =
-            currentroutemaps.front();
-        ((RoutingTablePanel*)m_RoutingTablePanel)->PopulateTable();
-      }
-    }
+    m_RoutingTablePanel->SetRouteMap(
+        currentroutemaps.empty() ? nullptr : currentroutemaps.front());
   }
 
   SetEnableConfigurationMenu();
@@ -6522,7 +6649,7 @@ void WeatherRouting::OnCompute(wxCommandEvent& event) {
   CancelMultiLegSequence();
   CancelMultiLegDepartureOptimization(true);
   std::list<RouteMapOverlay*> currentroutemaps = CurrentRouteMaps();
-  if (ShouldShowChartSafetyComputeProgress(currentroutemaps)) {
+  if (ShouldShowComputeProgress(currentroutemaps)) {
     if (m_DeferredRoutingStartPending) {
       wxMessageBox(_("A weather routing start is already pending."),
                    _("Weather Routing"), wxOK | wxICON_WARNING, this);
@@ -6568,6 +6695,13 @@ void WeatherRouting::OnEditMultiLegGroupSettings(wxCommandEvent& event) {
 }
 
 void WeatherRouting::OnShowRoutingStatus(wxCommandEvent& event) {
+  if (m_RoutingProgressDialog && !m_RoutingProgressFinished &&
+      (m_DeferredRoutingStartPending || !m_RunningRouteMaps.empty() ||
+       !m_WaitingRouteMaps.empty())) {
+    m_RoutingProgressDialog->Show();
+    m_RoutingProgressDialog->Raise();
+    return;
+  }
   ShowRoutingStatus(FirstCurrentRouteMap());
 }
 
@@ -6581,7 +6715,7 @@ void WeatherRouting::OnComputeAll(wxCommandEvent& event) {
     if (weatherroute && weatherroute->routemapoverlay)
       allroutemaps.push_back(weatherroute->routemapoverlay);
   }
-  if (ShouldShowChartSafetyComputeProgress(allroutemaps)) {
+  if (ShouldShowComputeProgress(allroutemaps)) {
     if (m_DeferredRoutingStartPending) {
       wxMessageBox(_("A weather routing start is already pending."),
                    _("Weather Routing"), wxOK | wxICON_WARNING, this);
@@ -7265,6 +7399,31 @@ int WeatherRouting::EffectiveChartSafetyRamCacheMiB() const {
   return m_weather_routing_pi.EffectiveChartSafetyRamCacheMiB();
 }
 
+void WeatherRouting::ApplyChartSafetySettings(bool use, bool enforce) {
+  if (!HasEnhancedChartSafety()) return;
+  wxFileConfig* config = GetOCPNConfigObject();
+  config->SetPath("/PlugIns/WeatherRouting");
+  const bool old_use = config->ReadBool("UseExperimentalChartSafety",
+      weather_routing::chart_safety_defaults::kCheckLoadedCharts);
+  const bool old_enforce = config->ReadBool("EnforceExperimentalChartSafety",
+      weather_routing::chart_safety_defaults::kRequireChartDepthChecks);
+  if (old_use == use && old_enforce == enforce) return;
+
+  // This is a global policy. Stop jobs using the old policy and invalidate
+  // all results, including filtered/unselected and generated routes.
+  StopAll();
+  config->SetPath("/PlugIns/WeatherRouting");
+  config->Write("UseExperimentalChartSafety", use);
+  config->Write("EnforceExperimentalChartSafety", enforce);
+  config->Flush();
+  for (WeatherRoute* route : m_WeatherRoutes) route->routemapoverlay->Reset();
+  m_positionOnRoute = nullptr;
+  UpdateStates();
+  UpdateDialogs();
+  ScheduleAutoSave();
+  GetParent()->Refresh();
+}
+
 bool WeatherRouting::HasEnhancedChartSafety() const {
   return m_weather_routing_pi.HasEnhancedChartSafety();
 }
@@ -7340,9 +7499,7 @@ void WeatherRouting::AddRoutingPanel() {
     pauimgr->Update();
   } else {
     // Update data in existing panel
-    ((RoutingTablePanel*)m_RoutingTablePanel)->m_RouteMap =
-        currentroutemaps.front();
-    ((RoutingTablePanel*)m_RoutingTablePanel)->PopulateTable();
+    m_RoutingTablePanel->SetRouteMap(currentroutemaps.front());
 
     // Show the panel if it's hidden
     wxAuiManager* pauimgr = ::GetFrameAuiManager();
@@ -7544,11 +7701,6 @@ void WeatherRouting::OnComputationTimer(wxTimerEvent&) {
       continue;
     } else
       it++;
-
-    wxString modernStage, modernDetail;
-    if (routemapoverlay->GetModernNativeProgress(modernStage, modernDetail) &&
-        m_RoutingProgressDialog && m_RoutingProgressDialog->IsShown())
-      UpdateRoutingProgress(modernStage, modernDetail);
 
     /* Service chart-derived data only on the application thread.  The route
      * worker retains all completed isochrones and recomputes only its
@@ -7878,6 +8030,10 @@ bool WeatherRouting::OpenXML(wxString filename, bool reportfailure) {
                    weather_routing::kMaximumParallelDepartureCandidates,
                    AttributeInt(
                        e, "DepartureTimeOptimizationConcurrentRoutes", 0)));
+        configuration.EngineSettings = weather_routing::ReadRoutingEngineSettings(*e);
+        configuration.ShorelineResolution = weather_routing::ReadShorelineResolution(*e, weather_routing::ShorelineManager::DefaultResolution());
+        configuration.QuickShorelineResolution = weather_routing::ReadShorelineResolution(*e, 0, "QuickShorelineResolution");
+        configuration.ChartShorelineResolution = weather_routing::ReadShorelineResolution(*e, 0, "ChartShorelineResolution");
         configuration.RoutingEffortPercent =
             weather_routing::NormalizeRoutingEffortPercent(
                 AttributeInt(e, "RoutingEffortPercent",
@@ -8116,6 +8272,10 @@ void WeatherRouting::SaveXML(wxString filename) {
                     configuration.DepartureTimeOptimizationStepMinutes);
     c->SetAttribute("DepartureTimeOptimizationConcurrentRoutes",
                     configuration.DepartureTimeOptimizationConcurrentRoutes);
+    weather_routing::WriteRoutingEngineSettings(configuration.EngineSettings, *c);
+    c->SetAttribute("ShorelineResolution", configuration.ShorelineResolution);
+    c->SetAttribute("QuickShorelineResolution", configuration.QuickShorelineResolution);
+    c->SetAttribute("ChartShorelineResolution", configuration.ChartShorelineResolution);
     c->SetAttribute(
         "RoutingEffortPercent",
         weather_routing::NormalizeRoutingEffortPercent(
@@ -8652,20 +8812,24 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
   }
 
   if (!routemapoverlay->Valid()) {
-    State = _("Invalid Start/End");
+    State = _("Cannot compute");
     wxString error = routemapoverlay->GetError();
     wxString weatherError = routemapoverlay->GetWeatherForecastError();
     if (!error.IsEmpty())
       State += ": " + error;
     else if (!weatherError.IsEmpty())
       State += ": " + weatherError;
-  } else if (routemapoverlay->Running())
-    State = _("Computing...");
-  else {
+  } else if (routemapoverlay->Running()) {
+    wxString stage, detail;
+    State = routemapoverlay->GetModernNativeProgress(stage, detail)
+                ? _("Computing: ") + stage : _("Computing...");
+  } else {
     if (routemapoverlay->Finished()) {
-      if (routemapoverlay->ReachedDestination())
-        State = _("Complete");
-      else
+      if (routemapoverlay->ReachedDestination()) {
+        const auto engine = routemapoverlay->GetComputedSearchSettings().engine;
+        State = engine == "quick" ? _("Complete — Quick")
+            : engine == "main" ? _("Complete — Main") : _("Complete");
+      } else
         State = BuildRouteFailureState(routemapoverlay);
     } else {
       for (std::list<RouteMapOverlay*>::iterator it =
@@ -8675,7 +8839,11 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
           State = _("Waiting...");
           return;
         }
-      State = _("Not Computed");
+      const auto computed = routemapoverlay->GetComputedSearchSettings();
+      State = computed.valid
+          ? _("Settings changed — recompute (previous engine: ") +
+                wxString::FromUTF8(computed.engine) + ")"
+          : _("Not Computed");
     }
   }
 }
@@ -9089,7 +9257,7 @@ bool WeatherRouting::CollectChartSafetyScoutGeometry(
     RouteMapOverlay* routemapoverlay,
     std::vector<std::pair<double, double> >* geometry,
     std::vector<RouteMapFrontierSegment>* retained_segments,
-    bool* reached_destination) {
+    bool* reached_destination, const std::function<void(long)>& heartbeat) {
   if (geometry) geometry->clear();
   if (retained_segments) retained_segments->clear();
   if (reached_destination) *reached_destination = false;
@@ -9137,6 +9305,14 @@ bool WeatherRouting::CollectChartSafetyScoutGeometry(
       original.MultiLegLegIndex, original.MultiLegLegCount,
       original.UseGrib ? 1 : 0, original.DeltaTime);
 
+  try {
+    scout.shoreline_dataset = weather_routing::ShorelineManager::Prepare(scout.ChartShorelineResolution);
+    scout.shoreline_description = weather_routing::ShorelineManager::Description(scout.ChartShorelineResolution);
+    scout.shoreline_error.clear();
+  } catch (const std::exception& error) {
+    wxLogError("WR_SHORELINE_ERROR scout: %s", wxString::FromUTF8(error.what()));
+    return false;
+  }
   routemapoverlay->SetConfiguration(scout);
   routemapoverlay->Reset();
 
@@ -9153,12 +9329,23 @@ bool WeatherRouting::CollectChartSafetyScoutGeometry(
   }
 
   bool watchdog_expired = false;
+  const long scout_watchdog_ms =
+      wxMax(kChartSafetyScoutWatchdogMs,
+            EnvLong("WR_HEADLESS_CHART_SCOUT_WATCHDOG_MS",
+                    kChartSafetyScoutWatchdogMs));
+  long next_heartbeat_ms = 250;
   while (routemapoverlay->Running()) {
     if (routemapoverlay->NeedsGrib() && !routemapoverlay->Finished()) {
       RequestGribTimelineFrame(routemapoverlay, routemapoverlay->NewTime());
     }
 
-    if (timer.Time() > kChartSafetyScoutWatchdogMs) {
+    const long elapsed_ms = timer.Time();
+    if (heartbeat && elapsed_ms >= next_heartbeat_ms) {
+      heartbeat(elapsed_ms);
+      next_heartbeat_ms = elapsed_ms + 250;
+    }
+
+    if (elapsed_ms > scout_watchdog_ms) {
       watchdog_expired = true;
       routemapoverlay->Stop();
       break;
@@ -9374,18 +9561,53 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
   };
   std::map<wxString, std::vector<ScoutEnvelope> > groups;
   std::map<wxString, ScoutEnvelope> reusable_scouts;
+  int scout_total = 0;
+  for (std::vector<RouteMapOverlay*>::const_iterator route =
+           routemapoverlays.begin();
+       route != routemapoverlays.end(); ++route) {
+    if (!*route) continue;
+    const RouteMapConfiguration configuration = (*route)->GetConfiguration();
+    if (!configuration.DetectLand || configuration.IsQuick() ||
+        configuration.chart_safety_missing_tile_retry_count > 0)
+      continue;
+    const wxString scope = ChartSafetySharedPrewarmScopeKey(configuration);
+    if (s_chartSafetySharedPrewarmScopes.find(scope) ==
+        s_chartSafetySharedPrewarmScopes.end())
+      ++scout_total;
+  }
+  int scouts_completed = 0;
+  wxStopWatch scout_progress_timer;
   for (std::vector<RouteMapOverlay*>::const_iterator route =
            routemapoverlays.begin();
        route != routemapoverlays.end(); ++route) {
     if (!*route) continue;
     RouteMapConfiguration configuration = (*route)->GetConfiguration();
-    if (!configuration.DetectLand ||
+    if (!configuration.DetectLand || configuration.IsQuick() ||
         configuration.chart_safety_missing_tile_retry_count > 0)
       continue;
     wxString scope = ChartSafetySharedPrewarmScopeKey(configuration);
     if (s_chartSafetySharedPrewarmScopes.find(scope) !=
         s_chartSafetySharedPrewarmScopes.end())
       continue;
+
+    const int scout_number = scouts_completed + 1;
+    const wxString departure =
+        configuration.StartTime.IsValid()
+            ? configuration.StartTime.FormatISOCombined(' ') + _(" UTC")
+            : _("unspecified time");
+    const wxString scout_stage =
+        scout_total > 1 ? _("Surveying chart-safe route alternatives")
+                        : _("Surveying chart-safe route corridor");
+    if (m_RoutingProgressDialog && m_RoutingProgressDialog->IsShown()) {
+      UpdateRoutingProgress(
+          scout_stage,
+          wxString::Format(
+              _("Chart-safety scout %d of %d: %s to %s, departure %s. "
+                "Working; each scout may take a few seconds."),
+              scout_number, wxMax(1, scout_total), configuration.Start,
+              configuration.End, departure),
+          scouts_completed, wxMax(1, scout_total));
+    }
 
     std::map<wxString, ScoutEnvelope>::const_iterator reusable =
         reusable_scouts.find(scope);
@@ -9404,6 +9626,13 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
           configuration.chart_safety_start_endpoint_reach_nm,
           configuration.chart_safety_end_endpoint_reach_nm);
       s_chartSafetyPreparedScoutScopes.insert(scope);
+      ++scouts_completed;
+      if (m_RoutingProgressDialog && m_RoutingProgressDialog->IsShown())
+        UpdateRoutingProgress(
+            scout_stage,
+            wxString::Format(_("Completed %d of %d chart-safety scouts."),
+                             scouts_completed, wxMax(1, scout_total)),
+            scouts_completed, wxMax(1, scout_total));
       continue;
     }
 
@@ -9411,9 +9640,22 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
     envelope.configuration = configuration;
     envelope.complete = false;
     envelope.scope = scope;
-    if (!CollectChartSafetyScoutGeometry(*route, &envelope.points,
-                                         &envelope.retained_segments,
-                                         &envelope.complete)) {
+    long last_heartbeat_second = -1;
+    const std::function<void(long)> heartbeat =
+        [this, &last_heartbeat_second](long elapsed_ms) {
+          const long elapsed_second = elapsed_ms / 1000;
+          if (elapsed_second == last_heartbeat_second) return;
+          last_heartbeat_second = elapsed_second;
+          // Scout workers are deliberately polled without yielding the event
+          // loop: yielding here can re-enter partially constructed routing
+          // state. Force only the progress widgets to repaint so the elapsed
+          // clock remains visibly alive during this bounded wait.
+          RefreshRoutingProgressTiming();
+          PaintRoutingProgressNow();
+        };
+    if (!CollectChartSafetyScoutGeometry(
+            *route, &envelope.points, &envelope.retained_segments,
+            &envelope.complete, heartbeat)) {
       envelope.points.push_back(
           std::make_pair(configuration.StartLat, configuration.StartLon));
       envelope.points.push_back(
@@ -9428,6 +9670,28 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
     SetChartSafetyScoutEndpointReach(&envelope.configuration, envelope.points,
                                      envelope.retained_segments,
                                      envelope.complete);
+    // A headless integration run can start before the GRIB plug-in has warmed
+    // its timeline.  In that case the bounded scout may time out even though
+    // the same route's warm GUI scout has already established its endpoint
+    // reach.  Allow the harness to supply that observed reach so the
+    // authoritative chart-backed production solve can be tested in isolation.
+    if (!EnvString("WR_HEADLESS_SCENARIO").IsEmpty()) {
+      const double headless_endpoint_reach =
+          EnvDouble("WR_HEADLESS_CHART_ENDPOINT_REACH_NM", NAN);
+      if (std::isfinite(headless_endpoint_reach)) {
+        const double bounded_reach =
+            wxMax(0.0, wxMin(2.0, headless_endpoint_reach));
+        envelope.configuration.chart_safety_start_endpoint_reach_nm =
+            bounded_reach;
+        envelope.configuration.chart_safety_end_endpoint_reach_nm =
+            bounded_reach;
+        wxLogMessage(
+            "WR_SCOUT_ENDPOINT_REACH headless_override route=\"%s to %s\" "
+            "reach_nm=%.3f source=integration-harness",
+            envelope.configuration.Start, envelope.configuration.End,
+            bounded_reach);
+      }
+    }
     (*route)->SetConfiguration(envelope.configuration);
     (*route)->Reset();
     s_chartSafetyPreparedScoutScopes.insert(scope);
@@ -9441,6 +9705,25 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
     reusable_scouts[scope] = envelope;
     groups[ChartSafetyScoutEnvelopeGroupKey(configuration)].push_back(
         envelope);
+    ++scouts_completed;
+    if (m_RoutingProgressDialog && m_RoutingProgressDialog->IsShown()) {
+      wxString detail = wxString::Format(
+          _("Completed %d of %d chart-safety scouts."), scouts_completed,
+          wxMax(1, scout_total));
+      if (scouts_completed < scout_total && scouts_completed > 0) {
+        const long elapsed_ms = scout_progress_timer.Time();
+        const long remaining_seconds =
+            ((elapsed_ms / scouts_completed) *
+             (scout_total - scouts_completed) +
+             999) /
+            1000;
+        detail += wxString::Format(
+            _(" Approximately %ld seconds of scouting remain."),
+            remaining_seconds);
+      }
+      UpdateRoutingProgress(scout_stage, detail, scouts_completed,
+                            wxMax(1, scout_total));
+    }
   }
 
   for (std::map<wxString, std::vector<ScoutEnvelope> >::iterator group =
@@ -10288,7 +10571,8 @@ void WeatherRouting::ExportCombinedRoute(
   wxString directory = weather_routing_pi::StandardPath() +
                        _T("PlannedRoutes") + wxFileName::GetPathSeparator();
   if (!wxDir::Exists(directory)) wxDir::Make(directory);
-  wxString base = directory + route.m_RouteNameString;
+  wxString base = directory +
+                  weather_routing::RouteExportFileStem(route.m_RouteNameString);
   wxString path = base + ".gpx";
   for (int suffix_number = 1; wxFileName::Exists(path) && suffix_number < 100;
        ++suffix_number)
@@ -10562,7 +10846,8 @@ void WeatherRouting::ExportRoute(RouteMapOverlay& routemapoverlay) {
   if (!wxDir::Exists(export_path_base)) wxDir::Make(export_path_base);
 
   // Handle duplicate file names by adding "(n)" as needed
-  export_path_base += new_route.m_RouteNameString;
+  export_path_base +=
+      weather_routing::RouteExportFileStem(new_route.m_RouteNameString);
   wxString export_path = export_path_base + ".gpx";
   if (wxFileName::Exists(export_path)) {
     int iv = 1;
@@ -10598,6 +10883,10 @@ void WeatherRouting::ExportRoute(RouteMapOverlay& routemapoverlay) {
 
 void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
   if (!routemapoverlay) return;
+  if (weather_routing::ShorelineManager::Busy()) {
+    routemapoverlay->SetError(_("Close shoreline data management before computing."));
+    return;
+  }
   ScopedRoutePreparation route_preparation(m_RoutePreparationDepth);
 
   RouteMapConfiguration configuration = routemapoverlay->GetConfiguration();
@@ -10709,8 +10998,23 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
   if (configuration.MinimumDepthMeters > 0.0 &&
       (!configuration.DetectLand || !use_chart_safety ||
        !enforce_chart_safety)) {
+    wxString missing;
+    const auto require = [&missing](bool enabled, const wxString& label) {
+      if (enabled) return;
+      if (!missing.IsEmpty()) missing += _(", ");
+      missing += label;
+    };
+    require(configuration.DetectLand, _("Detect Land"));
+    require(use_chart_safety, _("Check loaded charts"));
+    require(enforce_chart_safety, _("Require chart/depth checks for routing"));
     routemapoverlay->SetError(
-        _("Minimum depth requires enabled and enforced chart-aware safety"));
+        HasEnhancedChartSafety()
+            ? wxString::Format(
+                  _("Minimum charted depth is %.1f m. Enable: %s."),
+                  configuration.MinimumDepthMeters, missing)
+            : _("Minimum charted depth requires an OpenCPN build with the "
+                "chart-safety service. This host provides shoreline checks "
+                "only; it cannot enforce a charted depth limit."));
     wxLogError(
         "WR_MINIMUM_DEPTH unavailable route=\"%s -> %s\" "
         "minimum_depth_m=%.3f detect_land=%d chart_safety_use=%d "
@@ -10862,7 +11166,42 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
         configuration.Start, configuration.End, configuration.MultiLegGroupId,
         configuration.DepartureTimeOptimizationOffsetMinutes,
         configuration.MultiLegLegIndex, configuration.MultiLegLegCount));
-    PlugIn_GSHHS_CrossesLand(0, 0, 0, 0);
+    {
+      try {
+        if (m_RoutingProgressDialog && m_RoutingProgressDialog->IsShown())
+          UpdateRoutingProgress(_("Preparing shoreline data"),
+                                _("Verifying the selected shoreline dataset"),
+                                -1, -1);
+        configuration.shoreline_dataset =
+            weather_routing::ShorelineManager::Prepare(configuration.EffectiveShorelineResolution());
+        configuration.shoreline_description =
+            weather_routing::ShorelineManager::Description(configuration.EffectiveShorelineResolution());
+        configuration.shoreline_error.clear();
+        if (!use_experimental_chart_safety && configuration.shoreline_dataset->CrossesLand(
+                configuration.StartLat, configuration.StartLon,
+                configuration.StartLat, configuration.StartLon)) {
+          routemapoverlay->SetError(
+              _("Start position is on land in the selected GSHHG dataset. "
+                "Choose an offshore start position."));
+          return;
+        }
+        if (!use_experimental_chart_safety && configuration.shoreline_dataset->CrossesLand(
+                configuration.EndLat, configuration.EndLon,
+                configuration.EndLat, configuration.EndLon)) {
+          routemapoverlay->SetError(
+              _("Destination is on land in the selected GSHHG dataset. Choose "
+                "an offshore destination."));
+          return;
+        }
+        routemapoverlay->SetConfiguration(configuration);
+        wxLogMessage("WR_ROUTE_SHORELINE route=\"%s to %s\" %s",
+                     configuration.Start, configuration.End,
+                     configuration.shoreline_description);
+      } catch (const std::exception& error) {
+        routemapoverlay->SetError(wxString::FromUTF8(error.what()));
+        return;
+      }
+    }
     if (prewarm_authoritative_chart_search) {
       PrewarmExperimentalChartSafetyForConfiguration(
           configuration, _("route start"),
@@ -11116,6 +11455,14 @@ void WeatherRouting::Reset() {
 
 void WeatherRouting::DeleteRouteMaps(
     std::list<RouteMapOverlay*> routemapoverlays) {
+  // RoutingTablePanel is retained when its AUI pane is hidden. Detach it from
+  // an overlay before deleting that overlay so later chart paints cannot use
+  // a dangling route pointer.
+  if (m_RoutingTablePanel &&
+      std::find(routemapoverlays.begin(), routemapoverlays.end(),
+                m_RoutingTablePanel->GetRouteMap()) != routemapoverlays.end())
+    m_RoutingTablePanel->SetRouteMap(nullptr);
+
   for (RouteMapOverlay* route : routemapoverlays) {
     if (std::find(m_StabilityCorridorSourceRoutes.begin(),
                   m_StabilityCorridorSourceRoutes.end(),
@@ -11131,6 +11478,13 @@ void WeatherRouting::DeleteRouteMaps(
   bool current = false;
   for (std::list<RouteMapOverlay*>::iterator it = routemapoverlays.begin();
        it != routemapoverlays.end(); it++) {
+    // Deleting a wxListCtrl row can synchronously change the selection and
+    // bind the table to another member of this deletion batch. Check every
+    // route as well as detaching the initially displayed route above.
+    if (m_RoutingTablePanel &&
+        m_RoutingTablePanel->GetRouteMap() == *it)
+      m_RoutingTablePanel->SetRouteMap(nullptr);
+
     std::list<RouteMapOverlay*> currentroutemaps = CurrentRouteMaps();
     for (std::list<RouteMapOverlay*>::iterator cit = currentroutemaps.begin();
          cit != currentroutemaps.end(); cit++)
@@ -11233,6 +11587,11 @@ void WeatherRouting::SaveLastUsedConfigurationDefaults(
                configuration.ArrivalSearchHorizonMinutes);
   pConf->Write(_T("ArrivalSafetyMarginMinutes"),
                configuration.ArrivalSafetyMarginMinutes);
+  weather_routing::WriteRoutingEngineSettings(configuration.EngineSettings, *pConf);
+  pConf->Write("ShorelineResolution", configuration.ShorelineResolution);
+  pConf->Write("QuickShorelineResolution", configuration.QuickShorelineResolution);
+  pConf->Write("ChartShorelineResolution", configuration.ChartShorelineResolution);
+  pConf->DeleteEntry("QuickRoute");
   pConf->Write(
       _T("RoutingEffortPercent"),
       weather_routing::NormalizeRoutingEffortPercent(
@@ -11353,6 +11712,13 @@ void WeatherRouting::ApplyLastUsedConfigurationDefaults(
   configuration.ArrivalSafetyMarginMinutes =
       static_cast<int>(std::max(0L, std::min(360L,
                                             arrival_safety_margin)));
+  const bool hasSavedDefaults = pConf->GetNumberOfEntries() > 0;
+  configuration.EngineSettings = weather_routing::ReadRoutingEngineSettings(*pConf);
+  configuration.ShorelineResolution = weather_routing::ReadShorelineResolution(*pConf, weather_routing::ShorelineManager::DefaultResolution());
+  configuration.QuickShorelineResolution = weather_routing::ReadShorelineResolution(*pConf, 0, "QuickShorelineResolution");
+  configuration.ChartShorelineResolution = weather_routing::ReadShorelineResolution(*pConf, 0, "ChartShorelineResolution");
+  if (!hasSavedDefaults)
+    configuration.EngineSettings.mainPreset = {"balanced", 1};
   long routing_effort_percent = configuration.RoutingEffortPercent;
   pConf->Read(_T("RoutingEffortPercent"), &routing_effort_percent,
               routing_effort_percent);

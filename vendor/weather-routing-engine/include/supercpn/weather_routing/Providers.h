@@ -125,6 +125,12 @@ public:
     return segmentFromKnownSafeForbidden(start, end, safetyMarginNm);
   }
   [[nodiscard]] virtual double distanceToForbiddenNm(GeoPoint point) const = 0;
+  // Return false when this provider also folds non-obstacle route geometry
+  // limits into segmentForbidden(). Land-rejection guidance must not mistake
+  // such a hard angular limit for a coastline which can be followed around.
+  [[nodiscard]] virtual bool supportsLandRejectionGuidance() const {
+    return true;
+  }
   [[nodiscard]] virtual std::optional<double> depthMetres(GeoPoint) const {
     return {};
   }

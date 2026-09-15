@@ -27,6 +27,7 @@
 
 #include "RouteMap.h"
 #include "RoutingFootprint.h"
+#include "RoutingProgressState.h"
 #include "LineBufferOverlay.h"
 
 class PlugIn_ViewPort;
@@ -354,8 +355,12 @@ public:
   void InstallModernNativeResult(
       const supercpn::weather_routing::RoutingResult& result);
   void SetModernNativeProgress(
-      const supercpn::weather_routing::RoutingProgressUpdate& progress);
+      const supercpn::weather_routing::RoutingProgressUpdate& progress,
+      std::uint64_t generation);
   bool GetModernNativeProgress(wxString& stage, wxString& detail);
+  std::uint64_t ModernProgressGeneration() const {
+    return m_ModernProgress.Read().generation;
+  }
   bool UsesModernNativeResult() const { return m_UsesModernNativeResult; }
 
   /**
@@ -486,9 +491,8 @@ private:
   std::vector<ModernIsochroneLayer> m_ModernIsochrones;
   std::size_t m_ModernCursorLayer{std::numeric_limits<std::size_t>::max()};
   std::size_t m_ModernCursorTrace{std::numeric_limits<std::size_t>::max()};
-  wxString m_ModernProgressStage;
-  wxString m_ModernProgressDetail;
-  bool m_ModernProgressUpdated{false};
+  struct ProgressText { wxString stage, detail; };
+  weather_routing::RoutingProgressState<ProgressText> m_ModernProgress;
 
   std::atomic<bool> m_bUpdatingDestination;
 

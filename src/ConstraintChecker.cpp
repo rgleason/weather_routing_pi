@@ -279,10 +279,27 @@ wxString FormatChartLandCrossingReason(
   return reason;
 }
 
-bool GshhsSegmentSafetyHitsLand(double lat1, double lon1, double lat2,
+bool GshhsSegmentSafetyHitsLand(RouteMapConfiguration* configuration,
+                                double lat1, double lon1, double lat2,
                                 double lon2, double safety_margin_nm) {
   ++s_gshhsSafetyCalls;
-  if (PlugIn_GSHHS_CrossesLand(lat1, lon1, lat2, lon2)) return true;
+  auto crosses = [&](double a, double b, double c, double d) {
+    try {
+      if (!configuration || !configuration->shoreline_dataset)
+        throw std::runtime_error(
+            "Required plugin shoreline data was not prepared");
+      return configuration->shoreline_dataset->CrossesLand(a, b, c, d);
+    } catch (const std::bad_alloc&) {
+      throw;
+    } catch (const std::exception& error) {
+      if (configuration && configuration->shoreline_error.empty()) {
+        configuration->shoreline_error = wxString::FromUTF8(error.what());
+        wxLogError("WR_SHORELINE_ERROR %s", configuration->shoreline_error);
+      }
+      return true;  // Missing/invalid data must never mean clear water.
+    }
+  };
+  if (crosses(lat1, lon1, lat2, lon2)) return true;
 
   if (safety_margin_nm <= 0.0) return false;
 
@@ -301,17 +318,15 @@ bool GshhsSegmentSafetyHitsLand(double lat1, double lon1, double lat2,
   ll_gc_ll(lat2, lon2, heading_resolve(bearing + 90.0), safety_margin_nm,
            &lat_down2, &lon_down2);
 
-  return PlugIn_GSHHS_CrossesLand(lat_up1, lon_up1, lat_up2, lon_up2) ||
-         PlugIn_GSHHS_CrossesLand(lat_down1, lon_down1, lat_down2,
-                                  lon_down2) ||
-         PlugIn_GSHHS_CrossesLand(lat_up1, lon_up1, lat_down2, lon_down2) ||
-         PlugIn_GSHHS_CrossesLand(lat_down1, lon_down1, lat_up2, lon_up2);
+  return crosses(lat_up1, lon_up1, lat_up2, lon_up2) ||
+         crosses(lat_down1, lon_down1, lat_down2, lon_down2) ||
+         crosses(lat_up1, lon_up1, lat_down2, lon_down2) ||
+         crosses(lat_down1, lon_down1, lat_up2, lon_up2);
 }
 
 bool SegmentTouchesEndpointMarginZone(RouteMapConfiguration* configuration,
                                       double lat1, double lon1, double lat2,
-                                      double lon2,
-                                      double safety_margin_nm) {
+                                      double lon2, double safety_margin_nm) {
   if (!configuration || safety_margin_nm <= 0.0) return false;
 
   /*
@@ -432,7 +447,8 @@ bool EndpointMarginOnlyHitIsZeroMarginSafe(RouteMapConfiguration* configuration,
 
 bool SegmentSafetyRejectsLand(RouteMapConfiguration* configuration,
                               double lat1, double lon1, double lat2,
-                              double lon2, double safety_margin_nm) {
+                              double lon2, double safety_margin_nm,
+                              bool allow_endpoint_margin_relaxation = true) {
   if (!s_useExperimentalChartSafety || !configuration ||
       !configuration->UseChartSafetyForPropagation ||
       (s_forceGshhsForPerformance && !s_enforceExperimentalChartSafety)) {
@@ -447,7 +463,7 @@ bool SegmentSafetyRejectsLand(RouteMapConfiguration* configuration,
                 "Experimental chart-based land checks are disabled.");
       s_loggedGshhsDefault = true;
     }
-    return GshhsSegmentSafetyHitsLand(lat1, lon1, lat2, lon2,
+    return GshhsSegmentSafetyHitsLand(configuration, lat1, lon1, lat2, lon2,
                                       safety_margin_nm);
   }
 
@@ -481,7 +497,7 @@ bool SegmentSafetyRejectsLand(RouteMapConfiguration* configuration,
       }
       return true;
     }
-    return GshhsSegmentSafetyHitsLand(lat1, lon1, lat2, lon2,
+    return GshhsSegmentSafetyHitsLand(configuration, lat1, lon1, lat2, lon2,
                                       safety_margin_nm);
   }
   AccumulateSegmentSafetyDiagnostics(result);
@@ -590,7 +606,7 @@ bool SegmentSafetyRejectsLand(RouteMapConfiguration* configuration,
                  result.status == PI_SEGMENT_SAFETY_NO_DATA ||
                  result.status == PI_SEGMENT_SAFETY_ERROR;
 
-  if (chart_rejects &&
+  if (allow_endpoint_margin_relaxation && chart_rejects &&
       result.status == PI_SEGMENT_SAFETY_WITHIN_LAND_MARGIN &&
       EndpointMarginOnlyHitIsZeroMarginSafe(configuration, lat1, lon1, lat2,
                                             lon2, safety_margin_nm,
@@ -644,7 +660,7 @@ bool SegmentSafetyRejectsLand(RouteMapConfiguration* configuration,
 
   if (s_enforceExperimentalChartSafety) return chart_rejects;
 
-  return GshhsSegmentSafetyHitsLand(lat1, lon1, lat2, lon2,
+  return GshhsSegmentSafetyHitsLand(configuration, lat1, lon1, lat2, lon2,
                                     safety_margin_nm);
 }
 
@@ -654,10 +670,11 @@ bool FinalRouteSegmentSafetyRejectsLand(RouteMapConfiguration* configuration,
                                         double safety_margin_nm,
                                         wxString* failure_reason) {
   if (!s_useExperimentalChartSafety || !s_enforceExperimentalChartSafety) {
-    bool rejects = GshhsSegmentSafetyHitsLand(lat1, lon1, lat2, lon2,
+    bool rejects = GshhsSegmentSafetyHitsLand(configuration, lat1, lon1, lat2, lon2,
                                              safety_margin_nm);
     if (rejects && failure_reason)
-      *failure_reason = _("Land crossing in final route");
+      *failure_reason = configuration && !configuration->shoreline_error.empty()
+          ? configuration->shoreline_error : _("Land crossing in final route");
     return rejects;
   }
 
@@ -851,8 +868,10 @@ bool ConstraintChecker::CheckMaxCourseAngleConstraint(
     double bearing;
     // this is faster than gc distance, and actually works better in higher
     // latitudes
+    // Native candidates use [-180, 180], while route endpoints may use
+    // [0, 360]. Measure the short longitude difference in either convention.
     double d1 = dlat - configuration.StartLat,
-           d2 = dlon - configuration.StartLon;
+           d2 = heading_resolve(dlon - configuration.StartLon);
     d2 *= cos(deg2rad(dlat)) / 2;  // correct for latitude
     bearing = rad2deg(atan2(d2, d1));
 
@@ -870,12 +889,14 @@ bool ConstraintChecker::CheckMaxDivertedCourse(
     double bearing, dist;
     double bearing1, dist1;
 
-    double d1 = dlat - configuration.EndLat, d2 = dlon - configuration.EndLon;
+    double d1 = dlat - configuration.EndLat,
+           d2 = heading_resolve(dlon - configuration.EndLon);
     d2 *= cos(deg2rad(dlat)) / 2;  // correct for latitude
     bearing = rad2deg(atan2(d2, d1));
     dist = sqrt(pow(d1, 2) + pow(d2, 2));
 
-    d1 = configuration.StartLat - dlat, d2 = configuration.StartLon - dlon;
+    d1 = configuration.StartLat - dlat;
+    d2 = heading_resolve(configuration.StartLon - dlon);
     bearing1 = rad2deg(atan2(d2, d1));
     dist1 = sqrt(pow(d1, 2) + pow(d2, 2));
 
@@ -892,7 +913,7 @@ bool ConstraintChecker::CheckMaxDivertedCourse(
 
 bool ConstraintChecker::CheckLandConstraint(
     RouteMapConfiguration& configuration, double lat, double lon, double dlat1,
-    double dlon1, double cog) {
+    double dlon1, double cog, bool allow_endpoint_margin_relaxation) {
   if (configuration.DetectLand) {
     double ndlon1 = dlon1;
 
@@ -901,7 +922,8 @@ bool ConstraintChecker::CheckLandConstraint(
       ndlon1 -= 360;
     }
     if (SegmentSafetyRejectsLand(&configuration, lat, lon, dlat1, ndlon1,
-                                 configuration.SafetyMarginLand)) {
+                                 configuration.SafetyMarginLand,
+                                 allow_endpoint_margin_relaxation)) {
       return false;
     }
   }

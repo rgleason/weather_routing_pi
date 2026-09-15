@@ -20,6 +20,9 @@
 #ifndef _WEATHER_ROUTING_ROUTE_MAP_H_
 #define _WEATHER_ROUTING_ROUTE_MAP_H_
 
+#include "RoutingEngineSettings.h"
+
+#include "ShorelineDataset.h"
 #include "wx/datetime.h"
 #include <wx/object.h>
 #include <wx/weakref.h>
@@ -152,20 +155,20 @@ public:
   double twdOverGround;
   double currentSpeed;  //!< Speed of sea current over ground in knots.
   double currentDir;    //!< Sea current direction over ground in degrees.
-  double WVHT;          //!< Significant swell height in meters.
-  double WVDIR;         //!< Wave direction in degrees.
-  double WVREL;         //!< Wave direction relative to CTW in degrees.
-  double WVPER;         //!< Wave period in seconds.
-  double VW_GUST;       //!< Gust wind speed in knots.
+  double WVHT{NAN};     //!< Significant swell height in meters.
+  double WVDIR{NAN};    //!< Wave direction in degrees.
+  double WVREL{NAN};    //!< Wave direction relative to CTW in degrees.
+  double WVPER{NAN};    //!< Wave period in seconds.
+  double VW_GUST{NAN};  //!< Gust wind speed in knots.
 
-  double cloud_cover;        //!< Cloud cover in percent (0-100%).
-  double rain_mm_per_hour;   //!< Rainfall in mm.
-  double air_temp;           //!< Air temperature in degrees Celsius.
-  double sea_surface_temp;   //!< Sea surface temperature in degrees Celsius.
-  double cape;               //!< The CAPE value in J/kg.
-  double relative_humidity;  //!< Relative humidity in percent (0-100%).
-  double air_pressure;       //!< Surface air pressure in hPa.
-  double reflectivity;       //!< Reflectivity in dBZ.
+  double cloud_cover{NAN};        //!< Cloud cover in percent (0-100%).
+  double rain_mm_per_hour{NAN};   //!< Rainfall in mm.
+  double air_temp{NAN};           //!< Air temperature in Kelvin.
+  double sea_surface_temp{NAN};   //!< Sea surface temperature in Kelvin.
+  double cape{NAN};               //!< The CAPE value in J/kg.
+  double relative_humidity{NAN};  //!< Relative humidity in percent (0-100%).
+  double air_pressure{NAN};       //!< Surface air pressure in Pa.
+  double reflectivity{NAN};       //!< Reflectivity in dBZ.
   /** This modern-engine leg is still using the one-way, zero-margin coastal
    * departure egress rule. It is never inferred for legacy plot data. */
   bool coastalDepartureEgress{false};
@@ -221,6 +224,21 @@ struct RouteMapPosition {
  * position, timestamp, error flags, and intermediate calculation results.
  */
 struct RouteMapConfiguration {
+  // Pinned per calculation; chart geometry retains its separate host path.
+  std::shared_ptr<weather_routing::ShorelineDataset> shoreline_dataset;
+  wxString shoreline_description;
+  int ShorelineResolution{4};  // Main, including migrated pre-1.17.7 preference.
+  int QuickShorelineResolution{0};
+  int ChartShorelineResolution{0};  // Preliminary shoreline work in enforced chart mode.
+  int SelectedShorelineResolution() const {
+    return IsQuick() ? QuickShorelineResolution : ShorelineResolution;
+  }
+  int EffectiveShorelineResolution() const {
+    return chart_safety_scout_preview ||
+        (chart_safety_runtime_available && chart_safety_runtime_enforced)
+        ? ChartShorelineResolution : SelectedShorelineResolution();
+  }
+  wxString shoreline_error;
   /**
    * Defines the source for the starting point of the route.
    */
@@ -237,6 +255,11 @@ struct RouteMapConfiguration {
     END_AT_POSITION,  //!< End at named Weather Routing position.
     END_AT_WAYPOINT   //!< End at OpenCPN waypoint/mark.
   };
+
+  weather_routing::RoutingEngineSettings EngineSettings;
+  bool IsQuick() const {
+    return EngineSettings.engine == weather_routing::RoutingEngine::Quick;
+  }
 
   RouteMapConfiguration(); /* avoid waiting forever in update longitudes */
 
@@ -991,7 +1014,8 @@ public:
   /**
    * Acquire a copied GRIB timeline frame.  Worker threads request missing
    * frames through the normal main-thread plugin-message path and wait on a
-   * bounded condition variable; retained frames are held in a small LRU.
+   * bounded condition variable; retained frames are held in a count- and
+   * byte-bounded LRU.
    */
   bool AcquireGribTimelineFrame(const wxDateTime& time,
                                 Shared_GribRecordSet& frame,
@@ -1019,6 +1043,17 @@ public:
     return time;
   }
 
+  weather_routing::RoutingSearchSnapshot GetComputedSearchSettings() {
+    Lock();
+    const auto snapshot = m_ComputedSearchSettings;
+    Unlock();
+    return snapshot;
+  }
+  void CaptureSearchSettings(const RouteMapConfiguration& configuration, bool native) {
+    Lock();
+    m_ComputedSearchSettings = weather_routing::RoutingSearchSnapshot::Capture(configuration, native);
+    Unlock();
+  }
   void SetConfiguration(const RouteMapConfiguration& o) {
     Lock();
     m_Configuration = o;
@@ -1108,6 +1143,14 @@ public:
   std::shared_ptr<std::atomic_bool> CancellationFlag() const {
     return m_CancellationFlag;
   }
+  /** End the current calculation after a failed large allocation. */
+  void ReportResourceExhaustion(const wxString& context);
+  bool ResourceExhausted() {
+    Lock();
+    const bool exhausted = m_bResourceExhausted;
+    Unlock();
+    return exhausted;
+  }
   /**
    * Loads the boat configuration from XML file.
    *
@@ -1136,6 +1179,17 @@ public:
   wxString GetFailureReason() {
     Lock();
     wxString ret = m_FailureReason;
+    Unlock();
+    return ret;
+  }
+
+  // Preflight, worker and weather-service errors use separate storage. Use
+  // this when presenting a terminal outcome, without changing solver state.
+  wxString GetDiagnosticError() {
+    Lock();
+    wxString ret = !m_ErrorMsg.IsEmpty() ? m_ErrorMsg
+                   : !m_FailureReason.IsEmpty() ? m_FailureReason
+                                               : m_bWeatherForecastError;
     Unlock();
     return ret;
   }
@@ -1250,6 +1304,7 @@ private:
                              std::vector<Position*>& failed_positions);
 
   RouteMapConfiguration m_Configuration;
+  weather_routing::RoutingSearchSnapshot m_ComputedSearchSettings;
   bool m_bFinished, m_bValid;
   bool m_bReachedDestination;
   /**
@@ -1286,20 +1341,27 @@ private:
 
   wxString m_ErrorMsg;
   wxString m_FailureReason;
+  bool m_bResourceExhausted{false};
 
   wxDateTime m_NewTime;
 
-  void PublishTimelineFrame(std::int64_t timeline_key,
+  void MarkResourceExhaustionLocked(const wxString& context);
+  bool PublishTimelineFrame(std::int64_t timeline_key,
                             const Shared_GribRecordSet& frame);
-  // Fifteen-minute weather slices over 128 hours. High-effort coastal routes
-  // have been observed to revisit a 105-hour search frontier concurrently;
-  // the former 12-hour LRU repeatedly discarded frames still in active use.
-  // Keep this substantially below the engine's 30-day route-duration limit:
-  // every entry owns copied GRIB grids, so caching that complete theoretical
-  // horizon per route would create an unacceptable multi-gigabyte contract.
+  // Count remains a backstop for small regional frames. The byte ceiling is
+  // the primary bound because a 0.25-degree ocean-scale frame can own many
+  // tens of megabytes while a local frame can be tiny. Retaining one frame
+  // larger than the ceiling is intentional and handled by KeyedRequestCache.
   static constexpr std::size_t kGribTimelineFrameCapacity = 512;
+  static constexpr std::size_t kGribTimelineCacheMaximumBytes =
+      sizeof(void*) <= 4 ? 192ULL * 1024ULL * 1024ULL
+                         : 512ULL * 1024ULL * 1024ULL;
   weather_routing::KeyedRequestCache<std::int64_t, Shared_GribRecordSet>
-      m_GribTimelineCache{kGribTimelineFrameCapacity};
+      m_GribTimelineCache{kGribTimelineFrameCapacity,
+                          kGribTimelineCacheMaximumBytes,
+                          [](const Shared_GribRecordSet& frame) {
+                            return frame.EstimatedMemoryBytes();
+                          }};
   std::shared_ptr<std::atomic_bool> m_CancellationFlag;
 };
 

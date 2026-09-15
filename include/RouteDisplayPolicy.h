@@ -7,6 +7,19 @@
 
 namespace weather_routing {
 
+// Preflight failures do not set Finished(), and a scout can leave an arrival
+// time behind. Neither fact makes a rejected production route deliverable.
+enum class RouteOutcome { Incomplete, Running, Failed, Complete };
+
+inline RouteOutcome ClassifyRouteOutcome(bool running, bool valid,
+                                         bool finished, bool reached,
+                                         bool has_error) {
+  if (running) return RouteOutcome::Running;
+  if (!valid || has_error) return RouteOutcome::Failed;
+  if (!finished) return RouteOutcome::Incomplete;
+  return reached ? RouteOutcome::Complete : RouteOutcome::Failed;
+}
+
 // RouteMapOverlay::EndTime() advances with the current frontier while a route
 // is being calculated.  It becomes a publishable ETA only when the route has
 // finished and actually reached its destination.

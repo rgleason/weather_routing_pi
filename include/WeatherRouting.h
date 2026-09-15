@@ -27,6 +27,7 @@
 
 #include <map>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -213,6 +214,8 @@ public:
  */
 class WeatherRouting : public WeatherRoutingBase {
 private:
+  friend class RoutingTablePanel;
+
   bool m_disable_colpane;
   wxCollapsiblePane* m_colpane;
   wxWindow* m_colpaneWindow;
@@ -661,7 +664,9 @@ private:
       RouteMapOverlay* routemapoverlay,
       std::vector<std::pair<double, double> >* geometry,
       std::vector<RouteMapFrontierSegment>* retained_segments,
-      bool* reached_destination);
+      bool* reached_destination,
+      const std::function<void(long)>& heartbeat =
+          std::function<void(long)>());
   void PrepareChartSafetyScoutEnvelopes(
       const std::vector<RouteMapOverlay*>& routemapoverlays,
       const wxString& context);
@@ -689,7 +694,7 @@ private:
   bool ComputeMultiLegDepartureOptimization(RouteMapOverlay* selectedRoute);
   bool ComputeMultiLegSequenceNow(const wxString& groupId);
   bool ComputeMultiLegDepartureOptimizationNow(const wxString& groupId);
-  bool ShouldShowChartSafetyComputeProgress(
+  bool ShouldShowComputeProgress(
       const std::list<RouteMapOverlay*>& routemapoverlays) const;
   void BeginChartSafetyComputeProgress(
       bool computeAll, const std::list<RouteMapOverlay*>& routemapoverlays);
@@ -767,6 +772,7 @@ public:
   int ChartSafetyRamCacheMiB() const;
   int EffectiveChartSafetyRamCacheMiB() const;
   bool HasEnhancedChartSafety() const;
+  void ApplyChartSafetySettings(bool use, bool enforce);
   void SetChartSafetyRamCacheMiB(int ramMiB);
   void CloseMultiLegDepartureOptimizationResults() {
     CancelMultiLegDepartureOptimization(true);
@@ -886,7 +892,7 @@ private:
   int m_ChartSafetyComputeProgressCompletedRoutes;
   wxDialog* m_RoutingProgressDialog;
   wxStaticText* m_RoutingProgressStage;
-  wxStaticText* m_RoutingProgressDetail;
+  wxTextCtrl* m_RoutingProgressDetail;
   wxStaticText* m_RoutingProgressTiming;
   wxGauge* m_RoutingProgressGauge;
   wxDateTime m_RoutingProgressStartTime;

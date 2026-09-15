@@ -10,7 +10,9 @@
 #include <vector>
 
 #include "engine/native/CoordinateNormalization.h"
+#include "engine/native/WeatherCoverage.h"
 #include "supercpn/weather_routing/Engine.h"
+#include "supercpn/weather_routing/QuickEngine.h"
 
 namespace {
 using namespace supercpn::weather_routing;
@@ -188,6 +190,28 @@ private:
   double longitude_;
   double centreLatitude_;
   double halfHeightDegrees_;
+};
+
+class ShortStepCoastalGateProvider final : public LandAndBoundaryProvider {
+public:
+  bool pointForbidden(GeoPoint) const override { return false; }
+  bool segmentForbidden(GeoPoint start, GeoPoint end, double) const override {
+    // Inside the coastal gate, offshore-scale chords cannot establish which
+    // side of the obstacle remains in water. A ten-minute motion can progress
+    // around either open end of the meridian barrier.
+    if (start.longitude < 0.06 && distanceNm(start, end) > 1.5) return true;
+    const double longitudeDelta = end.longitude - start.longitude;
+    if (std::abs(longitudeDelta) < 1e-12) return false;
+    const double fraction = (0.04 - start.longitude) / longitudeDelta;
+    if (fraction < 0.0 || fraction > 1.0) return false;
+    const double crossingLatitude =
+        start.latitude + fraction * (end.latitude - start.latitude);
+    return std::abs(crossingLatitude) <= 0.025;
+  }
+  double distanceToForbiddenNm(GeoPoint point) const override {
+    return std::abs(point.longitude - 0.04) * 60.0;
+  }
+  std::string identity() const override { return "short-step-coastal-gate"; }
 };
 
 RoutingRequest GraphDetourRequest(double maximumCorridorWidthNm) {
@@ -619,6 +643,8 @@ TEST(ModernNativeEngine, RoutesIrishSeaDeterministically) {
   const auto second = engine.route(TestRequest(), TestEnvironment());
   ASSERT_TRUE(Successful(first.status)) << first.message;
   ASSERT_TRUE(first.validation.passed) << first.validation.failureReason;
+  EXPECT_EQ(first.diagnostics.landGuidedRecoveryLayers, 0U);
+  EXPECT_EQ(first.diagnostics.landGuidedGeneratedStates, 0U);
   EXPECT_EQ(first.validation.acceptedPrefixLegs, first.legs.size());
   EXPECT_EQ(ChronoTicks(first.metrics.elapsed),
             ChronoTicks(second.metrics.elapsed));
@@ -638,6 +664,45 @@ TEST(ModernNativeEngine, RoutesIrishSeaDeterministically) {
   }
   ASSERT_FALSE(first.legs.empty());
   EXPECT_EQ(first.legs.back().end, TestRequest().destination);
+}
+
+TEST(ModernNativeEngine,
+     LandRejectionGuidanceRecoversCollapsedLayerOnBothObstacleSides) {
+  auto request = TestRequest();
+  request.start = {0.0, 0.0};
+  request.destination = {0.0, 0.20};
+  request.vessel.propulsion.allowSailing = false;
+  request.vessel.propulsion.allowMotor = true;
+  request.vessel.propulsion.configuredMotorSpeedKnots = 6.0;
+  request.options.timeStep = std::chrono::hours{1};
+  request.options.minimumTimeStep = std::chrono::minutes{10};
+  request.options.headingStepDegrees = 10.0;
+  request.options.refinedHeadingStepDegrees = 5.0;
+  request.options.spatialCellNm = 0.5;
+  request.options.labelsPerCell = 8;
+  request.options.retryStages = 1;
+  request.options.useReverseRecovery = false;
+  request.options.useFrontierRecovery = false;
+  request.options.useGraphFallback = false;
+  request.limits.maximumRouteDuration = std::chrono::hours{8};
+  request.limits.maximumGeneratedStates = 100000;
+  request.limits.maximumForwardGeneratedStates = 80000;
+  request.limits.maximumRetainedStates = 30000;
+  auto environment = TestEnvironment(
+      std::make_shared<ShortStepCoastalGateProvider>());
+  environment.performance = std::make_shared<ConstantSpeedPerformance>();
+
+  const auto result = RoutingEngine{}.route(request, environment);
+
+  ASSERT_TRUE(Successful(result.status))
+      << result.message << " generated=" << result.diagnostics.generatedStates
+      << " guided=" << result.diagnostics.landGuidedGeneratedStates;
+  EXPECT_TRUE(result.validation.passed) << result.validation.failureReason;
+  EXPECT_GT(result.diagnostics.landGuidedRecoveryLayers, 0U);
+  EXPECT_GT(result.diagnostics.landGuidedPortStates, 0U);
+  EXPECT_GT(result.diagnostics.landGuidedStarboardStates, 0U);
+  EXPECT_LE(result.diagnostics.landGuidedRecoveryLayers, 8U);
+  EXPECT_LE(result.diagnostics.landGuidedGeneratedStates, 50000U);
 }
 
 TEST(ModernNativeEngine,
@@ -1287,6 +1352,25 @@ TEST(ModernNativeEngine, RejectsShallowDestinationBeforeSearch) {
             std::string::npos);
 }
 
+TEST(ModernNativeEngine, CompletesRetainedLayerBeforeSpendingMoreSearchBudget) {
+  auto request = TestRequest();
+  request.destination = destinationPoint(request.start, 270.0, 12.0);
+  request.options.useReverseRecovery = false;
+  request.options.useGraphFallback = false;
+  request.options.retryStages = 1;
+  // Enough to reach a retained layer with a valid destination connection,
+  // but insufficient for another exploratory fan from that layer. Recovery
+  // is disabled so it cannot conceal a discarded forward completion.
+  request.limits.maximumGeneratedStates = 1000;
+  const auto result = RoutingEngine{}.route(request, TestEnvironment());
+  ASSERT_TRUE(Successful(result.status)) << result.message
+      << " generated=" << result.diagnostics.generatedStates;
+  ASSERT_TRUE(result.validation.passed) << result.validation.failureReason;
+  ASSERT_FALSE(result.legs.empty());
+  EXPECT_EQ(result.legs.back().end, request.destination);
+  EXPECT_LE(result.diagnostics.generatedStates, 1000U);
+}
+
 TEST(ModernNativeEngine, FinalApproachMayOutlastSeveralSearchSteps) {
   auto request = TestRequest();
   request.destination = destinationPoint(request.start, 270.0, 2.2);
@@ -1308,4 +1392,171 @@ TEST(ModernNativeEngine, FinalApproachMayOutlastSeveralSearchSteps) {
   EXPECT_LE(result.diagnostics.generatedStates, 20U);
 }
 
+TEST(ModernNativeEngine, WidensCollapsedContinentalForwardCorridorWithinBudget) {
+  auto request = TestRequest();
+  request.start = {0.0, 0.0};
+  request.destination = {0.0, 8.0};
+  request.options.maximumSearchAngleDegrees = 60.0;
+  request.options.timeStep = std::chrono::hours{6};
+  request.options.headingStepDegrees = 20.0;
+  request.options.refinedHeadingStepDegrees = 7.5;
+  request.options.spatialCellNm = 5.0;
+  request.options.labelsPerCell = 10;
+  request.options.graphCorridorWidthNm = 20.0;
+  request.options.maximumGraphCorridorWidthNm = INFINITY;
+  request.options.useReverseRecovery = false;
+  request.options.useFrontierRecovery = true;
+  request.options.useGraphFallback = true;
+  request.options.retryStages = 7;
+  request.limits.maximumRouteDuration = std::chrono::hours{24 * 30};
+  request.limits.maximumGeneratedStates = 4520000;
+  request.limits.maximumForwardGeneratedStates = 2700000;
+  request.limits.maximumRetainedStates = 280000;
+  request.limits.maximumGraphGeneratedStates = 900000;
+  request.limits.maximumGraphLabels = 720000;
+  UniformWeatherProvider::Configuration weather;
+  weather.begins = TestTime();
+  weather.ends = TestTime() + std::chrono::hours{24 * 30};
+  weather.windTowardKnots = speedDirectionToVector(14.0, 140.0);
+  weather.currentTowardKnots = Vector2{};
+  auto barrier = std::make_shared<MeridianBarrierWithOpenEndsProvider>(
+      3.0, 0.0, 2.1);  // A detour beyond 120 NM, not a small island fixture.
+  auto environment = TestEnvironment(barrier);
+  environment.grib = std::make_shared<UniformWeatherProvider>(weather);
+  environment.performance = std::make_shared<ConstantSpeedPerformance>();
+  const auto result = RoutingEngine{}.route(request, environment);
+  std::string diagnostic = result.message;
+  for (const auto& reason : result.diagnostics.stageStopReasons)
+    diagnostic += "\n" + reason;
+  ASSERT_FALSE(result.legs.empty()) << diagnostic;
+  EXPECT_EQ(result.solverPath, SolverPath::AdaptiveIsochrone);
+  EXPECT_EQ(result.legs.back().end, request.destination);
+  EXPECT_LE(result.diagnostics.generatedStates,
+            request.limits.maximumGeneratedStates);
+  EXPECT_TRUE(std::any_of(result.diagnostics.stageStopReasons.begin(),
+                          result.diagnostics.stageStopReasons.end(),
+                          [](const std::string& reason) {
+    return reason.find("collapsed coastal forward corridor") != std::string::npos;
+  }));
+  for (const auto& leg : result.legs)
+    EXPECT_FALSE(barrier->segmentForbidden(leg.start, leg.end, 0.0));
+}
+
+
+TEST(QuickNativeEngine, AuthoritativeValidationStillRejectsBlockedRoute) {
+  auto request = TestRequest();
+  request.destination = destinationPoint(request.start, 270.0, 8.0);
+  request.limits.maximumRouteDuration = std::chrono::hours{12};
+  auto boundaries = std::make_shared<SplitSearchValidationProvider>();
+  const auto result = QuickRoutingEngine{}.route(request, TestEnvironment(boundaries));
+  EXPECT_FALSE(Successful(result.route.status));
+  EXPECT_FALSE(result.route.validation.passed);
+  EXPECT_GT(boundaries->prepareCalls, 0U);
+  EXPECT_TRUE(boundaries->validationObservedPreparedRoute);
+  EXPECT_GT(boundaries->validationCalls, 0U);
+}
+
+TEST(QuickNativeEngine, PreservesAuthoritativeCoastalEgress) {
+  auto request = TestRequest();
+  request.destination = destinationPoint(request.start, 270.0, 8.0);
+  request.constraints.landSafetyMarginNm = 0.4;
+  request.limits.maximumRouteDuration = std::chrono::hours{12};
+  auto boundaries = std::make_shared<CoastalDepartureEgressProvider>(request.start);
+  const auto result = QuickRoutingEngine{}.route(request, TestEnvironment(boundaries));
+  ASSERT_TRUE(Successful(result.route.status)) << result.route.message;
+  EXPECT_TRUE(result.route.validation.passed);
+  EXPECT_EQ(result.route.validation.acceptedPrefixLegs, result.route.legs.size());
+}
+
+TEST(QuickNativeEngine, RejectsChartBlockedPassage) {
+  auto request = TestRequest();
+  request.options.maximumSearchAngleDegrees = 80.0;
+  const auto result = QuickRoutingEngine{}.route(request,
+      TestEnvironment(std::make_shared<BlockingMeridianProvider>()));
+  EXPECT_FALSE(Successful(result.route.status));
+}
+
+TEST(QuickNativeEngine, CancellationStopsWeatherWork) {
+  auto request = TestRequest();
+  request.progress = [&](const RoutingProgressUpdate& progress) {
+    if (progress.generatedStates > 0) request.cancellation.cancel();
+  };
+  const auto result = QuickRoutingEngine{}.route(request, TestEnvironment());
+  EXPECT_EQ(result.route.status, RoutingStatus::Cancelled);
+  EXPECT_FALSE(result.route.validation.passed);
+  EXPECT_GT(result.route.diagnostics.generatedStates, 0U);
+}
+
+TEST(QuickNativeEngine, EnforcesWeatherWorkAndMemoryBudgets) {
+  auto request = TestRequest();
+  QuickRoutingOptions options;
+  options.maximumWeatherCalls = 50;
+  auto result = QuickRoutingEngine{}.route(request, TestEnvironment(), options);
+  EXPECT_EQ(result.route.status, RoutingStatus::ResourceLimitReached);
+  EXPECT_LE(result.quick.weatherCalls, 51U);
+  options.maximumWeatherCalls = 24000000;
+  options.memoryBudgetMiB = 1;
+  options.beamWidth = options.recoveryBeamWidth = 512;
+  result = QuickRoutingEngine{}.route(request, TestEnvironment(), options);
+  EXPECT_EQ(result.route.status, RoutingStatus::ResourceLimitReached);
+  EXPECT_LE(result.quick.peakSearchBytes, 1024U * 1024U);
+  EXPECT_FALSE(result.route.validation.passed);
+}
+
+
+TEST(QuickNativeEngine, RejectsInvalidBudgetWithoutSearching) {
+  for (const unsigned budget : {0U, 4097U}) {
+    QuickRoutingOptions options; options.memoryBudgetMiB = budget;
+    const auto result = QuickRoutingEngine{}.route(TestRequest(), TestEnvironment(), options);
+    EXPECT_EQ(result.route.status, RoutingStatus::InvalidVesselConfiguration);
+    EXPECT_EQ(result.quick.peakSearchBytes, 0U);
+    EXPECT_EQ(result.quick.weatherCalls, 0U);
+  }
+}
+
 }  // namespace
+
+TEST(ModernNativeWeatherCoverage, IntersectsWindComponentsAndNormalizesLongitude) {
+  using weather_routing::native::WindGridCoverage;
+  const auto coverage = WindGridCoverage(185, -20, 187, -18, .1,
+                                         -174, -19, -172, -17, .1);
+  ASSERT_TRUE(coverage.available);
+  EXPECT_DOUBLE_EQ(coverage.area.west, -174);
+  EXPECT_DOUBLE_EQ(coverage.area.east, -173);
+  EXPECT_DOUBLE_EQ(coverage.area.south, -19);
+  EXPECT_DOUBLE_EQ(coverage.area.north, -18);
+  EXPECT_FALSE(coverage.begins.has_value());
+  EXPECT_FALSE(coverage.ends.has_value());
+  EXPECT_FALSE(WindGridCoverage(0, 0, 1, 1, .1,
+                                2, 0, 3, 1, .1).available);
+  EXPECT_FALSE(WindGridCoverage(0, 0, 1, 1, .1,
+                                0, 2, 1, 3, .1).available);
+}
+
+TEST(ModernNativeWeatherCoverage, PreservesGlobalAndDateLineGrids) {
+  using weather_routing::native::WindGridCoverage;
+  const auto global = WindGridCoverage(0, -90, 359, 90, 1,
+                                       -180, -90, 179, 90, 1);
+  ASSERT_TRUE(global.available);
+  EXPECT_DOUBLE_EQ(global.area.west, -180);
+  EXPECT_DOUBLE_EQ(global.area.east, 180);
+  const auto wrapped = WindGridCoverage(175, -20, 185, -10, .1,
+                                        175, -20, 185, -10, .1);
+  ASSERT_TRUE(wrapped.available);
+  EXPECT_DOUBLE_EQ(wrapped.area.west, 175);
+  EXPECT_DOUBLE_EQ(wrapped.area.east, -175);
+}
+
+TEST(ModernNativeEngine, RejectsUncoveredDestinationBeforeGeneratingSearchStates) {
+  auto request = TestRequest();
+  auto environment = TestEnvironment();
+  UniformWeatherProvider::Configuration weather;
+  weather.windTowardKnots = speedDirectionToVector(14, 140);
+  weather.area = {request.start.longitude - .01, request.start.latitude - .01,
+                  request.start.longitude + .01, request.start.latitude + .01};
+  environment.grib = std::make_shared<UniformWeatherProvider>(weather);
+  const auto result = RoutingEngine{}.route(request, environment);
+  EXPECT_EQ(result.status, RoutingStatus::WindForecastRequired);
+  EXPECT_NE(result.message.find("route endpoints"), std::string::npos);
+  EXPECT_EQ(result.diagnostics.generatedStates, 0u);
+}

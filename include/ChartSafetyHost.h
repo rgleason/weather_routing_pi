@@ -11,6 +11,7 @@
 #define WEATHER_ROUTING_CHART_SAFETY_HOST_H
 
 #include <atomic>
+#include <chrono>
 #include <string>
 #include <vector>
 
@@ -50,6 +51,8 @@ std::vector<std::pair<long, long>> AtlasCoverageTiles(
  */
 void SetPrewarmCancellationFlag(const std::atomic_bool* flag);
 bool PrewarmCancellationRequested();
+// A zero time point disables the cooperative preparation deadline.
+void SetPrewarmDeadline(std::chrono::steady_clock::time_point deadline);
 
 bool CheckSegment(double lat1, double lon1, double lat2, double lon2,
                   const PlugInSegmentSafetyOptions* options,

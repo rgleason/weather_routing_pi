@@ -33,6 +33,17 @@ struct RoutingResultPoint {
 };
 
 struct RoutingCandidateResult {
+  wxString engine;
+  wxString searchPreset;
+  int searchPresetRevision{0};
+  double searchTimeStepSeconds{0};
+  double searchHeadingStepDegrees{0};
+  int searchMemoryBudgetMiB{0};
+  int searchMaximumAngleDegrees{0};
+  int searchEffortPercent{0};
+  int shorelineResolution{4};
+  bool detectLand{false};
+  wxString shorelineDataset;
   wxDateTime departure;
   wxString state;
   wxDateTime eta;
