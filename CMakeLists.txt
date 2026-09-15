@@ -91,7 +91,7 @@ set(LONG_DESCRIPTION
 
 set(VERSION_MAJOR "1")
 set(VERSION_MINOR "17")
-set(VERSION_PATCH "9")
+set(VERSION_PATCH "10")
 set(VERSION_TWEAK "0")
 # Every platform and identity ships all five verified offline resolutions.
 set(_shoreline_archives

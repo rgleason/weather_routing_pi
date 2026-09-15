@@ -14,25 +14,30 @@ namespace weather_routing {
 
 struct ReachabilityPrewarmPlan {
   bool enabled{false};
+  /** Diagnostic compatibility mode; adaptive frontier prewarm leaves false. */
+  bool prewarm_filled_envelope{false};
   double direct_distance_nm{0.0};
+  double initial_scout_corridor_nm{0.0};
   double maximum_cross_track_nm{0.0};
   double maximum_path_length_nm{0.0};
 };
 
 /**
- * Build a bounded, filled prefetch envelope for a coastal passage.
+ * Build the bounds used by adaptive prewarm for a coastal passage.
  *
  * For foci S and G, every point P on a route with total path length no more
  * than maximum_path_length_nm satisfies
  *
  *   d(S, P) + d(P, G) <= maximum_path_length_nm.
  *
- * The resulting ellipse is cache preparation only and never bounds solver
- * exploration. Longer routes continue to request authoritative tiles on
- * demand. Long passages deliberately retain the sparse ocean-fan policy.
+ * Adaptive mode prepares the scout corridor and uses these bounds only for
+ * diagnostics while the live solver requests additional authoritative tiles
+ * as needed. The old filled ellipse is retained for explicit comparison.
+ * Neither mode bounds solver exploration. Long passages retain the sparse
+ * ocean-fan policy.
  */
 ReachabilityPrewarmPlan BuildReachabilityPrewarmPlan(
-    double direct_distance_nm);
+    double direct_distance_nm, bool request_legacy_filled_envelope = false);
 
 }  // namespace weather_routing
 
