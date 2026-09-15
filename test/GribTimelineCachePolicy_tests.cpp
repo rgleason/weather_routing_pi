@@ -18,7 +18,7 @@ TEST(GribTimelineCachePolicy, TwoGiBCacheRequiresEightGiBAvailable) {
       wr::EvaluateGribTimelineCacheAdmission(2048, false, 8191, 64);
   EXPECT_FALSE(insufficient.approved);
   EXPECT_EQ(insufficient.effective_mib,
-            wr::kMainGribTimelineCacheDefaultMiB);
+            wr::kMainGribTimelineCacheDefault64BitMiB);
   EXPECT_EQ(insufficient.required_reserve_mib, 6144U);
   EXPECT_EQ(insufficient.required_before_mib, 8192U);
 
@@ -34,7 +34,7 @@ TEST(GribTimelineCachePolicy, UnknownMemoryNeverEnablesLargeCache) {
   EXPECT_FALSE(admission.approved);
   EXPECT_FALSE(admission.memory_known);
   EXPECT_EQ(admission.effective_mib,
-            wr::kMainGribTimelineCacheDefaultMiB);
+            wr::kMainGribTimelineCacheDefault64BitMiB);
 }
 
 TEST(GribTimelineCachePolicy, ThirtyTwoBitProcessesNeverEnableLargeCache) {
@@ -48,6 +48,7 @@ TEST(GribTimelineCachePolicy, ThirtyTwoBitProcessesNeverEnableLargeCache) {
 
 TEST(GribTimelineCachePolicy, ValuesAreNormalizedPerEngine) {
   EXPECT_EQ(wr::NormalizeGribTimelineCacheMiB(0, false, 64), 512);
+  EXPECT_EQ(wr::NormalizeGribTimelineCacheMiB(0, false, 32), 192);
   EXPECT_EQ(wr::NormalizeGribTimelineCacheMiB(0, true, 64), 64);
   EXPECT_EQ(wr::NormalizeGribTimelineCacheMiB(99999, false, 64), 8192);
   EXPECT_EQ(wr::NormalizeGribTimelineCacheMiB(99999, false, 32), 192);

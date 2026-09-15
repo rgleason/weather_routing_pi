@@ -15,18 +15,22 @@
 
 namespace weather_routing {
 
+constexpr int kMainGribTimelineCacheDefault64BitMiB = 512;
+constexpr int kGribTimelineCacheMaximum32BitMiB = 192;
 constexpr int kMainGribTimelineCacheDefaultMiB =
-    sizeof(void*) <= 4 ? 192 : 512;
+    sizeof(void*) <= 4 ? kGribTimelineCacheMaximum32BitMiB
+                       : kMainGribTimelineCacheDefault64BitMiB;
 constexpr int kQuickGribTimelineCacheDefaultMiB = 64;
 constexpr int kGribTimelineCacheMaximum64BitMiB = 8192;
-constexpr int kGribTimelineCacheMaximum32BitMiB = 192;
 constexpr std::uint64_t kGribTimelineCacheBaseReserveMiB = 2048;
 
 inline int NormalizeGribTimelineCacheMiB(int requested, bool quick,
                                          unsigned process_bits =
                                              sizeof(void*) * 8U) {
-  const int fallback = quick ? kQuickGribTimelineCacheDefaultMiB
-                             : kMainGribTimelineCacheDefaultMiB;
+  const int fallback =
+      quick ? kQuickGribTimelineCacheDefaultMiB
+            : (process_bits <= 32 ? kGribTimelineCacheMaximum32BitMiB
+                                  : kMainGribTimelineCacheDefault64BitMiB);
   if (requested <= 0) requested = fallback;
   const int maximum = process_bits <= 32
                           ? kGribTimelineCacheMaximum32BitMiB
@@ -57,8 +61,10 @@ inline GribTimelineCacheAdmission EvaluateGribTimelineCacheAdmission(
   GribTimelineCacheAdmission result;
   result.requested_mib = NormalizeGribTimelineCacheMiB(
       requested_mib, quick, process_bits);
-  const int standard = quick ? kQuickGribTimelineCacheDefaultMiB
-                             : kMainGribTimelineCacheDefaultMiB;
+  const int standard =
+      quick ? kQuickGribTimelineCacheDefaultMiB
+            : (process_bits <= 32 ? kGribTimelineCacheMaximum32BitMiB
+                                  : kMainGribTimelineCacheDefault64BitMiB);
   result.effective_mib = result.requested_mib;
   result.available_mib = available_mib;
   result.memory_known = available_mib != 0;
