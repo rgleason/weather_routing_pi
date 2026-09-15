@@ -71,13 +71,6 @@ endif (COMMAND cmake_policy)
 # set for vscode/vscodium
 set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
 
-<<<<<<< HEAD
-# point to your OpenCPN source and build:
-# set(OCPN_SOURCE_DIR "C:/Users/fcgle/source/OpenCPN")
-# set(OCPN_BUILD_DIR  "C:/Users/fcgle/source/OpenCPN/build")
-
-=======
->>>>>>> 70500686e12bfa89ebcae116bc6a9bec3606d179
 # define plugin name, owner and versions
 if(WEATHER_ROUTING_XWEATHER_IDENTITY)
   set(VERBOSE_NAME "xWeatherRouting")
