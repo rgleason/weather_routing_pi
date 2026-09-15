@@ -9947,10 +9947,25 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
        group != groups.end(); ++group) {
     if (group->second.empty()) continue;
     RouteMapConfiguration representative = group->second.front().configuration;
-    // A small spatial dilation plus the fine-tile halo covers interpolation
-    // between candidate-specific scout fronts. It is a preparation envelope,
-    // not a declaration that GSHHS-certified water is safe.
-    const double footprint_dilation_nm = 2.0;
+    const double direct_distance_nm = DistGreatCircle_Plugin(
+        representative.StartLat, representative.StartLon,
+        representative.EndLat, representative.EndLon);
+    const char* legacy_flat_prewarm =
+        std::getenv("XWEATHERROUTING_FLAT_CHART_PREWARM");
+    const bool request_legacy_filled_envelope =
+        legacy_flat_prewarm && std::atoi(legacy_flat_prewarm) != 0;
+    const weather_routing::ReachabilityPrewarmPlan reachability =
+        weather_routing::BuildReachabilityPrewarmPlan(
+            direct_distance_nm, request_legacy_filled_envelope);
+    // Prepare a modest band around the scout footprint.  Two nautical miles
+    // left an ocean isochrone repeatedly waiting for fine tiles only just
+    // outside the selected scout chain. Scale the band with route length and
+    // cap it at twelve nautical miles so short coastal routes stay local and
+    // medium passages remain far narrower than the filled reachability
+    // ellipse. It is cache preparation only, not a declaration that
+    // GSHHS-certified water is chart-safe.
+    const double footprint_dilation_nm =
+        reachability.enabled ? reachability.initial_scout_corridor_nm : 2.0;
     const int footprint_fine_tile_halo = 1;
 
     std::vector<double> latitudes;
@@ -10078,15 +10093,11 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
     // d(start, point) + d(point, end) <= maximum_path_length. This is only
     // proactive cache coverage: routes outside the budget remain eligible and
     // use the existing fail-closed on-demand expansion path.
-    const double direct_distance_nm = DistGreatCircle_Plugin(
-        representative.StartLat, representative.StartLon,
-        representative.EndLat, representative.EndLon);
-    const weather_routing::ReachabilityPrewarmPlan reachability =
-        weather_routing::BuildReachabilityPrewarmPlan(direct_distance_nm);
     PlugInSegmentSafetyResult reachability_result = {};
     reachability_result.struct_size = sizeof(reachability_result);
     bool reachability_ok = true;
-    if (prewarm_full_corridor && reachability.enabled) {
+    if (prewarm_full_corridor && reachability.enabled &&
+        reachability.prewarm_filled_envelope) {
       if (m_RoutingProgressDialog && m_RoutingProgressDialog->IsShown())
         UpdateRoutingProgress(_("Building chart safety grid"),
                               _("Prewarming wider chart area"), -1, -1);
@@ -10118,6 +10129,19 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
           reachability_result.grid_build_ms);
       if (weather_routing::chart_safety_host::PrewarmCancellationRequested())
         return;
+    }
+    if (prewarm_full_corridor && reachability.enabled &&
+        !reachability.prewarm_filled_envelope) {
+      wxLogMessage(
+          "WR_ROUTE_MASK_ADAPTIVE_PREWARM context=%s scope=%s "
+          "direct_nm=%.3f initial_corridor_nm=%.3f maximum_path_nm=%.3f "
+          "cross_track_nm=%.3f "
+          "initial=scout_corridor expansion=solver_frontier "
+          "fine_fallback=authoritative",
+          context, group->first, reachability.direct_distance_nm,
+          reachability.initial_scout_corridor_nm,
+          reachability.maximum_path_length_nm,
+          reachability.maximum_cross_track_nm);
     }
 
     if (m_RoutingProgressDialog && m_RoutingProgressDialog->IsShown())

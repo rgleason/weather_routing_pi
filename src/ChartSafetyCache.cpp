@@ -640,6 +640,51 @@ bool ChartSafetyCache::Lookup(long lat_tile, long lon_tile,
                            tile);
 }
 
+bool ChartSafetyCache::EnsureResident(long lat_tile, long lon_tile,
+                                      bool require_depth) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  const std::string key = TileKey(lat_tile, lon_tile);
+  auto found = ram_.find(key);
+  if (found != ram_.end()) {
+    if (!require_depth || found->second.tile.depth_complete) {
+      TouchLocked(found);
+      ++stats_.ram_hits;
+      return true;
+    }
+  }
+  if (persistent_enabled_ && identity_confirmed_ && !store_open_ &&
+      configured_ && !identity_.empty())
+    OpenStoreLocked();
+  if (!persistent_enabled_ || !store_open_) {
+    ++stats_.misses;
+    return false;
+  }
+  std::vector<unsigned char> bytes;
+  std::string error;
+  if (!store_.Get(key, &bytes, &error)) {
+    if (!error.empty()) {
+      last_error_ = error;
+      ++stats_.rejected_records;
+    }
+    ++stats_.misses;
+    UpdateStoreStatsLocked();
+    return false;
+  }
+  TileData persistent;
+  if (!Deserialize(bytes, &persistent) || persistent.lat_tile != lat_tile ||
+      persistent.lon_tile != lon_tile ||
+      (require_depth && !persistent.depth_complete)) {
+    ++stats_.rejected_records;
+    ++stats_.misses;
+    UpdateStoreStatsLocked();
+    return false;
+  }
+  InsertRamLocked(key, persistent);
+  ++stats_.disk_hits;
+  UpdateStoreStatsLocked();
+  return true;
+}
+
 bool ChartSafetyCache::LookupSnapshot(
     long lat_tile, long lon_tile, bool require_depth,
     std::shared_ptr<const ChartHazardTile>* snapshot) {

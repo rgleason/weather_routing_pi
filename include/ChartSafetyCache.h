@@ -107,6 +107,12 @@ public:
 
   bool Lookup(long lat_tile, long lon_tile, bool require_depth,
               PlugInSegmentSafetyTile* tile);
+  /**
+   * Make an existing authoritative tile resident without copying its cell
+   * arrays. This is used by prewarm planning to avoid asking OpenCPN to
+   * republish tiles already owned by this cache.
+   */
+  bool EnsureResident(long lat_tile, long lon_tile, bool require_depth);
   bool LookupSnapshot(long lat_tile, long lon_tile, bool require_depth,
                       std::shared_ptr<const ChartHazardTile>* tile);
   void Store(const PlugInSegmentSafetyTile* tile);

@@ -240,7 +240,13 @@ bool RequestRawTiles(const std::set<std::pair<long, long>>& raw_tiles,
   std::vector<long> lon_tiles;
   lat_tiles.reserve(raw_tiles.size());
   lon_tiles.reserve(raw_tiles.size());
+  std::size_t cached_tiles = 0;
   for (const auto& tile : raw_tiles) {
+    if (g_cache->EnsureResident(tile.first, tile.second,
+                                options->check_depth != 0)) {
+      ++cached_tiles;
+      continue;
+    }
     lat_tiles.push_back(tile.first);
     lon_tiles.push_back(tile.second);
   }
@@ -248,16 +254,18 @@ bool RequestRawTiles(const std::set<std::pair<long, long>>& raw_tiles,
   // Bound each request to one tile so cancellation/deadlines are checked
   // between extractions, including ordinary headless preparation.
   constexpr std::size_t kExternalPrewarmBatchTiles = 1;
-  PlugInSegmentSafetyResult batch_result = {};
-  batch_result.struct_size = sizeof(batch_result);
   PlugInSegmentSafetyResult totals = {};
-  if (progress) progress(0, lat_tiles.size());
+  PlugInSegmentSafetyResult batch_result = {};
+  const std::size_t requested_tiles = raw_tiles.size();
+  if (progress) progress(cached_tiles, requested_tiles);
   for (std::size_t offset = 0; offset < lat_tiles.size();
        offset += kExternalPrewarmBatchTiles) {
     if (weather_routing::chart_safety_host::PrewarmCancellationRequested())
       return false;
     const std::size_t count =
         std::min(kExternalPrewarmBatchTiles, lat_tiles.size() - offset);
+    batch_result = {};
+    batch_result.struct_size = sizeof(batch_result);
     if (!g_host.raw_tiles(lat_tiles.data() + offset, lon_tiles.data() + offset,
                           static_cast<int>(count),
                           options->check_depth != 0 ? 1 : 0, &batch_result))
@@ -267,16 +275,35 @@ bool RequestRawTiles(const std::set<std::pair<long, long>>& raw_tiles,
     totals.prewarm_masks_built += batch_result.prewarm_masks_built;
     totals.prewarm_masks_reused += batch_result.prewarm_masks_reused;
     totals.prewarm_fine_tiles_avoided += batch_result.prewarm_fine_tiles_avoided;
-    if (progress) progress(offset + count, lat_tiles.size());
+    totals.grid_build_ms += batch_result.grid_build_ms;
+    totals.grid_cells_total += batch_result.grid_cells_total;
+    totals.grid_cells_land += batch_result.grid_cells_land;
+    totals.grid_cells_water += batch_result.grid_cells_water;
+    totals.grid_cells_drying += batch_result.grid_cells_drying;
+    totals.grid_cells_unknown += batch_result.grid_cells_unknown;
+    totals.water_tile_shortcuts += batch_result.water_tile_shortcuts;
+    if (progress) progress(cached_tiles + offset + count, requested_tiles);
   }
   if (result) {
-    *result = batch_result;
+    *result = {};
+    result->struct_size = sizeof(*result);
+    result->status = PI_SEGMENT_SAFETY_SAFE;
+    result->diagnostic_reason = PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_CLEAR;
+    if (!lat_tiles.empty()) *result = batch_result;
     result->prewarm_base_tiles_built = totals.prewarm_base_tiles_built;
-    result->prewarm_base_tiles_reused = totals.prewarm_base_tiles_reused;
+    result->prewarm_base_tiles_reused =
+        totals.prewarm_base_tiles_reused + static_cast<int>(cached_tiles);
     result->prewarm_masks_built = totals.prewarm_masks_built;
     result->prewarm_masks_reused = totals.prewarm_masks_reused;
     result->prewarm_fine_tiles_avoided = totals.prewarm_fine_tiles_avoided;
-    result->prewarm_requested_tiles = static_cast<int>(lat_tiles.size());
+    result->prewarm_requested_tiles = static_cast<int>(requested_tiles);
+    result->grid_build_ms = totals.grid_build_ms;
+    result->grid_cells_total = totals.grid_cells_total;
+    result->grid_cells_land = totals.grid_cells_land;
+    result->grid_cells_water = totals.grid_cells_water;
+    result->grid_cells_drying = totals.grid_cells_drying;
+    result->grid_cells_unknown = totals.grid_cells_unknown;
+    result->water_tile_shortcuts = totals.water_tile_shortcuts;
   }
   return !weather_routing::chart_safety_host::PrewarmCancellationRequested();
 }

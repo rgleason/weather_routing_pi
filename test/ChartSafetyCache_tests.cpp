@@ -103,6 +103,35 @@ TEST_F(ChartSafetyCacheTest, FlushPersistsAcrossPluginInstances) {
   EXPECT_EQ(reopened.Stats().disk_hits, 1U);
 }
 
+TEST_F(ChartSafetyCacheTest, EnsureResidentReusesRamWithoutCellArrayCopy) {
+  weather_routing::ChartSafetyCache cache;
+  cache.Configure(path_.string(), 256, false);
+  cache.SetIdentity("chart-set-a");
+  cache.Store(&tile_);
+
+  EXPECT_TRUE(cache.EnsureResident(100, -20, true));
+  EXPECT_EQ(cache.Stats().ram_hits, 1U);
+  EXPECT_FALSE(cache.EnsureResident(100, -19, false));
+}
+
+TEST_F(ChartSafetyCacheTest, EnsureResidentLoadsPersistentTileIntoRam) {
+  {
+    weather_routing::ChartSafetyCache cache;
+    cache.Configure(path_.string(), 256, true);
+    cache.SetIdentity("chart-set-a");
+    cache.Store(&tile_);
+    ASSERT_TRUE(cache.Flush());
+  }
+  weather_routing::ChartSafetyCache reopened;
+  reopened.Configure(path_.string(), 256, true);
+  reopened.SetIdentity("chart-set-a");
+
+  ASSERT_TRUE(reopened.EnsureResident(100, -20, true));
+  EXPECT_EQ(reopened.Stats().disk_hits, 1U);
+  ASSERT_TRUE(reopened.EnsureResident(100, -20, true));
+  EXPECT_EQ(reopened.Stats().ram_hits, 1U);
+}
+
 TEST_F(ChartSafetyCacheTest, LicensedPluginVectorTilesPersistWhenPermitted) {
   tile_.source = PI_SEGMENT_SAFETY_SOURCE_PLUGIN_VECTOR;
   {
