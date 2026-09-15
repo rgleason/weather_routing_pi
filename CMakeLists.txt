@@ -390,41 +390,6 @@ set(SRC ${SRCS} ${HDRS} )
 ## Modify/configure 'Include' Directories below for the Plugin
 ##=============================================================
 
-
-# REMOVE
-# causes failure for wxWidgets config builds
-# /I C:/Users/fcgle/source/weather_routing_pi/include   ← WRONG
-# /I C:/Users/fcgle/source/wxWidgets/lib/vc_dll/mswud  ← CORRECT
-#
-# include_directories(BEFORE ${PROJECT_SOURCE_DIR}/include)
-
-## target_include_directories(${PACKAGE_NAME} PRIVATE
-##    ${PROJECT_SOURCE_DIR}/include
-## )
-
-# This ensures:
-# Only your plugin’s own headers are added
-# They are added after wxWidgets CONFIG‑mode include dirs
-# They do not override wxWidgets include paths
-#  _DC_UTILS does not inherit them
-
-
-# Ensure the plugin compiles against the same headers and libraries as your OpenCPN MSVC build.
-# include_directories(${OCPN_SOURCE_DIR}/include)
-# link_directories(${OCPN_BUILD_DIR}/lib)
-
-
-##=============================================================
-## Attach sources to the target
-##=============================================================
-
-## target_sources(${PACKAGE_NAME} PUBLIC ${SRC} )
-## REMOVE TO HERE
-
-##=============================================================
-## Linking
-##=============================================================
-
 include_directories(BEFORE
   ${PROJECT_SOURCE_DIR}/vendor/weather-routing-engine/include
   ${PROJECT_SOURCE_DIR}/include
@@ -446,6 +411,7 @@ endif()
 if(CMAKE_DL_LIBS)
   target_link_libraries(${PACKAGE_NAME} ${CMAKE_DL_LIBS})
 endif()
+
 
 if (NOT OCPN_FLATPAK_CONFIG)
   # Build environment not available when flatpak is being configured so
@@ -508,79 +474,11 @@ if (NOT OCPN_FLATPAK_CONFIG)
 
   add_subdirectory(opencpn-libs/zlib)
   target_link_libraries(${PACKAGE_NAME} ocpn::zlib)
- 
-# Modern linking section for OpenCPN plugins
-# Compatible with wxWidgets CONFIG-mode and imported OCPN targets
 
-# Add plugin sources
-target_sources(${PACKAGE_NAME} PUBLIC ${SRC})
-
-# Windows-specific headers (imported target)
-if (WIN32)
-    add_subdirectory(opencpn-libs/WindowsHeaders)
-    target_link_libraries(${PACKAGE_NAME} PRIVATE windows::headers)
-endif()
-
-# Core OpenCPN imported libraries
-add_subdirectory(opencpn-libs/api-${OCPN_API_VERSION_MINOR})
-target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::api)
-
-add_subdirectory(opencpn-libs/tinyxml)
-target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::tinyxml)
-
-add_subdirectory(opencpn-libs/odapi)
-target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::odapi)
-
-add_subdirectory(opencpn-libs/jsonlib)
-target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::jsonlib)
-
-# ----------
-# Inject link dependencies from the plugin using INTERFACE targets
-# Correct CMake pattern for extending a library plugin does not own
-# -----------
-
-add_library(dc_utils_ext INTERFACE)
-
-target_link_libraries(dc_utils_ext INTERFACE
-    ocpn::api
-    ocpn::pluginglu
-    wx::core
-    wx::base
-)
-
-# Windows-only include override for MSVC legacy wxWidgets
-if (WIN32 AND MSVC AND DEFINED wxWidgets_ROOT_DIR)
-    target_include_directories(dc_utils_ext INTERFACE
-        "${wxWidgets_ROOT_DIR}/lib/vc_dll/mswud"
-    )
-endif()
-
-# Add plugin_dc (this creates _DC_UTILS)
-add_subdirectory(opencpn-libs/plugin_dc)
-
-# Attach extension to dc_utils
-target_link_libraries(_DC_UTILS PRIVATE dc_utils_ext)
-
-# Link plugin against plugin_dc
-target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::plugin-dc)
-
-# -----------
-# End of inject link dependencies 
-# -----------
-
-add_subdirectory(opencpn-libs/pugixml)
-target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::pugixml)
-
-add_subdirectory(opencpn-libs/bzip2)
-target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::bzip2)
-
-add_subdirectory(opencpn-libs/libtess2)
-target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::libtess2)
-
+  add_subdirectory(opencpn-libs/libtess2)
+  target_link_libraries(${PACKAGE_NAME} ocpn::libtess2)
 
 endif(NOT OCPN_FLATPAK_CONFIG)
-
-add_definitions(-DPLUGIN_USE_SVG)
 
 add_definitions(-DTIXML_USE_STL)
 
