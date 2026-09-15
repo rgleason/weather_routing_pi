@@ -390,16 +390,17 @@ set(SRC ${SRCS} ${HDRS} )
 ## Modify/configure 'Include' Directories below for the Plugin
 ##=============================================================
 
-<<<<<<< HEAD
+
+# REMOVE
 # causes failure for wxWidgets config builds
 # /I C:/Users/fcgle/source/weather_routing_pi/include   ← WRONG
 # /I C:/Users/fcgle/source/wxWidgets/lib/vc_dll/mswud  ← CORRECT
 #
 # include_directories(BEFORE ${PROJECT_SOURCE_DIR}/include)
 
-target_include_directories(${PACKAGE_NAME} PRIVATE
-    ${PROJECT_SOURCE_DIR}/include
-)
+## target_include_directories(${PACKAGE_NAME} PRIVATE
+##    ${PROJECT_SOURCE_DIR}/include
+## )
 
 # This ensures:
 # Only your plugin’s own headers are added
@@ -417,12 +418,13 @@ target_include_directories(${PACKAGE_NAME} PRIVATE
 ## Attach sources to the target
 ##=============================================================
 
-target_sources(${PACKAGE_NAME} PUBLIC ${SRC} )
+## target_sources(${PACKAGE_NAME} PUBLIC ${SRC} )
+## REMOVE TO HERE
 
 ##=============================================================
 ## Linking
 ##=============================================================
-=======
+
 include_directories(BEFORE
   ${PROJECT_SOURCE_DIR}/vendor/weather-routing-engine/include
   ${PROJECT_SOURCE_DIR}/include
@@ -445,21 +447,10 @@ if(CMAKE_DL_LIBS)
   target_link_libraries(${PACKAGE_NAME} ${CMAKE_DL_LIBS})
 endif()
 
->>>>>>> 70500686e12bfa89ebcae116bc6a9bec3606d179
-
 if (NOT OCPN_FLATPAK_CONFIG)
   # Build environment not available when flatpak is being configured so
   # following statements will not work
   message(STATUS "${CMLOC}Adding target link libraries to ${PACKAGE_NAME}")
-<<<<<<< HEAD
-  
-# Zlib for zuFile.cpp (MSVC) to create Tarball
-  if (WIN32 AND MSVC)
-    target_link_libraries(${PACKAGE_NAME} PRIVATE
-        "${PROJECT_SOURCE_DIR}/buildwin/zlib1.lib"
-    )
-  endif()
-=======
 
   if (WIN32)
     add_subdirectory(opencpn-libs/WindowsHeaders)
@@ -517,7 +508,6 @@ if (NOT OCPN_FLATPAK_CONFIG)
 
   add_subdirectory(opencpn-libs/zlib)
   target_link_libraries(${PACKAGE_NAME} ocpn::zlib)
->>>>>>> 70500686e12bfa89ebcae116bc6a9bec3606d179
  
 # Modern linking section for OpenCPN plugins
 # Compatible with wxWidgets CONFIG-mode and imported OCPN targets
@@ -601,11 +591,6 @@ add_definitions(-DTIXML_USE_STL)
 # Do not need Json Schema Validation
 
 
-<<<<<<< HEAD
-=======
-##------- Change below to match project requirements --------------------##
-
->>>>>>> 70500686e12bfa89ebcae116bc6a9bec3606d179
 ##------- Change below to match project requirements --------------
 
 # Needed for android builds
