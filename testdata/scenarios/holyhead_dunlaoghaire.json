@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "name": "Holyhead to Dun Laoghaire",
+  "start": {
+    "name": "Holyhead outside TSS",
+    "lat": 53.3378,
+    "lon": -4.614540
+  },
+  "end": {
+    "name": "Dun Laoghaire outside harbour entrance",
+    "lat": 53.3000,
+    "lon": -6.1300
+  },
+  "startTime": "2026-07-10T06:00:00Z",
+  "departureOptimization": {
+    "enabled": false,
+    "beforeMinutes": 240,
+    "afterMinutes": 240,
+    "stepMinutes": 60
+  },
+  "environment": {
+    "useCurrents": true
+  },
+  "safety": {
+    "mode": "none",
+    "enforce": false,
+    "landMarginNm": 0.0,
+    "minimumDepthM": 0,
+    "persistentCertifiedCacheEnabled": false
+  }
+}

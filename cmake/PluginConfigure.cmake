@@ -57,13 +57,16 @@ else ()
       OUTPUT_VARIABLE GIT_STATUS
       OUTPUT_STRIP_TRAILING_WHITESPACE
     )
-    string(FIND ${GIT_STATUS} "..." START_TRACKED)
+    string(FIND "${GIT_STATUS}" "..." START_TRACKED)
     if (NOT START_TRACKED EQUAL -1)
-      string(FIND ${GIT_STATUS} "/" END_TRACKED)
       math(EXPR START_TRACKED "${START_TRACKED}+3")
-      math(EXPR END_TRACKED "${END_TRACKED}-${START_TRACKED}")
-      string(SUBSTRING ${GIT_STATUS} ${START_TRACKED} ${END_TRACKED}
-                       GIT_REPOSITORY_REMOTE)
+      string(SUBSTRING "${GIT_STATUS}" ${START_TRACKED} -1 TRACKED_STATUS)
+      string(FIND "${TRACKED_STATUS}" "/" END_TRACKED)
+      string(SUBSTRING "${TRACKED_STATUS}" 0 ${END_TRACKED}
+                       GIT_REPOSITORY_REMOTE
+      )
+      message(STATUS "${CMLOC}GIT_REPOSITORY_REMOTE: ${GIT_REPOSITORY_REMOTE}")
+
       execute_process(
         COMMAND git remote get-url ${GIT_REPOSITORY_REMOTE}
         WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
@@ -95,7 +98,11 @@ else ()
     set(GIT_REPOSITORY_TAG "")
   endif ()
 endif ()
-
+if (DEFINED PLUGIN_GIT_REPOSITORY
+    AND NOT "${PLUGIN_GIT_REPOSITORY}" STREQUAL "")
+  set(GIT_REPOSITORY "${PLUGIN_GIT_REPOSITORY}")
+  message(STATUS "${CMLOC}Using configured canonical plugin repository")
+endif ()
 message(STATUS "${CMLOC}GIT_REPOSITORY: ${GIT_REPOSITORY}")
 message(STATUS "${CMLOC}Git Branch: \"${GIT_REPOSITORY_BRANCH}\"")
 message(STATUS "${CMLOC}Git Tag: \"${GIT_REPOSITORY_TAG}\"")

@@ -15,6 +15,22 @@ wxString _svg_weather_routing_rollover;
 wxString _svg_weather_routing_toggled;
 #endif
 
+wxString WeatherRoutingDataFile(const wxString& filename) {
+  wxFileName installed;
+  installed.SetPath(GetPluginDataDir("weather_routing_pi"));
+  installed.AppendDir(_T("data"));
+  installed.SetFullName(filename);
+  if (installed.FileExists()) return installed.GetFullPath();
+
+#ifdef WEATHER_ROUTING_SOURCE_DATA_DIR
+  wxFileName source(wxString::FromUTF8(WEATHER_ROUTING_SOURCE_DATA_DIR), "");
+  source.SetFullName(filename);
+  if (source.FileExists()) return source.GetFullPath();
+#endif
+
+  return installed.GetFullPath();
+}
+
 void initialize_images(void) {
   {
     wxMemoryInputStream sm(
@@ -187,7 +203,8 @@ void initialize_images(void) {
   fn.SetFullName(_T("weather_routing_pi_toggled.svg"));
   _svg_weather_routing_toggled = fn.GetFullPath();
 
-  wxLogMessage("Loading toolbar icon: " + _svg_weather_routing_rollover);
+  wxLogMessage(_T("Loading WeatherRouting toolbar icon: ") +
+               _svg_weather_routing);
 #endif
 
   return;

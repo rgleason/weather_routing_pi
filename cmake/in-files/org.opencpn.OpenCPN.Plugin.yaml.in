@@ -16,6 +16,8 @@ modules:
     config-opts:
         - -DCMAKE_INSTALL_PREFIX=/app/extensions/${PACKAGE}
         - -DOCPN_FLATPAK_BUILD=ON
+        - -DWEATHER_ROUTING_STANDALONE_API=ON
+        - -DOCPN_BUILD_TEST=OFF
         - -DOCPN_TARGET=${OCPN_TARGET}
         - -DSDK_VER=${SDK_VER}
         - -DWX_VER=${WX_VER}
@@ -25,6 +27,9 @@ modules:
         strip: true
     sources:
        - type: git
-         url: https://${GIT_REPOSITORY_SERVER}/${GIT_REPOSITORY}
+         # Build the exact authenticated checkout.  This keeps validation
+         # usable for authenticated integration branches and avoids
+         # a second unauthenticated network clone inside flatpak-builder.
+         url: file://${PROJECT_SOURCE_DIR}
          ${GIT_BRANCH_OR_TAG}: ${GIT_REPOSITORY_ITEM}
 ${flatpak_extra_modules}

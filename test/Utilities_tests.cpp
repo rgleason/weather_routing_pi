@@ -197,3 +197,16 @@ TEST(UtilitiesTests, CalculateTimeDeltaBasic) {
      dt2.Add(wxTimeSpan(1, 0, 0, 0));
      EXPECT_EQ(calculateTimeDelta(dt1, dt2).ToStdString(), "01:01");
 }
+#include "RouteExportFileName.h"
+
+TEST(RouteExportFileName, KeepsPositionNamesOutOfFilesystemSyntax) {
+  const wxString label = "WXRoute_Provincetown [3h / 10deg]_Lizard:Point\\End?";
+  EXPECT_EQ(weather_routing::RouteExportFileStem(label),
+            "WXRoute_Provincetown [3h _ 10deg]_Lizard_Point_End_");
+  EXPECT_TRUE(label.Contains("3h / 10deg"));
+  EXPECT_EQ(weather_routing::RouteExportFileStem("WXRoute_A<>B|C*D\"E\n"),
+            "WXRoute_A__B_C_D_E_");
+  EXPECT_EQ(weather_routing::RouteExportFileStem("WXRoute_End. "), "WXRoute_End");
+  const wxString unicode_name = wxString::FromUTF8("WXRoute_Vava‘u_Lizard Point");
+  EXPECT_EQ(weather_routing::RouteExportFileStem(unicode_name), unicode_name);
+}

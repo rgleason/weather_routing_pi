@@ -18,17 +18,11 @@
  ***************************************************************************/
 
 #include <wx/wx.h>
+#include <wx/choicdlg.h>
+#include <wx/ffile.h>
 #include <wx/filedlg.h>
-#include <wx/msgdlg.h>
-#include <wx/filename.h>
-#include <wx/textfile.h>
-#include <wx/grid.h>
-#include <wx/notebook.h>
-#include <wx/zipstrm.h>
-#include <wx/wfstream.h>
 
 #include <list>
-#include <cfloat>
 
 #include "Utilities.h"
 #include "Boat.h"
@@ -39,7 +33,6 @@
 
 BEGIN_EVENT_TABLE(RoutingTablePanel, wxPanel)
 EVT_SIZE(RoutingTablePanel::OnSize)
-EVT_BUTTON(wxID_ANY, RoutingTablePanel::OnExportButton)
 END_EVENT_TABLE()
 
 // Define ColorMap structure similar to the GRIB plugin
@@ -303,53 +296,26 @@ static wxColor GetColorFromMap(const ColorMap* map, size_t maplen,
 }
 
 // Helper function to determine appropriate text color based on background
-// brightness.
-// ITU-R Recommendation BT.709
-// W3C Web Content Accessibility Guidelines (WCAG) 2.1
+// brightness
 static wxColour GetTextColorForBackground(const wxColour& bgColor) {
-  // Convert to linear RGB first (gamma correction)
-  auto toLinear = [](double c) {
-    c /= 255.0;
-    return c <= 0.03928 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4);
-  };
-
-  double r = toLinear(bgColor.Red());
-  double g = toLinear(bgColor.Green());
-  double b = toLinear(bgColor.Blue());
-
-  // Calculate relative luminance using sRGB coefficients
-  double luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-
-  // Threshold around 0.5 works well for linear luminance
-  return luminance > 0.5 ? *wxBLACK : *wxWHITE;
+  int brightness = (bgColor.Red() + bgColor.Green() + bgColor.Blue()) / 3;
+  return brightness > 128 ? *wxBLACK : *wxWHITE;
 }
 
-static wxColor GetWindSourceColor(DataMask mask) {
-  if (!colorsInitialized) {
-    InitColors();
-  }
-  if (mask == DataMask::DATA_DEFICIENT_WIND) {
-    return wxColor(255, 128, 0);  // Orange for data deficient
-  } else if (mask == DataMask::GRIB_WIND) {
-    return wxColor(0, 255, 0);  // Green for GRIB data
-  } else if (mask == DataMask::CLIMATOLOGY_WIND) {
-    return wxColor(0, 0, 255);  // Blue for climatology data
-  }
-  return wxColor(255, 255, 255);  // Default to white for other cases
+static wxString WindSourceLabel(int mask) {
+  if (mask & Position::GRIB_WIND)
+    return (mask & Position::DATA_DEFICIENT_WIND) ? _("GRIB (deficient)")
+                                                  : _("GRIB");
+  if (mask & Position::CLIMATOLOGY_WIND) return _("Climatology");
+  return wxEmptyString;
 }
 
-static wxColor GetCurrentSourceColor(DataMask mask) {
-  if (!colorsInitialized) {
-    InitColors();
-  }
-  if (mask == DataMask::DATA_DEFICIENT_CURRENT) {
-    return wxColor(255, 128, 0);  // Orange for data deficient
-  } else if (mask == DataMask::GRIB_CURRENT) {
-    return wxColor(0, 255, 0);  // Green for GRIB data
-  } else if (mask == DataMask::CLIMATOLOGY_CURRENT) {
-    return wxColor(0, 0, 255);  // Blue for climatology data
-  }
-  return wxColor(255, 255, 255);  // Default to white for other cases
+static wxString CurrentSourceLabel(int mask) {
+  if (mask & Position::GRIB_CURRENT)
+    return (mask & Position::DATA_DEFICIENT_CURRENT) ? _("GRIB (deficient)")
+                                                     : _("GRIB");
+  if (mask & Position::CLIMATOLOGY_CURRENT) return _("Climatology");
+  return wxEmptyString;
 }
 
 // Function to get wind speed color
@@ -443,28 +409,13 @@ static wxColor GetPressureColor(double hPa) {
   return GetColorFromMap(PressureColorMap, maplen, hPa);
 }
 
-// Function to get wave relative direction color based on tactical significance
-static wxColor GetWaveRelativeColor(double waveRelAngle) {
-  // Normalize angle to 0-360 range for consistent coloring
-  while (waveRelAngle < 0) waveRelAngle += 360;
-  while (waveRelAngle >= 360) waveRelAngle -= 360;
-
-  // Color coding based on wave direction relative to boat heading:
-  // Green: Following seas (135-225°) - favorable
-  // Yellow: Beam seas (45-135° & 225-315°) - moderate comfort
-  // Red: Head seas (315-45°) - challenging
-
-  if ((waveRelAngle >= 135 && waveRelAngle <= 225)) {
-    // Following seas - green (favorable)
-    return wxColour(0, 200, 0);
-  } else if ((waveRelAngle >= 45 && waveRelAngle < 135) ||
-             (waveRelAngle > 225 && waveRelAngle <= 315)) {
-    // Beam seas - yellow (moderate)
-    return wxColour(255, 200, 0);
-  } else {
-    // Head seas - red (challenging)
-    return wxColour(255, 100, 100);
-  }
+static wxColor GetSunElevationColor(double elevation) {
+  if (elevation > 6.0) return wxColour(255, 248, 210);
+  if (elevation > 0.0) return wxColour(255, 220, 175);
+  if (elevation > -6.0) return wxColour(205, 181, 205);
+  if (elevation > -12.0) return wxColour(130, 115, 170);
+  if (elevation > -18.0) return wxColour(75, 75, 135);
+  return wxColour(30, 40, 90);
 }
 
 // Helper function to format distance values according to user preferences
@@ -531,51 +482,6 @@ static wxColor GetCurrentEffectColor(double currentAngle, double currentSpeed) {
   }
 }
 
-// Helper function to get time-of-day color based on sun elevation angle
-// Color scheme follows nautical standards for visibility and navigation
-// conditions:
-// - High sun (>15°): Bright yellow - excellent visibility
-// - Civil twilight (0° to 6°): Light colors - good navigation conditions
-// - Nautical twilight (-6° to 0°): Moderate colors - horizon visible
-// - Astronomical twilight (-12° to -6°): Darker colors - star navigation
-// - Deep night (<-18°): Dark blue - full night conditions
-static wxColor GetTimeOfDayColor(const wxDateTime& dateTime, double lat,
-                                 double lon) {
-  // Use the enhanced CalculateSun function with precise sun elevation
-  // calculation
-  wxDateTime sunrise, sunset;
-  double sunElevation;
-  SunCalculator::CalculateSun(lat, lon, dateTime.GetDayOfYear(), sunrise,
-                              sunset, &dateTime, &sunElevation);
-
-  // Define color transitions based on sun elevation angles (following nautical
-  // standards)
-  if (sunElevation > 15.0) {
-    // High sun - excellent visibility for coral reefs, navigation, harbor entry
-    return wxColor(255, 255, 180);  // Bright yellow - high visibility
-  } else if (sunElevation > 6.0) {
-    // Civil twilight begins - sun visible, good general navigation
-    return wxColor(255, 248, 220);  // Light cream - good visibility
-  } else if (sunElevation > 0.0) {
-    // Civil twilight - some natural light, horizon clearly visible
-    return wxColor(255, 228, 181);  // Soft peach - moderate visibility
-  } else if (sunElevation > -6.0) {
-    // Nautical twilight - horizon no longer visible, but navigation still
-    // possible
-    return wxColor(205, 181, 205);  // Light lavender - twilight navigation
-  } else if (sunElevation > -12.0) {
-    // Astronomical twilight - quite dark, celestial navigation
-    return wxColor(147, 112, 147);  // Medium purple - star navigation
-  } else if (sunElevation > -18.0) {
-    // End of astronomical twilight - very dark but some astronomical objects
-    // visible
-    return wxColor(72, 61, 139);  // Dark slate blue - deep twilight
-  } else {
-    // Complete night - sun more than 18 degrees below horizon
-    return wxColor(25, 25, 112);  // Midnight blue - full night
-  }
-}
-
 RoutingTablePanel::RoutingTablePanel(wxWindow* parent,
                                      WeatherRouting& weatherRouting,
                                      RouteMapOverlay* routemap)
@@ -584,39 +490,38 @@ RoutingTablePanel::RoutingTablePanel(wxWindow* parent,
       m_RouteMap(routemap),
       m_WeatherRouting(weatherRouting),
       m_highlightedRow(-1) {
-  // Set the panel background color immediately
-  SetBackgroundColour(wxSystemSettings::GetColour(wxSYS_COLOUR_BTNFACE));
-
   // Create a sizer for the panel
   m_mainSizer = new wxBoxSizer(wxVERTICAL);
 
-  // Create notebook with tabs.
-  m_notebook = new wxNotebook(this, wxID_ANY, wxDefaultPosition, wxDefaultSize,
-                              wxNB_TOP | wxNB_FIXEDWIDTH);
-
-  // Create summary tab
-  CreateSummaryTab();
-
-  // Create table tab
-  m_tableTab = new wxPanel(m_notebook, wxID_ANY);
-  wxBoxSizer* tableSizer = new wxBoxSizer(wxVERTICAL);
+  wxBoxSizer* summarySizer = new wxBoxSizer(wxHORIZONTAL);
+  m_summaryText = new wxStaticText(this, wxID_ANY, wxEmptyString);
+  m_columnsButton = new wxButton(this, wxID_ANY, _("Columns..."));
+  m_exportCsvButton = new wxButton(this, wxID_ANY, _("Export CSV..."));
+  summarySizer->Add(m_summaryText, 1, wxALIGN_CENTER_VERTICAL | wxALL, 5);
+  summarySizer->Add(m_columnsButton, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
+  summarySizer->Add(m_exportCsvButton, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
+  m_mainSizer->Add(summarySizer, 0, wxEXPAND);
+  m_columnsButton->Bind(wxEVT_BUTTON, &RoutingTablePanel::OnChooseColumns,
+                        this);
+  m_exportCsvButton->Bind(wxEVT_BUTTON, &RoutingTablePanel::OnExportCsv, this);
 
   // Create the grid with the columns we need
   m_gridWeatherTable =
-      new wxGrid(m_tableTab, wxID_ANY, wxDefaultPosition, wxDefaultSize);
+      new wxGrid(this, wxID_ANY, wxDefaultPosition, wxDefaultSize);
   m_gridWeatherTable->CreateGrid(0, COL_COUNT);
+  m_gridWeatherTable->EnableEditing(false);
+  m_gridWeatherTable->EnableDragColSize(true);
 
   // Set column labels
   m_gridWeatherTable->SetColLabelValue(COL_LEG_NUMBER, _("Leg #"));
   m_gridWeatherTable->SetColLabelValue(COL_ETA, _("ETA"));
+  m_gridWeatherTable->SetColLabelValue(COL_SUN_ELEVATION, _("Sun Elev"));
   m_gridWeatherTable->SetColLabelValue(COL_ENROUTE, _("Total Time"));
   m_gridWeatherTable->SetColLabelValue(COL_LEG_DISTANCE, _("Distance"));
   m_gridWeatherTable->SetColLabelValue(COL_SOG, _("SOG"));
   m_gridWeatherTable->SetColLabelValue(COL_COG, _("COG"));
   m_gridWeatherTable->SetColLabelValue(COL_STW, _("STW"));
   m_gridWeatherTable->SetColLabelValue(COL_CTW, _("CTW"));
-  m_gridWeatherTable->SetColLabelValue(COL_HDG, _("HDG"));
-
   m_gridWeatherTable->SetColLabelValue(COL_WIND_SOURCE, _("Wind Source"));
   m_gridWeatherTable->SetColLabelValue(COL_AWS, _("AWS"));
   m_gridWeatherTable->SetColLabelValue(COL_TWS, _("TWS"));
@@ -626,7 +531,8 @@ RoutingTablePanel::RoutingTablePanel(wxWindow* parent,
   m_gridWeatherTable->SetColLabelValue(COL_AWA, _("AWA"));
   m_gridWeatherTable->SetColLabelValue(COL_WAVE_HEIGHT, _("Wave Height"));
   m_gridWeatherTable->SetColLabelValue(COL_WAVE_DIRECTION, _("Wave Dir"));
-  m_gridWeatherTable->SetColLabelValue(COL_WAVE_REL, _("Wave Rel"));
+  m_gridWeatherTable->SetColLabelValue(COL_WAVE_RELATIVE,
+                                       _("Wave Rel CTW"));
   m_gridWeatherTable->SetColLabelValue(COL_WAVE_PERIOD, _("Wave Period"));
   m_gridWeatherTable->SetColLabelValue(COL_SAIL_PLAN, _("Sail Plan"));
   m_gridWeatherTable->SetColLabelValue(COL_COMFORT, _("Comfort"));
@@ -643,41 +549,29 @@ RoutingTablePanel::RoutingTablePanel(wxWindow* parent,
   m_gridWeatherTable->SetColLabelValue(COL_CURRENT_DIR, _("Curr Dir"));
   m_gridWeatherTable->SetColLabelValue(COL_CURRENT_ANGLE, _("Curr Angle"));
 
-  // Auto size all columns initially
-  for (int i = 0; i < COL_COUNT; i++) {
-    m_gridWeatherTable->AutoSizeColumn(i);
-  }
+  LoadColumnVisibility();
 
   // Add components to sizer
-  tableSizer->Add(m_gridWeatherTable, 1, wxEXPAND | wxALL, 5);
-  m_tableTab->SetSizer(tableSizer);
-
-  // Add tabs to notebook with explicit sizing
-  m_notebook->AddPage(m_summaryTab, _("Summary"), true);
-  m_notebook->AddPage(m_tableTab, _("Detailed Table"), false);
-
-  // Force notebook to calculate proper tab sizes
-  m_notebook->SetSelection(1);  // Start with 'Detailed Table' tab active
-  m_notebook->InvalidateBestSize();
-
-  // Add notebook to main sizer with proper proportions
-  m_mainSizer->Add(m_notebook, 1, wxEXPAND | wxALL, 2);
+  m_mainSizer->Add(m_gridWeatherTable, 1, wxEXPAND | wxALL, 5);
 
   SetSizer(m_mainSizer);
+  m_mainSizer->SetSizeHints(this);
   m_mainSizer->Fit(this);
-
-  // Force layout update to ensure tabs are visible
-  Layout();
-  m_notebook->Layout();
 
   // Populate the table with data from the route
   PopulateTable();
-
-  // Apply the current color scheme to eliminate any black areas
-  SetColorScheme(PI_GLOBAL_COLOR_SCHEME_DAY);  // Default to day scheme
+  ApplyColumnVisibility();
 }
 
 RoutingTablePanel::~RoutingTablePanel() {}
+
+void RoutingTablePanel::SetRouteMap(RouteMapOverlay* routemap) {
+  m_RouteMap = routemap;
+  m_lastTimelineTime = wxDateTime();
+  m_highlightedRow = -1;
+  m_originalCellColors.clear();
+  PopulateTable();
+}
 
 void RoutingTablePanel::OnClose(wxCommandEvent& event) {
   // Hide parent Aui pane rather than destroying the dialog
@@ -686,47 +580,175 @@ void RoutingTablePanel::OnClose(wxCommandEvent& event) {
 
 void RoutingTablePanel::OnSize(wxSizeEvent& event) {
   event.Skip();
-  // Let the sizer handle the layout automatically
-  Layout();
+}
+
+void RoutingTablePanel::LoadColumnVisibility() {
+  m_columnVisible.fill(true);
+  wxFileConfig* config = GetOCPNConfigObject();
+  if (!config) return;
+  const wxString previousPath = config->GetPath();
+  config->SetPath(_T("/PlugIns/WeatherRouting/WeatherTable"));
+  for (int col = 0; col < COL_COUNT; ++col) {
+    bool visible = true;
+    config->Read(wxString::Format("ColumnVisible_%d", col), &visible, true);
+    m_columnVisible[static_cast<std::size_t>(col)] = visible;
+  }
+  config->SetPath(previousPath);
+}
+
+void RoutingTablePanel::SaveColumnVisibility() const {
+  wxFileConfig* config = GetOCPNConfigObject();
+  if (!config) return;
+  const wxString previousPath = config->GetPath();
+  config->SetPath(_T("/PlugIns/WeatherRouting/WeatherTable"));
+  for (int col = 0; col < COL_COUNT; ++col)
+    config->Write(wxString::Format("ColumnVisible_%d", col),
+                  m_columnVisible[static_cast<std::size_t>(col)]);
+  config->SetPath(previousPath);
+}
+
+void RoutingTablePanel::ApplyColumnVisibility() {
+  for (int col = 0; col < COL_COUNT; ++col) {
+    if (m_columnVisible[static_cast<std::size_t>(col)]) {
+      m_gridWeatherTable->ShowCol(col);
+      m_gridWeatherTable->AutoSizeColumn(col);
+    } else {
+      m_gridWeatherTable->HideCol(col);
+    }
+  }
+  m_gridWeatherTable->ForceRefresh();
+}
+
+void RoutingTablePanel::OnChooseColumns(wxCommandEvent& event) {
+  wxArrayString choices;
+  wxArrayInt selections;
+  for (int col = 0; col < COL_COUNT; ++col) {
+    choices.Add(m_gridWeatherTable->GetColLabelValue(col));
+    if (m_columnVisible[static_cast<std::size_t>(col)]) selections.Add(col);
+  }
+
+  wxMultiChoiceDialog dialog(
+      this, _("Select the columns to show in the Weather Table."),
+      _("Weather Table Columns"), choices);
+  dialog.SetSelections(selections);
+  if (dialog.ShowModal() != wxID_OK) return;
+
+  m_columnVisible.fill(false);
+  const wxArrayInt selected = dialog.GetSelections();
+  for (std::size_t i = 0; i < selected.GetCount(); ++i) {
+    const int col = selected[i];
+    if (col >= 0 && col < COL_COUNT)
+      m_columnVisible[static_cast<std::size_t>(col)] = true;
+  }
+  SaveColumnVisibility();
+  ApplyColumnVisibility();
+}
+
+void RoutingTablePanel::UpdateSummary(const std::list<PlotData>& plotData) {
+  if (plotData.empty()) {
+    m_summaryText->SetLabel(_("No route data"));
+    return;
+  }
+
+  double distance = 0.0;
+  double motorSeconds = 0.0;
+  double maxWind = 0.0;
+  double maxWave = 0.0;
+  const PlotData* previous = nullptr;
+  for (const PlotData& data : plotData) {
+    if (previous)
+      distance += DistGreatCircle_Plugin(previous->lat, previous->lon,
+                                         data.lat, data.lon);
+    if (data.data_mask & Position::MOTOR_USED) motorSeconds += data.delta;
+    if (std::isfinite(data.twsOverWater)) maxWind = std::max(maxWind, data.twsOverWater);
+    if (std::isfinite(data.WVHT)) maxWave = std::max(maxWave, data.WVHT);
+    previous = &data;
+  }
+
+  const PlotData& first = plotData.front();
+  const PlotData& last = plotData.back();
+  const wxTimeSpan duration = last.time.Subtract(first.time);
+  const long totalMinutes = duration.GetMinutes();
+  const long motorMinutes = static_cast<long>(motorSeconds / 60.0 + 0.5);
+  m_summaryText->SetLabel(wxString::Format(
+      _("Depart %s   Arrive %s   Duration %ldd %02ld:%02ld   Distance %s   "
+        "Motor %ld:%02ld   Max wind %s   Max wave %.1f m"),
+      m_WeatherRouting.m_SettingsDialog.FormatTime(
+          first.time, _T("%Y-%m-%d %H:%M")),
+      m_WeatherRouting.m_SettingsDialog.FormatTime(
+          last.time, _T("%Y-%m-%d %H:%M")),
+      totalMinutes / (24 * 60),
+      (totalMinutes / 60) % 24, totalMinutes % 60, FormatDistance(distance),
+      motorMinutes / 60, motorMinutes % 60, FormatSpeed(maxWind), maxWave));
+  m_summaryText->Wrap(1100);
+}
+
+static wxString CsvField(wxString value) {
+  value.Replace("\"", "\"\"");
+  return "\"" + value + "\"";
+}
+
+void RoutingTablePanel::OnExportCsv(wxCommandEvent& event) {
+  wxFileDialog dialog(this, _("Export weather route table"), wxEmptyString,
+                      _("weather-route.csv"), _("CSV files (*.csv)|*.csv"),
+                      wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+  if (dialog.ShowModal() != wxID_OK) return;
+
+  wxString csv;
+  bool firstField = true;
+  for (int col = 0; col < m_gridWeatherTable->GetNumberCols(); ++col) {
+    if (!m_columnVisible[static_cast<std::size_t>(col)]) continue;
+    if (!firstField) csv += ',';
+    csv += CsvField(m_gridWeatherTable->GetColLabelValue(col));
+    firstField = false;
+  }
+  csv += "\r\n";
+  for (int row = 0; row < m_gridWeatherTable->GetNumberRows(); ++row) {
+    firstField = true;
+    for (int col = 0; col < m_gridWeatherTable->GetNumberCols(); ++col) {
+      if (!m_columnVisible[static_cast<std::size_t>(col)]) continue;
+      if (!firstField) csv += ',';
+      csv += CsvField(m_gridWeatherTable->GetCellValue(row, col));
+      firstField = false;
+    }
+    csv += "\r\n";
+  }
+
+  wxFFile file(dialog.GetPath(), "wb");
+  if (!file.IsOpened() || !file.Write(csv, wxConvUTF8))
+    wxMessageBox(_("Could not write the CSV file."), _("Weather Routing"),
+                 wxOK | wxICON_ERROR, this);
 }
 
 void RoutingTablePanel::SetColorScheme(PI_ColorScheme cs) {
   m_colorscheme = cs;
 
-  // Apply color scheme to panel background
-  wxColour panelBackColor;
-  wxColour cellBackColor;
-  wxColour textColor;
+  // Apply color scheme to panel background and grid
+  wxColour backColor;
 
   switch (cs) {
     case PI_GLOBAL_COLOR_SCHEME_DAY:
-      panelBackColor = wxColour(212, 208, 200);
-      cellBackColor = *wxWHITE;
-      textColor = *wxBLACK;
+      backColor = wxColour(212, 208, 200);
       break;
     case PI_GLOBAL_COLOR_SCHEME_DUSK:
-      panelBackColor = wxColour(128, 128, 128);
-      cellBackColor = wxColour(240, 240, 240);
-      textColor = *wxBLACK;
+      backColor = wxColour(128, 128, 128);
       break;
     case PI_GLOBAL_COLOR_SCHEME_NIGHT:
-      panelBackColor = wxColour(64, 64, 64);
-      cellBackColor = wxColour(48, 48, 48);
-      textColor = *wxWHITE;
+      backColor = wxColour(64, 64, 64);
       break;
     default:
-      panelBackColor = wxColour(212, 208, 200);
-      cellBackColor = *wxWHITE;
-      textColor = *wxBLACK;
+      backColor = wxColour(212, 208, 200);
   }
 
-  SetBackgroundColour(panelBackColor);
-  m_gridWeatherTable->SetDefaultCellBackgroundColour(cellBackColor);
+  SetBackgroundColour(backColor);
+  m_gridWeatherTable->SetDefaultCellBackgroundColour(backColor);
+
+  // Set appropriate text color for the selected scheme
+  wxColour textColor = cs == PI_GLOBAL_COLOR_SCHEME_DAY ? *wxBLACK : *wxWHITE;
   m_gridWeatherTable->SetDefaultCellTextColour(textColor);
 
-  // Force a complete refresh
-  Refresh(true);  // true = erase background
-  Update();
+  // Refresh the grid to show the new colors
+  Refresh();
 }
 
 // Helper function to set cell value with colored background
@@ -738,15 +760,6 @@ void RoutingTablePanel::setCellWithColor(int row, int col,
   attr->SetBackgroundColour(bgColor);
   attr->SetTextColour(GetTextColorForBackground(bgColor));
   m_gridWeatherTable->SetAttr(row, col, attr);
-}
-
-// Helper function to set cell value with time-of-day background color
-void RoutingTablePanel::setCellWithTimeOfDayColor(int row, int col,
-                                                  const wxString& value,
-                                                  const wxDateTime& dateTime,
-                                                  double lat, double lon) {
-  wxColor timeColor = GetTimeOfDayColor(dateTime, lat, lon);
-  setCellWithColor(row, col, value, timeColor);
 }
 
 // Helper function to format and display sail plan information
@@ -778,16 +791,22 @@ void RoutingTablePanel::handleSailPlanCell(
 }
 
 void RoutingTablePanel::PopulateTable() {
-  // Get plot data from the route
-  std::list<PlotData> plotData = m_RouteMap->GetPlotData(false);
-  // Clear existing grid content and set new size
+  // Clear the old route before consulting the replacement. Route overlays are
+  // owned by WeatherRouting and may be deleted when an optimisation is rerun.
   if (m_gridWeatherTable->GetNumberRows() > 0)
     m_gridWeatherTable->DeleteRows(0, m_gridWeatherTable->GetNumberRows());
-
-  m_gridWeatherTable->AppendRows(plotData.size());
-
-  // Hide the row labels (leftmost column with numbers)
   m_gridWeatherTable->SetRowLabelSize(0);
+
+  if (!m_RouteMap || !m_WeatherRouting.RouteMapIsManaged(m_RouteMap)) {
+    m_RouteMap = nullptr;
+    UpdateSummary(std::list<PlotData>());
+    return;
+  }
+
+  // Get plot data from the route
+  std::list<PlotData> plotData = m_RouteMap->GetPlotData(false);
+  UpdateSummary(plotData);
+  m_gridWeatherTable->AppendRows(plotData.size());
 
   // Get configuration for formatting
   RouteMapConfiguration configuration = m_RouteMap->GetConfiguration();
@@ -801,39 +820,30 @@ void RoutingTablePanel::PopulateTable() {
   double cumulativeDistance = 0.0;  // Track total distance
 
   for (const PlotData& data : plotData) {
-    // Populate the leg number column with time-of-day background color
-    setCellWithTimeOfDayColor(row, COL_LEG_NUMBER,
-                              wxString::Format("%d", row + 1), data.time,
-                              data.lat, data.lon);
+    // Populate the leg number column
+    m_gridWeatherTable->SetCellValue(row, COL_LEG_NUMBER,
+                                     wxString::Format("%d", row + 1));
 
     // ETA column - actual date/time of arrival at this point
-    // Check for API 1.20 which has toUsrDateTimeFormat_Plugin function
-    wxString timeString;
-#if OCPN_API_VERSION_MAJOR > 1 || \
-    (OCPN_API_VERSION_MAJOR == 1 && OCPN_API_VERSION_MINOR >= 20)
-    timeString = toUsrDateTimeFormat_Plugin(data.time);
-#else
-    // Fallback for earlier API versions - format time with proper timezone
-    // label
-    bool useLocalTime =
-      m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->IsChecked();
-
-    if (useLocalTime) {
-      timeString = data.time.Format("%Y-%m-%d %H:%M %Z", wxDateTime::Local);
+    const wxString timeString =
+        m_WeatherRouting.m_SettingsDialog.FormatTime(
+            data.time, _T("%Y-%m-%d %H:%M"));
+    const double sunElevation =
+        SunCalculator::GetSunElevation(data.lat, data.lon, data.time);
+    if (std::isfinite(sunElevation)) {
+      setCellWithColor(row, COL_ETA, timeString,
+                       GetSunElevationColor(sunElevation));
+      m_gridWeatherTable->SetCellValue(
+          row, COL_SUN_ELEVATION,
+          wxString::Format("%+.1f\u00B0", sunElevation));
     } else {
-      timeString = data.time.Format("%Y-%m-%d %H:%M UTC", wxDateTime::UTC);
+      m_gridWeatherTable->SetCellValue(row, COL_ETA, timeString);
     }
-#endif
-    // ETA column with time-of-day background color
-    setCellWithTimeOfDayColor(row, COL_ETA, timeString, data.time, data.lat,
-                              data.lon);
 
     // Store the first point's time to calculate total time from start
     if (firstPoint) {
       startTime = data.time;
-      // Total Time column with time-of-day background color
-      setCellWithTimeOfDayColor(row, COL_ENROUTE, _("Start"), data.time,
-                                data.lat, data.lon);
+      m_gridWeatherTable->SetCellValue(row, COL_ENROUTE, _("Start"));
       m_gridWeatherTable->SetCellValue(row, COL_LEG_DISTANCE, _("0.0"));
       firstPoint = false;
     } else {
@@ -857,46 +867,12 @@ void RoutingTablePanel::PopulateTable() {
                              totalDuration.GetMinutes() % 60);
       }
 
-      // Set the cumulative duration in EnRoute column with time-of-day
-      // background color
-      setCellWithTimeOfDayColor(row, COL_ENROUTE, totalDurationString,
-                                data.time, data.lat, data.lon);
+      // Set the cumulative duration in EnRoute column
+      m_gridWeatherTable->SetCellValue(row, COL_ENROUTE, totalDurationString);
 
       // Set the cumulative distance in Distance column using unit conversion
       m_gridWeatherTable->SetCellValue(row, COL_LEG_DISTANCE,
                                        FormatDistance(cumulativeDistance));
-    }
-
-    if (data.data_mask != DataMask::NONE) {
-      // Wind
-      wxString windSource;
-      if (data.data_mask & DataMask::GRIB_WIND) {
-        windSource = _("GRIB");
-      } else if (data.data_mask & DataMask::CLIMATOLOGY_WIND) {
-        windSource = _("Climatology");
-      } else {
-        windSource = wxEmptyString;
-      }
-      wxColor windSourceColor = GetWindSourceColor(data.data_mask);
-      setCellWithColor(row, COL_WIND_SOURCE, windSource, windSourceColor);
-      wxGridCellAttr* attr = new wxGridCellAttr();
-      attr->SetTextColour(GetTextColorForBackground(windSourceColor));
-      m_gridWeatherTable->SetAttr(row, COL_WIND_SOURCE, attr);
-
-      // Current
-      wxString currentSource;
-      if (data.data_mask & DataMask::GRIB_CURRENT) {
-        currentSource = _("GRIB");
-      } else if (data.data_mask & DataMask::CLIMATOLOGY_CURRENT) {
-        currentSource = _("Climatology");
-      } else {
-        currentSource = wxEmptyString;
-      }
-      wxColor currSourceColor = GetCurrentSourceColor(data.data_mask);
-      setCellWithColor(row, COL_CURRENT_SOURCE, currentSource, currSourceColor);
-      attr = new wxGridCellAttr();
-      attr->SetTextColour(GetTextColorForBackground(currSourceColor));
-      m_gridWeatherTable->SetAttr(row, COL_CURRENT_SOURCE, attr);
     }
 
     // Speeds and directions - check for NaN values
@@ -906,45 +882,28 @@ void RoutingTablePanel::PopulateTable() {
 
     if (!std::isnan(data.cog)) {
       m_gridWeatherTable->SetCellValue(
-          row, COL_COG,
-          wxString::Format("%.0f\u00B0", positive_degrees(data.cog)));
+          row, COL_COG, wxString::Format("%.0f\u00B0", positive_degrees(data.cog)));
     }
 
     if (!std::isnan(data.stw)) {
-      // Check if vessel is motoring and color-code the STW cell accordingly
-      if (data.data_mask & DataMask::MOTOR_USED) {
-        // Use a distinct motor color (light blue) to indicate motoring
-        setCellWithColor(row, COL_STW, FormatSpeed(data.stw),
-                         wxColour(173, 216, 230));  // Light blue for motor
-
-        // Add visual indicator to make motoring more obvious
-        wxString motorValue =
-            FormatSpeed(data.stw) + " (M)";  // Add (M) for Motor
-        m_gridWeatherTable->SetCellValue(row, COL_STW, motorValue);
-
-        // Set cell attribute with background color (setCellWithColor already
-        // does this, but we need to override the value)
-        wxGridCellAttr* attr = new wxGridCellAttr();
-        attr->SetBackgroundColour(wxColour(173, 216, 230));
-        attr->SetTextColour(GetTextColorForBackground(wxColour(173, 216, 230)));
-        m_gridWeatherTable->SetAttr(row, COL_STW, attr);
-      } else {
-        // Standard STW display for sailing
-        m_gridWeatherTable->SetCellValue(row, COL_STW, FormatSpeed(data.stw));
+      wxString stw = FormatSpeed(data.stw);
+      if (data.data_mask & Position::MOTOR_USED) stw += _(" (M)");
+      m_gridWeatherTable->SetCellValue(row, COL_STW, stw);
+      if (data.data_mask & Position::MOTOR_USED) {
+        m_gridWeatherTable->SetCellBackgroundColour(
+            row, COL_STW, wxColour(173, 216, 230));
       }
     }
 
     if (!std::isnan(data.ctw)) {
       m_gridWeatherTable->SetCellValue(
-          row, COL_CTW,
-          wxString::Format("%.0f\u00B0", positive_degrees(data.ctw)));
+          row, COL_CTW, wxString::Format("%.0f\u00B0", positive_degrees(data.ctw)));
     }
 
-    if (!std::isnan(data.hdg)) {
-      m_gridWeatherTable->SetCellValue(
-          row, COL_HDG,
-          wxString::Format("%.0f\u00B0", positive_degrees(data.hdg)));
-    }
+    m_gridWeatherTable->SetCellValue(row, COL_WIND_SOURCE,
+                                     WindSourceLabel(data.data_mask));
+    m_gridWeatherTable->SetCellValue(row, COL_CURRENT_SOURCE,
+                                     CurrentSourceLabel(data.data_mask));
 
     // Wind data
     if (!std::isnan(data.stw) && !std::isnan(data.twdOverWater) &&
@@ -954,14 +913,11 @@ void RoutingTablePanel::PopulateTable() {
       double apparentWindAngle = Polar::DirectionApparentWind(
           apparentWindSpeed, data.stw, data.twdOverWater - data.ctw,
           data.twsOverWater);
+
       if (!std::isnan(apparentWindSpeed)) {
         // Apply coloring to AWS cell based on apparent wind speed
-        wxColor awsColor = GetWindSpeedColor(apparentWindSpeed);
         setCellWithColor(row, COL_AWS, FormatSpeed(apparentWindSpeed),
-                         awsColor);
-        wxGridCellAttr* attr = new wxGridCellAttr();
-        attr->SetTextColour(GetTextColorForBackground(awsColor));
-        m_gridWeatherTable->SetAttr(row, COL_AWS, attr);
+                         GetWindSpeedColor(apparentWindSpeed));
       }
 
       if (!std::isnan(apparentWindAngle)) {
@@ -990,7 +946,6 @@ void RoutingTablePanel::PopulateTable() {
         // Color the TWA cell: green for starboard tack, red for port tack
         wxColor twaColor =
             isStarboardTack ? wxColour(0, 255, 0) : wxColour(255, 0, 0);
-
         setCellWithColor(row, COL_TWA, wxString::Format("%.0f\u00B0", twa),
                          twaColor);
       }
@@ -1079,8 +1034,7 @@ void RoutingTablePanel::PopulateTable() {
               CalculateCurrentAngle(data.currentDir, data.cog);
 
           // Display current angle with color coding
-          wxString currentAngleStr =
-              wxString::Format("%.0f\u00B0", currentAngle);
+          wxString currentAngleStr = wxString::Format("%.0f\u00B0", currentAngle);
           wxColor effectColor =
               GetCurrentEffectColor(currentAngle, data.currentSpeed);
           setCellWithColor(row, COL_CURRENT_ANGLE, currentAngleStr,
@@ -1095,21 +1049,19 @@ void RoutingTablePanel::PopulateTable() {
                        wxString::Format("%.1f m", data.WVHT),
                        GetWaveHeightColor(data.WVHT));
     }
-    if (!std::isnan(data.WVDIR) && data.WVDIR >= 0) {
+    if (std::isfinite(data.WVDIR)) {
       m_gridWeatherTable->SetCellValue(
           row, COL_WAVE_DIRECTION,
           wxString::Format("%.0f\u00B0", positive_degrees(data.WVDIR)));
     }
-    if (!std::isnan(data.WVREL)) {
-      // Display wave direction relative to boat heading with color coding
-      double displayAngle = positive_degrees(data.WVREL);
-      setCellWithColor(row, COL_WAVE_REL,
-                       wxString::Format("%.0f\u00B0", displayAngle),
-                       GetWaveRelativeColor(displayAngle));
+    if (std::isfinite(data.WVREL)) {
+      m_gridWeatherTable->SetCellValue(
+          row, COL_WAVE_RELATIVE,
+          wxString::Format("%.0f\u00B0", positive_degrees(data.WVREL)));
     }
-    if (!std::isnan(data.WVPER) && data.WVPER > 0) {
-      m_gridWeatherTable->SetCellValue(row, COL_WAVE_PERIOD,
-                                       wxString::Format("%.1f s", data.WVPER));
+    if (std::isfinite(data.WVPER) && data.WVPER > 0) {
+      m_gridWeatherTable->SetCellValue(
+          row, COL_WAVE_PERIOD, wxString::Format("%.1f s", data.WVPER));
     }
 
     // Sailing comfort level
@@ -1124,9 +1076,10 @@ void RoutingTablePanel::PopulateTable() {
     row++;
   }
 
-  // Auto-size all columns for better display
+  // Auto-size the selected columns for better display.
   for (int i = 0; i < COL_COUNT; i++) {
-    m_gridWeatherTable->AutoSizeColumn(i);
+    if (m_columnVisible[static_cast<std::size_t>(i)])
+      m_gridWeatherTable->AutoSizeColumn(i);
   }
 
   // Reset highlight state
@@ -1138,13 +1091,13 @@ void RoutingTablePanel::PopulateTable() {
   if (timelineTime.IsValid()) {
     UpdateTimeHighlight(timelineTime);
   }
-
-  // Update the summary information
-  UpdateSummary();
 }
 
 void RoutingTablePanel::UpdateTimeHighlight(wxDateTime timelineTime) {
-  if (!m_RouteMap || !timelineTime.IsValid()) {
+  const bool routeIsManaged =
+      m_RouteMap && m_WeatherRouting.RouteMapIsManaged(m_RouteMap);
+  if (!routeIsManaged || !timelineTime.IsValid()) {
+    if (m_RouteMap && !routeIsManaged) SetRouteMap(nullptr);
     return;
   }
 
@@ -1236,979 +1189,4 @@ void RoutingTablePanel::UpdateTimeHighlight(wxDateTime timelineTime) {
 
   // Refresh the grid to show the changes
   m_gridWeatherTable->Refresh();
-}
-
-void RoutingTablePanel::OnExportButton(wxCommandEvent& event) {
-  ExportToExcel();
-}
-
-void RoutingTablePanel::CreateSummaryTab() {
-  m_summaryTab = new wxPanel(m_notebook, wxID_ANY);
-  // Use system default colors for better integration
-  m_summaryTab->SetBackgroundColour(
-      wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOW));
-
-  wxBoxSizer* summaryMainSizer = new wxBoxSizer(wxVERTICAL);
-
-  // Title
-  wxStaticText* title =
-      new wxStaticText(m_summaryTab, wxID_ANY, _("Route Summary"));
-  wxFont titleFont = title->GetFont();
-  titleFont.SetPointSize(titleFont.GetPointSize() + 2);
-  titleFont.SetWeight(wxFONTWEIGHT_BOLD);
-  title->SetFont(titleFont);
-  summaryMainSizer->Add(title, 0, wxALIGN_CENTER | wxALL, 10);
-
-  // Content area with export button
-  wxBoxSizer* contentSizer = new wxBoxSizer(wxHORIZONTAL);
-
-  // Left side - summary information in a grid
-  wxFlexGridSizer* summaryGridSizer = new wxFlexGridSizer(15, 2, 8, 20);
-  summaryGridSizer->AddGrowableCol(1);
-
-  // Create summary labels and text controls
-  summaryGridSizer->Add(
-      new wxStaticText(m_summaryTab, wxID_ANY, _("Departure:")), 0,
-      wxALIGN_CENTER_VERTICAL | wxALIGN_RIGHT);
-  m_departureText = new wxStaticText(m_summaryTab, wxID_ANY, _("--"));
-  summaryGridSizer->Add(m_departureText, 1, wxEXPAND | wxALIGN_CENTER_VERTICAL);
-
-  summaryGridSizer->Add(new wxStaticText(m_summaryTab, wxID_ANY, _("Arrival:")),
-                        0, wxALIGN_CENTER_VERTICAL | wxALIGN_RIGHT);
-  m_arrivalText = new wxStaticText(m_summaryTab, wxID_ANY, _("--"));
-  summaryGridSizer->Add(m_arrivalText, 1, wxEXPAND | wxALIGN_CENTER_VERTICAL);
-
-  summaryGridSizer->Add(
-      new wxStaticText(m_summaryTab, wxID_ANY, _("Distance:")), 0,
-      wxALIGN_CENTER_VERTICAL | wxALIGN_RIGHT);
-  m_distanceText = new wxStaticText(m_summaryTab, wxID_ANY, _("--"));
-  summaryGridSizer->Add(m_distanceText, 1, wxEXPAND | wxALIGN_CENTER_VERTICAL);
-
-  summaryGridSizer->Add(
-      new wxStaticText(m_summaryTab, wxID_ANY, _("Duration:")), 0,
-      wxALIGN_CENTER_VERTICAL | wxALIGN_RIGHT);
-  m_durationText = new wxStaticText(m_summaryTab, wxID_ANY, _("--"));
-  summaryGridSizer->Add(m_durationText, 1, wxEXPAND | wxALIGN_CENTER_VERTICAL);
-
-  summaryGridSizer->Add(
-      new wxStaticText(m_summaryTab, wxID_ANY, _("TWS Range:")), 0,
-      wxALIGN_CENTER_VERTICAL | wxALIGN_RIGHT);
-  m_windRangeText = new wxStaticText(m_summaryTab, wxID_ANY, _("--"));
-  summaryGridSizer->Add(m_windRangeText, 1, wxEXPAND | wxALIGN_CENTER_VERTICAL);
-
-  summaryGridSizer->Add(
-      new wxStaticText(m_summaryTab, wxID_ANY, _("Wind Gust Range:")), 0,
-      wxALIGN_CENTER_VERTICAL | wxALIGN_RIGHT);
-  m_windGustRangeText = new wxStaticText(m_summaryTab, wxID_ANY, _("--"));
-  summaryGridSizer->Add(m_windGustRangeText, 1,
-                        wxEXPAND | wxALIGN_CENTER_VERTICAL);
-
-  summaryGridSizer->Add(
-      new wxStaticText(m_summaryTab, wxID_ANY, _("AWS Range:")), 0,
-      wxALIGN_CENTER_VERTICAL | wxALIGN_RIGHT);
-  m_awsRangeText = new wxStaticText(m_summaryTab, wxID_ANY, _("--"));
-  summaryGridSizer->Add(m_awsRangeText, 1, wxEXPAND | wxALIGN_CENTER_VERTICAL);
-
-  summaryGridSizer->Add(
-      new wxStaticText(m_summaryTab, wxID_ANY, _("AWA Range:")), 0,
-      wxALIGN_CENTER_VERTICAL | wxALIGN_RIGHT);
-  m_awaRangeText = new wxStaticText(m_summaryTab, wxID_ANY, _("--"));
-  summaryGridSizer->Add(m_awaRangeText, 1, wxEXPAND | wxALIGN_CENTER_VERTICAL);
-
-  summaryGridSizer->Add(new wxStaticText(m_summaryTab, wxID_ANY,
-                                         _("Significant Wave Height Range:")),
-                        0, wxALIGN_CENTER_VERTICAL | wxALIGN_RIGHT);
-  m_waveRangeText = new wxStaticText(m_summaryTab, wxID_ANY, _("--"));
-  summaryGridSizer->Add(m_waveRangeText, 1, wxEXPAND | wxALIGN_CENTER_VERTICAL);
-
-  summaryGridSizer->Add(
-      new wxStaticText(m_summaryTab, wxID_ANY, _("Temperature Range:")), 0,
-      wxALIGN_CENTER_VERTICAL | wxALIGN_RIGHT);
-  m_tempRangeText = new wxStaticText(m_summaryTab, wxID_ANY, _("--"));
-  summaryGridSizer->Add(m_tempRangeText, 1, wxEXPAND | wxALIGN_CENTER_VERTICAL);
-
-  summaryGridSizer->Add(
-      new wxStaticText(m_summaryTab, wxID_ANY, _("Sail Changes:")), 0,
-      wxALIGN_CENTER_VERTICAL | wxALIGN_RIGHT);
-  m_sailChangesText = new wxStaticText(m_summaryTab, wxID_ANY, _("--"));
-  summaryGridSizer->Add(m_sailChangesText, 1,
-                        wxEXPAND | wxALIGN_CENTER_VERTICAL);
-
-  summaryGridSizer->Add(
-      new wxStaticText(m_summaryTab, wxID_ANY, _("Tack Changes:")), 0,
-      wxALIGN_CENTER_VERTICAL | wxALIGN_RIGHT);
-  m_tackChangesText = new wxStaticText(m_summaryTab, wxID_ANY, _("--"));
-  summaryGridSizer->Add(m_tackChangesText, 1,
-                        wxEXPAND | wxALIGN_CENTER_VERTICAL);
-
-  summaryGridSizer->Add(
-      new wxStaticText(m_summaryTab, wxID_ANY, _("Jibe Changes:")), 0,
-      wxALIGN_CENTER_VERTICAL | wxALIGN_RIGHT);
-  m_jibeChangesText = new wxStaticText(m_summaryTab, wxID_ANY, _("--"));
-  summaryGridSizer->Add(m_jibeChangesText, 1,
-                        wxEXPAND | wxALIGN_CENTER_VERTICAL);
-
-  summaryGridSizer->Add(
-      new wxStaticText(m_summaryTab, wxID_ANY, _("Duration under motor:")), 0,
-      wxALIGN_CENTER_VERTICAL | wxALIGN_RIGHT);
-  m_motorDurationText = new wxStaticText(m_summaryTab, wxID_ANY, _("--"));
-  summaryGridSizer->Add(m_motorDurationText, 1,
-                        wxEXPAND | wxALIGN_CENTER_VERTICAL);
-
-  summaryGridSizer->Add(
-      new wxStaticText(m_summaryTab, wxID_ANY, _("Distance under motor:")), 0,
-      wxALIGN_CENTER_VERTICAL | wxALIGN_RIGHT);
-  m_motorDistanceText = new wxStaticText(m_summaryTab, wxID_ANY, _("--"));
-  summaryGridSizer->Add(m_motorDistanceText, 1,
-                        wxEXPAND | wxALIGN_CENTER_VERTICAL);
-
-  contentSizer->Add(summaryGridSizer, 1, wxEXPAND | wxALL, 20);
-
-  // Right side - export button
-  wxBoxSizer* buttonSizer = new wxBoxSizer(wxVERTICAL);
-  m_exportButton = new wxButton(m_summaryTab, wxID_ANY, _("Export to Excel"),
-                                wxDefaultPosition, wxSize(140, 35));
-  buttonSizer->Add(m_exportButton, 0, wxALIGN_CENTER | wxALL, 20);
-
-  contentSizer->Add(buttonSizer, 0, wxALIGN_CENTER_VERTICAL);
-
-  summaryMainSizer->Add(contentSizer, 1, wxEXPAND);
-  m_summaryTab->SetSizer(summaryMainSizer);
-}
-
-RoutingTablePanel::SummaryData RoutingTablePanel::CalculateSummaryData() {
-  SummaryData summary = {};
-
-  // Get plot data from the route
-  std::list<PlotData> plotData = m_RouteMap->GetPlotData(false);
-  if (plotData.empty()) {
-    return summary;
-  }
-
-  // Initialize variables for calculations
-  summary.totalDistance = 0.0;
-  summary.motorDistance = 0.0;
-  summary.minWindSpeed = DBL_MAX;
-  summary.maxWindSpeed = -DBL_MAX;
-  summary.minWindGust = DBL_MAX;
-  summary.maxWindGust = -DBL_MAX;
-  summary.minAWS = DBL_MAX;
-  summary.maxAWS = -DBL_MAX;
-  summary.minAWA = DBL_MAX;
-  summary.maxAWA = -DBL_MAX;
-  summary.minWaveHeight = DBL_MAX;
-  summary.maxWaveHeight = -DBL_MAX;
-  summary.minTemp = DBL_MAX;
-  summary.maxTemp = -DBL_MAX;
-  int motorPoints = 0;
-  int totalPoints = 0;
-  wxTimeSpan totalMotorTime;
-
-  PlotData prevData;
-  bool firstPoint = true;
-  wxDateTime prevTime;
-
-  for (const PlotData& data : plotData) {
-    if (firstPoint) {
-      summary.startTime = data.time;
-      firstPoint = false;
-    } else {
-      // Calculate distance
-      double legDistance = DistGreatCircle_Plugin(prevData.lat, prevData.lon,
-                                                  data.lat, data.lon);
-      summary.totalDistance += legDistance;
-
-      // Calculate time duration for this leg
-      wxTimeSpan legDuration = data.time.Subtract(prevTime);
-
-      // Check if motor was used for this leg
-      if (data.data_mask & DataMask::MOTOR_USED) {
-        summary.motorDistance += legDistance;
-        totalMotorTime = totalMotorTime.Add(legDuration);
-      }
-    }
-
-    summary.endTime = data.time;
-    totalPoints++;
-
-    // Check for motor usage (for point-based percentage)
-    if (data.data_mask & DataMask::MOTOR_USED) {
-      motorPoints++;
-    }
-
-    // Track wind speed range
-    if (!std::isnan(data.twsOverWater)) {
-      summary.minWindSpeed = std::min(summary.minWindSpeed, data.twsOverWater);
-      summary.maxWindSpeed = std::max(summary.maxWindSpeed, data.twsOverWater);
-    }
-
-    // Track wind gust range
-    if (!std::isnan(data.VW_GUST)) {
-      summary.minWindGust = std::min(summary.minWindGust, data.VW_GUST);
-      summary.maxWindGust = std::max(summary.maxWindGust, data.VW_GUST);
-    }
-
-    // Track AWA and AWS range (calculate apparent wind from available data)
-    if (!std::isnan(data.stw) && !std::isnan(data.twdOverWater) &&
-        !std::isnan(data.twsOverWater) && !std::isnan(data.ctw)) {
-      double apparentWindSpeed = Polar::VelocityApparentWind(
-          data.stw, data.twdOverWater - data.ctw, data.twsOverWater);
-      double apparentWindAngle = Polar::DirectionApparentWind(
-          apparentWindSpeed, data.stw, data.twdOverWater - data.ctw,
-          data.twsOverWater);
-
-      // Track AWS range
-      if (!std::isnan(apparentWindSpeed)) {
-        summary.minAWS = std::min(summary.minAWS, apparentWindSpeed);
-        summary.maxAWS = std::max(summary.maxAWS, apparentWindSpeed);
-      }
-
-      // Track AWA range
-      if (!std::isnan(apparentWindAngle)) {
-        // Convert to absolute value for range calculation (0-180 degrees)
-        double absAWA = std::abs(apparentWindAngle);
-        if (absAWA > 180) absAWA = 360 - absAWA;
-        summary.minAWA = std::min(summary.minAWA, absAWA);
-        summary.maxAWA = std::max(summary.maxAWA, absAWA);
-      }
-    }
-
-    // Track wave height range
-    if (!std::isnan(data.WVHT) && data.WVHT > 0) {
-      summary.minWaveHeight = std::min(summary.minWaveHeight, data.WVHT);
-      summary.maxWaveHeight = std::max(summary.maxWaveHeight, data.WVHT);
-    }
-
-    // Track temperature range (convert from Kelvin to Celsius)
-    if (!std::isnan(data.air_temp)) {
-      double tempC = data.air_temp - 273.15;
-      summary.minTemp = std::min(summary.minTemp, tempC);
-      summary.maxTemp = std::max(summary.maxTemp, tempC);
-    }
-
-    prevData = data;
-    prevTime = data.time;
-  }
-
-  // Get cumulative tacks, jibes, and sail changes from the last data point
-  // These are already cumulative in the PlotData
-  if (!plotData.empty()) {
-    const PlotData& lastData = plotData.back();
-    summary.sailChanges = lastData.sail_plan_changes;
-    summary.tackChanges = lastData.tacks;
-    summary.jibeChanges = lastData.jibes;
-  }
-
-  // Calculate motor percentages
-  summary.motorDurationPercentage =
-      totalPoints > 0 ? (double)motorPoints / totalPoints * 100.0 : 0.0;
-  summary.motorDistancePercentage =
-      summary.totalDistance > 0
-          ? summary.motorDistance / summary.totalDistance * 100.0
-          : 0.0;
-  summary.motorDuration = totalMotorTime;
-
-  return summary;
-}
-
-void RoutingTablePanel::UpdateSummary() {
-  // Calculate summary data using helper function
-  SummaryData summary = CalculateSummaryData();
-
-  // Check if we have valid data
-  if (!summary.startTime.IsValid()) {
-    // No data - set all to default
-    m_departureText->SetLabel(_("--"));
-    m_arrivalText->SetLabel(_("--"));
-    m_distanceText->SetLabel(_("--"));
-    m_durationText->SetLabel(_("--"));
-    m_windRangeText->SetLabel(_("--"));
-    m_windGustRangeText->SetLabel(_("--"));
-    m_awsRangeText->SetLabel(_("--"));
-    m_awaRangeText->SetLabel(_("--"));
-    m_waveRangeText->SetLabel(_("--"));
-    m_tempRangeText->SetLabel(_("--"));
-    m_sailChangesText->SetLabel(_("--"));
-    m_motorDurationText->SetLabel(_("--"));
-    m_motorDistanceText->SetLabel(_("--"));
-    m_tackChangesText->SetLabel(_("--"));
-    m_jibeChangesText->SetLabel(_("--"));
-    return;
-  }
-
-  // Update summary text controls with calculated data
-#if OCPN_API_VERSION_MAJOR > 1 || \
-    (OCPN_API_VERSION_MAJOR == 1 && OCPN_API_VERSION_MINOR >= 20)
-  m_departureText->SetLabel(toUsrDateTimeFormat_Plugin(summary.startTime));
-  m_arrivalText->SetLabel(toUsrDateTimeFormat_Plugin(summary.endTime));
-#else
-  bool useLocalTime =
-      m_WeatherRouting.m_SettingsDialog.m_cbUseLocalTime->IsChecked();
-
-  std::string timeFormat =
-    useLocalTime? "%Y-%m-%d %H:%M %Z" : "%Y-%m-%d %H:%M UTC";
-  m_departureText->SetLabel(summary.startTime.Format(
-      timeFormat.c_str(), m_WeatherRouting.m_SettingsDialog.GetTimeZone()));
-  m_arrivalText->SetLabel(summary.endTime.Format(
-      timeFormat.c_str(), m_WeatherRouting.m_SettingsDialog.GetTimeZone()));
-#endif
-
-  m_distanceText->SetLabel(FormatDistance(summary.totalDistance));
-
-  wxTimeSpan totalDuration = summary.endTime.Subtract(summary.startTime);
-  int days = totalDuration.GetDays();
-  wxString durationString;
-  if (days > 0) {
-    durationString = wxString::Format("%d days %02d:%02d", days,
-                                      totalDuration.GetHours() % 24,
-                                      totalDuration.GetMinutes() % 60);
-  } else {
-    durationString = wxString::Format("%02d:%02d", totalDuration.GetHours(),
-                                      totalDuration.GetMinutes() % 60);
-  }
-  m_durationText->SetLabel(durationString);
-
-  if (summary.minWindSpeed != DBL_MAX && summary.maxWindSpeed != -DBL_MAX) {
-    m_windRangeText->SetLabel(FormatSpeed(summary.minWindSpeed) + " - " +
-                              FormatSpeed(summary.maxWindSpeed));
-  } else {
-    m_windRangeText->SetLabel(_("--"));
-  }
-
-  if (summary.minWindGust != DBL_MAX && summary.maxWindGust != -DBL_MAX) {
-    m_windGustRangeText->SetLabel(FormatSpeed(summary.minWindGust) + " - " +
-                                  FormatSpeed(summary.maxWindGust));
-  } else {
-    m_windGustRangeText->SetLabel(_("--"));
-  }
-
-  if (summary.minAWS != DBL_MAX && summary.maxAWS != -DBL_MAX) {
-    m_awsRangeText->SetLabel(FormatSpeed(summary.minAWS) + " - " +
-                             FormatSpeed(summary.maxAWS));
-  } else {
-    m_awsRangeText->SetLabel(_("--"));
-  }
-
-  if (summary.minAWA != DBL_MAX && summary.maxAWA != -DBL_MAX) {
-    m_awaRangeText->SetLabel(wxString::Format("%.0f\u00B0 - %.0f\u00B0",
-                                              summary.minAWA, summary.maxAWA));
-  } else {
-    m_awaRangeText->SetLabel(_("--"));
-  }
-
-  if (summary.minWaveHeight != DBL_MAX && summary.maxWaveHeight != -DBL_MAX) {
-    m_waveRangeText->SetLabel(wxString::Format(
-        "%.1f - %.1f m", summary.minWaveHeight, summary.maxWaveHeight));
-  } else {
-    m_waveRangeText->SetLabel(_("--"));
-  }
-
-  if (summary.minTemp != DBL_MAX && summary.maxTemp != -DBL_MAX) {
-    double minTempUser = toUsrTemp_Plugin(summary.minTemp);
-    double maxTempUser = toUsrTemp_Plugin(summary.maxTemp);
-    wxString tempUnit = getUsrTempUnit_Plugin();
-    m_tempRangeText->SetLabel(
-        wxString::Format("%.1f - %.1f%s", minTempUser, maxTempUser, tempUnit));
-  } else {
-    m_tempRangeText->SetLabel(_("--"));
-  }
-
-  m_sailChangesText->SetLabel(wxString::Format("%d", summary.sailChanges));
-
-  // Format motor duration
-  wxString motorDurationStr;
-  int motorDays = summary.motorDuration.GetDays();
-  if (motorDays > 0) {
-    motorDurationStr = wxString::Format("%dd %02d:%02d (%.1f%%)", motorDays,
-                                        summary.motorDuration.GetHours() % 24,
-                                        summary.motorDuration.GetMinutes() % 60,
-                                        summary.motorDurationPercentage);
-  } else {
-    motorDurationStr =
-        wxString::Format("%02d:%02d (%.1f%%)", summary.motorDuration.GetHours(),
-                         summary.motorDuration.GetMinutes() % 60,
-                         summary.motorDurationPercentage);
-  }
-  m_motorDurationText->SetLabel(motorDurationStr);
-
-  // Format motor distance
-  wxString motorDistanceStr =
-      FormatDistance(summary.motorDistance) +
-      wxString::Format(" (%.1f%%)", summary.motorDistancePercentage);
-  m_motorDistanceText->SetLabel(motorDistanceStr);
-
-  m_tackChangesText->SetLabel(wxString::Format("%d", summary.tackChanges));
-  m_jibeChangesText->SetLabel(wxString::Format("%d", summary.jibeChanges));
-}
-
-void RoutingTablePanel::ExportToExcel() {
-  wxFileDialog saveFileDialog(
-      this, _("Export table to Excel"), "", "routing_table.xlsx",
-      "Excel files (*.xlsx)|*.xlsx|Excel 97-2003 (*.xls)|*.xls",
-      wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
-
-  if (saveFileDialog.ShowModal() == wxID_CANCEL) {
-    return;
-  }
-
-  wxString filename = saveFileDialog.GetPath();
-  wxString extension = wxFileName(filename).GetExt().Lower();
-
-  bool success = false;
-  if (extension == "xlsx" || extension == "xls") {
-    success = WriteExcelXML(filename);
-  } else {
-    // Default to .xlsx if no extension specified
-    if (extension.IsEmpty()) {
-      filename += ".xlsx";
-    }
-    success = WriteExcelXML(filename);
-  }
-
-  if (!success) {
-    wxMessageBox(_("Failed to export table to Excel"), _("Export Error"),
-                 wxOK | wxICON_ERROR);
-  } else {
-    wxMessageBox(_("Table exported successfully"), _("Export Complete"),
-                 wxOK | wxICON_INFORMATION);
-  }
-}
-
-wxString RoutingTablePanel::ConvertColorToHex(const wxColour& color) {
-  return wxString::Format("#%02X%02X%02X", color.Red(), color.Green(),
-                          color.Blue());
-}
-
-wxString RoutingTablePanel::ConvertColorToARGB(const wxColour& color) {
-  return wxString::Format("FF%02X%02X%02X", color.Red(), color.Green(),
-                          color.Blue());
-}
-
-wxString RoutingTablePanel::EscapeXML(const wxString& text) {
-  wxString escaped = text;
-  escaped.Replace("&", "&amp;");
-  escaped.Replace("<", "&lt;");
-  escaped.Replace(">", "&gt;");
-  escaped.Replace("\"", "&quot;");
-  escaped.Replace("'", "&apos;");
-  return escaped;
-}
-
-RoutingTablePanel::CellStyle RoutingTablePanel::GetCellStyle(int row, int col) {
-  CellStyle style;
-
-  if (row >= 0 && row < m_gridWeatherTable->GetNumberRows() && col >= 0 &&
-      col < m_gridWeatherTable->GetNumberCols()) {
-    // Use public methods to get cell attributes
-    style.bgColor = m_gridWeatherTable->GetCellBackgroundColour(row, col);
-    style.textColor = m_gridWeatherTable->GetCellTextColour(row, col);
-
-    // Get font information
-    wxFont cellFont = m_gridWeatherTable->GetCellFont(row, col);
-    style.isBold = cellFont.GetWeight() == wxFONTWEIGHT_BOLD;
-  }
-
-  return style;
-}
-
-int RoutingTablePanel::GetOrCreateStyleId(const CellStyle& style) {
-  auto it = m_styleMap.find(style);
-  if (it != m_styleMap.end()) {
-    return it->second;
-  }
-
-  int styleId = m_styles.size();
-  m_styles.push_back(style);
-  m_styleMap[style] = styleId;
-  return styleId;
-}
-
-wxString RoutingTablePanel::CreateStylesXMLWithColors() {
-  // Clear and rebuild styles for this export
-  m_styles.clear();
-  m_styleMap.clear();
-
-  // Add default style
-  CellStyle defaultStyle(*wxWHITE, *wxBLACK, false);
-  GetOrCreateStyleId(defaultStyle);
-
-  // Add header style
-  CellStyle headerStyle(wxColour(211, 211, 211), *wxBLACK, true);
-  GetOrCreateStyleId(headerStyle);
-
-  // Scan all cells to build style collection
-  for (int row = 0; row < m_gridWeatherTable->GetNumberRows(); row++) {
-    for (int col = 0; col < m_gridWeatherTable->GetNumberCols(); col++) {
-      CellStyle cellStyle = GetCellStyle(row, col);
-      GetOrCreateStyleId(cellStyle);
-    }
-  }
-
-  wxString xml =
-      "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
-      "<styleSheet "
-      "xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\n";
-
-  // Fonts section
-  xml += wxString::Format("<fonts count=\"%d\">\n", (int)m_styles.size());
-  for (const auto& style : m_styles) {
-    xml += "<font>";
-    if (style.isBold) {
-      xml += "<b/>";
-    }
-    xml += "<sz val=\"11\"/>";
-    xml += "<name val=\"Calibri\"/>";
-    xml += wxString::Format("<color rgb=\"%s\"/>",
-                            ConvertColorToARGB(style.textColor));
-    xml += "</font>\n";
-  }
-  xml += "</fonts>\n";
-
-  // Fills section
-  xml += wxString::Format("<fills count=\"%d\">\n", (int)m_styles.size() + 2);
-  xml += "<fill><patternFill patternType=\"none\"/></fill>\n";
-  xml += "<fill><patternFill patternType=\"gray125\"/></fill>\n";
-  for (const auto& style : m_styles) {
-    xml += "<fill><patternFill patternType=\"solid\">";
-    xml += wxString::Format("<fgColor rgb=\"%s\"/>",
-                            ConvertColorToARGB(style.bgColor));
-    xml += "</patternFill></fill>\n";
-  }
-  xml += "</fills>\n";
-
-  // Borders section
-  xml += "<borders count=\"2\">\n";
-  xml += "<border><left/><right/><top/><bottom/><diagonal/></border>\n";
-  xml +=
-      "<border><left style=\"thin\"/><right style=\"thin\"/><top "
-      "style=\"thin\"/><bottom style=\"thin\"/><diagonal/></border>\n";
-  xml += "</borders>\n";
-
-  // Cell style formats
-  xml += "<cellStyleXfs count=\"1\">\n";
-  xml += "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/>\n";
-  xml += "</cellStyleXfs>\n";
-
-  // Cell formats
-  xml += wxString::Format("<cellXfs count=\"%d\">\n", (int)m_styles.size());
-  for (size_t i = 0; i < m_styles.size(); i++) {
-    int borderId = (i == 1) ? 1 : 0;  // Use border for header style
-    xml += wxString::Format(
-        "<xf numFmtId=\"0\" fontId=\"%d\" fillId=\"%d\" borderId=\"%d\" "
-        "xfId=\"0\"/>\n",
-        (int)i, (int)i + 2, borderId);
-  }
-  xml += "</cellXfs>\n";
-
-  xml += "</styleSheet>";
-  return xml;
-}
-
-wxString RoutingTablePanel::CreateWorksheetXMLWithColors() {
-  wxString xml =
-      "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
-      "<worksheet "
-      "xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\n"
-      "<sheetData>\n";
-
-  // Header row with style
-  xml += "<row r=\"1\">\n";
-  CellStyle headerStyle(wxColour(211, 211, 211), *wxBLACK, true);
-  int headerStyleId = GetOrCreateStyleId(headerStyle);
-
-  for (int col = 0; col < m_gridWeatherTable->GetNumberCols(); col++) {
-    wxString cellRef = GetCellReference(1, col + 1);
-    wxString header = EscapeXML(m_gridWeatherTable->GetColLabelValue(col));
-    xml += wxString::Format(
-        "<c r=\"%s\" t=\"inlineStr\" s=\"%d\"><is><t>%s</t></is></c>\n",
-        cellRef, headerStyleId, header);
-  }
-  xml += "</row>\n";
-
-  // Data rows
-  for (int row = 0; row < m_gridWeatherTable->GetNumberRows(); row++) {
-    xml += wxString::Format("<row r=\"%d\">\n", row + 2);
-    for (int col = 0; col < m_gridWeatherTable->GetNumberCols(); col++) {
-      wxString cellRef = GetCellReference(row + 2, col + 1);
-      wxString value = EscapeXML(m_gridWeatherTable->GetCellValue(row, col));
-
-      // Get the style for this cell
-      CellStyle cellStyle = GetCellStyle(row, col);
-      int styleId = GetOrCreateStyleId(cellStyle);
-
-      if (value.IsEmpty()) {
-        xml += wxString::Format(
-            "<c r=\"%s\" t=\"inlineStr\" s=\"%d\"><is><t></t></is></c>\n",
-            cellRef, styleId);
-      } else {
-        xml += wxString::Format(
-            "<c r=\"%s\" t=\"inlineStr\" s=\"%d\"><is><t>%s</t></is></c>\n",
-            cellRef, styleId, value);
-      }
-    }
-    xml += "</row>\n";
-  }
-
-  xml += "</sheetData>\n</worksheet>";
-  return xml;
-}
-
-wxString RoutingTablePanel::GetCellReference(int row, int col) {
-  wxString colStr;
-  while (col > 0) {
-    col--;
-    colStr = wxChar('A' + (col % 26)) + colStr;
-    col /= 26;
-  }
-  return wxString::Format("%s%d", colStr, row);
-}
-
-bool RoutingTablePanel::WriteExcelXML(const wxString& filename) {
-  wxString extension = wxFileName(filename).GetExt().Lower();
-
-  if (extension == "xlsx") {
-    return WriteXLSX(filename);
-  } else {
-    // Fallback to simple XML for other extensions
-    return WriteSimpleXML(filename);
-  }
-}
-
-bool RoutingTablePanel::WriteXLSX(const wxString& filename) {
-  wxFileOutputStream fileStream(filename);
-  if (!fileStream.IsOk()) {
-    return false;
-  }
-
-  wxZipOutputStream zipStream(fileStream);
-
-  // Create [Content_Types].xml
-  wxString contentTypes =
-      "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
-      "<Types "
-      "xmlns=\"http://schemas.openxmlformats.org/package/2006/"
-      "content-types\">\n"
-      "<Default Extension=\"rels\" "
-      "ContentType=\"application/"
-      "vnd.openxmlformats-package.relationships+xml\"/>\n"
-      "<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
-      "<Override PartName=\"/xl/workbook.xml\" "
-      "ContentType=\"application/"
-      "vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>\n"
-      "<Override PartName=\"/xl/worksheets/sheet1.xml\" "
-      "ContentType=\"application/"
-      "vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n"
-      "<Override PartName=\"/xl/styles.xml\" "
-      "ContentType=\"application/"
-      "vnd.openxmlformats-officedocument.spreadsheetml.styles+xml\"/>\n"
-      "</Types>";
-
-  zipStream.PutNextEntry("[Content_Types].xml");
-  wxCharBuffer buffer = contentTypes.ToUTF8();
-  zipStream.Write(buffer.data(), buffer.length());
-  zipStream.CloseEntry();
-
-  // Create _rels/.rels
-  wxString mainRels =
-      "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
-      "<Relationships "
-      "xmlns=\"http://schemas.openxmlformats.org/package/2006/"
-      "relationships\">\n"
-      "<Relationship Id=\"rId1\" "
-      "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/"
-      "relationships/officeDocument\" Target=\"xl/workbook.xml\"/>\n"
-      "</Relationships>";
-
-  zipStream.PutNextEntry("_rels/.rels");
-  buffer = mainRels.ToUTF8();
-  zipStream.Write(buffer.data(), buffer.length());
-  zipStream.CloseEntry();
-
-  // Create xl/workbook.xml
-  wxString workbook =
-      "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
-      "<workbook "
-      "xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
-      "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/"
-      "relationships\">\n"
-      "<sheets>\n"
-      "<sheet name=\"Routing Table\" sheetId=\"1\" r:id=\"rId1\"/>\n"
-      "</sheets>\n"
-      "</workbook>";
-
-  zipStream.PutNextEntry("xl/workbook.xml");
-  buffer = workbook.ToUTF8();
-  zipStream.Write(buffer.data(), buffer.length());
-  zipStream.CloseEntry();
-
-  // Create xl/_rels/workbook.xml.rels
-  wxString workbookRels =
-      "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
-      "<Relationships "
-      "xmlns=\"http://schemas.openxmlformats.org/package/2006/"
-      "relationships\">\n"
-      "<Relationship Id=\"rId1\" "
-      "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/"
-      "relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>\n"
-      "<Relationship Id=\"rId2\" "
-      "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/"
-      "relationships/styles\" Target=\"styles.xml\"/>\n"
-      "</Relationships>";
-
-  zipStream.PutNextEntry("xl/_rels/workbook.xml.rels");
-  buffer = workbookRels.ToUTF8();
-  zipStream.Write(buffer.data(), buffer.length());
-  zipStream.CloseEntry();
-
-  // Create xl/styles.xml with colors
-  wxString styles = CreateStylesXMLWithColors();
-  zipStream.PutNextEntry("xl/styles.xml");
-  buffer = styles.ToUTF8();
-  zipStream.Write(buffer.data(), buffer.length());
-  zipStream.CloseEntry();
-
-  // Create xl/worksheets/sheet1.xml with actual data and colors
-  wxString worksheet = CreateWorksheetXMLWithColors();
-  zipStream.PutNextEntry("xl/worksheets/sheet1.xml");
-  buffer = worksheet.ToUTF8();
-  zipStream.Write(buffer.data(), buffer.length());
-  zipStream.CloseEntry();
-
-  // Properly close the streams
-  bool success = zipStream.Close();
-  fileStream.Close();
-
-  return success;
-}
-
-wxString RoutingTablePanel::CreateStylesXML() {
-  return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
-         "<styleSheet "
-         "xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/"
-         "main\">\n"
-         "<fonts count=\"2\">\n"
-         "<font><sz val=\"11\"/><name val=\"Calibri\"/></font>\n"
-         "<font><b/><sz val=\"11\"/><name val=\"Calibri\"/></font>\n"
-         "</fonts>\n"
-         "<fills count=\"3\">\n"
-         "<fill><patternFill patternType=\"none\"/></fill>\n"
-         "<fill><patternFill patternType=\"gray125\"/></fill>\n"
-         "<fill><patternFill patternType=\"solid\"><fgColor "
-         "rgb=\"FFD3D3D3\"/></patternFill></fill>\n"
-         "</fills>\n"
-         "<borders count=\"2\">\n"
-         "<border><left/><right/><top/><bottom/><diagonal/></border>\n"
-         "<border><left style=\"thin\"/><right style=\"thin\"/><top "
-         "style=\"thin\"/><bottom style=\"thin\"/><diagonal/></border>\n"
-         "</borders>\n"
-         "<cellStyleXfs count=\"1\">\n"
-         "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/>\n"
-         "</cellStyleXfs>\n"
-         "<cellXfs count=\"2\">\n"
-         "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" "
-         "xfId=\"0\"/>\n"
-         "<xf numFmtId=\"0\" fontId=\"1\" fillId=\"2\" borderId=\"1\" "
-         "xfId=\"0\"/>\n"
-         "</cellXfs>\n"
-         "</styleSheet>";
-}
-
-wxString RoutingTablePanel::CreateWorksheetXML() {
-  wxString xml =
-      "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
-      "<worksheet "
-      "xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\n"
-      "<sheetData>\n";
-
-  // Header row with style
-  xml += "<row r=\"1\">\n";
-  for (int col = 0; col < m_gridWeatherTable->GetNumberCols(); col++) {
-    wxString cellRef = GetCellReference(1, col + 1);
-    wxString header = EscapeXML(m_gridWeatherTable->GetColLabelValue(col));
-    xml += wxString::Format(
-        "<c r=\"%s\" t=\"inlineStr\" s=\"1\"><is><t>%s</t></is></c>\n", cellRef,
-        header);
-  }
-  xml += "</row>\n";
-
-  // Data rows
-  for (int row = 0; row < m_gridWeatherTable->GetNumberRows(); row++) {
-    xml += wxString::Format("<row r=\"%d\">\n", row + 2);
-    for (int col = 0; col < m_gridWeatherTable->GetNumberCols(); col++) {
-      wxString cellRef = GetCellReference(row + 2, col + 1);
-      wxString value = EscapeXML(m_gridWeatherTable->GetCellValue(row, col));
-      if (value.IsEmpty()) {
-        xml += wxString::Format(
-            "<c r=\"%s\" t=\"inlineStr\"><is><t></t></is></c>\n", cellRef);
-      } else {
-        xml += wxString::Format(
-            "<c r=\"%s\" t=\"inlineStr\"><is><t>%s</t></is></c>\n", cellRef,
-            value);
-      }
-    }
-    xml += "</row>\n";
-  }
-
-  xml += "</sheetData>\n</worksheet>";
-  return xml;
-}
-
-bool RoutingTablePanel::WriteSimpleXML(const wxString& filename) {
-  wxTextFile file(filename);
-
-  if (file.Exists()) {
-    file.Open();
-    file.Clear();
-  } else {
-    file.Create();
-  }
-
-  // Excel XML header - simplified
-  file.AddLine("<?xml version=\"1.0\"?>");
-  file.AddLine("<?mso-application progid=\"Excel.Sheet\"?>");
-  file.AddLine(
-      "<Workbook xmlns=\"urn:schemas-microsoft-com:office:spreadsheet\" "
-      "xmlns:o=\"urn:schemas-microsoft-com:office:office\" "
-      "xmlns:x=\"urn:schemas-microsoft-com:office:excel\" "
-      "xmlns:ss=\"urn:schemas-microsoft-com:office:spreadsheet\" "
-      "xmlns:html=\"http://www.w3.org/TR/REC-html40\">");
-
-  // Document properties
-  file.AddLine(
-      "<DocumentProperties xmlns=\"urn:schemas-microsoft-com:office:office\">");
-  file.AddLine("<Title>Weather Routing Table</Title>");
-  file.AddLine("<Subject>OpenCPN Weather Routing Export</Subject>");
-  file.AddLine("<Created>" + wxDateTime::Now().FormatISOCombined() +
-               "</Created>");
-  file.AddLine("</DocumentProperties>");
-
-  // Build unique styles based on cell colors
-  std::map<wxString, int> styleMap;
-  std::vector<wxString> styleDefinitions;
-  int styleIndex = 0;
-
-  // Default style
-  styleMap["default"] = styleIndex++;
-  styleDefinitions.push_back(
-      "<Style ss:ID=\"Default\" ss:Name=\"Normal\">"
-      "<Alignment ss:Vertical=\"Bottom\"/>"
-      "<Borders/>"
-      "<Font ss:FontName=\"Calibri\" x:Family=\"Swiss\" ss:Size=\"10\" "
-      "ss:Color=\"#000000\"/>"
-      "<Interior/>"
-      "</Style>");
-
-  // Header style
-  styleMap["header"] = styleIndex++;
-  styleDefinitions.push_back(
-      "<Style ss:ID=\"Header\">"
-      "<Font ss:FontName=\"Calibri\" ss:Size=\"10\" ss:Color=\"#000000\" "
-      "ss:Bold=\"1\"/>"
-      "<Interior ss:Color=\"#D3D3D3\" ss:Pattern=\"Solid\"/>"
-      "<Borders>"
-      "<Border ss:Position=\"Bottom\" ss:LineStyle=\"Continuous\" "
-      "ss:Weight=\"1\"/>"
-      "<Border ss:Position=\"Left\" ss:LineStyle=\"Continuous\" "
-      "ss:Weight=\"1\"/>"
-      "<Border ss:Position=\"Right\" ss:LineStyle=\"Continuous\" "
-      "ss:Weight=\"1\"/>"
-      "<Border ss:Position=\"Top\" ss:LineStyle=\"Continuous\" "
-      "ss:Weight=\"1\"/>"
-      "</Borders>"
-      "</Style>");
-
-  // Scan all cells to create unique styles
-  for (int row = 0; row < m_gridWeatherTable->GetNumberRows(); row++) {
-    for (int col = 0; col < m_gridWeatherTable->GetNumberCols(); col++) {
-      CellStyle cellStyle = GetCellStyle(row, col);
-      wxString bgHex = ConvertColorToHex(cellStyle.bgColor);
-      wxString textHex = ConvertColorToHex(cellStyle.textColor);
-      wxString styleKey = wxString::Format(
-          "%s_%s_%s", bgHex, textHex, cellStyle.isBold ? "bold" : "normal");
-
-      if (styleMap.find(styleKey) == styleMap.end()) {
-        styleMap[styleKey] = styleIndex++;
-        wxString styleId = wxString::Format("Style%d", styleMap[styleKey]);
-        wxString styleDef = wxString::Format(
-            "<Style ss:ID=\"%s\">"
-            "<Font ss:FontName=\"Calibri\" ss:Size=\"10\" ss:Color=\"%s\"%s/>"
-            "<Interior ss:Color=\"%s\" ss:Pattern=\"Solid\"/>"
-            "</Style>",
-            styleId, textHex, cellStyle.isBold ? " ss:Bold=\"1\"" : "", bgHex);
-        styleDefinitions.push_back(styleDef);
-      }
-    }
-  }
-
-  // Write styles section
-  file.AddLine("<Styles>");
-  for (const auto& styleDef : styleDefinitions) {
-    file.AddLine(styleDef);
-  }
-  file.AddLine("</Styles>");
-
-  // Worksheet
-  file.AddLine("<Worksheet ss:Name=\"Routing Table\">");
-  file.AddLine(wxString::Format(
-      "<Table ss:ExpandedColumnCount=\"%d\" ss:ExpandedRowCount=\"%d\" "
-      "x:FullColumns=\"1\" x:FullRows=\"1\" ss:DefaultRowHeight=\"15\">",
-      m_gridWeatherTable->GetNumberCols(),
-      m_gridWeatherTable->GetNumberRows() + 1));
-
-  // Column definitions
-  for (int col = 0; col < m_gridWeatherTable->GetNumberCols(); col++) {
-    file.AddLine("<Column ss:AutoFitWidth=\"1\"/>");
-  }
-
-  // Header row
-  file.AddLine("<Row>");
-  for (int col = 0; col < m_gridWeatherTable->GetNumberCols(); col++) {
-    file.AddLine("<Cell ss:StyleID=\"Header\">");
-    file.AddLine("<Data ss:Type=\"String\">" +
-                 EscapeXML(m_gridWeatherTable->GetColLabelValue(col)) +
-                 "</Data>");
-    file.AddLine("</Cell>");
-  }
-  file.AddLine("</Row>");
-
-  // Data rows with colors
-  for (int row = 0; row < m_gridWeatherTable->GetNumberRows(); row++) {
-    file.AddLine("<Row>");
-    for (int col = 0; col < m_gridWeatherTable->GetNumberCols(); col++) {
-      // Get cell style and determine style ID
-      CellStyle cellStyle = GetCellStyle(row, col);
-      wxString bgHex = ConvertColorToHex(cellStyle.bgColor);
-      wxString textHex = ConvertColorToHex(cellStyle.textColor);
-      wxString styleKey = wxString::Format(
-          "%s_%s_%s", bgHex, textHex, cellStyle.isBold ? "bold" : "normal");
-
-      wxString styleRef = "Default";
-      auto it = styleMap.find(styleKey);
-      if (it != styleMap.end()) {
-        styleRef = wxString::Format("Style%d", it->second);
-      }
-
-      file.AddLine(wxString::Format("<Cell ss:StyleID=\"%s\">", styleRef));
-
-      // Add the data
-      wxString value = m_gridWeatherTable->GetCellValue(row, col);
-      if (value.IsEmpty()) {
-        file.AddLine("<Data ss:Type=\"String\"></Data>");
-      } else {
-        file.AddLine("<Data ss:Type=\"String\">" + EscapeXML(value) +
-                     "</Data>");
-      }
-
-      file.AddLine("</Cell>");
-    }
-    file.AddLine("</Row>");
-  }
-
-  file.AddLine("</Table>");
-  file.AddLine("</Worksheet>");
-  file.AddLine("</Workbook>");
-
-  bool success = file.Write();
-  file.Close();
-  return success;
 }

@@ -2,5 +2,11 @@
   "name": "weather-routing-pi",
   "version-string": "0.0.0",
   "builtin-baseline":"26283ac5e8a068561a718ce18b169bfad84c7dab",
-  "dependencies": ["wxwidgets"]
+  "dependencies": ["wxwidgets"],
+  "overrides": [
+    {
+      "name": "wxwidgets",
+      "version": "3.2.8.1"
+    }
+  ]
 }
