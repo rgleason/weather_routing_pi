@@ -91,4 +91,4 @@ cp -uv ./RelWithDebInfo/*_pi.pdb C:/Users/fcgle/source/opencpn/build/RelWithDebI
 #      C:/Users/fcgle/source/opencpn/build/RelWithDebInfo/plugins/
 
 #cp -uv ${CMAKE_CURRENT_BINARY_DIR}/RelWithDebInfo/*_pi.pdb \
-#      C:/Users/fcgle/source/opencpn/build/RelWithDebInfo/plugins/
+      C:/Users/fcgle/source/opencpn/build/RelWithDebInfo/plugins/
