@@ -93,8 +93,9 @@ set(VERSION_MAJOR "1")
 set(VERSION_MINOR "17")
 set(VERSION_PATCH "11")
 set(VERSION_TWEAK "0")
-
-# Every platform and identity ships all five verified offline resolutions.
+# Keep all five approved source archives for verification and regression tests.
+# Packages ship only Crude, Low and Intermediate; High and Full are optional
+# checksum-verified downloads shared by both plugin identities.
 set(_shoreline_archives
   "poly-c-2.3.7.dat.gz|933d111ff352c8b505181e6a2d2888c093222fcccd5f3b455bfbb6f1df217891"
   "poly-l-2.3.7.dat.gz|51a1ae4874df513f25447d26740221d4b2a984fabbce9d3f84b29b2e25ff4ab9"
@@ -112,7 +113,7 @@ foreach(_archive IN LISTS _shoreline_archives)
   endif()
 endforeach()
 unset(_shoreline_archives)
-set(VERSION_DATE  "14/09/2026") # DD/MM/YYYY format
+set(VERSION_DATE  "16/09/2026") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov511")
 
 set(OCPN_API_VERSION_MAJOR "1")
@@ -218,6 +219,10 @@ option(Plugin_CXX11 "Use c++11" OFF)
 ##===========================================================
 
 include("PluginConfigure")
+
+if(PLUGIN_USE_SVG)
+  add_compile_definitions(PLUGIN_USE_SVG)
+endif()
 
 ##===========================================================
 ## ----- Do not change section above - needed to configure build process --------##
@@ -460,6 +465,9 @@ if (NOT OCPN_FLATPAK_CONFIG)
   target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::jsonlib)
 
   add_subdirectory(opencpn-libs/plugin_dc)
+  if(TARGET _DC_UTILS AND TARGET wx::core)
+    target_link_libraries(_DC_UTILS PRIVATE wx::core)
+  endif()
   target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::plugin-dc)
 
   add_subdirectory(opencpn-libs/pugixml)

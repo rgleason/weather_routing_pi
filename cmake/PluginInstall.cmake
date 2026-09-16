@@ -83,7 +83,9 @@ if (WIN32)
   endif (EXISTS ${PROJECT_SOURCE_DIR}/UserIcons)
 
   if (EXISTS ${PROJECT_SOURCE_DIR}/data)
-    install(DIRECTORY data DESTINATION "${INSTALL_DIRECTORY}")
+    install(DIRECTORY data DESTINATION "${INSTALL_DIRECTORY}"
+            PATTERN "poly-h-2.3.7.dat.gz" EXCLUDE
+            PATTERN "poly-f-2.3.7.dat.gz" EXCLUDE)
     message(STATUS "${CMLOC}Install Data: ${INSTALL_DIRECTORY}")
   endif (EXISTS ${PROJECT_SOURCE_DIR}/data)
 
@@ -105,6 +107,8 @@ if (UNIX AND NOT APPLE)
   if (EXISTS ${PROJECT_SOURCE_DIR}/data)
     install(DIRECTORY data
             DESTINATION ${PREFIX_PARENTDATA}/plugins/${PACKAGE_NAME}
+            PATTERN "poly-h-2.3.7.dat.gz" EXCLUDE
+            PATTERN "poly-f-2.3.7.dat.gz" EXCLUDE
     )
     message(STATUS "${CMLOC}Install data: ${PREFIX_PARENTDATA}/plugins/${PACKAGE_NAME}")
   endif ()
@@ -144,8 +148,12 @@ if (APPLE)
 
   # Preserve subdirectories; a recursive glob copied nested files again at
   # the root and would duplicate the 55 MiB shoreline archive in Mac packages.
+  file(REMOVE "${CMAKE_CURRENT_BINARY_DIR}/data/shoreline/poly-h-2.3.7.dat.gz"
+              "${CMAKE_CURRENT_BINARY_DIR}/data/shoreline/poly-f-2.3.7.dat.gz")
   file(COPY "${PROJECT_SOURCE_DIR}/data/"
-       DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/data")
+       DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/data"
+       PATTERN "poly-h-2.3.7.dat.gz" EXCLUDE
+       PATTERN "poly-f-2.3.7.dat.gz" EXCLUDE)
 
   if (EXISTS ${PROJECT_SOURCE_DIR}/UserIcons)
     if (NOT EXISTS "${CMAKE_CURRENT_BINARY_DIR}/UserIcons/")
@@ -179,6 +187,8 @@ if (APPLE)
     install(
       DIRECTORY data
       DESTINATION OpenCPN.app/Contents/SharedSupport/plugins/${PACKAGE_NAME}
+      PATTERN "poly-h-2.3.7.dat.gz" EXCLUDE
+      PATTERN "poly-f-2.3.7.dat.gz" EXCLUDE
     )
   endif ()
 

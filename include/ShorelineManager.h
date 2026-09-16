@@ -10,6 +10,9 @@ class ShorelineManager {
 public:
   static std::shared_ptr<ShorelineDataset> Prepare(int resolution);
   static int DefaultResolution();
+  // Installed optional data or a bundled base resolution can be selected.
+  // The full checksum and format validation still runs in Prepare().
+  static bool Available(int resolution);
   static void Show(wxWindow* parent);
   static bool Busy();
   static wxString Description(int resolution);

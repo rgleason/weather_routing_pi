@@ -517,6 +517,7 @@ protected:
   wxStaticText* m_staticText241;
   wxStaticText* m_tShorelineResolution;
   wxChoice* m_cShorelineResolution;
+  wxButton* m_bShorelineData;
   wxSpinCtrlDouble* m_sSafetyMarginLand;
   wxStaticText* m_staticText1211;
   wxSpinCtrlDouble* m_sMinimumDepthMeters;

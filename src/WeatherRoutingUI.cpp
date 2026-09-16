@@ -2441,11 +2441,12 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   for (const auto& label : {_("0 — Crude"), _("1 — Low"), _("2 — Intermediate"),
                             _("3 — High"), _("4 — Full")})
     m_cShorelineResolution->Append(label);
-  m_cShorelineResolution->SetSelection(4);
+  m_cShorelineResolution->SetSelection(2);
   m_cShorelineResolution->SetMinSize(wxSize(
       wxMax(FromDIP(190), m_cShorelineResolution->GetBestSize().x), -1));
   m_cShorelineResolution->SetToolTip(_("GSHHG shoreline detail for the selected engine; Main and Quick remember independent choices. "
-      "Chart geometry and minimum-depth checks are separate."));
+                                       "High and Full can be installed with the button below. "
+                                       "Chart geometry and minimum-depth checks are separate."));
   fgSizer11511->Add(m_cShorelineResolution, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
   fgSizer11511->Add(0, 0);
 
@@ -2499,11 +2500,18 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
                     wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
   fgSizer113->Insert(0, fgSizer11511, 0, wxEXPAND, 5);
+  m_bShorelineData = new wxButton(
+      sbOptions1->GetStaticBox(), wxID_ANY,
+      _("Shoreline data..."));
+  m_bShorelineData->SetToolTip(
+      _("Install or verify optional GSHHG High and Full datasets. "
+        "The approved files are downloaded only when requested and work offline afterwards."));
+  fgSizer113->Insert(1, m_bShorelineData, 0, wxLEFT | wxRIGHT | wxBOTTOM, 5);
   auto shorelineNote = new wxStaticText(sbOptions1->GetStaticBox(), wxID_ANY,
       _("Lower shoreline resolutions omit smaller coastal features and may allow "
         "routes through land shown at higher resolutions. Chart and depth checks are separate."));
   shorelineNote->Wrap(FromDIP(440));
-  fgSizer113->Insert(1, shorelineNote, 0, wxALL, 5);
+  fgSizer113->Insert(2, shorelineNote, 0, wxALL, 5);
 
   sbOptions1->Add(fgSizer113, 1, wxEXPAND, 5);
   wxStaticText* depthExplanation = new wxStaticText(
