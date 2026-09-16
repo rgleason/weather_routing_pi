@@ -409,7 +409,7 @@ if(NOT CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
 endif()
 
 if(CMAKE_DL_LIBS)
-  target_link_libraries(${PACKAGE_NAME} ${CMAKE_DL_LIBS})
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ${CMAKE_DL_LIBS})
 endif()
 
 
@@ -420,7 +420,7 @@ if (NOT OCPN_FLATPAK_CONFIG)
 
   if (WIN32)
     add_subdirectory(opencpn-libs/WindowsHeaders)
-    target_link_libraries(${PACKAGE_NAME} windows::headers)
+    target_link_libraries(${PACKAGE_NAME} PRIVATE windows::headers)
   endif (WIN32)
 
   if(NOT OCPN_IN_TREE_SOURCE_DIR)
@@ -448,35 +448,35 @@ if (NOT OCPN_FLATPAK_CONFIG)
   else ()
     message(FATAL_ERROR "Missing opencpn-libs/api-${OCPN_API_VERSION_MINOR}")
   endif ()
-  target_link_libraries(${PACKAGE_NAME} ocpn::api)
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::api)
 
   add_subdirectory(opencpn-libs/tinyxml)
-  target_link_libraries(${PACKAGE_NAME} ocpn::tinyxml)
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::tinyxml)
 
   add_subdirectory(opencpn-libs/odapi)
-  target_link_libraries(${PACKAGE_NAME} ocpn::odapi)
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::odapi)
 
   add_subdirectory(opencpn-libs/jsonlib)
-  target_link_libraries(${PACKAGE_NAME} ocpn::jsonlib)
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::jsonlib)
 
   add_subdirectory(opencpn-libs/plugin_dc)
-  target_link_libraries(${PACKAGE_NAME} ocpn::plugin-dc)
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::plugin-dc)
 
   add_subdirectory(opencpn-libs/pugixml)
-  target_link_libraries(${PACKAGE_NAME} ocpn::pugixml)
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::pugixml)
 
   # @todo Why would this not be required on UNIX?  
   # @todo@ On macos the build fails without it, and macos is UNIX
   # @todo See https://cmake.org/cmake/help/latest/variable/UNIX.html
   
   add_subdirectory(opencpn-libs/bzip2)
-  target_link_libraries(${PACKAGE_NAME} ocpn::bzip2)
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::bzip2)
 
   add_subdirectory(opencpn-libs/zlib)
-  target_link_libraries(${PACKAGE_NAME} ocpn::zlib)
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::zlib)
 
   add_subdirectory(opencpn-libs/libtess2)
-  target_link_libraries(${PACKAGE_NAME} ocpn::libtess2)
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::libtess2)
 
 endif(NOT OCPN_FLATPAK_CONFIG)
 
