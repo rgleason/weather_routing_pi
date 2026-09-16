@@ -580,9 +580,11 @@ if (NOT QT_ANDROID)
 
   set(USE_WX_CONFIG_MODE OFF)
 
-  # MSVC: force legacy FindwxWidgets (matches your hand-built wxWidgets)
-  if (MSVC)
-    message(STATUS "${CMLOC}MSVC: using legacy FindwxWidgets")
+  # The Flatpak SDK's wxWidgets CONFIG export can reference OpenGL::GLU even
+  # when that target is unavailable. The module finder uses wx-config and
+  # avoids importing the broken wx::wxgl link interface.
+  if (MSVC OR OCPN_FLATPAK_BUILD)
+    message(STATUS "${CMLOC}Using legacy FindwxWidgets for MSVC/Flatpak")
   else ()
     # 1) Try CONFIG-mode with explicit root, if provided
     if (wxWidgets_ROOT_DIR)
@@ -623,7 +625,7 @@ if (NOT QT_ANDROID)
 		set(wxWidgets_EXCLUDE_COMMON_LIBRARIES TRUE)
 	endif ()
 
-    find_package(wxWidgets REQUIRED COMPONENTS ${wxWidgets_USE_LIBS})
+    find_package(wxWidgets MODULE REQUIRED COMPONENTS ${wxWidgets_USE_LIBS})
     include(${wxWidgets_USE_FILE})
 
     message(STATUS "${CMLOC} wxWidgets Include: ${wxWidgets_INCLUDE_DIRS}")
