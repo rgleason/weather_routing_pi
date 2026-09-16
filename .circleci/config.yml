@@ -71,54 +71,54 @@ jobs:
 
       - retain-linux-artifacts
 
-flatpak:
+  flatpak:
 
-  parameters:
-    arch: {type: string}
-    resource_class: {type: string, default: medium}
+    parameters:
+      arch: {type: string}
+      resource_class: {type: string, default: medium}
 
-  machine:
-    image: ubuntu-2404:current
-  resource_class: << parameters.resource_class >>
+    machine:
+      image: ubuntu-2404:current
+    resource_class: << parameters.resource_class >>
 
-  environment:
-    OCPN_TARGET: flatpak
-    BUILD_ARCH: << parameters.arch >>
-    FLATPAK_BRANCH: stable
-    CLOUDSMITH_PKG_EXT: gz
-    SDK_VER: "25.08"
-    WX_VER: "32"
-    CLOUDSMITH_API_KEY: << pipeline.parameters.cloudsmith_api_key >>
+    environment:
+      OCPN_TARGET: flatpak
+      BUILD_ARCH: << parameters.arch >>
+      FLATPAK_BRANCH: stable
+      CLOUDSMITH_PKG_EXT: gz
+      SDK_VER: "25.08"
+      WX_VER: "32"
+      CLOUDSMITH_API_KEY: << pipeline.parameters.cloudsmith_api_key >>
 
-  steps:
-    - checkout
-    - run: chmod a+x ci/*.sh
+    steps:
+      - checkout
+      - run: chmod a+x ci/*.sh
 
-    - run:
-        name: Flatpak build and package
-        command: ci/circleci-build-flatpak.sh
-        no_output_timeout: 45m
+      - run:
+          name: Flatpak build and package
+          command: ci/circleci-build-flatpak.sh
+          no_output_timeout: 45m
 
-    - run:
-        name: Retain Flatpak package
-        when: always
-        command: |
-          mkdir -p artifacts/flatpak-<< parameters.arch >>/package
-          find build -maxdepth 2 -type f \
-            \( -name '*.tar.gz' -o -name '*.xml' -o -name '*.log' \) \
-            -exec cp -f '{}' artifacts/flatpak-<< parameters.arch >>/package/ \; \
-            || true
+      - run:
+          name: Retain Flatpak package
+          when: always
+          command: |
+            mkdir -p artifacts/flatpak-<< parameters.arch >>/package
+            find build -maxdepth 2 -type f \
+              \( -name '*.tar.gz' -o -name '*.xml' -o -name '*.log' \) \
+              -exec cp -f '{}' artifacts/flatpak-<< parameters.arch >>/package/ \; \
+              || true
 
-    - run:
-        name: Cloudsmith upload
-        when: always
-        command: |
-          chmod +x ci/cloudsmith-upload.sh
-          export BUILD_DIR="$PWD/artifacts/flatpak-<< parameters.arch >>/package"
-          export CLOUDSMITH_PKG_EXT="gz"
-          ci/cloudsmith-upload.sh
+      - run:
+          name: Cloudsmith upload
+          when: always
+          command: |
+            chmod +x ci/cloudsmith-upload.sh
+            export BUILD_DIR="$PWD/artifacts/flatpak-<< parameters.arch >>/package"
+            export CLOUDSMITH_PKG_EXT="gz"
+            ci/cloudsmith-upload.sh
 
-    - retain-linux-artifacts
+      - retain-linux-artifacts
 
 
   windows-x86:
@@ -251,7 +251,7 @@ flatpak:
           path: artifacts/android
      
       
-      workflows:
+workflows:
         validate:
           jobs:
             - linux-catalogue:
