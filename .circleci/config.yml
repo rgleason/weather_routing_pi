@@ -5,11 +5,11 @@ version: 2.1
 
 orbs:
   win: circleci/windows@5.1.0
-  
+
 parameters:
   cloudsmith_api_key:
     type: env_var_name
-    default: CLOUDSMITH_API_KEY 
+    default: CLOUDSMITH_API_KEY
 
 commands:
   retain-linux-artifacts:
@@ -49,30 +49,26 @@ jobs:
       BUILD_GTK3: "true"
       WX_VER: "32"
       CMAKE_BUILD_PARALLEL_LEVEL: "3"
-      CLOUDSMITH_API_KEY: << pipeline.parameters.cloudsmith_api_key >>    
+      CLOUDSMITH_API_KEY: << pipeline.parameters.cloudsmith_api_key >>
 
     steps:
       - checkout
       - run: chmod a+x ci/*.sh
-
       - run:
           name: Stock-API tests, clean package and archive validation
           command: ci/circleci-build-ubuntu-docker.sh
           no_output_timeout: 45m
-
       - run:
-         name: Cloudsmith upload
-         when: always
-         command: |
-           chmod +x ci/cloudsmith-upload.sh
-           export BUILD_DIR="$PWD/artifacts/<< parameters.target >>/package"
-           export CLOUDSMITH_PKG_EXT="gz"
-           ci/cloudsmith-upload.sh    
-
+          name: Cloudsmith upload
+          when: always
+          command: |
+            chmod +x ci/cloudsmith-upload.sh
+            export BUILD_DIR="$PWD/artifacts/<< parameters.target >>/package"
+            export CLOUDSMITH_PKG_EXT="gz"
+            ci/cloudsmith-upload.sh
       - retain-linux-artifacts
 
   flatpak:
-
     parameters:
       arch: {type: string}
       resource_class: {type: string, default: medium}
@@ -93,12 +89,10 @@ jobs:
     steps:
       - checkout
       - run: chmod a+x ci/*.sh
-
       - run:
           name: Flatpak build and package
           command: ci/circleci-build-flatpak.sh
           no_output_timeout: 45m
-
       - run:
           name: Retain Flatpak package
           when: always
@@ -108,7 +102,6 @@ jobs:
               \( -name '*.tar.gz' -o -name '*.xml' -o -name '*.log' \) \
               -exec cp -f '{}' artifacts/flatpak-<< parameters.arch >>/package/ \; \
               || true
-
       - run:
           name: Cloudsmith upload
           when: always
@@ -117,9 +110,7 @@ jobs:
             export BUILD_DIR="$PWD/artifacts/flatpak-<< parameters.arch >>/package"
             export CLOUDSMITH_PKG_EXT="gz"
             ci/cloudsmith-upload.sh
-
       - retain-linux-artifacts
-
 
   windows-x86:
     executor:
@@ -134,14 +125,12 @@ jobs:
 
     steps:
       - checkout
-
       - run:
           privileged: false
           shell: cmd.exe
           name: Native Windows build, tests and package
           command: ci\circleci-build-msvc.bat
           no_output_timeout: 45m
-
       - run:
           name: Cloudsmith upload
           when: always
@@ -150,10 +139,8 @@ jobs:
             export BUILD_DIR="$PWD/build"
             export CLOUDSMITH_PKG_EXT="exe"
             ci/cloudsmith-upload.sh
-
       - store_test_results:
           path: build/test-results
-
       - store_artifacts:
           path: build
           destination: windows-x86
@@ -173,12 +160,10 @@ jobs:
     steps:
       - checkout
       - run: chmod a+x ci/*.sh cmake/*.sh
-
       - run:
           name: Native Apple-Silicon stock-API build, tests and package
           command: ci/circleci-build-macos-universal.sh
           no_output_timeout: 45m
-
       - run:
           name: Cloudsmith upload
           when: always
@@ -187,13 +172,11 @@ jobs:
             export BUILD_DIR="$PWD/artifacts/macos-arm64/package"
             export CLOUDSMITH_PKG_EXT="gz"
             ci/cloudsmith-upload.sh
-
       - store_test_results:
           path: artifacts/macos-arm64/tests
-
       - store_artifacts:
           path: artifacts/macos-arm64
-    
+
   android:
     parameters:
       resource_class: {type: string, default: medium}
@@ -213,12 +196,10 @@ jobs:
     steps:
       - checkout
       - run: chmod a+x ci/*.sh
-
       - run:
           name: Android build, tests and package
           command: ci/circleci-build-android.sh
           no_output_timeout: 45m
-
       - run:
           name: Retain Android package
           when: always
@@ -228,7 +209,6 @@ jobs:
               \( -name '*.tar.gz' -o -name '*.xml' -o -name '*.log' \) \
               -exec cp -f '{}' artifacts/android/package/ \; \
               || true
-
       - run:
           name: Cloudsmith upload
           when: always
@@ -237,68 +217,78 @@ jobs:
             export BUILD_DIR="$PWD/artifacts/android/package"
             export CLOUDSMITH_PKG_EXT="gz"
             ci/cloudsmith-upload.sh
-
       - run:
           name: Prepare Android test results directory
           when: always
           command: |
             mkdir -p artifacts/android/tests
-
       - store_test_results:
           path: artifacts/android/tests
-
       - store_artifacts:
           path: artifacts/android
-     
-      
+
+# -------------------------
+# Top-level anchor definition
+# -------------------------
+validation-filters: &validation-filters
+  branches:
+    ignore: [devel, tmp]
+  tags:
+    ignore: /.*/
+
 workflows:
-        validate:
-          jobs:
-            - linux-catalogue:
-                name: debian13-x86_64
-                target: trixie
-                image: debian:trixie
-                filters: &validation-filters
-                  branches:
-                    ignore: [devel, tmp]
-                  tags:
-                    ignore: /.*/
-            - linux-catalogue:
-                name: debian12-x86_64
-                target: bookworm
-                image: debian:bookworm
-                filters: *validation-filters
-            - linux-catalogue:
-                name: ubuntu22.04-x86_64
-                target: jammy
-                image: ubuntu:22.04
-                dockerfile: ci/Dockerfile.jammy
-                filters: *validation-filters
-            - linux-catalogue:
-                name: ubuntu24.04-x86_64
-                target: noble
-                image: ubuntu:24.04
-                filters: *validation-filters
-            - linux-catalogue:
-                name: debian12-arm64
-                target: bookworm-arm64
-                image: arm64v8/debian:bookworm
-                resource_class: arm.medium
-                filters: *validation-filters
-            - flatpak:
-                name: flatpak25.08-x86_64
-                arch: x86_64
-                filters: *validation-filters
-            - flatpak:
-                name: flatpak25.08-aarch64
-                arch: aarch64
-                resource_class: arm.medium
-                filters: *validation-filters
-            - windows-x86:
-                filters: *validation-filters
-            - macos-universal:
-                filters: *validation-filters
-            - android:
-                name: android-arm64
-                resource_class: medium
-                filters: *validation-filters
+  validate:
+    jobs:
+      - linux-catalogue:
+          name: debian13-x86_64
+          target: trixie
+          image: debian:trixie
+          filters: *validation-filters
+
+      - linux-catalogue:
+          name: debian12-x86_64
+          target: bookworm
+          image: debian:bookworm
+          filters: *validation-filters
+
+      - linux-catalogue:
+          name: ubuntu22.04-x86_64
+          target: jammy
+          image: ubuntu:22.04
+          dockerfile: ci/Dockerfile.jammy
+          filters: *validation-filters
+
+      - linux-catalogue:
+          name: ubuntu24.04-x86_64
+          target: noble
+          image: ubuntu:24.04
+          filters: *validation-filters
+
+      - linux-catalogue:
+          name: debian12-arm64
+          target: bookworm-arm64
+          image: arm64v8/debian:bookworm
+          resource_class: arm.medium
+          filters: *validation-filters
+
+      - flatpak:
+          name: flatpak25.08-x86_64
+          arch: x86_64
+          filters: *validation-filters
+
+      - flatpak:
+          name: flatpak25.08-aarch64
+          arch: aarch64
+          resource_class: arm.medium
+          filters: *validation-filters
+
+      - windows-x86:
+          filters: *validation-filters
+
+      - macos-universal:
+          filters: *validation-filters
+
+      - android:
+          name: android-arm64
+          resource_class: medium
+          filters: *validation-filters
