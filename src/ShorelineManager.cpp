@@ -24,6 +24,7 @@ std::atomic<bool> busy{false};
 // unused caches after those route snapshots are released.
 std::map<std::pair<int, std::size_t>, std::weak_ptr<ShorelineDataset>> active;
 std::array<wxString, 5> descriptions;
+bool Bundled(const Spec& s) { return &s - kShorelineSpecs.data() < 3; }
 std::filesystem::path Path(const wxString& p) {
   return std::filesystem::u8path(p.ToUTF8().data());
 }
@@ -47,9 +48,9 @@ struct Config {
 };
 const Spec& Selected() {
   Config c;
-  const auto id = c.Read("Resolution", "full");
+  const auto id = c.Read("Resolution", "intermediate");
   for (const auto& spec : kShorelineSpecs) if (id == spec.id) return spec;
-  return kShorelineSpecs[4];
+  return kShorelineSpecs[2];
 }
 std::size_t Budget() {
   Config c;
@@ -69,6 +70,7 @@ std::filesystem::path Root() {
          "weather_routing" / "shoreline" / "2.3.7";
 }
 std::filesystem::path Archive(const Spec& s) {
+  if (!Bundled(s)) return {};
   wxString name = wxString::Format("poly-%s-2.3.7.dat.gz", s.code);
   auto installed = Path(GetPluginDataDir(PLUGIN_PACKAGE_NAME)) / "data" /
                    "shoreline" / Path(name);
@@ -106,12 +108,68 @@ std::shared_ptr<ShorelineDataset> Verify(const Spec& s,
   return std::make_shared<ShorelineDataset>(p, Budget());
 }
 void InstallBundled(const Spec& s) {
+  if (!Bundled(s))
+    throw std::runtime_error("This resolution is optional; install it from Shoreline data on Advanced.");
   auto p = Destination(s);
   InstallShorelineGzip(Archive(s), p, s.hash, s.bytes);
   Record(s, p);
 }
+std::vector<std::string> Sources(const Spec& s) {
+  const std::string name = std::string("poly-") + s.code + "-2.3.7.dat.gz";
+  return {
+      "https://github.com/pob220/weather_routing_pi/releases/download/gshhg-2.3.7/" + name,
+      "https://www.singe.media/weather-routing/gshhg-2.3.7/" + name,
+  };
+}
+void InstallOptional(const Spec& s, wxWindow* parent) {
+  if (Bundled(s)) throw std::logic_error("Bundled data is not an optional download");
+  // The approved release is pinned in ShorelineSpec. A newer upstream release
+  // is not installed until its format and hashes have been qualified in a
+  // plugin update.
+  try {
+    Verify(s, Installed(s));
+    return;  // Already at the approved version.
+  } catch (const std::bad_alloc&) {
+    throw;
+  } catch (const std::exception&) {
+  }
+  const auto destination = Destination(s);
+  auto archive = destination;
+  archive += ".download.gz";
+  DownloadShorelineMirrors(
+      Sources(s),
+      [&](const std::string& source, const std::filesystem::path& output) {
+        wxString outputPath = Wx(output);
+#ifdef __ANDROID__
+        outputPath = "file://" + outputPath;
+#endif
+        const auto result = OCPN_downloadFile(
+            wxString::FromUTF8(source), outputPath,
+            _("Downloading shoreline data"),
+            wxString::Format(_("GSHHG 2.3.7 — %s"), wxGetTranslation(s.quality)),
+            wxNullBitmap, parent,
+            OCPN_DLDS_ELAPSED_TIME | OCPN_DLDS_ESTIMATED_TIME |
+                OCPN_DLDS_REMAINING_TIME | OCPN_DLDS_SPEED | OCPN_DLDS_SIZE |
+                OCPN_DLDS_CAN_ABORT | OCPN_DLDS_AUTO_CLOSE,
+            1800);
+        if (result == OCPN_DL_ABORTED) return ShorelineDownloadResult::Cancelled;
+        if (result != OCPN_DL_NO_ERROR) return ShorelineDownloadResult::Failed;
+        if (std::filesystem::file_size(output) != s.archive_bytes ||
+            ShorelineSha256(output) != s.archive_hash)
+          throw std::runtime_error("Downloaded shoreline archive failed size or SHA-256 verification");
+        return ShorelineDownloadResult::Complete;
+      },
+      archive, destination, s.hash, s.bytes);
+  Record(s, destination);
+}
 }  // namespace
 bool ShorelineManager::Busy() { return busy; }
+bool ShorelineManager::Available(int resolution) {
+  const auto& s = ShorelineSpecFor(resolution);
+  const auto p = Installed(s);
+  return (!p.empty() && std::filesystem::exists(p)) ||
+         (Bundled(s) && std::filesystem::exists(Archive(s)));
+}
 int ShorelineManager::DefaultResolution() {
   return static_cast<int>(&Selected() - kShorelineSpecs.data());
 }
@@ -125,6 +183,12 @@ std::shared_ptr<ShorelineDataset> ShorelineManager::Prepare(int resolution) {
   try { dataset = Verify(s, p); }
   catch (const std::bad_alloc&) { throw; }
   catch (const std::exception&) {
+    if (!Bundled(s))
+      throw std::runtime_error(
+          std::string(s.quality) +
+          " shoreline data is not installed or failed verification. "
+          "Open Shoreline data on Advanced to install or repair it; the route "
+          "resolution has not been changed.");
     InstallBundled(s);
     p = Installed(s);
     dataset = Verify(s, p);
@@ -150,7 +214,9 @@ void ShorelineManager::Show(wxWindow* parent) {
   auto main = new wxBoxSizer(wxVERTICAL);
   auto text =
       new wxStaticText(&dialog, wxID_ANY,
-                       _("All five GSHHG resolutions are included for offline use. "
+                       _("GSHHG Crude, Low and Intermediate are included for offline use. "
+                         "High and Full are optional verified downloads; install High "
+                         "before coastal routing where finer land detail is needed. "
                          "Choose each route's resolution in Configuration / Advanced. "
                          "This default is used when importing older routes; "
                          "existing route selections are preserved."));
@@ -181,12 +247,18 @@ void ShorelineManager::Show(wxWindow* parent) {
   main->Add(cache, 0, wxALL, 12);
   auto actions = new wxBoxSizer(wxHORIZONTAL);
   auto verify = new wxButton(&dialog, wxID_ANY, _("Verify installed data"));
-  auto restore = new wxButton(&dialog, wxID_ANY, _("Restore selected bundled data"));
+  auto restore = new wxButton(&dialog, wxID_ANY, _("Install / update selected data"));
   actions->Add(verify, 0, wxRIGHT, 6);
   actions->Add(restore);
   main->Add(actions, 0, wxALL, 12);
+  auto installHighRes = new wxButton(
+      &dialog, wxID_ANY, _("Install / update High and Full (3–4)..."));
+  installHighRes->SetToolTip(_(
+      "Download and verify both optional GSHHG resolutions. "
+      "Afterwards all five shoreline resolutions are available offline."));
+  main->Add(installHighRes, 0, wxLEFT | wxRIGHT | wxBOTTOM, 12);
   auto updates =
-      new wxButton(&dialog, wxID_ANY, _("Dataset release information..."));
+      new wxButton(&dialog, wxID_ANY, _("GSHHG release information..."));
   main->Add(updates, 0, wxLEFT | wxRIGHT | wxBOTTOM, 12);
   auto footer = dialog.CreateSeparatedButtonSizer(wxOK | wxCANCEL);
   main->Add(footer, 0, wxEXPAND | wxALL, 12);
@@ -197,12 +269,18 @@ void ShorelineManager::Show(wxWindow* parent) {
   auto refresh = [&]() {
     const auto& s = selected();
     auto p = Installed(s);
+    const wxString state = (!p.empty() && std::filesystem::exists(p))
+        ? (verifiedPath == p ? _("Verified SHA-256 and format; approved version is current")
+                             : _("Installed; verification runs before use"))
+        : (Bundled(s) ? _("Included in plugin; ready for offline installation")
+                      : wxString::Format(
+                            _("Not installed; %.1f MiB download, %.1f MiB installed (plus temporary space)"),
+                            s.archive_bytes / 1048576.0, s.bytes / 1048576.0));
     status->SetLabel(wxString::Format(
-        _("Approved dataset: GSHHG 2.3.7 — %s\n%s"), s.quality,
-        (!p.empty() && std::filesystem::exists(p))
-            ? (verifiedPath == p ? _("Verified SHA-256 and format")
-                                 : _("Installed; verification runs before use"))
-            : _("Included in plugin; ready for offline installation")));
+        _("Approved dataset: GSHHG 2.3.7 — %s\n%s"),
+        wxGetTranslation(s.quality), state));
+    restore->SetLabel(Bundled(s) ? _("Restore selected bundled data")
+                                 : _("Install / update selected data"));
     installedFile->ChangeValue(Wx(p));
     installedFile->SetToolTip(Wx(p));
     status->Wrap(dialog.FromDIP(560));
@@ -214,7 +292,7 @@ void ShorelineManager::Show(wxWindow* parent) {
       work();
       verifiedPath = Installed(selected());
       refresh();
-      wxMessageBox(_("Shoreline data verified successfully."),
+      wxMessageBox(_("Approved shoreline data is ready and verified."),
                    _("Shoreline data"), wxOK | wxICON_INFORMATION, &dialog);
     } catch (const std::exception& e) {
       wxMessageBox(wxString::FromUTF8(e.what()), _("Shoreline data"),
@@ -226,8 +304,30 @@ void ShorelineManager::Show(wxWindow* parent) {
     action([&]() { Verify(selected(), Installed(selected())); });
   });
   restore->Bind(wxEVT_BUTTON, [&](wxCommandEvent&) {
+    if (selected().code[0] == 'f' && !ShorelineManager::Available(4) &&
+        wxMessageBox(
+            _("Full shoreline data needs about 55 MiB to download and 164 MiB "
+              "when installed, plus temporary space. Continue?"),
+            _("Install Full shoreline data"),
+            wxYES_NO | wxICON_QUESTION, &dialog) != wxYES)
+      return;
     action([&]() {
-      InstallBundled(selected());
+      const auto& s = selected();
+      if (Bundled(s)) InstallBundled(s);
+      else InstallOptional(s, &dialog);
+    });
+  });
+  installHighRes->Bind(wxEVT_BUTTON, [&](wxCommandEvent&) {
+    if ((!ShorelineManager::Available(3) || !ShorelineManager::Available(4)) &&
+        wxMessageBox(
+            _("High and Full shoreline data need about 68 MiB to download "
+              "and 196 MiB when installed, plus temporary space. Continue?"),
+            _("Install high-resolution shoreline data"),
+            wxYES_NO | wxICON_QUESTION, &dialog) != wxYES)
+      return;
+    action([&]() {
+      InstallOptional(kShorelineSpecs[3], &dialog);
+      InstallOptional(kShorelineSpecs[4], &dialog);
     });
   });
   updates->Bind(wxEVT_BUTTON, [&](wxCommandEvent&) {
@@ -243,7 +343,11 @@ void ShorelineManager::Show(wxWindow* parent) {
       [&](wxCommandEvent&) {
         try {
           const auto& s = selected();
-          if (Installed(s).empty()) InstallBundled(s);
+          if (Installed(s).empty()) {
+            if (Bundled(s)) InstallBundled(s);
+            else throw std::runtime_error(
+                "Install this optional resolution before selecting it.");
+          }
           Verify(s, Installed(s));
           {
             Config c;

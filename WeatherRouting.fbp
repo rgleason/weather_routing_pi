@@ -8366,7 +8366,7 @@
                                           <property name="wrap">-1</property>
                                         </object>
                                       </object>
-                                      <object class="sizeritem"><property name="border">5</property><property name="flag">wxALL|wxALIGN_CENTER_VERTICAL</property><property name="proportion">0</property><object class="wxChoice"><property name="name">m_cShorelineResolution</property><property name="choices">"0 — Crude" "1 — Low" "2 — Intermediate" "3 — High" "4 — Full"</property><property name="selection">4</property><property name="minimum_size">190,-1</property><property name="tooltip">GSHHG shoreline detail for the selected engine; Main and Quick remember independent choices. Chart geometry and minimum-depth checks are separate.</property><event name="OnChoice">OnUpdate</event></object></object><object class="sizeritem"><property name="proportion">0</property><object class="spacer"><property name="width">0</property><property name="height">0</property></object></object><object class="sizeritem" expanded="false">
+                                      <object class="sizeritem"><property name="border">5</property><property name="flag">wxALL|wxALIGN_CENTER_VERTICAL</property><property name="proportion">0</property><object class="wxChoice"><property name="name">m_cShorelineResolution</property><property name="choices">"0 — Crude" "1 — Low" "2 — Intermediate" "3 — High" "4 — Full"</property><property name="selection">2</property><property name="minimum_size">190,-1</property><property name="tooltip">GSHHG shoreline detail for the selected engine; Main and Quick remember independent choices. High and Full can be installed using Shoreline data below. Chart geometry and minimum-depth checks are separate.</property><event name="OnChoice">OnUpdate</event></object></object><object class="sizeritem"><property name="proportion">0</property><object class="spacer"><property name="width">0</property><property name="height">0</property></object></object><object class="sizeritem" expanded="false">
                                         <property name="border">5</property>
                                         <property name="flag">wxALIGN_CENTER_VERTICAL|wxALL</property>
                                         <property name="proportion">0</property>
@@ -8557,6 +8557,17 @@
                                       </object>
                                     </object>
                                   </object>
+                                <object class="sizeritem" expanded="false">
+                                  <property name="border">5</property>
+                                  <property name="flag">wxLEFT|wxRIGHT|wxBOTTOM</property>
+                                  <property name="proportion">0</property>
+                                  <object class="wxButton" expanded="false">
+                                    <property name="name">m_bShorelineData</property>
+                                    <property name="label">Shoreline data...</property>
+                                    <property name="permission">protected</property>
+                                    <property name="tooltip">Install or verify optional GSHHG High and Full datasets. The approved files are downloaded only when requested and work offline afterwards.</property>
+                                  </object>
+                                </object>
                                 <object class="sizeritem" expanded="false">
                                         <property name="border">5</property>
                                         <property name="flag">wxALIGN_CENTER_VERTICAL|wxALL</property>

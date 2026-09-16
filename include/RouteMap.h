@@ -228,7 +228,7 @@ struct RouteMapConfiguration {
   // Pinned per calculation; chart geometry retains its separate host path.
   std::shared_ptr<weather_routing::ShorelineDataset> shoreline_dataset;
   wxString shoreline_description;
-  int ShorelineResolution{4};  // Main, including migrated pre-1.17.7 preference.
+  int ShorelineResolution{2};  // Offline base default; saved route choices are preserved.
   int QuickShorelineResolution{0};
   int ChartShorelineResolution{0};  // Preliminary shoreline work in enforced chart mode.
   int MainGribTimelineCacheMiB{

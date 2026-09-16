@@ -160,6 +160,7 @@ private:
 
   WeatherRouting& m_WeatherRouting;
   bool m_bBlockUpdate;
+  std::vector<int> m_shorelineChoiceResolutions;
 
   std::vector<wxObject*> m_edited_controls;
 };

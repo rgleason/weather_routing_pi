@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify the actual packaged offline GSHHG payload on every platform."""
+"""Verify the compact packaged GSHHG payload on every platform."""
 import gzip
 import hashlib
 import json
@@ -22,8 +22,12 @@ def verify(path):
     with tarfile.open(path, 'r:*') as package:
         members = package.getmembers()
         assert [s['quality'] for s in EXPECTED['datasets']] == list('clihf')
+        directory = None
         for spec in EXPECTED['datasets']:
             payloads = [m for m in members if Path(m.name).name == spec['file']]
+            if spec['quality'] in ('h', 'f'):
+                assert not payloads, f"Optional shoreline data was bundled: {spec['file']}"
+                continue
             assert len(payloads) == 1, f"Shoreline payload missing or duplicated: {spec['file']}"
             payload = payloads[0]
             assert payload.isfile() and '/data/shoreline/' in payload.name
@@ -33,7 +37,7 @@ def verify(path):
             directory = payload.name.rsplit('/', 1)[0]
         assert json.load(package.extractfile(directory + '/manifest.json')) == EXPECTED
         assert package.getmember(directory + '/LICENSE.LGPL-3').isfile()
-    print('Verified all five packaged GSHHG 2.3.7 resolutions:', path)
+    print('Verified compact GSHHG 2.3.7 package (Crude/Low/Intermediate only):', path)
 
 
 

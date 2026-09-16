@@ -188,8 +188,13 @@ packaging remain separate checks.
 
 ## Shoreline detail
 
-Advanced offers 0 — Crude through 4 — Full, all bundled offline. Main inherits
-existing shoreline preferences (Full for a fresh install); Quick starts at Crude.
+Advanced offers the installed shoreline resolutions. The 1.17.11 package bundles
+0–2 offline; High (3) and Full (4) can be installed from **Shoreline data...**
+on Advanced (also available from View / Shoreline data). The manager can install
+both optional resolutions in one action; then the choice offers the full 0–4
+range. Existing saved choices for missing data stay visible and marked missing
+rather than being silently changed. Main inherits existing shoreline preferences
+(Intermediate for a fresh install); Quick starts at Crude.
 Each remembers its own manual choice. On an enhanced core with chart safety enabled
 and enforced, the editable Scout shoreline resolution uses a separate saved choice,
 initially Crude. Increasing scout detail does not change the authoritative chart
