@@ -135,6 +135,15 @@ TEST(ShorelineDataset, Sha256KnownVectors) {
   EXPECT_EQ(ShorelineSha256(f / "abc"),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
 }
+TEST(ShorelineDataset, ApprovedArchiveMetadataMatchesSource) {
+  for (const auto& spec : kShorelineSpecs) {
+    const auto archive = fs::path(WR_TEST_SHORELINE_DATA) /
+        (std::string("poly-") + spec.code + "-2.3.7.dat.gz");
+    ASSERT_TRUE(fs::exists(archive)) << archive;
+    EXPECT_EQ(fs::file_size(archive), spec.archive_bytes) << spec.quality;
+    EXPECT_EQ(ShorelineSha256(archive), spec.archive_hash) << spec.quality;
+  }
+}
 TEST(ShorelineDataset, VerifiedInstallationAndNoOverwrite) {
   Files f;
   Fixture(f / "data");

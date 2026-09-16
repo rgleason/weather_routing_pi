@@ -43,6 +43,8 @@
 #include "BoatDialog.h"
 #include "weather_routing_pi.h"
 #include "WeatherRouting.h"
+#include "ShorelineManager.h"
+#include "ShorelineSpec.h"
 #include "icons.h"
 
 #include <algorithm>
@@ -139,7 +141,26 @@ ConfigurationDialog::ConfigurationDialog(WeatherRouting& weatherrouting)
       m_WeatherRouting(weatherrouting),
       m_bBlockUpdate(false) {
   m_cShorelineResolution->Bind(wxEVT_CHOICE,
-      [this](wxCommandEvent& event) { HandleEngineEdit(event.GetEventObject()); });
+      [this](wxCommandEvent& event) {
+        const int selection = m_cShorelineResolution->GetSelection();
+        if (selection < 0 || selection >=
+                static_cast<int>(m_shorelineChoiceResolutions.size())) return;
+        const int resolution = m_shorelineChoiceResolutions[selection];
+        if (resolution >= 0 && !weather_routing::ShorelineManager::Available(resolution)) {
+          wxMessageBox(_("This shoreline resolution is not installed. "
+                         "Use Shoreline data on Advanced to install the approved "
+                         "High or Full dataset before selecting it. Your route "
+                         "selection has not changed."),
+                       _("Shoreline data"), wxOK | wxICON_INFORMATION, this);
+          UpdateEngineControls();
+          return;
+        }
+        HandleEngineEdit(event.GetEventObject());
+      });
+  m_bShorelineData->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+    weather_routing::ShorelineManager::Show(this);
+    UpdateEngineControls();
+  });
   m_sQuickHeadingStepDegrees->Bind(wxEVT_SPINCTRLDOUBLE,
       [this](wxSpinDoubleEvent& event) { HandleEngineEdit(event.GetEventObject()); });
   m_cbUseExperimentalChartSafety->Bind(
@@ -148,7 +169,8 @@ ConfigurationDialog::ConfigurationDialog(WeatherRouting& weatherrouting)
       wxEVT_CHECKBOX, &ConfigurationDialog::OnChartSafetyChanged, this);
   const wxString detect_land_note =
       _("Detect Land uses the selected GSHHG shoreline resolution in Advanced. "
-        "All five resolutions are included offline. On a compatible "
+        "Crude, Low and Intermediate are bundled for offline use; High "
+        "and Full can be installed from Shoreline data on Advanced. On a compatible "
         "enhanced host, the separate chart-aware controls can additionally "
         "use vector or CM93 chart geometry.");
   m_cbDetectLand->SetToolTip(detect_land_note);
@@ -581,7 +603,11 @@ void ConfigurationDialog::SetConfigurations(
   bool sameShoreline = true;
   for (const auto& config : configurations)
     sameShoreline = sameShoreline && config.SelectedShorelineResolution() == it->SelectedShorelineResolution();
-  m_cShorelineResolution->SetSelection(sameShoreline ? it->SelectedShorelineResolution() : wxNOT_FOUND);
+  const int shorelineValue = sameShoreline ? it->SelectedShorelineResolution() : wxNOT_FOUND;
+  const auto shorelineChoice = std::find(m_shorelineChoiceResolutions.begin(),
+                                        m_shorelineChoiceResolutions.end(), shorelineValue);
+  m_cShorelineResolution->SetSelection(shorelineChoice == m_shorelineChoiceResolutions.end()
+      ? wxNOT_FOUND : static_cast<int>(shorelineChoice - m_shorelineChoiceResolutions.begin()));
   const auto firstEngine = it->EngineSettings.engine;
   bool sameEngine = true;
   for (const auto& config : configurations)
@@ -827,8 +853,11 @@ bool ConfigurationDialog::HandleEngineEdit(wxObject* control) {
     if (route->Running()) continue;
     auto config = route->GetConfiguration();
     if (control == m_cShorelineResolution) {
-      const int resolution = m_cShorelineResolution->GetSelection();
-      if (resolution == wxNOT_FOUND) continue;
+      const int selection = m_cShorelineResolution->GetSelection();
+      if (selection < 0 || selection >=
+              static_cast<int>(m_shorelineChoiceResolutions.size())) continue;
+      const int resolution = m_shorelineChoiceResolutions[selection];
+      if (!weather_routing::ShorelineManager::Available(resolution)) continue;
       const bool chartMode = m_WeatherRouting.HasEnhancedChartSafety() &&
           m_cbUseExperimentalChartSafety->GetValue() && m_cbEnforceExperimentalChartSafety->GetValue();
       if (chartMode) config.ChartShorelineResolution = resolution;
@@ -905,11 +934,24 @@ void ConfigurationDialog::UpdateEngineControls() {
     first = false;
   }
   m_tShorelineResolution->SetLabel(chartAuthoritative ? _("Scout shoreline resolution") : _("Shoreline resolution"));
-  m_cShorelineResolution->SetSelection(shoreline);
+  m_cShorelineResolution->Clear();
+  m_shorelineChoiceResolutions.clear();
+  int selectedIndex = wxNOT_FOUND;
+  for (int q = 0; q < 5; ++q) {
+    const bool available = weather_routing::ShorelineManager::Available(q);
+    if (!available && q != shoreline) continue;
+    wxString label = wxString::Format("%d — %s", q,
+        wxGetTranslation(weather_routing::kShorelineSpecs[q].quality));
+    if (!available) label += _(" (missing; install)");
+    if (q == shoreline) selectedIndex = static_cast<int>(m_shorelineChoiceResolutions.size());
+    m_shorelineChoiceResolutions.push_back(q);
+    m_cShorelineResolution->Append(label);
+  }
+  m_cShorelineResolution->SetSelection(selectedIndex);
   m_cShorelineResolution->Enable(!running);
   m_cShorelineResolution->SetToolTip(chartAuthoritative
       ? _("Chart geometry and depth checks are authoritative. This separately saved shoreline choice controls preliminary scouting. It starts at Crude; increase it for finer coastal detail.")
-      : _("Shoreline detail for the selected engine. Main and Quick remember independent choices. Lower resolutions omit smaller coastal features."));
+      : _("Shoreline detail for the selected engine. Main and Quick remember independent choices. High and Full require installation from Shoreline data on Advanced. Lower resolutions omit smaller coastal features."));
   m_pMainEngine->Enable(!running);
   m_pQuickEngine->Enable(!running);
   if (running) m_bResetAdvanced->Enable(false);
