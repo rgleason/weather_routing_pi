@@ -220,6 +220,10 @@ option(Plugin_CXX11 "Use c++11" OFF)
 
 include("PluginConfigure")
 
+if(PLUGIN_USE_SVG)
+  add_compile_definitions(PLUGIN_USE_SVG)
+endif()
+
 ##===========================================================
 ## ----- Do not change section above - needed to configure build process --------##
 ## ----- Change below to match project requirements for source, headers, etc. ---##
@@ -461,6 +465,9 @@ if (NOT OCPN_FLATPAK_CONFIG)
   target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::jsonlib)
 
   add_subdirectory(opencpn-libs/plugin_dc)
+  if(TARGET _DC_UTILS AND TARGET wx::core)
+    target_link_libraries(_DC_UTILS PRIVATE wx::core)
+  endif()
   target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::plugin-dc)
 
   add_subdirectory(opencpn-libs/pugixml)
