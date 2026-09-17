@@ -1,142 +1,241 @@
 #!/usr/bin/env bash
-# Native Apple-Silicon validation build.  The historical filename is retained
-# because it is part of the Frontend2 CI interface.
-set -euo pipefail
+
+#
+# Upload the .tar.gz and .xml artifacts to Cloudsmith
+#
+# Repository selection:
+#   ALPHA: Non-master branch, no tag
+#   BETA:  Non-master branch with tag OR master branch without tag
+#   PROD:  Master branch with tag
+#
+# Local builds generate artifacts but do not upload.
+#
+
+set -xe
+
+PROD_REPO=${CLOUDSMITH_PROD_REPO:-'@CLOUDSMITH_USER@/@CLOUDSMITH_BASE_REPOSITORY@-@PROD@'}
+BETA_REPO=${CLOUDSMITH_BETA_REPO:-'@CLOUDSMITH_USER@/@CLOUDSMITH_BASE_REPOSITORY@-@BETA@'}
+ALPHA_REPO=${CLOUDSMITH_ALPHA_REPO:-'@CLOUDSMITH_USER@/@CLOUDSMITH_BASE_REPOSITORY@-@ALPHA@'}
+
+LOCAL_BUILD=false
+
+# -----------------------------
+# CI environment detection
+# -----------------------------
+if [ "$CIRCLECI" ]; then
+    BUILD_ID=${CIRCLE_BUILD_NUM:-1}
+    BUILD_DIR=${BUILD_DIR:-"$HOME/project/build"}
+    BUILD_BRANCH=$CIRCLE_BRANCH
+    BUILD_TAG=$CIRCLE_TAG
+    PKG_EXT=${CLOUDSMITH_PKG_EXT:-'deb'}
+
+elif [ "$TRAVIS" ]; then
+    BUILD_ID=${TRAVIS_BUILD_NUM:-1}
+    BUILD_DIR=$TRAVIS_BUILD_DIR/build
+    BUILD_BRANCH=$TRAVIS_BRANCH
+    BUILD_TAG=$TRAVIS_TAG
+    [ "$BUILD_BRANCH" = "$BUILD_TAG" ] && BUILD_BRANCH=""
+    PKG_EXT=${CLOUDSMITH_PKG_EXT:-'deb'}
+
+elif [ "$APPVEYOR" ]; then
+    BUILD_ID=${APPVEYOR_BUILD_NUMBER:-1}
+    BUILD_DIR=$(pwd)
+    BUILD_BRANCH=$APPVEYOR_REPO_BRANCH
+    BUILD_TAG=$APPVEYOR_REPO_TAG_NAME
+    PKG_EXT=${CLOUDSMITH_PKG_EXT:-'exe'}
+
+else
+    BUILD_ID=${CIRCLE_BUILD_NUM:-1}
+    BUILD_DIR=.
+    BUILD_BRANCH=$CIRCLE_BRANCH
+    BUILD_TAG=$CIRCLE_TAG
+    PKG_EXT=${CLOUDSMITH_PKG_EXT:-'deb'}
+    LOCAL_BUILD=true
+fi
+
+# -----------------------------
+# API key check
+# -----------------------------
+set +x
+if [ -z "$CLOUDSMITH_API_KEY" ] && [ "$LOCAL_BUILD" = "false" ]; then
+    echo 'Cannot deploy to Cloudsmith: missing $CLOUDSMITH_API_KEY'
+    exit 0
+fi
 set -x
 
-repo=$(cd "$(dirname "$0")/.." && pwd)
-cd "$repo"
-git submodule update --init --recursive
+# -----------------------------
+# Install cloudsmith-cli (PEP-668 compliant)
+# -----------------------------
+install_cloudsmith_cli() {
+    if command -v pipx >/dev/null 2>&1; then
+        pipx install cloudsmith-cli
+        return
+    fi
 
-export HOMEBREW_NO_AUTO_UPDATE=1
-while IFS= read -r package; do
-  case "$package" in
-    ''|'#'*) continue ;;
-  esac
-  # Homebrew may read stdin while installing a formula.  Keep it from
-  # consuming the remaining entries in macos-deps.
-  brew list --versions "$package" >/dev/null 2>&1 ||
-    brew install "$package" </dev/null
-done <build-deps/macos-deps
+    if command -v apt-get >/dev/null 2>&1; then
+        sudo apt-get update
+        sudo apt-get install -y pipx python3-venv
+        pipx ensurepath
+        pipx install cloudsmith-cli
+        return
+    fi
 
-brew_prefix=$(brew --prefix)
-wx_prefix=$(brew --prefix wxwidgets@3.2)
-export PATH="${wx_prefix}/bin:${brew_prefix}/opt/gettext/bin:${brew_prefix}/bin:${PATH}"
-export PKG_CONFIG_PATH="${wx_prefix}/lib/pkgconfig:${brew_prefix}/lib/pkgconfig:${brew_prefix}/opt/openssl@3/lib/pkgconfig"
-export CMAKE_PREFIX_PATH="${wx_prefix};${brew_prefix}"
-export WX_CONFIG="${wx_prefix}/bin/wx-config-3.2"
-export OCPN_TARGET=macos-arm64
-export WX_VER=32
+    if command -v dnf >/dev/null 2>&1; then
+        sudo dnf install -y pipx python3-virtualenv
+        pipx ensurepath
+        pipx install cloudsmith-cli
+        return
+    fi
 
-# Some Apple-Silicon Homebrew images have shipped a gettext bottle whose
-# msgfmt crashes with SIGSEGV.  Exercise the largest catalogue before the
-# parallel build and rebuild only a broken bottle from the official formula,
-# matching the guard proven by xGRIB's native macOS job.
-msgfmt_smoke="${TMPDIR:-/tmp}/weather-routing-msgfmt-smoke.mo"
-if ! msgfmt --check -o "$msgfmt_smoke" po/el_GR.po; then
-  brew reinstall --build-from-source gettext </dev/null
-  msgfmt --check -o "$msgfmt_smoke" po/el_GR.po
-fi
-rm -f "$msgfmt_smoke"
+    if command -v brew >/dev/null 2>&1; then
+        brew install pipx
+        pipx ensurepath
+        pipx install cloudsmith-cli
+        return
+    fi
 
-build_tests="$repo/build-tests"
-build_package="$repo/build-package"
-stage="$repo/stage"
-artifact="$repo/artifacts/macos-arm64"
-log_dir="$artifact/logs"
-test_dir="$artifact/tests"
-package_dir="$artifact/package"
-mkdir -p "$build_tests" "$build_package" "$stage" \
-  "$log_dir" "$test_dir" "$package_dir"
+    echo "ERROR: pipx not available and no supported package manager found."
+    exit 1
+}
 
-while IFS= read -r package; do
-  case "$package" in
-    ''|'#'*) continue ;;
-  esac
-  brew list --versions "$package"
-done <build-deps/macos-deps >"$log_dir/dependencies.log"
-
-common_args=(
-  -DCMAKE_BUILD_TYPE=Release
-  -DCMAKE_OSX_ARCHITECTURES=arm64
-  -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
-  "-DCMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH"
-  "-DwxWidgets_CONFIG_EXECUTABLE=$WX_CONFIG"
-  -DWEATHER_ROUTING_STANDALONE_API=ON
-)
-
-cmake -S . -B "$build_tests" "${common_args[@]}" \
-  -DOCPN_BUILD_TEST=ON 2>&1 | tee "$log_dir/configure-tests.log"
-cmake --build "$build_tests" --parallel 3 \
-  2>&1 | tee "$log_dir/build-tests.log"
-ctest --test-dir "$build_tests" --output-on-failure \
-  --output-junit "$test_dir/ctest.xml" \
-  2>&1 | tee "$log_dir/test.log"
-
-# Keep GoogleTest and its discovery products out of the catalogue archive.
-cmake -S . -B "$build_package" "${common_args[@]}" \
-  -DOCPN_BUILD_TEST=OFF 2>&1 | tee "$log_dir/configure-package.log"
-cmake --build "$build_package" --parallel 3 \
-  2>&1 | tee "$log_dir/build-package.log"
-cmake --install "$build_package" --prefix "$stage" \
-  2>&1 | tee "$log_dir/install.log"
-cmake --build "$build_package" --target package \
-  2>&1 | tee "$log_dir/package.log"
-
-shopt -s nullglob
-archives=("$build_package"/weather_routing_pi-*.tar.gz)
-metadata_files=("$build_package"/weather_routing_pi-*.xml)
-test "${#archives[@]}" -eq 1
-test "${#metadata_files[@]}" -eq 1
-archive_source=${archives[0]}
-metadata_source=${metadata_files[0]}
-
-cp -f "$archive_source" "$metadata_source" "$package_dir/"
-(cd "$package_dir" && find . -maxdepth 1 -type f ! -name SHA256SUMS \
-  -print0 | xargs -0 shasum -a 256 >SHA256SUMS)
-archive="$package_dir/$(basename "$archive_source")"
-metadata="$package_dir/$(basename "$metadata_source")"
-tar -tzf "$archive" >"$test_dir/archive-contents.txt"
-grep -q 'OpenCPN.app/Contents/PlugIns/libweather_routing_pi.dylib$' \
-  "$test_dir/archive-contents.txt"
-grep -q 'OpenCPN.app/Contents/SharedSupport/plugins/weather_routing_pi/data/' \
-  "$test_dir/archive-contents.txt"
-if grep -Eqi 'libg(test|mock)|libxweather_routing_pi\.dylib|opencpn-xweather_routing_pi\.mo' \
-    "$test_dir/archive-contents.txt"; then
-  echo "Archive contains a test library or preview plugin identity" >&2
-  exit 1
-fi
-grep -q '<name> WeatherRouting </name>' "$metadata"
-grep -q '<api-version> 1.21 </api-version>' "$metadata"
-grep -q '<target>darwin-wx32</target>' "$metadata"
-grep -q '<source> https://github.com/pob220/weather_routing_pi </source>' \
-  "$metadata"
-
-package_version=$(sed -n \
-  's:.*<version>[[:space:]]*\([^[:space:]<]*\)[[:space:]]*</version>.*:\1:p' \
-  "$metadata")
-if [[ ! "$package_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "Invalid or missing package version in $metadata" >&2
-  exit 1
+if [ "$CIRCLECI" ] || [ "$TRAVIS" ]; then
+    if [ "$DEPLOY_USE_ORB" != "true" ]; then
+        install_cloudsmith_cli
+    fi
 fi
 
-jq -n \
-  --arg commit "$(git rev-parse HEAD)" \
-  --arg os "$(sw_vers -productVersion)" \
-  --arg compiler "$(c++ --version | head -1)" \
-  --arg cmake "$(cmake --version | head -1)" \
-  --arg wx "$("$WX_CONFIG" --version)" \
-  --arg version "$package_version" \
-  --arg package "$(basename "$archive")" \
-  --arg checksum "$(shasum -a 256 "$archive" | awk '{print $1}')" \
-  '{schema: "weather-routing-target-result-v1",
-    target: "macos-arm64", repository_commit: $commit,
-    plugin_version: $version, operating_system: "macOS",
-    operating_system_version: $os, architecture: "arm64",
-    compiler: $compiler, cmake_version: $cmake, wxwidgets_version: $wx,
-    build_status: "passed", test_status: "passed",
-    package_status: "passed", metadata_validation_status: "passed",
-    stock_api_status: "passed", package_filename: $package,
-    package_checksum_sha256: $checksum}' >"$artifact/result.json"
+# -----------------------------
+# Build metadata
+# -----------------------------
+commit=$(git rev-parse --short=7 HEAD || echo "unknown")
+tag=$(git tag --contains HEAD || true)
 
-python3 "$repo/ci/verify-shoreline-package.py" "$archive"
+xml=$(ls "$BUILD_DIR"/*.xml)
+tarball=$(ls "$BUILD_DIR"/*.tar.gz)
+tarball_basename=${tarball##*/}
+
+source "$BUILD_DIR/pkg_version.sh"
+
+if [ -n "${OCPN_TARGET}" ]; then
+    tarball_name="@PACKAGE_NAME@-@PACKAGE_VERSION@-${PKG_TARGET}-@COMPOUND_ARCH_DASH@@PKG_TARGET_WX_VER@@PKG_BUILD_GTK@-${PKG_TARGET_VERSION}-${OCPN_TARGET}-tarball"
+else
+    tarball_name="@PACKAGE_NAME@-@PACKAGE_VERSION@-${PKG_TARGET}-@COMPOUND_ARCH_DASH@@PKG_TARGET_WX_VER@@PKG_BUILD_GTK@-${PKG_TARGET_VERSION}-tarball"
+fi
+
+pkg=$(ls "$BUILD_DIR"/*.${PKG_EXT} 2>/dev/null || echo "")
+
+# -----------------------------
+# Branch/tag → repo selection
+# -----------------------------
+echo "$BUILD_BRANCH"
+echo "$BUILD_TAG"
+
+if [ -z "$BUILD_TAG" ] && [ -n "$tag" ]; then
+    BUILD_TAG=$tag
+fi
+
+if [ -z "$BUILD_BRANCH" ]; then
+    build_commit=$(git show -s --format=%d "$BUILD_TAG")
+    is_master=$(echo "$build_commit" | awk '/\/master/ {print}')
+    [ -n "$is_master" ] && BUILD_BRANCH="master"
+fi
+
+BUILD_BRANCH_LOWER=$(echo "$BUILD_BRANCH" | tr 'A-Z' 'a-z')
+
+if [ "$BUILD_BRANCH_LOWER" = "master" ]; then
+    if [ -n "$BUILD_TAG" ]; then
+        VERSION=$BUILD_TAG
+        REPO="$PROD_REPO"
+    else
+        VERSION="@PROJECT_VERSION@+${BUILD_ID}.${commit}"
+        REPO="$BETA_REPO"
+    fi
+else
+    if [ -n "$BUILD_TAG" ]; then
+        VERSION=$BUILD_TAG
+        REPO="$BETA_REPO"
+    else
+        VERSION="@PROJECT_VERSION@+${BUILD_ID}.${commit}"
+        REPO="$ALPHA_REPO"
+    fi
+fi
+
+echo "$VERSION"
+echo "$REPO"
+
+# -----------------------------
+# Substitute metadata variables
+# -----------------------------
+if [ "$APPVEYOR" ] || [ "$LOCAL_BUILD" = true ]; then
+    while read -r line; do
+        line=${line//--pkg_repo--/$REPO}
+        line=${line//--name--/$tarball_name}
+        line=${line//--version--/$VERSION}
+        line=${line//--filename--/$tarball_basename}
+        echo "$line"
+    done < "$xml" > xml.tmp
+    cp xml.tmp "$xml"
+    rm xml.tmp
+else
+    sudo sed -i -e "s|--pkg_repo--|$REPO|" "$xml"
+    sudo sed -i -e "s|--name--|$tarball_name|" "$xml"
+    sudo sed -i -e "s|--version--|$VERSION|" "$xml"
+    sudo sed -i -e "s|--filename--|$tarball_basename|" "$xml"
+fi
+
+# -----------------------------
+# Rebuild tarball with metadata
+# -----------------------------
+gunzip -f "$tarball"
+cd "$BUILD_DIR"
+rm -f metadata.xml
+tarball_tar=$(ls *.tar)
+xml_here=$(ls *.xml)
+cp -f "$xml_here" metadata.xml
+
+mkdir build_tar
+cp "$tarball_tar" build_tar/
+cd build_tar
+tar -xf "$tarball_tar"
+rm *.tar
+rm -rf root
+cp ../metadata.xml .
+tar -cf build_tarfile.tar *
+cp build_tarfile.tar ../"$tarball_tar"
+cd ..
+rm -rf build_tar
+
+gzip -f "$tarball_tar"
+
+cd "$cur_dir"
+
+# -----------------------------
+# Upload to Cloudsmith
+# -----------------------------
+have_any() { [ $# -gt 0 ]; }
+
+if [ "$LOCAL_BUILD" = false ]; then
+    if [ "$CIRCLE_PROJECT_USERNAME" = "$CIRCLE_USERNAME" ] || \
+       [[ -n "${collab_users+1}" && -n "$CIRCLE_USERNAME" && "$collab_users" =~ "$git_user" ]]; then
+
+        cloudsmith push raw --republish --no-wait-for-sync \
+            --name @PACKAGE_NAME@-@PACKAGE_VERSION@-@PKG_TARGET@-@COMPOUND_ARCH_DASH@@PKG_TARGET_WX_VER@@PKG_BUILD_GTK@-@PKG_TARGET_VERSION@-${OCPN_TARGET}-metadata \
+            --version "$VERSION" \
+            --summary "@PACKAGE@ opencpn plugin metadata for automatic installation" \
+            "$REPO" "$xml"
+
+        cloudsmith push raw --republish --no-wait-for-sync \
+            --name "$tarball_name" \
+            --version "$VERSION" \
+            --summary "@PACKAGE@ opencpn plugin tarball for automatic installation" \
+            "$REPO" "$tarball"
+
+        if [ "$PKG_EXT" != "gz" ] && [ -n "$pkg" ]; then
+            cloudsmith push raw --republish --no-wait-for-sync \
+                --name opencpn-package-@PACKAGE@-@PACKAGE_VERSION@-@PKG_TARGET@-@COMPOUND_ARCH_DASH@@PKG_TARGET_WX_VER@@PKG_BUILD_GTK@-@PKG_TARGET_VERSION@-${OCPN_TARGET}.${PKG_EXT} \
+                --version "$VERSION" \
+                --summary "@PACKAGE@ .${PKG_EXT} installation package" \
+                "$REPO" "$pkg"
+        fi
+    fi
+fi

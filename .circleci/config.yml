@@ -56,6 +56,7 @@ jobs:
       - run: chmod a+x ci/*.sh
       - run:
           name: Stock-API tests, clean package and archive validation
+          shell: /bin/bash
           command: ci/circleci-build-ubuntu-docker.sh
           no_output_timeout: 45m
       - run:
@@ -92,6 +93,7 @@ jobs:
       - run: chmod a+x ci/*.sh
       - run:
           name: Flatpak build and package
+          shell: /bin/bash
           command: ci/circleci-build-flatpak.sh
           no_output_timeout: 45m
       - run:
@@ -165,6 +167,7 @@ jobs:
       - run: chmod a+x ci/*.sh cmake/*.sh
       - run:
           name: Native Apple-Silicon stock-API build, tests and package
+          shell: /bin/bash
           command: ci/circleci-build-macos-universal.sh
           no_output_timeout: 45m
       - run:
@@ -203,6 +206,7 @@ jobs:
 
       - run:
           name: Android ARM64 build, tests and package
+          shell: /bin/bash
           command: ci/circleci-build-android-arm64.sh
           no_output_timeout: 45m
 
@@ -261,6 +265,7 @@ jobs:
 
       - run:
           name: Android ARMHF build, tests and package
+          shell: /bin/bash          
           command: ci/circleci-build-android-armhf.sh
           no_output_timeout: 45m
 
