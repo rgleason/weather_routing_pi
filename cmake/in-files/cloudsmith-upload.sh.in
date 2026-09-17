@@ -189,7 +189,6 @@ else
         VERSION="$BUILD_TAG"
         REPO="$BETA_REPO"
     else
-        echo "building without tag"
         VERSION="@PROJECT_VERSION@+${BUILD_ID}.${commit}"
         REPO="$ALPHA_REPO"
     fi
