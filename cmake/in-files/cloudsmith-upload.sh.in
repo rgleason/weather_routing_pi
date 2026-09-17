@@ -28,13 +28,13 @@ cd "$REPO_ROOT"
 
 if [ "$CIRCLECI" ]; then
     BUILD_ID=${CIRCLE_BUILD_NUM:-1}
-    BUILD_DIR="$REPO_ROOT/build"
+    BUILD_DIR="${BUILD_DIR:-$REPO_ROOT/build}"
     BUILD_BRANCH=$CIRCLE_BRANCH
     BUILD_TAG=$CIRCLE_TAG
     PKG_EXT=${CLOUDSMITH_PKG_EXT:-'deb'}
 elif [ "$TRAVIS" ]; then
     BUILD_ID=${TRAVIS_BUILD_NUM:-1}
-    BUILD_DIR="$TRAVIS_BUILD_DIR/build"
+    BUILD_DIR="${BUILD_DIR:-$TRAVIS_BUILD_DIR/build}"
     BUILD_BRANCH=$TRAVIS_BRANCH
     BUILD_TAG=$TRAVIS_TAG
     if [ "$BUILD_BRANCH" = "$BUILD_TAG" ]; then
@@ -43,13 +43,13 @@ elif [ "$TRAVIS" ]; then
     PKG_EXT=${CLOUDSMITH_PKG_EXT:-'deb'}
 elif [ "$APPVEYOR" ]; then
     BUILD_ID=${APPVEYOR_BUILD_NUMBER:-1}
-    BUILD_DIR="$(pwd)/build"
+    BUILD_DIR="${BUILD_DIR:-$(pwd)/build}"
     BUILD_BRANCH=$APPVEYOR_REPO_BRANCH
     BUILD_TAG=$APPVEYOR_REPO_TAG_NAME
     PKG_EXT=${CLOUDSMITH_PKG_EXT:-'exe'}
 else
     BUILD_ID=${CIRCLE_BUILD_NUM:-1}
-    BUILD_DIR="$REPO_ROOT/build"
+    BUILD_DIR="${BUILD_DIR:-$REPO_ROOT/build}"
     BUILD_BRANCH=$CIRCLE_BRANCH
     BUILD_TAG=$CIRCLE_TAG
     PKG_EXT=${CLOUDSMITH_PKG_EXT:-'deb'}
@@ -66,48 +66,24 @@ fi
 set +x
 if [ -z "$CLOUDSMITH_API_KEY" ] && [ "$LOCAL_BUILD" = "false" ]; then
     echo 'Cannot deploy to cloudsmith, missing $CLOUDSMITH_API_KEY'
-    exit 0
+    exit 1
 fi
 set -x
 
 # Install cloudsmith-cli only on CI, and only if not using orb
-if { [ "$CIRCLECI" ] || [ "$TRAVIS" ]; } && [ "$DEPLOY_USE_ORB" != "true" ]; then
+if { [ "$CIRCLECI" ] || [ "$TRAVIS" ]; } && [ "${DEPLOY_USE_ORB:-false}" != "true" ]; then
     if command -v pipx >/dev/null 2>&1; then
         pipx ensurepath || true
-        pipx install cloudsmith-cli || true
-    elif pyenv versions >/dev/null 2>&1; then
-        pyenv versions
-        version_1=$(python --version | cut -d '.' -f1 | cut -d ' ' -f2)
-        version_2=$(python --version | cut -d '.' -f2)
-        if [ "$version_1" -lt 3 ] || [ "$version_2" -lt 5 ]; then
-            sudo apt install -y software-properties-common
-            sudo apt update
-            sudo apt install -y python3.8 python3-pip
-            sudo rm -f /usr/bin/python3
-            sudo ln -s /usr/bin/python3.8 /usr/bin/python3
-        fi
-        python3 --version
-        sudo python3 -m pip install cloudsmith-cli
-        pyenv rehash
-    elif command -v dnf >/dev/null 2>&1; then
-        sudo dnf -y install python3-pip python3-setuptools
-        sudo python3 -m pip install -q cloudsmith-cli
-    elif command -v apt-get >/dev/null 2>&1; then
-        COUNTER=0
-        sudo apt install -y software-properties-common
-        sudo apt update
-        sudo apt install -y python3.8
-        sudo rm -f /usr/bin/python3
-        sudo ln -s /usr/bin/python3.8 /usr/bin/python3
-        until sudo apt-get install -y python3-pip python3-setuptools; do
-            if [ "$COUNTER" -gt 20 ]; then
-                exit 1
-            fi
-            sleep 5
-            COUNTER=$((COUNTER+1))
-        done
-        sudo python3 -m pip install --upgrade pip
-        sudo python3 -m pip install -q cloudsmith-cli
+        pipx install cloudsmith-cli
+        export PATH="$HOME/.local/bin:$PATH"
+    else
+        VENV_DIR="$HOME/.venvs/cloudsmith"
+        mkdir -p "$(dirname "$VENV_DIR")"
+        python3 -m venv "$VENV_DIR"
+        . "$VENV_DIR/bin/activate"
+        python -m pip install --upgrade pip
+        python -m pip install cloudsmith-cli
+        export PATH="$VENV_DIR/bin:$PATH"
     fi
 fi
 
@@ -189,7 +165,6 @@ else
         VERSION="$BUILD_TAG"
         REPO="$BETA_REPO"
     else
-        echo "building without tag"
         VERSION="@PROJECT_VERSION@+${BUILD_ID}.${commit}"
         REPO="$ALPHA_REPO"
     fi
