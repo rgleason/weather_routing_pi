@@ -56,6 +56,16 @@ else
     LOCAL_BUILD=true
 fi
 
+# Normalize BUILD_DIR to absolute path early so later cd/pwd changes cannot affect lookups.
+case "$BUILD_DIR" in
+    /*) ;;
+    *) BUILD_DIR="$REPO_ROOT/$BUILD_DIR" ;;
+esac
+
+# If BUILD_DIR was exported by CI/local caller, honor it as-is after absolutizing.
+mkdir -p "$BUILD_DIR"
+BUILD_DIR="$(cd "$BUILD_DIR" && pwd)"
+
 # Normalize Windows paths to POSIX (Git Bash / MSYS)
 if [ "$OS" = "Windows_NT" ] || uname | grep -qi "mingw"; then
     if command -v cygpath >/dev/null 2>&1; then
@@ -196,6 +206,8 @@ fi
 echo "$VERSION"
 echo "$REPO"
 
+echo "Resolved BUILD_DIR=$BUILD_DIR"
+
 # Windows / Appveyor: no sed -i, do safe substitution
 if [ "$APPVEYOR" ] || [ "$OS" = "Windows_NT" ]; then
     echo 'substituting xml file variables for windows build'
@@ -252,12 +264,20 @@ cd "$cur_dir"
 
 # Only upload tarball + metadata (and optional pkg), nothing else
 if [ "$LOCAL_BUILD" = "false" ]; then
+    if [ ! -f "$xml" ] || [ ! -f "$tarball" ]; then
+        echo "ERROR: upload inputs missing after repack"
+        echo "xml='$xml' tarball='$tarball' repo='$REPO' build_dir='$BUILD_DIR'"
+        exit 1
+    fi
+
+    echo "Cloudsmith push (metadata): REPO='$REPO' VERSION='$VERSION'"
     cloudsmith push raw --republish --no-wait-for-sync \
         --name "@PACKAGE_NAME@-@PACKAGE_VERSION@-@PKG_TARGET@-@COMPOUND_ARCH_DASH@@PKG_TARGET_WX_VER@@PKG_BUILD_GTK@-@PKG_TARGET_VERSION@-${OCPN_TARGET}-metadata" \
         --version "$VERSION" \
         --summary "@PACKAGE@ opencpn plugin metadata for automatic installation" \
         "$REPO" "$xml"
 
+    echo "Cloudsmith push (tarball): REPO='$REPO' VERSION='$VERSION'"
     cloudsmith push raw --republish --no-wait-for-sync \
         --name "$tarball_name" \
         --version "$VERSION" \
@@ -265,6 +285,7 @@ if [ "$LOCAL_BUILD" = "false" ]; then
         "$REPO" "$tarball"
 
     if [ "${PKG_EXT}" != "gz" ] && [ -n "$pkg" ]; then
+        echo "Cloudsmith push (${PKG_EXT}): REPO='$REPO' VERSION='$VERSION'"
         cloudsmith push raw --republish --no-wait-for-sync \
             --name "opencpn-package-@PACKAGE@-@PACKAGE_VERSION@-@PKG_TARGET@-@COMPOUND_ARCH_DASH@@PKG_TARGET_WX_VER@@PKG_BUILD_GTK@-@PKG_TARGET_VERSION@-${OCPN_TARGET}.${PKG_EXT}" \
             --version "$VERSION" \
