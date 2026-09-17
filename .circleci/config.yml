@@ -62,6 +62,7 @@ jobs:
           name: Cloudsmith upload
           when: always
           command: |
+            cd "$(git rev-parse --show-toplevel)"
             chmod +x ci/cloudsmith-upload.sh
             export BUILD_DIR="$PWD/artifacts/<< parameters.target >>/package"
             export CLOUDSMITH_PKG_EXT="gz"
@@ -106,6 +107,7 @@ jobs:
           name: Cloudsmith upload
           when: always
           command: |
+            cd "$(git rev-parse --show-toplevel)"
             chmod +x ci/cloudsmith-upload.sh
             export BUILD_DIR="$PWD/artifacts/flatpak-<< parameters.arch >>/package"
             export CLOUDSMITH_PKG_EXT="gz"
@@ -135,6 +137,7 @@ jobs:
           name: Cloudsmith upload
           when: always
           command: |
+            cd "$(git rev-parse --show-toplevel)"
             chmod +x ci/cloudsmith-upload.sh
             export BUILD_DIR="$PWD/build"
             export CLOUDSMITH_PKG_EXT="exe"
@@ -168,6 +171,7 @@ jobs:
           name: Cloudsmith upload
           when: always
           command: |
+            cd "$(git rev-parse --show-toplevel)"
             chmod +x ci/cloudsmith-upload.sh
             export BUILD_DIR="$PWD/artifacts/macos-arm64/package"
             export CLOUDSMITH_PKG_EXT="gz"
@@ -177,7 +181,7 @@ jobs:
       - store_artifacts:
           path: artifacts/macos-arm64
 
-  android:
+  android-arm64:
     parameters:
       resource_class: {type: string, default: medium}
 
@@ -186,7 +190,7 @@ jobs:
     resource_class: << parameters.resource_class >>
 
     environment:
-      OCPN_TARGET: android
+      OCPN_TARGET: android-arm64
       WX_VER: "32"
       ANDROID_NDK_VERSION: "26.1.10909125"
       ANDROID_SDK_VERSION: "34"
@@ -196,36 +200,103 @@ jobs:
     steps:
       - checkout
       - run: chmod a+x ci/*.sh
+
       - run:
-          name: Android build, tests and package
-          command: ci/circleci-build-android.sh
+          name: Android ARM64 build, tests and package
+          command: ci/circleci-build-android-arm64.sh
           no_output_timeout: 45m
+
       - run:
-          name: Retain Android package
+          name: Retain Android ARM64 package
           when: always
           command: |
-            mkdir -p artifacts/android/package
+            mkdir -p artifacts/android-arm64/package
             find build -maxdepth 2 -type f \
               \( -name '*.tar.gz' -o -name '*.xml' -o -name '*.log' \) \
-              -exec cp -f '{}' artifacts/android/package/ \; \
+              -exec cp -f '{}' artifacts/android-arm64/package/ \; \
               || true
+
       - run:
           name: Cloudsmith upload
           when: always
           command: |
+            cd "$(git rev-parse --show-toplevel)"
             chmod +x ci/cloudsmith-upload.sh
-            export BUILD_DIR="$PWD/artifacts/android/package"
+            export BUILD_DIR="$PWD/artifacts/android-arm64/package"
             export CLOUDSMITH_PKG_EXT="gz"
             ci/cloudsmith-upload.sh
+
       - run:
-          name: Prepare Android test results directory
+          name: Prepare Android ARM64 test results directory
           when: always
           command: |
-            mkdir -p artifacts/android/tests
+            mkdir -p artifacts/android-arm64/tests
+
       - store_test_results:
-          path: artifacts/android/tests
+          path: artifacts/android-arm64/tests
+
       - store_artifacts:
-          path: artifacts/android
+          path: artifacts/android-arm64
+
+
+  android-armhf:
+    parameters:
+      resource_class: {type: string, default: medium}
+
+    machine:
+      image: ubuntu-2404:current
+    resource_class: << parameters.resource_class >>
+
+    environment:
+      OCPN_TARGET: android-armhf
+      WX_VER: "32"
+      ANDROID_NDK_VERSION: "26.1.10909125"
+      ANDROID_SDK_VERSION: "34"
+      CMAKE_BUILD_PARALLEL_LEVEL: "3"
+      CLOUDSMITH_API_KEY: << pipeline.parameters.cloudsmith_api_key >>
+
+    steps:
+      - checkout
+      - run: chmod a+x ci/*.sh
+
+      - run:
+          name: Android ARMHF build, tests and package
+          command: ci/circleci-build-android-armhf.sh
+          no_output_timeout: 45m
+
+      - run:
+          name: Retain Android ARMHF package
+          when: always
+          command: |
+            mkdir -p artifacts/android-armhf/package
+            find build -maxdepth 2 -type f \
+              \( -name '*.tar.gz' -o -name '*.xml' -o -name '*.log' \) \
+              -exec cp -f '{}' artifacts/android-armhf/package/ \; \
+              || true
+
+      - run:
+          name: Cloudsmith upload
+          when: always
+          command: |
+            cd "$(git rev-parse --show-toplevel)"
+            chmod +x ci/cloudsmith-upload.sh
+            export BUILD_DIR="$PWD/artifacts/android-armhf/package"
+            export CLOUDSMITH_PKG_EXT="gz"
+            ci/cloudsmith-upload.sh
+
+      - run:
+          name: Prepare Android ARMHF test results directory
+          when: always
+          command: |
+            mkdir -p artifacts/android-armhf/tests
+
+      - store_test_results:
+          path: artifacts/android-armhf/tests
+
+      - store_artifacts:
+          path: artifacts/android-armhf
+
+
 
 # -------------------------
 # Top-level anchor definition
@@ -288,7 +359,12 @@ workflows:
       - macos-universal:
           filters: *validation-filters
 
-      - android:
+      - android-arm64:
           name: android-arm64
+          resource_class: medium
+          filters: *validation-filters
+
+      - android-armhf:
+          name: android-armhf
           resource_class: medium
           filters: *validation-filters
