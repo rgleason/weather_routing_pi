@@ -1,131 +1,533 @@
-# ~~~
-# Summary:      Main plugin build script
-# Copyright (c) 2020-2021 Mike Rossiter
-# License:      GPLv3+
-# ~~~
+# ---------------------------------------------------------------------------
+# Author:      Sean d'Epagnier
+# License: GPL v3+   License:  wxWidgets
+# ---------------------------------------------------------------------------
+# -   Copyright (C) 2010 by Sean d'Epagnier                              *
+# -   License:     GPLv3+
+# - This program is free software; you can redistribute it and/or modify  *
+# - it under the terms of the GNU General Public License as published by  *
+# - the Free Software Foundation; either version 2 of the License, or     *
+# - (at your option) any later version.                                   *
+# - *
+# - This program is distributed in the hope that it will be useful,       *
+# - but WITHOUT ANY WARRANTY; without even the implied warranty of        *
+# - MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
+# - GNU General Public License for more details.                          *
+# - *
+# - You should have received a copy of the GNU General Public License     *
+# - along with this program; if not, write to the                         *
+# - xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx,                                       *
+# - xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx                                       *
+# -----------------------------------------------------------------------------
+# Frontend2 Author: Jon Gough Testplugin(TP) v1.0.341.0 30/04/2025 DD/MM/YYYY
+# format buildCI:yes useODAPI:no validateJSON:no
+# ---------------------------------------------------------------------------
+## -- When changing this file do NOT change the order of the sections.    -- ##
+## -- Make changes only between the section blocks identified             -- ##
+## -- The whole configuration process relies on this sequence for success.-- ##
+##
+## -- Modify section below to include all the details for your plugin.    -- ##
 
-# This program is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 3 of the License, or
-# (at your option) any later version.
+set(CMLOC "CMakeLists: ")
 
-# -------- Cmake setup ---------
-#
-cmake_minimum_required(VERSION 3.12.0)
-include(${CMAKE_SOURCE_DIR}/cmake/CmakeSetup.cmake NO_POLICY_SCOPE)
-message(STATUS "Cmake version: ${CMAKE_VERSION}.")
+# Option to enable/disable testing
+option(OCPN_BUILD_TEST "Build plugin tests" OFF)
+set(_xweather_identity_default OFF)
+if("$ENV{CIRCLE_PROJECT_REPONAME}" STREQUAL "xweather_routing_pi")
+  set(_xweather_identity_default ON)
+endif()
+option(WEATHER_ROUTING_XWEATHER_IDENTITY
+       "Build the separately installable xWeatherRouting variant"
+       ${_xweather_identity_default})
+unset(_xweather_identity_default)
 
+# define minimum cmake version
+cmake_minimum_required(VERSION 3.10)
+if(COMMAND cmake_policy)
+  if (POLICY CMP0043)
+    cmake_policy(SET CMP0043 NEW)
+  endif (POLICY CMP0043)
+  cmake_policy(SET CMP0048 NEW)
+  if (POLICY CMP0068)
+    cmake_policy(SET CMP0068 NEW)
+  endif (POLICY CMP0068)
+  if (POLICY CMP0076)
+    cmake_policy(SET CMP0076 NEW)
+  endif (POLICY CMP0076)
+  if (POLICY CMP0077)
+    cmake_policy(SET CMP0077 NEW)
+  endif (POLICY CMP0077)
+  if (POLICY CMP0079)
+    cmake_policy(SET CMP0079 NEW)
+  endif (POLICY CMP0079)
+  if (POLICY CMP0175)
+    cmake_policy(SET CMP0175 NEW)
+  endif (POLICY CMP0175)
+  if (POLICY CMP0177)
+    cmake_policy(SET CMP0177 NEW)
+  endif (POLICY CMP0177)
+endif (COMMAND cmake_policy)
 
-# -------- Build setup  --------
-#
-include(PluginOptions)
-if (BUILD_TYPE)
-  message(STATUS "Building: ${BUILD_TYPE}")
-else ()
-  message(STATUS "Configuring")
-endif ()
+# set for vscode/vscodium
+set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
 
-# -------- Plugin setup ----------
-#
-include(Plugin.cmake)
+# define plugin name, owner and versions
+if(WEATHER_ROUTING_XWEATHER_IDENTITY)
+  set(VERBOSE_NAME "xWeatherRouting")
+  set(COMMON_NAME "xWeatherRouting")
+  set(TITLE_NAME "xweatherrouting")
+  set(PACKAGE "xweather_routing_pi")
+else()
+  set(VERBOSE_NAME "WeatherRouting")
+  set(COMMON_NAME "WeatherRouting")  # Search "getcommonname"in <plugin_pi>.cpp
+  set(TITLE_NAME "weatherrouting")
+  set(PACKAGE "weather_routing_pi")
+endif()
+set(PACKAGE_CONTACT "Sean d'Epagnier; Weather Routing Plugin Team")
+set(SHORT_DESCRIPTION
+    "Advanced deterministic weather routing with departure and arrival planning.")
+set(LONG_DESCRIPTION
+    "WeatherRouting offers Main and Quick engines with independent saved settings and explicit search presets. It computes land-aware sailing routes using deterministic forward isochrones, reverse recovery, graph fallback, concurrent departure optimisation, and planned-arrival routing. Stock OpenCPN uses GSHHS land checks; optional chart-backed safety is available only when the host provides it.")
 
-#------ Local setup e. g. IDE specific stuff --------
-#
-if (EXISTS ${CMAKE_CURRENT_LIST_DIR}/local_config.cmake)
-  include(${CMAKE_CURRENT_LIST_DIR}/local_config.cmake)
-endif ()
-
-# -------- Setup completed, build the plugin --------
-#
-project(${PKG_NAME} VERSION ${PKG_VERSION})
-include(PluginCompiler)
-
-add_library(${CMAKE_PROJECT_NAME} SHARED EXCLUDE_FROM_ALL cmake/dummy.cpp)
-include_directories(BEFORE ${CMAKE_BINARY_DIR}/include)
-
-add_subdirectory("opencpn-libs/${PKG_API_LIB}")
-target_link_libraries(${CMAKE_PROJECT_NAME} ocpn::api)
-
-set(VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
-set(VERSION_MINOR ${PROJECT_VERSION_MINOR})
-set(VERSION_PATCH ${PROJECT_VERSION_PATCH})
-if (PROJECT_VERSION_TWEAK STREQUAL "")
-  set(PROJECT_VERSION_TWEAK 0)
-endif ()
-
-
-set(PACKAGE_NAME ${CMAKE_PROJECT_NAME})
-
-# Create the minimim ocpn version id string like ov50
-string(REGEX REPLACE "\([0-9]\)\.\([0-9]\).*" "ov\\1\\2"
-       OCPN_MIN_VERSION ${API_OCPN_MIN_VERSION})
-
-if (COMMAND late_init)
-  late_init()
-endif ()
-
-# Configure the flatpak manifest
-file(
-  GLOB manifest ${PROJECT_SOURCE_DIR}/flatpak/org.opencpn.OpenCPN.Plugin.*.yaml
+set(VERSION_MAJOR "1")
+set(VERSION_MINOR "17")
+set(VERSION_PATCH "11")
+set(VERSION_TWEAK "0")
+# Keep all five approved source archives for verification and regression tests.
+# Packages ship only Crude, Low and Intermediate; High and Full are optional
+# checksum-verified downloads shared by both plugin identities.
+set(_shoreline_archives
+  "poly-c-2.3.7.dat.gz|933d111ff352c8b505181e6a2d2888c093222fcccd5f3b455bfbb6f1df217891"
+  "poly-l-2.3.7.dat.gz|51a1ae4874df513f25447d26740221d4b2a984fabbce9d3f84b29b2e25ff4ab9"
+  "poly-i-2.3.7.dat.gz|9de2a76bed06711443466c7832798784b45e5a54c752a7c260ee50de00bf0a5e"
+  "poly-h-2.3.7.dat.gz|065a10f49c72426cb295ddb076e1d54a1f985d75a759c552a0a93c3d4e1cf71a"
+  "poly-f-2.3.7.dat.gz|a36cb8c4fda7d56cfd851d92ed70a315d0a2ff81e10e99e8a0141ce9dc4e6d60"
 )
-include(ConfigureManifest)
-configure_manifest(${manifest} _new_manifest)
+foreach(_archive IN LISTS _shoreline_archives)
+  string(REPLACE "|" ";" _parts "${_archive}")
+  list(GET _parts 0 _file)
+  list(GET _parts 1 _expected)
+  file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/data/shoreline/${_file}" _actual)
+  if(NOT _actual STREQUAL _expected)
+    message(FATAL_ERROR "Bundled GSHHG data is missing or corrupt: ${_file}")
+  endif()
+endforeach()
+unset(_shoreline_archives)
+set(VERSION_DATE  "16/09/2026") # DD/MM/YYYY format
+set(OCPN_MIN_VERSION "ov511")
 
-# Set up targets. Targets sets up new targets with BUILD_TYPE set to
-# 'flatpak', 'android' or 'tarball'. The initial call without BUILD_TYPE ends
-# here.
-#
-include(Targets)
-create_targets(${_new_manifest})
+set(OCPN_API_VERSION_MAJOR "1")
+set(OCPN_API_VERSION_MINOR "21")
+set(TP_COMMENT "  * Release using CI")
 
-if ("${BUILD_TYPE}" STREQUAL "")
-  return ()
-endif ()
+set(PARENT "opencpn")
+
+#Use to set up a local webserver with git installed.
+#Default is github.com. Now set in pluginconfigure.cmake
+#set(GIT_REPOSITORY_SERVER "github.com")
+
+## Cloudsmith upload repository suffix for each catalog
+set(PROD "prod")   #Standard Repos
+set(BETA "beta")   #Standard Repos
+set(ALPHA "alpha") #Standard Repos
+
+# Set if  Cloudsmith Base Repository name does not match your Git Repository name.
+#set (CLOUDSMITH_BASE_REPOSITORY "${GIT_REPOSITORY_NAME}")
+#set (CLOUDSMITH_BASE_REPOSITORY "opencpn-plugins")  # Ricks's customization
+set(CLOUDSMITH_BASE_REPOSITORY "weather-routing")
+if(WEATHER_ROUTING_XWEATHER_IDENTITY)
+  set(PLUGIN_GIT_REPOSITORY "pob220/xweather_routing_pi")
+else()
+  set(PLUGIN_GIT_REPOSITORY "pob220/weather_routing_pi")
+endif()
+
+# Keep validation independent of the OpenCPN publishing repositories.  Alpha
+# publication remains a separate, explicitly approved later step.
+set(CLOUDSMITH_USER "opencpn")
+
+set(XML_INFO_URL "https://github.com/${PLUGIN_GIT_REPOSITORY}")
+set(XML_SUMMARY ${SHORT_DESCRIPTION})
+set(XML_DESCRIPTION ${LONG_DESCRIPTION})
+
+## ----- Modify section above to include all the details for your plugin ------- ##
+## ----- Modify section below if there are special requirements for the plugin --##
+
+option(PLUGIN_USE_SVG "Use SVG graphics" ON)
+option(WEATHER_ROUTING_STANDALONE_API
+       "Build against the vendored stock OpenCPN API even inside an OpenCPN source tree"
+       OFF)
+# Retain the preview build switch as a temporary source-build compatibility
+# alias. New automation should use WEATHER_ROUTING_STANDALONE_API.
+option(XWEATHER_ROUTING_STANDALONE_API
+       "Deprecated alias for WEATHER_ROUTING_STANDALONE_API" OFF)
+if(XWEATHER_ROUTING_STANDALONE_API)
+  set(WEATHER_ROUTING_STANDALONE_API ON)
+endif()
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Use local version of GLU library requires libs/glu directory
+# set(USE_LOCAL_GLU FALSE)
+# Prefer libGL.so to libOpenGL.so, see CMP0072
+set(OpenGL_GL_PREFERENCE "LEGACY")   #not operational
+# For Weatherfax this must be set ON or it fails to compile
+option(USE_GL "Enable OpenGL support" ON)
+message(STATUS "${CMLOC}USE_GL: ${USE_GL}")
+
+if ("${CMAKE_BUILD_TYPE}" STREQUAL "")
+  set(CMAKE_BUILD_TYPE
+      "Release"
+      CACHE STRING "Choose the type of build" FORCE
+  )
+endif ("${CMAKE_BUILD_TYPE}" STREQUAL "")
+set_property(
+  CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "" "Debug" "Release" "RelWithDebInfo"
+                                  "MinSizeRel"
+)
+message(STATUS "${CMLOC}Build type: ${CMAKE_BUILD_TYPE}")
+
+# ----- Statements below used to setup standard variables required by the CMAKE---##
+# ----- process -- Do not remove -##
+
+project(${PACKAGE})
+
+# MSVC otherwise reports the historical 199711L value for __cplusplus even
+# when /std:c++20 is active.  Frontend2's bundled JsonCpp uses __cplusplus to
+# choose unique_ptr rather than the removed auto_ptr, and plugin code uses the
+# same feature-test contract.
+if(MSVC)
+  add_compile_options(/Zc:__cplusplus)
+endif()
+
+set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
+##========================================================
+
+include("PluginSetup")
+
+##========================================================
+## ----- Above sets up standard variables required by CMAKE - Do not remove -----##
+## ----- Modify section below if there are special requirements for the plugin --##
+
+set(CMAKE_VERBOSE_MAKEFILE "Activate verbose mode for make files" ON)
+
+option(Plugin_CXX11 "Use c++11" OFF)
+
+## ----- Modify section above if there are special requirements for the plugin --##
+## ----- Do not change next section - needed to configure build process ---------##
+##===========================================================
+
+include("PluginConfigure")
+
+if(PLUGIN_USE_SVG)
+  add_compile_definitions(PLUGIN_USE_SVG)
+endif()
+
+##===========================================================
+## ----- Do not change section above - needed to configure build process --------##
+## ----- Change below to match project requirements for source, headers, etc. ---##
+
+add_definitions(-DUSE_S57)
+
+## ---- Sources and Headers  - Add your project SET(SRCS and SET(HDRS  etc..
 
 
-if (NOT ${BUILD_TYPE} STREQUAL "flatpak")
-  target_sources(${CMAKE_PROJECT_NAME} PUBLIC ${SRC})
-  # Build package as required (flatpak already dealt with).
-  #
-  if (APPLE)
-    include(MacosWxwidgets)
-  endif ()
-  include(PluginInstall)
-  if (QT_ANDROID)
-    include(AndroidLibs)
+SET(SRCS
+            src/ShorelineDataset.cpp
+            src/ShorelineManager.cpp
+            src/AppendOnlyCache.cpp
+            src/ChartSafetyCache.cpp
+            src/ChartSafetyAtlas.cpp
+            src/ChartHazardEvaluator.cpp
+            src/ChartSafetyHost.cpp
+            src/OceanPrewarmPolicy.cpp
+            src/ReachabilityPrewarmPolicy.cpp
+            src/ExternalPlanningProvider.cpp
+            src/AddressSpaceMonitor.cpp
+            src/SystemMemory.cpp
+            src/GribTimelineFrameCache.cpp
+            src/weather_routing_pi.cpp
+            src/WeatherRouting.cpp
+            src/SunCalculator.cpp
+            src/TimeZoneDisplay.cpp
+            src/ConfigurationDialog.cpp
+            src/SettingsDialog.cpp
+            src/PlotDialog.cpp
+            src/BoatDialog.cpp
+            src/StatisticsDialog.cpp
+            src/ReportDialog.cpp
+            src/FilterRoutesDialog.cpp
+            src/ConfigurationBatchDialog.cpp
+            src/EditPolarDialog.cpp
+            src/AboutDialog.cpp
+            src/ConstraintChecker.cpp
+            src/ClimatologyThreadGuard.cpp
+            src/Polar.cpp
+            src/Boat.cpp
+            src/RouteMap.cpp
+            src/RouteMapOverlay.cpp
+            src/RouteWaypointExtractor.cpp
+            src/MultiLegRouteOutput.cpp
+            src/RouteSimplifier.cpp
+            src/StabilityRouteAdapter.cpp
+            src/StabilityCorridorLifecycle.cpp
+            src/RoutingTablePanel.cpp
+            src/Utilities.cpp
+            src/LineBufferOverlay.cpp
+            src/PolygonRegion.cpp
+            src/WeatherRoutingUI.cpp
+            src/icons.cpp
+            src/zuFile.cpp
+            src/georef.cpp
+            src/cutil.cpp
+            src/GribRecord.cpp
+            src/navobj_util.cpp
+            src/WeatherDataProvider.cpp
+            src/RoutePoint.cpp
+            src/Position.cpp
+            src/IsoRoute.cpp
+            src/headless/HeadlessRouteRunner.cpp
+            src/headless/RoutingScenarioJson.cpp
+            src/engine/StabilityCorridorCalculator.cpp
+            vendor/weather-routing-engine/src/ArrivalPlanner.cpp
+            vendor/weather-routing-engine/src/Geometry.cpp
+            vendor/weather-routing-engine/src/Providers.cpp
+            vendor/weather-routing-engine/src/Polar.cpp
+            vendor/weather-routing-engine/src/EnvironmentResolver.cpp
+            vendor/weather-routing-engine/src/Engine.cpp
+            vendor/weather-routing-engine/src/QuickEngine.cpp
+            vendor/weather-routing-engine/src/Validator.cpp
+            vendor/weather-routing-engine/src/Ensemble.cpp
+            src/engine/native/OpenCpnAdapter.cpp
+)
+
+SET (HDRS
+            include/AppendOnlyCache.h
+            include/ChartSafetyCache.h
+            include/ChartHazardEvaluator.h
+            include/ChartSafetyHost.h
+            include/headless/HeadlessRouteMonitor.h
+            include/OptionalChartSafetyApi.h
+            include/OceanPrewarmPolicy.h
+            include/ReachabilityPrewarmPolicy.h
+            include/ExternalPlanningProvider.h
+            include/ProcessAddressSpace.h
+            include/GribTimelineCachePolicy.h
+            include/SystemMemory.h
+            include/GribTimelineFrameCache.h
+            include/AddressSpaceMonitor.h
+            include/ChartSafetyDefaults.h
+            include/ClimatologyThreadGuard.h
+            include/weather_routing_pi.h
+            include/WeatherRouting.h
+            include/SunCalculator.h
+            include/ConfigurationDialog.h
+            include/SettingsDialog.h
+            include/PlotDialog.h
+            include/BoatDialog.h
+            include/StatisticsDialog.h
+            include/ReportDialog.h
+            include/FilterRoutesDialog.h
+            include/ConfigurationBatchDialog.h
+            include/ConstraintChecker.h
+            include/MultiLegRouteOutput.h
+            include/RouteSimplifier.h
+            include/StabilityRouteAdapter.h
+            include/StabilityCorridorLifecycle.h
+            include/EditPolarDialog.h
+            include/AboutDialog.h
+            include/Polar.h
+            include/Boat.h
+            include/ChartSafetyAtlas.h
+            include/RouteMap.h
+            include/RouteMapOverlay.h
+            include/DepartureScheduler.h
+            include/RoutingQualityPolicy.h
+            include/RoutingFootprint.h
+            include/RouteWaypointExtractor.h
+            include/RoutingTablePanel.h
+            include/Utilities.h
+            include/LineBufferOverlay.h
+            include/PolygonRegion.h
+            include/WeatherRoutingUI.h
+            include/icons.h
+            include/zuFile.h
+            include/georef.h
+            include/cutil.h
+            include/GribRecord.h
+            include/navobj_util.h
+            include/WeatherDataProvider.h
+            include/RoutePoint.h
+            include/Position.h
+            include/IsoRoute.h
+            include/weather_routing_engine/RoutingDiagnostics.h
+            include/weather_routing_engine/RoutingResult.h
+            include/weather_routing_engine/RoutingScenario.h
+            include/weather_routing_engine/StabilityCorridor.h
+            vendor/weather-routing-engine/include/supercpn/weather_routing/Types.h
+            vendor/weather-routing-engine/include/supercpn/weather_routing/ArrivalPlanner.h
+            vendor/weather-routing-engine/include/supercpn/weather_routing/Providers.h
+            vendor/weather-routing-engine/include/supercpn/weather_routing/Engine.h
+            vendor/weather-routing-engine/src/RoutingInternal.h
+            include/ModernNativeRoute.h
+            src/headless/HeadlessRouteRunner.h
+            src/headless/RoutingScenarioJson.h
+)
+
+
+## ----- Section above - Add your project SET(SRCS and SET(HDRS  etc.-------##
+## ----- If using JSON validation in plugin section below is needed --------##
+
+# Do not need Json Schema Validation
+
+## ----- If using JSON validation in plugin section above is needed --------##
+
+
+##=============================================================
+## Change as required to collect all the set( headers and SRCS
+## This add_library  can be used in conditionals below.
+##=============================================================
+
+set(SRC ${SRCS} ${HDRS} )
+
+##=============================================================
+## Modify/configure 'Include' Directories below for the Plugin
+##=============================================================
+
+include_directories(BEFORE
+  ${PROJECT_SOURCE_DIR}/vendor/weather-routing-engine/include
+  ${PROJECT_SOURCE_DIR}/include
+  ${PROJECT_SOURCE_DIR}/src)
+
+## Change target_sources to match your project needs.
+##==============================================================
+
+target_sources(${PACKAGE_NAME} PUBLIC ${SRC} )
+
+# Installed packages resolve their assets through OpenCPN's plugin data path.
+# An in-tree developer build has no installed weather_routing_pi data
+# directory, so give that build an explicit source-only fallback.
+if(NOT CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
+  target_compile_definitions(${PACKAGE_NAME} PRIVATE
+    WEATHER_ROUTING_SOURCE_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
+endif()
+
+if(CMAKE_DL_LIBS)
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ${CMAKE_DL_LIBS})
+endif()
+
+
+if (NOT OCPN_FLATPAK_CONFIG)
+  # Build environment not available when flatpak is being configured so
+  # following statements will not work
+  message(STATUS "${CMLOC}Adding target link libraries to ${PACKAGE_NAME}")
+
+  if (WIN32)
+    add_subdirectory(opencpn-libs/WindowsHeaders)
+    target_link_libraries(${PACKAGE_NAME} PRIVATE windows::headers)
+  endif (WIN32)
+
+  if(NOT OCPN_IN_TREE_SOURCE_DIR)
+    get_filename_component(OCPN_IN_TREE_SOURCE_DIR
+      "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+  endif()
+  if (NOT WEATHER_ROUTING_STANDALONE_API
+      AND EXISTS "${OCPN_IN_TREE_SOURCE_DIR}/include/ocpn_plugin.h")
+    add_library(OCPN_API_LOCAL INTERFACE)
+    add_library(ocpn::api ALIAS OCPN_API_LOCAL)
+    target_include_directories(OCPN_API_LOCAL INTERFACE
+      "${OCPN_IN_TREE_SOURCE_DIR}/include")
+  elseif (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/opencpn-libs/api-${OCPN_API_VERSION_MINOR}/CMakeLists.txt")
+    add_subdirectory(opencpn-libs/api-${OCPN_API_VERSION_MINOR})
+    # The enhanced chart-safety service is optional and resolved dynamically.
+    # Stock API headers intentionally do not declare its ABI-only structures,
+    # so make the plugin-local declarations available to every target in this
+    # directory, including the standalone regression tests.
+    add_compile_definitions(
+      WEATHER_ROUTING_DECLARE_OPTIONAL_CHART_SAFETY_ABI=1)
+  elseif (EXISTS "${CMAKE_SOURCE_DIR}/include/ocpn_plugin.h")
+    add_library(OCPN_API_LOCAL INTERFACE)
+    add_library(ocpn::api ALIAS OCPN_API_LOCAL)
+    target_include_directories(OCPN_API_LOCAL INTERFACE "${CMAKE_SOURCE_DIR}/include")
   else ()
-    include(PluginLibs)
+    message(FATAL_ERROR "Missing opencpn-libs/api-${OCPN_API_VERSION_MINOR}")
   endif ()
-  include(PluginLocalization)
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::api)
 
-  include_directories(BEFORE ${CMAKE_BINARY_DIR}/include)
+  add_subdirectory(opencpn-libs/tinyxml)
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::tinyxml)
 
-  if (COMMAND add_plugin_libraries)
-    add_plugin_libraries()
-  endif ()
+  add_subdirectory(opencpn-libs/odapi)
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::odapi)
 
-endif ()
+  add_subdirectory(opencpn-libs/jsonlib)
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::jsonlib)
 
-configure_file(
-  ${CMAKE_SOURCE_DIR}/config.h.in ${CMAKE_BINARY_DIR}/include/config.h
-  @ONLY
+  add_subdirectory(opencpn-libs/plugin_dc)
+  if(TARGET _DC_UTILS AND TARGET wx::core)
+    target_link_libraries(_DC_UTILS PRIVATE wx::core)
+  endif()
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::plugin-dc)
+
+  add_subdirectory(opencpn-libs/pugixml)
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::pugixml)
+
+  # @todo Why would this not be required on UNIX?  
+  # @todo@ On macos the build fails without it, and macos is UNIX
+  # @todo See https://cmake.org/cmake/help/latest/variable/UNIX.html
+  
+  add_subdirectory(opencpn-libs/bzip2)
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::bzip2)
+
+  add_subdirectory(opencpn-libs/zlib)
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::zlib)
+
+  add_subdirectory(opencpn-libs/libtess2)
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::libtess2)
+
+endif(NOT OCPN_FLATPAK_CONFIG)
+
+add_definitions(-DTIXML_USE_STL)
+
+##
+## ----- If using JSON validation section below is needed ---------------##
+##
+
+# Do not need Json Schema Validation
+
+
+##------- Change below to match project requirements --------------
+
+# Needed for android builds
+if (QT_ANDROID)
+  include_directories(BEFORE ${qt_android_include})
+endif (QT_ANDROID)
+
+## Needed for all builds Do not change - needed to build app -------------##
+##===============================================================
+
+include("PluginInstall")
+include("PluginLocalization")
+include("PluginPackage")
+
+##================================================================
+## Diagnostics
+##================================================================
+
+message(STATUS "${CMLOC}include directories: ")
+get_property(
+  dirs
+  DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+  PROPERTY INCLUDE_DIRECTORIES
 )
+foreach (dir ${dirs})
+  message(STATUS "${CMLOC}dir='${dir}'")
+endforeach ()
 
-configure_file(
-  # The cloudsmith upload script
-  ${CMAKE_SOURCE_DIR}/ci/upload.sh.in ${CMAKE_BINARY_DIR}/upload.sh
-  @ONLY
-)
-configure_file(
-  # The cloudsmith upload script, windows bat file.
-  ${CMAKE_SOURCE_DIR}/ci/upload.bat.in ${CMAKE_BINARY_DIR}/upload.bat
-  @ONLY
-)
-
-set(checksum "@checksum@")
-configure_file(
-  # The XML metadata file
-  ${CMAKE_SOURCE_DIR}/plugin.xml.in
-  ${CMAKE_BINARY_DIR}/${pkg_displayname}.xml.in
-  @ONLY
-)
+# Add the test directory if testing is enabled
+if(OCPN_BUILD_TEST)
+    message(STATUS "Building with tests enabled")
+    enable_testing()
+    add_subdirectory(test)
+endif()

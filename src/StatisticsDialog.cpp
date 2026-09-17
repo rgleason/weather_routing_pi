@@ -28,14 +28,11 @@
 
 #include <stdlib.h>
 #include <math.h>
-#include <time.h>
 
 #include <list>
 
 #include "StatisticsDialog.h"
 
-#include "Utilities.h"
-#include "Boat.h"
 #include "RouteMapOverlay.h"
 
 StatisticsDialog::StatisticsDialog(wxWindow* parent)

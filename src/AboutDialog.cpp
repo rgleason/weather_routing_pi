@@ -29,12 +29,9 @@
 
 #include <stdlib.h>
 #include <math.h>
-#include <time.h>
 
 #include "AboutDialog.h"
 #include "weather_routing_pi.h"
-
-#include "Utilities.h"
 
 AboutDialog::AboutDialog(wxWindow* parent) : AboutDialogBase(parent) {
   //     m_stVersion->SetLabel(wxString::Format(_T("%d.%d"),PLUGIN_VERSION_MAJOR,

@@ -20,14 +20,26 @@
 #ifndef _WEATHER_ROUTING_ROUTE_MAP_H_
 #define _WEATHER_ROUTING_ROUTE_MAP_H_
 
+#include "RoutingEngineSettings.h"
+
+#include "ShorelineDataset.h"
 #include "wx/datetime.h"
 #include <wx/object.h>
 #include <wx/weakref.h>
 
 #include <list>
+#include <atomic>
+#include <condition_variable>
+#include <cstdint>
+#include <deque>
+#include <map>
+#include <memory>
+#include <mutex>
 
 #include "ODAPI.h"
 #include "GribRecordSet.h"
+#include "KeyedRequestCache.h"
+#include "GribTimelineFrameCache.h"
 #include "ConstraintChecker.h"
 #include "RoutePoint.h"
 #include "Position.h"
@@ -84,8 +96,8 @@ class WR_GribRecordSet;
  */
 class PlotData : public RoutePoint {
 public:
-  /** The time in UTC when the boat reaches this position, based on the route
-   * calculation. */
+  /** The time when the boat reaches this position, based on the route
+   * calculation. TODO: is it UTC? */
   wxDateTime time;
   /** The time in seconds from the previous position to this position. */
   double delta;
@@ -93,7 +105,6 @@ public:
   double cog;  //!< Course Over Ground in degrees.
   double stw;  //!< Speed Through Water (STW) in knots.
   double ctw;  //!< Course Through Water (CTW) in degrees.
-  double hdg;  //!< Boat heading in degrees.
   /**
    * True Wind Speed relative to water (TWS over water) in knots, as predicted
    * by the forecast.
@@ -145,21 +156,23 @@ public:
   double twdOverGround;
   double currentSpeed;  //!< Speed of sea current over ground in knots.
   double currentDir;    //!< Sea current direction over ground in degrees.
-  double WVHT;          //!< Significant swell height in meters.
-  double WVDIR;    //!< Swell direction in degrees (meteorological convention).
-  double WVREL;    //!< Relative swell direction in degrees (relative to boat
-                   //!< heading).
-  double WVPER;    //!< Swell period in seconds.
-  double VW_GUST;  //!< Gust wind speed in knots.
-  double cloud_cover;        //!< Cloud cover in percent (0-100%).
-  double rain_mm_per_hour;   //!< Rainfall in mm.
-  double air_temp;           //!< Air temperature in degrees Celsius.
-  double sea_surface_temp;   //!< Sea surface temperature in degrees Celsius.
-  double cape;               //!< The CAPE value in J/kg.
-  double relative_humidity;  //!< Relative humidity in percent (0-100%).
-  double air_pressure;       //!< Surface air pressure in hPa.
-  double reflectivity;       //!< Reflectivity in dBZ.
-  DataMask data_mask;        //!< Bitmask indicating data sources used.
+  double WVHT{NAN};     //!< Significant swell height in meters.
+  double WVDIR{NAN};    //!< Wave direction in degrees.
+  double WVREL{NAN};    //!< Wave direction relative to CTW in degrees.
+  double WVPER{NAN};    //!< Wave period in seconds.
+  double VW_GUST{NAN};  //!< Gust wind speed in knots.
+
+  double cloud_cover{NAN};        //!< Cloud cover in percent (0-100%).
+  double rain_mm_per_hour{NAN};   //!< Rainfall in mm.
+  double air_temp{NAN};           //!< Air temperature in Kelvin.
+  double sea_surface_temp{NAN};   //!< Sea surface temperature in Kelvin.
+  double cape{NAN};               //!< The CAPE value in J/kg.
+  double relative_humidity{NAN};  //!< Relative humidity in percent (0-100%).
+  double air_pressure{NAN};       //!< Surface air pressure in Pa.
+  double reflectivity{NAN};       //!< Reflectivity in dBZ.
+  /** This modern-engine leg is still using the one-way, zero-margin coastal
+   * departure egress rule. It is never inferred for legacy plot data. */
+  bool coastalDepartureEgress{false};
 };
 
 class weather_routing_pi;
@@ -212,15 +225,62 @@ struct RouteMapPosition {
  * position, timestamp, error flags, and intermediate calculation results.
  */
 struct RouteMapConfiguration {
+  // Pinned per calculation; chart geometry retains its separate host path.
+  std::shared_ptr<weather_routing::ShorelineDataset> shoreline_dataset;
+  wxString shoreline_description;
+  int ShorelineResolution{2};  // Offline base default; saved route choices are preserved.
+  int QuickShorelineResolution{0};
+  int ChartShorelineResolution{0};  // Preliminary shoreline work in enforced chart mode.
+  int MainGribTimelineCacheMiB{
+      weather_routing::kMainGribTimelineCacheDefaultMiB};
+  int QuickGribTimelineCacheMiB{
+      weather_routing::kQuickGribTimelineCacheDefaultMiB};
+  int SelectedGribTimelineCacheMiB() const {
+    return IsQuick() ? QuickGribTimelineCacheMiB : MainGribTimelineCacheMiB;
+  }
+  int SelectedShorelineResolution() const {
+    return IsQuick() ? QuickShorelineResolution : ShorelineResolution;
+  }
+  int EffectiveShorelineResolution() const {
+    return chart_safety_scout_preview ||
+        (chart_safety_runtime_available && chart_safety_runtime_enforced)
+        ? ChartShorelineResolution : SelectedShorelineResolution();
+  }
+  wxString shoreline_error;
   /**
    * Defines the source for the starting point of the route.
    */
   enum StartDataType {
     START_FROM_POSITION,  //!< Start from named position, resolved to lat/lon.
-    START_FROM_BOAT       //!< Start from boat's current position.
+    START_FROM_BOAT,      //!< Start from boat's current position.
+    START_FROM_WAYPOINT   //!< Start from OpenCPN waypoint/mark.
   };
 
+  /**
+   * Defines the source for the destination point of the route.
+   */
+  enum EndDataType {
+    END_AT_POSITION,  //!< End at named Weather Routing position.
+    END_AT_WAYPOINT   //!< End at OpenCPN waypoint/mark.
+  };
+
+  weather_routing::RoutingEngineSettings EngineSettings;
+  bool IsQuick() const {
+    return EngineSettings.engine == weather_routing::RoutingEngine::Quick;
+  }
+
   RouteMapConfiguration(); /* avoid waiting forever in update longitudes */
+
+  /**
+   * Convert a generated departure-optimisation result into an independent
+   * route which can be edited, saved and used as the base of a new sweep.
+   */
+  void PromoteDepartureTimeOptimizationCandidate() {
+    DepartureTimeOptimizationCandidate = false;
+    DepartureTimeOptimizationNominalStartTime = wxDateTime();
+    DepartureTimeOptimizationOffsetMinutes = 0;
+    DepartureTimeOptimizationGroupId.Clear();
+  }
 
   /**
    * Updates the route configuration with the latest position information.
@@ -247,12 +307,66 @@ struct RouteMapConfiguration {
   /** The name of the destination position, which is resolved to EndLat/EndLon.
    */
   wxString End;
+  /** The type of destination point, either Weather Routing position or
+   * waypoint. */
+  EndDataType EndType;
   wxString EndGUID;
 
   /** The time when the boat leaves the starting position. */
   wxDateTime StartTime;
+  enum RoutingTimeMode {
+    ROUTE_BY_DEPARTURE_TIME,
+    ROUTE_BY_ARRIVAL_TIME
+  } TimeMode;
+  /** User-selected destination time when routing by arrival. */
+  wxDateTime PlannedArrivalTime;
+  /** Maximum time before PlannedArrivalTime in which departure may occur. */
+  int ArrivalSearchHorizonMinutes;
+  /** Required buffer before PlannedArrivalTime. */
+  int ArrivalSafetyMarginMinutes;
+  /** Runtime diagnostics from the arrival planner. */
+  int ArrivalPlanningEvaluatedRoutes;
+  int ArrivalPlanningFeasibleRoutes;
+  long ArrivalPlanningScheduleMarginSeconds;
   /** Flag to use the current time as the start time. */
   bool UseCurrentTime;
+  /** If true, compute a batch of routes around StartTime. */
+  bool DepartureTimeOptimizationEnabled;
+  /** Minutes before and after StartTime to test. */
+  int DepartureTimeOptimizationRangeMinutes;
+  /** Minutes between candidate departure times. */
+  int DepartureTimeOptimizationStepMinutes;
+  /**
+   * Maximum departure candidates to calculate concurrently. Zero selects the
+   * scheduler's automatic machine-appropriate value.
+   */
+  int DepartureTimeOptimizationConcurrentRoutes;
+  /**
+   * Search resource multiplier for each complete route. One hundred preserves
+   * the standard limits; higher values trade CPU time and memory for a more
+   * exhaustive search.
+   */
+  int RoutingEffortPercent;
+  /** Runtime-only marker for generated optimization candidates. */
+  bool DepartureTimeOptimizationCandidate;
+  /** Runtime-only nominal departure used to compute displayed offsets. */
+  wxDateTime DepartureTimeOptimizationNominalStartTime;
+  /** Runtime-only candidate offset in minutes from nominal departure. */
+  int DepartureTimeOptimizationOffsetMinutes;
+  /** Runtime-only group identifier for one optimization sweep. */
+  wxString DepartureTimeOptimizationGroupId;
+  /** True for route configurations generated from an OpenCPN route leg. */
+  bool IsMultiLegGenerated;
+  /** Shared identifier for all generated legs in one OpenCPN route sequence. */
+  wxString MultiLegGroupId;
+  /** OpenCPN route GUID used to create this generated leg. */
+  wxString MultiLegParentRouteGUID;
+  /** OpenCPN route name used to create this generated leg. */
+  wxString MultiLegParentRouteName;
+  /** One-based leg index within the generated multi-leg sequence. */
+  int MultiLegLegIndex;
+  /** Total leg count within the generated multi-leg sequence. */
+  int MultiLegLegCount;
   /** Default time in seconds between propagations. */
   double DeltaTime;
   /** Time in seconds between propagations. */
@@ -367,6 +481,15 @@ struct RouteMapConfiguration {
   double SafetyMarginLand;
 
   /**
+   * Minimum charted water depth accepted by chart-aware routing, in metres.
+   *
+   * A value at or below zero disables depth checking.  This constraint is
+   * meaningful only when enforced chart-backed safety is available; it must
+   * never silently degrade to the GSHHS land-only fallback.
+   */
+  double MinimumDepthMeters;
+
+  /**
    * When enabled, the routing algorithm will avoid historical cyclone tracks.
    *
    * Uses climatology data to identify areas where cyclones have historically
@@ -470,6 +593,38 @@ struct RouteMapConfiguration {
    * SafetyMarginLand.
    */
   bool DetectLand;
+  /**
+   * Runtime-only fallback: use chart-backed land checks during propagation.
+   * Normal hybrid mode leaves this false and chart-validates final
+   * alternatives.
+   */
+  bool UseChartSafetyForPropagation;
+  /** Runtime-only guard so a route retries chart propagation at most once. */
+  bool ChartSafetyPropagationFallbackTried;
+  /** Runtime snapshot of optional host chart-safety availability. */
+  bool chart_safety_runtime_available;
+  /** Runtime snapshot of the user's fail-closed chart-safety policy. */
+  bool chart_safety_runtime_enforced;
+
+  /**
+   * Experimental recovery: when the normal forward search reaches the
+   * destination envelope but cannot construct a chart-safe final approach,
+   * build a bounded destination-reachable funnel and try to connect recent
+   * forward frontiers to it.  Disabled by default.
+   */
+  bool UseReverseReachabilityRecovery;
+  int ReverseReachabilitySearchBackIsochrones;
+  double ReverseReachabilityHorizonHours;
+  bool ReverseReachabilityDiagnostics;
+  bool ReverseRecoveryUsed;
+  wxString ReverseRecoveryStatus;
+  long ReverseLayersBuilt;
+  long ReverseNodesGenerated;
+  long ReverseNodesFeasible;
+  bool ReverseConnectionFound;
+  wxDateTime ReverseConnectionTime;
+  wxString ReverseFailureReason;
+  bool ReverseFinalValidationPass;
 
   /**
    * If true, the route calculation will avoid exclusion boundaries.
@@ -528,6 +683,8 @@ struct RouteMapConfiguration {
    * calculation. The default value is 180 degrees.
    */
   double ToDegree;
+  /** Limit sailing candidates to the current polar's best VMG angles. */
+  bool UseOptimalAngles;
   /**
    * The angular resolution at each step of the route calculation, in degrees.
    * Lower values provide finer resolution but increase computation time.
@@ -537,25 +694,13 @@ struct RouteMapConfiguration {
    */
   double ByDegrees;
 
-  /**
-   * If true, use motor when Speed Through Water is below the threshold.
-   * When enabled, the vessel will motor at a constant speed whenever the
-   * calculated speed through water (STW) falls below MotorSpeedThreshold.
-   */
+  /** Use the motor when calculated sailing STW is below the threshold. */
   bool UseMotor;
 
-  /**
-   * The threshold speed in knots below which the motor will be used.
-   * When the calculated STW is below this value and UseMotor is true,
-   * the vessel will motor at MotorSpeed instead of sailing.
-   */
+  /** Sailing STW in knots below which the motor is used. */
   double MotorSpeedThreshold;
 
-  /**
-   * The speed in knots when motoring.
-   * This is the constant speed the vessel will maintain when motoring
-   * is engaged due to low sailing speed.
-   */
+  /** Constant speed through water in knots while motoring. */
   double MotorSpeed;
 
   /* computed values */
@@ -654,6 +799,57 @@ struct RouteMapConfiguration {
   bool land_crossing;
   // Set to true if the route crossed a boundary.
   bool boundary_crossing;
+  long rejection_counts[PROPAGATION_ANGLE_ERROR + 1];
+  long accepted_candidate_count;
+  long generated_candidate_count;
+  long frontier_positions_before_merge;
+  long frontier_positions_after_merge;
+  long frontier_positions_after_reduce;
+  long frontier_routes_before_merge;
+  long frontier_routes_after_merge;
+  long frontier_routes_after_reduce;
+  long sparse_legal_frontiers_retained;
+  long sparse_legal_frontiers_dropped;
+  long weather_data_read_attempts;
+  long weather_data_read_successes;
+  long grib_wind_data_reads;
+  long climatology_wind_data_reads;
+  long deficient_wind_data_reads;
+  long current_data_read_attempts;
+  long current_data_reads;
+  long missing_current_data_reads;
+  long nonfinite_boat_speed_rejections;
+  long zero_boat_speed_rejections;
+  double max_current_speed_seen;
+  double sum_current_speed_seen;
+  long current_speed_samples;
+  long chart_land_refinement_angles;
+  long chart_land_refinement_accepted;
+  long chart_safety_missing_tile_rejections;
+  int chart_safety_missing_tile_retry_count;
+  int chart_safety_missing_tile_first_lat_tile;
+  int chart_safety_missing_tile_first_lon_tile;
+  double chart_safety_missing_tile_first_min_lat;
+  double chart_safety_missing_tile_first_min_lon;
+  double chart_safety_missing_tile_min_lat;
+  double chart_safety_missing_tile_max_lat;
+  double chart_safety_missing_tile_min_lon;
+  double chart_safety_missing_tile_max_lon;
+  // Search-derived reach of the first/last scout frontier edge.  Margin-only
+  // endpoint relaxation is confined to these zones; zero means disabled.
+  double chart_safety_start_endpoint_reach_nm;
+  double chart_safety_end_endpoint_reach_nm;
+  // Internal hint-only solve used solely to discover a chart prewarm
+  // footprint. It may use preview search limits, but can never be displayed or
+  // accepted as the final route.
+  bool chart_safety_scout_preview;
+  /** Runtime-only native engine resource diagnostics. */
+  std::uint64_t routing_generated_states;
+  std::uint64_t routing_generated_state_limit;
+  std::uint64_t routing_retained_states;
+  std::uint64_t routing_retained_state_limit;
+  std::uint64_t routing_graph_labels;
+  std::uint64_t routing_graph_label_limit;
 };
 
 bool operator!=(const RouteMapConfiguration& c1,
@@ -805,13 +1001,43 @@ public:
     Unlock();
     return needsgrib;
   }
+  /** Return true while propagation is paused for main-thread chart data. */
+  bool NeedsChartSafetyData() {
+    Lock();
+    bool needed = m_bNeedsChartSafetyData;
+    Unlock();
+    return needed;
+  }
+  /** Resume propagation after the main thread has serviced tile requests. */
+  void ChartSafetyDataServiced();
+  /** Pause a worker until queued chart-semantic tile requests are serviced. */
+  bool AwaitChartSafetyData(long timeoutMilliseconds = 30000);
   void RequestedGrib() {
     Lock();
     m_bNeedsGrib = false;
     Unlock();
   }
-  void SetNewGrib(GribRecordSet* grib);
-  void SetNewGrib(WR_GribRecordSet* grib);
+  void SetNewGrib(GribRecordSet* grib, std::int64_t timeline_key = -1);
+  void SetNewGrib(WR_GribRecordSet* grib, std::int64_t timeline_key = -1);
+  /**
+   * Acquire a copied GRIB timeline frame.  Worker threads request missing
+   * frames through the normal main-thread plugin-message path and wait on a
+   * bounded condition variable; retained frames are held in a count- and
+   * byte-bounded LRU.
+   */
+  bool AcquireGribTimelineFrame(const wxDateTime& time,
+                                Shared_GribRecordSet& frame,
+                                long timeoutMilliseconds = 30000);
+  void SetGribTimelineFrameCache(
+      const std::shared_ptr<weather_routing::GribTimelineFrameCache>& cache) {
+    if (cache) m_GribTimelineCache = cache;
+  }
+  void ReleaseGribTimelineFrameReference() {
+    Lock();
+    m_NewGrib = nullptr;
+    m_SharedNewGrib.SetGribRecordSet(nullptr);
+    Unlock();
+  }
   /**
    * Thread-safe accessor to get the time when new weather data is needed.
    *
@@ -835,11 +1061,28 @@ public:
     return time;
   }
 
+  weather_routing::RoutingSearchSnapshot GetComputedSearchSettings() {
+    Lock();
+    const auto snapshot = m_ComputedSearchSettings;
+    Unlock();
+    return snapshot;
+  }
+  void CaptureSearchSettings(const RouteMapConfiguration& configuration, bool native) {
+    Lock();
+    m_ComputedSearchSettings = weather_routing::RoutingSearchSnapshot::Capture(configuration, native);
+    Unlock();
+  }
   void SetConfiguration(const RouteMapConfiguration& o) {
     Lock();
     m_Configuration = o;
     m_bValid = m_Configuration.Update();
     m_bFinished = false;
+    Unlock();
+  }
+  void SetConfigurationPreserveResult(const RouteMapConfiguration& o) {
+    Lock();
+    m_Configuration = o;
+    m_bValid = m_Configuration.Update();
     Unlock();
   }
   RouteMapConfiguration GetConfiguration() {
@@ -849,7 +1092,7 @@ public:
     return o;
   }
 
-  void GetStatistics(int& isochrones, int& routes, int& invroutes,
+  void GetStatistics(int& isochrons, int& routes, int& invroutes,
                      int& skippositions, int& positions);
   /**
    * Performs one step of the routing propagation algorithm.
@@ -906,11 +1149,25 @@ public:
     Lock();
     m_bFinished = true;
     Unlock();
+    m_CancellationFlag->store(true, std::memory_order_relaxed);
+    m_GribTimelineCache->NotifyAll();
   }
   void ResetFinished() {
     Lock();
     m_bFinished = false;
     Unlock();
+    m_CancellationFlag->store(false, std::memory_order_relaxed);
+  }
+  std::shared_ptr<std::atomic_bool> CancellationFlag() const {
+    return m_CancellationFlag;
+  }
+  /** End the current calculation after a failed large allocation. */
+  void ReportResourceExhaustion(const wxString& context);
+  bool ResourceExhausted() {
+    Lock();
+    const bool exhausted = m_bResourceExhausted;
+    Unlock();
+    return exhausted;
   }
   /**
    * Loads the boat configuration from XML file.
@@ -937,6 +1194,30 @@ public:
     Unlock();
   }
 
+  wxString GetFailureReason() {
+    Lock();
+    wxString ret = m_FailureReason;
+    Unlock();
+    return ret;
+  }
+
+  // Preflight, worker and weather-service errors use separate storage. Use
+  // this when presenting a terminal outcome, without changing solver state.
+  wxString GetDiagnosticError() {
+    Lock();
+    wxString ret = !m_ErrorMsg.IsEmpty() ? m_ErrorMsg
+                   : !m_FailureReason.IsEmpty() ? m_FailureReason
+                                               : m_bWeatherForecastError;
+    Unlock();
+    return ret;
+  }
+
+  void SetFailureReason(wxString msg) {
+    Lock();
+    m_FailureReason = msg;
+    Unlock();
+  }
+
   wxString GetWeatherForecastError() {
     Lock();
     wxString ret = m_bWeatherForecastError;
@@ -952,7 +1233,7 @@ public:
     Unlock();
   }
 
-  /** Collect error information from all positions in the most recent isochrone.
+  /** Collect error information from all positions in the most recent isochron.
    */
   wxString GetRoutingErrorInfo();
 
@@ -1011,7 +1292,7 @@ protected:
    * Determines the time step for the next isochrone generation based on current
    * routing conditions.
    *
-   * Dynamically adjusts the time step to provide more detailed
+   * This function dynamically adjusts the time step to provide more detailed
    * isochrones in critical areas:
    * 1. Near the starting point
    * 2. Approaching the destination
@@ -1028,6 +1309,7 @@ protected:
    */
   IsoChronList origin;
   bool m_bNeedsGrib;
+  bool m_bNeedsChartSafetyData;
   /**
    * Shared reference to GRIB data.
    */
@@ -1040,6 +1322,7 @@ private:
                              std::vector<Position*>& failed_positions);
 
   RouteMapConfiguration m_Configuration;
+  weather_routing::RoutingSearchSnapshot m_ComputedSearchSettings;
   bool m_bFinished, m_bValid;
   bool m_bReachedDestination;
   /**
@@ -1075,8 +1358,17 @@ private:
   bool m_bBoundaryCrossing;
 
   wxString m_ErrorMsg;
+  wxString m_FailureReason;
+  bool m_bResourceExhausted{false};
 
   wxDateTime m_NewTime;
+
+  void MarkResourceExhaustionLocked(const wxString& context);
+  bool PublishTimelineFrame(std::int64_t timeline_key,
+                            const Shared_GribRecordSet& frame);
+  std::shared_ptr<weather_routing::GribTimelineFrameCache>
+      m_GribTimelineCache;
+  std::shared_ptr<std::atomic_bool> m_CancellationFlag;
 };
 
 #endif

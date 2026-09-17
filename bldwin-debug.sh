@@ -59,7 +59,7 @@ set "VCstr=Visual Studio 17"
 cd build
 cmake -T v143 -A Win32 -DOCPN_TARGET=MSVC ..
 cmake --build . --target package --config Debug >output.txt 2>&1
-
+cmake -DOCPN_BUILD_TEST=ON 
 	
 # Bash script completes tarball prep adding metadata into it.
 

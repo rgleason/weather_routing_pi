@@ -22,49 +22,58 @@
 
 set -x 
 
-# Confirm build exists and empty it and if no build directory create it.
+# ------------------------------------------------------------
+# wxWidgets settings (MSVC build)
+# ------------------------------------------------------------
+export wxDIR="C:/Users/fcgle/source/ocpn_wxWidgets"
+export wxWIN="C:/Users/fcgle/source/ocpn_wxWidgets"
+export wxWidgets_ROOT_DIR="C:/Users/fcgle/source/ocpn_wxWidgets"
+export wxWidgets_LIB_DIR="C:/Users/fcgle/source/ocpn_wxWidgets/lib/vc_dll"
+export wxWidgets_INCLUDE_DIR="C:/Users/fcgle/source/ocpn_wxWidgets/include"
 
+export VCver=17
+export VCstr="Visual Studio 17"
+
+# ------------------------------------------------------------
+# Clean build directory
+# ------------------------------------------------------------
 if [ -d "build" ]; then
-    echo "The 'build' directory exists, remove all build dir files."
-    rm -rf build/*
-	
-else
-    echo "The 'build' directory does not exist. Create the build directory"
-	mkdir build
+    echo "Removing entire build directory."
+    rm -rf build
 fi
 
-# wxWidgets settings 
-set "wxDIR=C:\Users\fcgle\source\opencpn\..\ocpn_wxWidgets" 
-set "wxWIN=C:\Users\fcgle\source\opencpn\..\ocpn_wxWidgets" 
-set "wxWidgets_ROOT_DIR=C:\Users\fcgle\source\opencpn\..\ocpn_wxWidgets" 
-set "wxWidgets_LIB_DIR=C:\Users\fcgle\source\opencpn\..\ocpn_wxWidgets\lib\vc_dll" 
-set "VCver=17" 
-set "VCstr=Visual Studio 17" 
-
-# wxDIR=$WXWIN
-# wxWidgets_ROOT_DIR=$WXWIN
-# wxWidgets_LIB_DIR="$WXWIN/lib/vc14x_dll"
-# WXWIN="/home/fcgle/source/wxWidgets-3.2.2"
-
-# build the plugin with cmake
-
+mkdir build
 cd build
-cmake -T v143 -A Win32 -DOCPN_TARGET=MSVC ..
-cmake --build . --target package --config relwithdebinfo >output.txt
-	
-# Bash script completes tarball prep adding metadata into it.
 
+# ------------------------------------------------------------
+# Configure with CMake (MSVC 2022, Win32, v143 toolset)
+# ------------------------------------------------------------
+cmake -T v143 -A Win32 \
+  -DwxWidgets_ROOT_DIR="${wxWidgets_ROOT_DIR}" \
+  -DwxWidgets_LIB_DIR="${wxWidgets_LIB_DIR}" \
+  -DwxWidgets_INCLUDE_DIR="${wxWidgets_INCLUDE_DIR}" \
+  -DOCPN_TARGET=MSVC \
+  ..
+ 
+# ------------------------------------------------------------
+# Build and package
+# ------------------------------------------------------------
+cmake --build . --target package --config RelWithDebInfo > output.txt
+
+# ------------------------------------------------------------
+# Upload to Cloudsmith
+# ------------------------------------------------------------
 bash ./cloudsmith-upload.sh
 
+# ------------------------------------------------------------
+# Copy plugin DLL + PDB to OpenCPN dev tree
+# ------------------------------------------------------------
+cp -uv ./RelWithDebInfo/*_pi.dll C:/Users/fcgle/source/opencpn/build/RelWithDebInfo/plugins/
+cp -uv ./RelWithDebInfo/*_pi.pdb C:/Users/fcgle/source/opencpn/build/RelWithDebInfo/plugins/ 
+
+# Bash script completes tarball prep adding metadata into it.
 # Find ${bold}"build/output.txt"${normal} file if the build is not successful.
 # Other examples below.
-
-# Copy .dll and .pdb files for debugging into MSVisualStudio Development Setup
-# Copy from 
-# C:\Users\fcgle\source\weather_routing_pi\build\relwithdebinfo   weather_routing_pi.dll and weather_routing_pi.pdb
-# into
-# C:\Users\fcgle\source\opencpn\build\RelWithDebInfo\plugins
-
 
 # cp -rv ./SourceFolder ./DestFolder
 # cp -r ./dist/* ./out
@@ -75,5 +84,11 @@ bash ./cloudsmith-upload.sh
 # copy ..\build\relwithdebinfo\weather_routing_pi.dll to  C:\Users\fcgle\source\opencpn\build\RelWithDebInfo\plugins
 # copy ..\build\relwithdebinfo\weather_routing_pi.pdb to  C:\Users\fcgle\source\opencpn\build\RelWithDebInfo\plugins
 
-cp -uv ./RelWithDebInfo/*_pi.dll C:/Users/fcgle/source/opencpn/build/RelWithDebInfo/plugins
-cp -uv ./RelWithDebInfo/*_pi.pdb C:/Users/fcgle/source/opencpn/build/RelWithDebInfo/plugins
+# cp -uv ./RelWithDebInfo/*_pi.dll C:/Users/fcgle/source/opencpn/build/RelWithDebInfo/plugins
+# cp -uv ./RelWithDebInfo/*_pi.pdb C:/Users/fcgle/source/opencpn/build/RelWithDebInfo/plugins
+
+#cp -uv ${CMAKE_CURRENT_BINARY_DIR}/RelWithDebInfo/*_pi.dll \
+#      C:/Users/fcgle/source/opencpn/build/RelWithDebInfo/plugins/
+
+#cp -uv ${CMAKE_CURRENT_BINARY_DIR}/RelWithDebInfo/*_pi.pdb \
+#      C:/Users/fcgle/source/opencpn/build/RelWithDebInfo/plugins/

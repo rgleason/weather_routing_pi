@@ -1,0 +1,35 @@
+id: org.opencpn.OpenCPN.Plugin.${PACKAGE}
+runtime: org.opencpn.OpenCPN
+runtime-version: ${RUNTIME_VERSION}
+sdk: org.freedesktop.Sdk//${SDK_VER}
+build-extension: true
+separate-locales: false
+appstream-compose: false
+${finish_args}
+${build_options}
+
+modules:
+  - name: ${PACKAGE}
+    no-autogen: true
+    buildsystem: cmake
+    builddir: true
+    config-opts:
+        - -DCMAKE_INSTALL_PREFIX=/app/extensions/${PACKAGE}
+        - -DOCPN_FLATPAK_BUILD=ON
+        - -DWEATHER_ROUTING_STANDALONE_API=ON
+        - -DOCPN_BUILD_TEST=OFF
+        - -DOCPN_TARGET=${OCPN_TARGET}
+        - -DSDK_VER=${SDK_VER}
+        - -DWX_VER=${WX_VER}
+    build-options:
+        cflags: -fPIC
+        cxxflags: -fPIC -DFLATPAK
+        strip: true
+    sources:
+       - type: git
+         # Build the exact authenticated checkout.  This keeps validation
+         # usable for authenticated integration branches and avoids
+         # a second unauthenticated network clone inside flatpak-builder.
+         url: file://${PROJECT_SOURCE_DIR}
+         ${GIT_BRANCH_OR_TAG}: ${GIT_REPOSITORY_ITEM}
+${flatpak_extra_modules}

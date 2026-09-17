@@ -27,11 +27,9 @@
 
 #include <wx/wx.h>
 
-#include "weather_routing_pi.h"
 #include "Boat.h"
 #include "BoatDialog.h"
 #include "EditPolarDialog.h"
-#include "Utilities.h"
 
 enum {
   spTRUE_WIND_SPEED,
@@ -215,8 +213,8 @@ void EditPolarDialog::RebuildGrid() {
 
     for (unsigned int j = 0; j < GetPolar()->degree_steps.size(); j++) {
       double v = GetPolar()->wind_speeds[i].orig_speeds[j];
-      wxString str = std::isnan(v) ? ""
-                     : v == 0      ? "0.0"
+      wxString str = std::isnan(v) ? wxString()
+                     : v == 0      ? wxString(_T("0.0"))
                                    : wxString::Format(_T("%4.1f"), v);
       m_gPolar->SetCellValue(j, i, str);
     }

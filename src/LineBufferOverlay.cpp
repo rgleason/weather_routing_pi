@@ -20,7 +20,6 @@
 #include <wx/wx.h>
 #include <wx/glcanvas.h>
 
-#include "ocpn_plugin.h"
 #include "LineBufferOverlay.h"
 
 void LineBuffer::pushLine(float x0, float y0, float x1, float y1) {
@@ -59,8 +58,8 @@ void LineBuffer::pushTransformedBuffer(LineBuffer& buffer, int x, int y,
     const int windArrowSize =
         (int)(DEFAULT_WIND_ARROW_SIZE *
               (lineWidth / DEFAULT_WIND_ARROW_SIZE_FACTOR));
-    x += (int)((windArrowSize / 2 + lineWidth) * sa);
-    y -= (int)((windArrowSize / 2 + lineWidth) * ca);
+    x += static_cast<int>((int(windArrowSize / 2) + lineWidth) * sa);
+    y -= static_cast<int>((int(windArrowSize / 2) + lineWidth) * ca);
   }
 
   for (int i = 0; i < 2 * buffer.count; i += 2) {
@@ -133,9 +132,11 @@ void LineBufferOverlay::setLineBuffer() {
   int r = 2 * m_lineWidth;
   int i = 0;
   double s = 2 * M_PI / 10.;
-  for (double a = 0; a < 2 * M_PI; a += s)
+  for (int i = 0; i < 10; ++i) {
+    double a = i * s;
     m_WindArrowCache[0].pushLine(r * sin(a), r * cos(a), r * sin(a + s),
                                  r * cos(a + s));
+  }
 
   int dec = windArrowSize / 2;
 
@@ -145,20 +146,20 @@ void LineBufferOverlay::setLineBuffer() {
 
     arrow.pushLine(0, dec, 0, dec - windArrowSize);  // hampe
     // Right arrow
-    arrow.pushLine(0, dec - ceil(m_lineWidth / 2 * sqrt(2)),
-                   round(dec / 4 + (m_lineWidth / 2 * sqrt(2))),
+    arrow.pushLine(0, dec - ceil(int(m_lineWidth / 2) * sqrt(2)),
+                   round(int(dec / 4) + (int(m_lineWidth / 2) * sqrt(2))),
                    round(dec / 2.));
     // Left arrow
-    arrow.pushLine(0, dec - ceil(m_lineWidth / 2 * sqrt(2)),
-                   round(-dec / 4 - (m_lineWidth / 2 * sqrt(2))),
+    arrow.pushLine(0, dec - ceil(int(m_lineWidth / 2) * sqrt(2)),
+                   round(-int(dec / 4) - (int(m_lineWidth / 2) * sqrt(2))),
                    round(dec / 2.));
   }
 
   float alpha = 0.38f;
   int b1 = dec - windArrowSize + (2 * m_lineWidth) +
-           ceil((m_lineWidth / 2) * sin(alpha));  // Position of 1st barb
+           ceil(int(m_lineWidth / 2) * sin(alpha));  // Position of 1st barb
   int b2 = dec - windArrowSize +
-           round((m_lineWidth / 2) *
+           round(int(m_lineWidth / 2) *
                  sin(alpha));  // Position of 2nd barb if >= 10 knts
 
   // 5 ktn

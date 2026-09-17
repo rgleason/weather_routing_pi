@@ -28,12 +28,9 @@
 
 #include <stdlib.h>
 #include <math.h>
-#include <time.h>
 
-#include "Utilities.h"
 #include "Boat.h"
 #include "BoatDialog.h"
-// #include "ConfigurationBatchDialog.h"
 #include "RouteMapOverlay.h"
 #include "weather_routing_pi.h"
 #include "WeatherRouting.h"

@@ -6,8 +6,7 @@
 
 readonly RUNTIME_PATH="@executable_path/../Frameworks/"
 
-plugin=$(find app/files -name '*.dylib')
-
+plugin=$(find . -maxdepth 1 -name '*.dylib')
 for lib in $(otool -L "$plugin" | awk ' /wx/ {print $1}'); do
     libdir=${lib%/*}
     if [ "$libdir" = "$lib" ]; then

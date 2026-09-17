@@ -24,10 +24,16 @@
 #include <wx/fileconf.h>
 
 #include "WeatherRoutingUI.h"
+#include "TimeZoneDisplay.h"
+
+#ifdef __WXMSW__
+class AddressSpaceMonitor;
+#endif
 
 class SettingsDialog : public SettingsDialogBase {
 public:
   SettingsDialog(wxWindow* parent);
+  ~SettingsDialog();
 
   void LoadSettings();
   void SaveSettings();
@@ -38,7 +44,32 @@ public:
   void OnUpdate();
   void OnUpdateColumns(wxCommandEvent& event);
   void OnHelp(wxCommandEvent& event);
+  bool UseLocalTimeZone() const { return m_useLocalTimeZone; }
+  const wxString& DisplayTimeZone() const { return m_displayTimeZone; }
+  void SetDisplayTimeZone(bool enabled, const wxString& zoneName);
+  wxString FormatTime(const wxDateTime& utc, const wxString& format,
+                      bool appendAbbreviation = true) const;
+  wxDateTime ToDisplayWallClock(const wxDateTime& utc) const;
+  marine_time::WallClockConversion DisplayWallClockToUtc(
+      int year, int month, int day, int hour, int minute, int second) const;
   static const wxString column_names[];
+
+#ifdef __WXMSW__
+  void OnThresholdChanged(wxSpinDoubleEvent& event);
+  void OnSuppressAlertChanged(wxCommandEvent& event);
+  void OnLogUsageChanged(wxCommandEvent& event);
+  void LoadMemorySettings();
+  void SaveMemorySettings();
+  AddressSpaceMonitor* GetMonitor();
+#endif
+
+private:
+  bool m_useLocalTimeZone = false;
+  wxString m_displayTimeZone = "UTC";
+#ifdef __WXMSW__
+  wxStaticText* m_staticTextMemoryStats = nullptr;
+  wxBoxSizer* m_usageSizer = nullptr;
+#endif
 };
 
 #endif

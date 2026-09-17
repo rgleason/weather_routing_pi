@@ -8,49 +8,49 @@
 #pragma once
 
 #include <wx/artprov.h>
+#include <wx/xrc/xmlres.h>
+#include <wx/intl.h>
+#include <wx/string.h>
 #include <wx/bitmap.h>
-#include <wx/button.h>
-#include <wx/checkbox.h>
-#include <wx/checklst.h>
-#include <wx/choice.h>
-#include <wx/clrpicker.h>
+#include <wx/image.h>
+#include <wx/icon.h>
+#include <wx/menu.h>
+#include <wx/gdicmn.h>
+#include <wx/font.h>
 #include <wx/colour.h>
+#include <wx/settings.h>
+#include <wx/frame.h>
+#include <wx/listctrl.h>
+#include <wx/sizer.h>
+#include <wx/statbox.h>
+#include <wx/panel.h>
+#include <wx/button.h>
+#include <wx/gauge.h>
+#include <wx/splitter.h>
+#include <wx/stattext.h>
+#include <wx/clrpicker.h>
+#include <wx/spinctrl.h>
+#include <wx/checkbox.h>
+#include <wx/scrolwin.h>
+#include <wx/checklst.h>
+#include <wx/dialog.h>
 #include <wx/combobox.h>
 #include <wx/datectrl.h>
 #include <wx/dateevt.h>
-#include <wx/dialog.h>
-#include <wx/font.h>
-#include <wx/frame.h>
-#include <wx/gauge.h>
-#include <wx/gdicmn.h>
-#include <wx/grid.h>
-#include <wx/html/htmlwin.h>
-#include <wx/icon.h>
-#include <wx/image.h>
-#include <wx/intl.h>
-#include <wx/listbox.h>
-#include <wx/listctrl.h>
-#include <wx/menu.h>
-#include <wx/notebook.h>
-#include <wx/panel.h>
-#include <wx/radiobut.h>
-#include <wx/scrolwin.h>
-#include <wx/settings.h>
-#include <wx/sizer.h>
-#include <wx/slider.h>
-#include <wx/spinctrl.h>
-#include <wx/splitter.h>
-#include <wx/statbox.h>
-#include <wx/statline.h>
-#include <wx/stattext.h>
-#include <wx/string.h>
-#include <wx/textctrl.h>
 #include <wx/timectrl.h>
-#include <wx/valgen.h>
+#include <wx/textctrl.h>
+#include <wx/choice.h>
 #include <wx/valtext.h>
-#include <wx/xrc/xmlres.h>
+#include <wx/notebook.h>
+#include <wx/slider.h>
+#include <wx/radiobut.h>
+#include <wx/statline.h>
+#include <wx/html/htmlwin.h>
+#include <wx/listbox.h>
+#include <wx/valgen.h>
+#include <wx/grid.h>
 
-// #include "wxWTranslateCatalog.h"
+#include "wxWTranslateCatalog.h"
 
 /**
  * Base class for the Weather Routing plugin's main interface.
@@ -100,7 +100,11 @@ protected:
   wxMenu* m_mView;
   wxMenu* m_mHelp;
   wxMenuItem* m_mEdit1;
+  wxMenuItem* m_mEditMultiLegGroupSettings1;
+  wxMenuItem* m_mShowRoutingStatus1;
   wxMenuItem* m_mCompute1;
+  wxMenuItem* m_mComputeMultiLegSequence1;
+  wxMenuItem* m_mOptimizeMultiLegDeparture1;
   wxMenuItem* m_mComputeAll1;
   wxMenuItem* m_mDelete1;
   wxMenuItem* m_mGoTo1;
@@ -150,6 +154,10 @@ protected:
   virtual void OnNew(wxCommandEvent& event) { event.Skip(); }
   virtual void OnBatch(wxCommandEvent& event) { event.Skip(); }
   virtual void OnEditConfiguration(wxCommandEvent& event) { event.Skip(); }
+  virtual void OnEditMultiLegGroupSettings(wxCommandEvent& event) {
+    event.Skip();
+  }
+  virtual void OnShowRoutingStatus(wxCommandEvent& event) { event.Skip(); }
   virtual void OnGoTo(wxCommandEvent& event) { event.Skip(); }
   virtual void OnDelete(wxCommandEvent& event) { event.Skip(); }
   virtual void OnDeleteAll(wxCommandEvent& event) { event.Skip(); }
@@ -165,6 +173,12 @@ protected:
    * signature)
    */
   virtual void OnCompute(wxCommandEvent& event) { event.Skip(); }
+  virtual void OnComputeMultiLegSequence(wxCommandEvent& event) {
+    event.Skip();
+  }
+  virtual void OnOptimizeMultiLegDeparture(wxCommandEvent& event) {
+    event.Skip();
+  }
   virtual void OnComputeAll(wxCommandEvent& event) { event.Skip(); }
   virtual void OnStop(wxCommandEvent& event) { event.Skip(); }
   virtual void OnResetAll(wxCommandEvent& event) { event.Skip(); }
@@ -203,10 +217,11 @@ public:
   wxMenu* m_mContextMenu;
 
   WeatherRoutingBase(wxWindow* parent, wxWindowID id = wxID_ANY,
-                     const wxString& title = _("Weather Routing"),
+                     const wxString& title = _("WeatherRouting"),
                      const wxPoint& pos = wxDefaultPosition,
                      const wxSize& size = wxSize(-1, -1),
-                     long style = wxCAPTION | wxCLOSE_BOX |
+                     long style = wxCAPTION | wxCLOSE_BOX | wxMAXIMIZE_BOX |
+                                  wxMINIMIZE_BOX |
                                   wxFRAME_FLOAT_ON_PARENT | wxFRAME_NO_TASKBAR |
                                   wxRESIZE_BORDER | wxSYSTEM_MENU |
                                   wxTAB_TRAVERSAL);
@@ -232,12 +247,10 @@ protected:
   virtual void OnLeftUp(wxMouseEvent& event) { event.Skip(); }
   virtual void OnLeftDown(wxMouseEvent& event) { event.Skip(); }
   virtual void OnPositionKeyDown(wxListEvent& event) { event.Skip(); }
-  virtual void OnWeatherPositionSelected(wxListEvent& event) { event.Skip(); }
   virtual void OnEditConfigurationClick(wxMouseEvent& event) { event.Skip(); }
   virtual void OnWeatherRoutesListLeftDown(wxMouseEvent& event) {
     event.Skip();
   }
-  virtual void OnWeatherRoutesListLeftUp(wxMouseEvent& event) { event.Skip(); }
   virtual void OnWeatherRouteSort(wxListEvent& event) { event.Skip(); }
   virtual void OnWeatherRouteSelected(wxListEvent& event) { event.Skip(); }
   virtual void OnWeatherRouteKeyDown(wxListEvent& event) { event.Skip(); }
@@ -255,6 +268,8 @@ protected:
   virtual void OnCompute(wxCommandEvent& event) { event.Skip(); }
   /** Callback invoked when user clicks "Save as Track" menu item. */
   virtual void OnSaveAsTrack(wxCommandEvent& event) { event.Skip(); }
+  /** Prepare a compact, weather-aware route for route/GPX output. */
+  virtual void OnSimplifyRoute(wxCommandEvent& event) { event.Skip(); }
   /** Callback invoked when user clicks "Save as Route" menu item. */
   virtual void OnSaveAsRoute(wxCommandEvent& event) { event.Skip(); }
   /** Callback invoked when user clicks "Export as GPX" menu item. */
@@ -273,6 +288,7 @@ public:
   wxListCtrl* m_lWeatherRoutes;
   wxButton* m_bCompute;
   wxButton* m_bSaveAsTrack;
+  wxButton* m_bSimplifyRoute;
   wxButton* m_bSaveAsRoute;
   wxButton* m_bExportRoute;
   wxGauge* m_gProgress;
@@ -326,7 +342,14 @@ public:
   wxCheckBox* m_cbDisplayComfort;
   wxSpinCtrl* m_sConcurrentThreads;
   wxCheckListBox* m_cblFields;
-  wxCheckBox* m_cbUseLocalTime;
+#ifdef __WXMSW__
+  wxStaticText* m_staticText166;
+  wxSpinCtrlDouble* m_spinThreshold;
+  wxCheckBox* m_checkSuppressAlert;
+  wxCheckBox* m_checkLogUsage;
+  wxStaticText* m_staticText167;
+  wxGauge* m_gaugeMemoryUsage;
+#endif
 
   SettingsDialogBase(wxWindow* parent, wxWindowID id = wxID_ANY,
                      const wxString& title = _("Weather Routing Settings"),
@@ -359,8 +382,12 @@ protected:
   /** Radio buttons for start selection */
   wxRadioButton* m_rbStartFromBoat;
   wxRadioButton* m_rbStartPositionSelection;
+  wxRadioButton* m_rbStartWaypointSelection;
   /** The starting point of the route. */
   wxComboBox* m_cStart;
+  wxRadioButton* m_rbRouteByDepartureTime;
+  wxRadioButton* m_rbRouteByArrivalTime;
+  wxStaticText* m_staticTextPlannedTime;
   wxStaticText* m_staticText28;
   /**
    * Button to set the start time to match the currently loaded GRIB file's
@@ -379,6 +406,8 @@ protected:
    * user.
    */
   wxCheckBox* m_cbUseCurrentTime;
+  wxCheckBox* m_cbUseLocalTimeZone;
+  wxChoice* m_cTimeZone;
   wxStaticText* m_staticText30;
   wxTimePickerCtrl* m_tpTime;
   /**
@@ -390,6 +419,19 @@ protected:
    * begins.
    */
   wxButton* m_bCurrentTime;
+  wxCheckBox* m_cbDepartureTimeOptimizationEnabled;
+  wxStaticText* m_staticTextDepartureRange;
+  wxSpinCtrl* m_sDepartureTimeOptimizationRangeHours;
+  wxStaticText* m_staticTextDepartureRangeHours;
+  wxStaticText* m_staticTextDepartureStep;
+  wxSpinCtrl* m_sDepartureTimeOptimizationStepHours;
+  wxStaticText* m_staticTextDepartureStepHours;
+  wxSpinCtrl* m_sDepartureTimeOptimizationStepMinutes;
+  wxStaticText* m_staticTextDepartureStepMinutes;
+  wxStaticText* m_staticTextArrivalSafetyMargin;
+  wxSpinCtrl* m_sArrivalSafetyMarginMinutes;
+  wxStaticText* m_staticTextArrivalSafetyMarginMinutes;
+  wxStaticText* m_tArrivalPlanningHint;
   wxTextCtrl* m_tBoat;
   wxButton* m_bBoatFilename;
   wxButton* m_bEditBoat;
@@ -405,18 +447,34 @@ protected:
   wxStaticText* m_staticText27;
   wxSpinCtrlDouble* m_sMaxSwellMeters;
   wxStaticText* m_staticText129;
+  wxRadioButton* m_rbEndPositionSelection;
+  wxRadioButton* m_rbEndWaypointSelection;
   /** The end point of the route. */
   wxComboBox* m_cEnd;
+  wxChoice* m_cRoutingEngine;
+  wxStaticText* m_tRoutingEngineDescription;
+  wxChoice* m_cEnginePreset;
+  wxStaticText* m_tEnginePresetStatus;
+  wxPanel* m_pMainEngine;
+  wxPanel* m_pQuickEngine;
+  wxSpinCtrl* m_sQuickOffshoreStepMinutes;
+  wxSpinCtrlDouble* m_sQuickHeadingStepDegrees;
+  wxSpinCtrl* m_sQuickMaximumSearchAngle;
+  wxSpinCtrl* m_sQuickMemoryBudgetMiB;
+  wxSpinCtrl* m_sMainGribTimelineCacheMiB;
+  wxSpinCtrl* m_sQuickGribTimelineCacheMiB;
   wxSpinCtrl* m_sTimeStepHours;
   wxStaticText* m_staticText110;
   wxSpinCtrl* m_sTimeStepMinutes;
   wxStaticText* m_staticText111;
   wxCheckBox* m_cbDetectLand;
+  wxCheckBox* m_cbUseExperimentalChartSafety;
+  wxCheckBox* m_cbEnforceExperimentalChartSafety;
   wxCheckBox* m_cbDetectBoundary;
   wxCheckBox* m_cbOptimizeTacking;
   wxCheckBox* m_cbAllowDataDeficient;
   wxButton* m_bOK;
-  wxPanel* m_pAdvanced;
+  wxScrolledWindow* m_pAdvanced;
   wxStaticText* m_staticText26;
   wxSpinCtrl* m_sMaxLatitude;
   wxStaticText* m_staticText131;
@@ -435,6 +493,13 @@ protected:
   wxStaticText* m_staticText130;
   wxCheckBox* m_cbInvertedRegions;
   wxCheckBox* m_cbAnchoring;
+  wxChoice* m_cRoutingEffortPercent;
+  wxSpinCtrl* m_sDepartureTimeOptimizationConcurrentRoutes;
+  wxSpinCtrl* m_sChartSafetyRamCacheMiB;
+  wxStaticText* m_tChartSafetyRamEffective;
+  wxCheckBox* m_cbUseMotor;
+  wxSpinCtrlDouble* m_sMotorSpeedThreshold;
+  wxSpinCtrlDouble* m_sMotorSpeed;
   wxStaticText* m_staticText139;
   wxComboBox* m_cIntegrator;
   wxStaticText* m_staticText1292;
@@ -450,8 +515,12 @@ protected:
   wxSpinCtrl* m_sSailPlanChangeTime;
   wxStaticText* m_staticText141;  // "seconds" label for sail plan change time
   wxStaticText* m_staticText241;
+  wxStaticText* m_tShorelineResolution;
+  wxChoice* m_cShorelineResolution;
+  wxButton* m_bShorelineData;
   wxSpinCtrlDouble* m_sSafetyMarginLand;
   wxStaticText* m_staticText1211;
+  wxSpinCtrlDouble* m_sMinimumDepthMeters;
   wxStaticText* m_staticText113;
   wxStaticText* m_staticText115;
   wxStaticText* m_staticText117;
@@ -461,9 +530,14 @@ protected:
   // Virtual event handlers, overide them in your derived class
   virtual void OnStartFromBoat(wxCommandEvent& event) { event.Skip(); }
   virtual void OnStartFromPosition(wxCommandEvent& event) { event.Skip(); }
+  virtual void OnStartFromWaypoint(wxCommandEvent& event) { event.Skip(); }
+  virtual void OnRoutingTimeMode(wxCommandEvent& event) { event.Skip(); }
+  virtual void OnEndAtPosition(wxCommandEvent& event) { event.Skip(); }
+  virtual void OnEndAtWaypoint(wxCommandEvent& event) { event.Skip(); }
   virtual void OnUpdate(wxCommandEvent& event) { event.Skip(); }
   virtual void OnUpdateDate(wxDateEvent& event) { event.Skip(); }
   virtual void OnUseCurrentTime(wxCommandEvent& event) { event.Skip(); }
+  virtual void OnTimeZoneDisplay(wxCommandEvent& event) { event.Skip(); }
   virtual void OnGribTime(wxCommandEvent& event) { event.Skip(); }
   virtual void OnUpdateTime(wxDateEvent& event) { event.Skip(); }
   virtual void OnCurrentTime(wxCommandEvent& event) { event.Skip(); }
@@ -475,6 +549,7 @@ protected:
   virtual void OnClose(wxCommandEvent& event) { event.Skip(); }
   virtual void OnAvoidCyclones(wxCommandEvent& event) { event.Skip(); }
   virtual void OnUseMotor(wxCommandEvent& event) { event.Skip(); }
+  virtual void OnUseOptimalAngles(wxCommandEvent& event) { event.Skip(); }
   virtual void OnResetAdvanced(wxCommandEvent& event) { event.Skip(); }
 
 public:
@@ -483,6 +558,7 @@ public:
   wxCheckBox* m_cbUseGrib;
   wxChoice* m_cClimatologyType;
   wxCheckBox* m_cbAvoidCycloneTracks;
+  wxCheckBox* m_cbUseReverseReachabilityRecovery;
   wxSpinCtrl*
       m_sUpwindEfficiency;  //!< Efficiency coefficient for upwind sailing
   wxSpinCtrl*
@@ -491,20 +567,17 @@ public:
                                              //!< night sailing
   wxSpinCtrl* m_sFromDegree;  //!< Minimum course relative to true wind.
   wxSpinCtrl* m_sToDegree;    //!< Maximum course relative to true wind.
+  wxCheckBox* m_cbUseOptimalAngles;
   /** The increment course angle when calculating a isochrone route. */
   wxSpinCtrlDouble* m_sByDegrees;
 
-  // Motor controls
-  wxCheckBox* m_cbUseMotor;  //!< Enable motor when STW is below threshold
-  wxSpinCtrlDouble* m_sMotorSpeedThreshold;  //!< STW threshold for motor use
-  wxSpinCtrlDouble* m_sMotorSpeed;           //!< Motor speed in knots
-
   ConfigurationDialogBase(
       wxWindow* parent, wxWindowID id = wxID_ANY,
-      const wxString& title = _("Weather Routing Configuration"),
+      const wxString& title = _("WeatherRouting Configuration"),
       const wxPoint& pos = wxDefaultPosition,
       const wxSize& size = wxSize(-1, -1),
-      long style = wxDEFAULT_DIALOG_STYLE | wxMAXIMIZE_BOX | wxMINIMIZE_BOX);
+      long style = wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER | wxMAXIMIZE_BOX |
+                   wxMINIMIZE_BOX);
   ~ConfigurationDialogBase();
 };
 
@@ -556,8 +629,6 @@ protected:
     /** Vessel's Course Through Water (CTW) relative to the water in degrees -
        differs from heading by accounting for leeway */
     COURSE_THROUGH_WATER,
-    /** Boat heading in degrees */
-    HEADING,
     /** True Wind Speed relative to the water's frame of reference in knots. */
     TRUE_WIND_SPEED_OVER_WATER,
     /** True Wind Angle between vessel's Course Through Water and the True Wind
@@ -593,9 +664,12 @@ protected:
     CURRENT_DIRECTION,
     /** Significant wave height in meters */
     SIG_WAVE_HEIGHT,
-    WAVE_DIRECTION,  //!< Wave direction in degrees
-    WAVE_REL,        //!< Wave direction relative to boat heading
-    WAVE_PERIOD,     //!< Wave period in seconds
+    /** Wave direction in degrees true. */
+    WAVE_DIRECTION,
+    /** Wave direction relative to course through water. */
+    WAVE_RELATIVE_DIRECTION,
+    /** Wave period in seconds. */
+    WAVE_PERIOD,
     /** Number of tacking maneuvers in a sailing route. */
     TACKS,
     /** Number of jibes in a sailing route. */
@@ -635,7 +709,7 @@ protected:
   /**
    * Get the list of available weather routing variables.
    *
-   * Returns an array of VariableInfo structures, each containing
+   * This function returns an array of VariableInfo structures, each containing
    * the enum value and display name of a variable. The count of variables is
    * also returned through the count parameter.
    *
@@ -648,7 +722,6 @@ protected:
         {COURSE_OVER_GROUND, _("Course Over Ground (COG)")},
         {SPEED_THROUGH_WATER, _("Speed Through Water (STW)")},
         {COURSE_THROUGH_WATER, _("Course Through Water (CTW)")},
-        {HEADING, _("Heading (HDG)")},
         {TRUE_WIND_DIRECTION_OVER_GROUND, _("TWD over Ground")},
         {TRUE_WIND_SPEED_OVER_GROUND, _("TWS over Ground")},
         {TRUE_WIND_ANGLE_OVER_GROUND, _("TWA over Ground")},
@@ -661,8 +734,8 @@ protected:
         {CURRENT_VELOCITY, _("Current Velocity")},
         {CURRENT_DIRECTION, _("Current Direction")},
         {SIG_WAVE_HEIGHT, _("Significant Wave Height")},
-        {WAVE_DIRECTION, _("Wave Dir")},
-        {WAVE_REL, _("Wave Rel")},
+        {WAVE_DIRECTION, _("Wave Direction")},
+        {WAVE_RELATIVE_DIRECTION, _("Wave Direction relative to CTW")},
         {WAVE_PERIOD, _("Wave Period")},
         {TACKS, _("Tacks")},
         {JIBES, _("Jibes")},
@@ -717,7 +790,7 @@ protected:
 
 public:
   AboutDialogBase(wxWindow* parent, wxWindowID id = wxID_ANY,
-                  const wxString& title = _("About Weather Routing"),
+                  const wxString& title = _("About WeatherRouting"),
                   const wxPoint& pos = wxDefaultPosition,
                   const wxSize& size = wxDefaultSize,
                   long style = wxDEFAULT_DIALOG_STYLE);
@@ -729,8 +802,6 @@ public:
 ///////////////////////////////////////////////////////////////////////////////
 class BoatDialogBase : public wxDialog {
 private:
-  void CreateCursorInfoPanel(wxWindow* parent, wxSizer* parentSizer);
-
 protected:
   wxFlexGridSizer* m_fgSizer;
   wxSplitterWindow* m_splitter2;
@@ -741,10 +812,8 @@ protected:
   wxPanel* m_panel10;
   wxScrolledWindow* m_CrossOverChart;
   wxStaticText* m_staticText137;
-  wxSpinCtrlDouble* m_sOverlapPercentage;
+  wxSpinCtrl* m_sOverlapPercentage;
   wxStaticText* m_staticText138;
-  wxStaticText* m_staticText139;
-  wxChoice* m_cLowWindSpeedInterpolationMethod;
   wxPanel* m_panel24;
   wxStaticText* m_staticText125;
   wxStaticText* m_stBestCourseUpWindPortTack;
@@ -771,28 +840,12 @@ protected:
   wxButton* m_bSaveBoat;
   wxButton* m_bSaveAsBoat;
 
-  // Cursor information display
-  wxStaticText* m_stCursorWindAngle;
-  wxStaticText* m_stCursorWindSpeed;
-  wxStaticText* m_stCursorBoatSpeed;
-  wxStaticText* m_stCursorVMG;
-  wxStaticText* m_stCursorVMGAngle;
-
-  // Best VMG information display
-  wxStaticText* m_stBestVMGWindSpeed;
-  wxStaticText* m_stBestVMGUpwindAngle;
-  wxStaticText* m_stBestVMGUpwindSpeed;
-  wxStaticText* m_stBestVMGUpwindVMG;
-  wxStaticText* m_stBestVMGDownwindAngle;
-  wxStaticText* m_stBestVMGDownwindSpeed;
-  wxStaticText* m_stBestVMGDownwindVMG;
-
   // Virtual event handlers, overide them in your derived class
   virtual void OnMouseEventsPolarPlot(wxMouseEvent& event) { event.Skip(); }
   virtual void OnPaintPlot(wxPaintEvent& event) { event.Skip(); }
   virtual void OnUpdatePlot(wxSizeEvent& event) { event.Skip(); }
   virtual void OnPaintCrossOverChart(wxPaintEvent& event) { event.Skip(); }
-  virtual void OnOverlapPercentage(wxSpinDoubleEvent& event) { event.Skip(); }
+  virtual void OnOverlapPercentage(wxSpinEvent& event) { event.Skip(); }
   virtual void OnVMGWindSpeed(wxSpinEvent& event) { event.Skip(); }
   virtual void OnUpdatePlot(wxCommandEvent& event) { event.Skip(); }
   virtual void OnPolarSelected(wxListEvent& event) { event.Skip(); }
@@ -1055,7 +1108,6 @@ protected:
   wxStaticText* m_staticText124;
   wxStaticText* m_staticText130;
   wxStaticText* m_staticText126;
-  wxStaticText* m_staticText129;
   wxStaticText* m_staticText127;
   wxStaticText* m_staticText122;
   wxStdDialogButtonSizer* m_sdbSizer5;

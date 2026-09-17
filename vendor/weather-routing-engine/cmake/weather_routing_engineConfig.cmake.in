@@ -1,0 +1,5 @@
+@PACKAGE_INIT@
+
+include("${CMAKE_CURRENT_LIST_DIR}/weather_routing_engineTargets.cmake")
+
+check_required_components(weather_routing_engine)
