@@ -66,48 +66,24 @@ fi
 set +x
 if [ -z "$CLOUDSMITH_API_KEY" ] && [ "$LOCAL_BUILD" = "false" ]; then
     echo 'Cannot deploy to cloudsmith, missing $CLOUDSMITH_API_KEY'
-    exit 0
+    exit 1
 fi
 set -x
 
 # Install cloudsmith-cli only on CI, and only if not using orb
-if { [ "$CIRCLECI" ] || [ "$TRAVIS" ]; } && [ "$DEPLOY_USE_ORB" != "true" ]; then
+if { [ "$CIRCLECI" ] || [ "$TRAVIS" ]; } && [ "${DEPLOY_USE_ORB:-false}" != "true" ]; then
     if command -v pipx >/dev/null 2>&1; then
         pipx ensurepath || true
         pipx install cloudsmith-cli || true
-    elif pyenv versions >/dev/null 2>&1; then
-        pyenv versions
-        version_1=$(python --version | cut -d '.' -f1 | cut -d ' ' -f2)
-        version_2=$(python --version | cut -d '.' -f2)
-        if [ "$version_1" -lt 3 ] || [ "$version_2" -lt 5 ]; then
-            sudo apt install -y software-properties-common
-            sudo apt update
-            sudo apt install -y python3.8 python3-pip
-            sudo rm -f /usr/bin/python3
-            sudo ln -s /usr/bin/python3.8 /usr/bin/python3
-        fi
-        python3 --version
-        sudo python3 -m pip install cloudsmith-cli
-        pyenv rehash
-    elif command -v dnf >/dev/null 2>&1; then
-        sudo dnf -y install python3-pip python3-setuptools
-        sudo python3 -m pip install -q cloudsmith-cli
-    elif command -v apt-get >/dev/null 2>&1; then
-        COUNTER=0
-        sudo apt install -y software-properties-common
-        sudo apt update
-        sudo apt install -y python3.8
-        sudo rm -f /usr/bin/python3
-        sudo ln -s /usr/bin/python3.8 /usr/bin/python3
-        until sudo apt-get install -y python3-pip python3-setuptools; do
-            if [ "$COUNTER" -gt 20 ]; then
-                exit 1
-            fi
-            sleep 5
-            COUNTER=$((COUNTER+1))
-        done
-        sudo python3 -m pip install --upgrade pip
-        sudo python3 -m pip install -q cloudsmith-cli
+        export PATH="$HOME/.local/bin:$PATH"
+    elif command -v python3 >/dev/null 2>&1; then
+        python3 -m venv "$HOME/.venvs/cloudsmith"
+        "$HOME/.venvs/cloudsmith/bin/pip" install --upgrade pip
+        "$HOME/.venvs/cloudsmith/bin/pip" install cloudsmith-cli
+        export PATH="$HOME/.venvs/cloudsmith/bin:$PATH"
+    else
+        echo "ERROR: No supported installer available for cloudsmith-cli"
+        exit 1
     fi
 fi
 
