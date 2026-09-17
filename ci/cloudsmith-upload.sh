@@ -6,6 +6,11 @@ set -Eeuo pipefail
 # Honors BUILD_DIR when set; falls back to ./build/cloudsmith-upload.sh.
 #
 
+# Resolve BUILD_DIR to an absolute path before changing directories
+if [ -n "${BUILD_DIR:-}" ]; then
+    BUILD_DIR="$(cd "$BUILD_DIR" && pwd)"
+fi
+
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
 
