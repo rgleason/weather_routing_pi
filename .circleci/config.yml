@@ -24,6 +24,12 @@ commands:
               find artifacts -type f -name '*ctest.xml' \
                 -exec cp -f '{}' test-results/ \;
             fi
+            # NEW: Copy pkg_version.sh (required for Cloudsmith)
+            if [ -f build/pkg_version.sh ]; then
+              cp build/pkg_version.sh artifacts/<< parameters.target >>/package/
+            else
+              echo "WARNING: build/pkg_version.sh not found"
+            fi            
       - store_test_results:
           path: test-results
       - store_artifacts:
@@ -105,6 +111,12 @@ jobs:
               \( -name '*.tar.gz' -o -name '*.xml' -o -name '*.log' \) \
               -exec cp -f '{}' artifacts/flatpak-<< parameters.arch >>/package/ \; \
               || true
+            # NEW: copy pkg_version.sh
+            if [ -f build/pkg_version.sh ]; then
+                cp build/pkg_version.sh artifacts/flatpak-<< parameters.arch >>/package/
+            else
+                echo "WARNING: build/pkg_version.sh not found"
+            fi              
       - run:
           name: Cloudsmith upload
           when: always
@@ -129,23 +141,40 @@ jobs:
 
     steps:
       - checkout
+
+      - run:
+          name: Ensure Python3 exists on Windows
+          shell: powershell.exe
+          command: |
+            if (-Not (Get-Command python3 -ErrorAction SilentlyContinue)) {
+              Write-Host "Installing Python3..."
+              choco install python --version=3.10.11 -y
+            }
+
       - run:
           privileged: false
           shell: cmd.exe
           name: Native Windows build, tests and package
           command: ci\circleci-build-msvc.bat
           no_output_timeout: 45m
+
       - run:
           name: Cloudsmith upload
           when: always
           command: |
+            export PATH="/c/Python310:/c/Python310/Scripts:$PATH"
+            export PATH="/c/Program Files/Python310:/c/Program Files/Python310/Scripts:$PATH"
+            export PATH="/c/Users/circleci/AppData/Local/Programs/Python/Python310:/c/Users/circleci/AppData/Local/Programs/Python/Python310/Scripts:$PATH"
+            
             cd "$(git rev-parse --show-toplevel)"
             chmod +x ci/cloudsmith-upload.sh
             export BUILD_DIR="$PWD/build"
             export CLOUDSMITH_PKG_EXT="exe"
             ci/cloudsmith-upload.sh
+
       - store_test_results:
           path: build/test-results
+
       - store_artifacts:
           path: build
           destination: windows-x86
@@ -170,6 +199,30 @@ jobs:
           shell: /bin/bash
           command: ci/circleci-build-macos-universal.sh
           no_output_timeout: 45m
+      - run:
+          name: Retain macOS package
+          when: always
+          command: |
+            mkdir -p artifacts/macos-arm64/package
+            find artifacts/macos-arm64 -maxdepth 2 -type f \
+              \( -name '*.tar.gz' -o -name '*.xml' -o -name '*.log' \) \
+              -exec cp -f '{}' artifacts/macos-arm64/package/ \; \
+              || true
+
+            # Copy pkg_version.sh (required for Cloudsmith)
+            if [ -f build/pkg_version.sh ]; then
+              cp build/pkg_version.sh artifacts/macos-arm64/package/
+            else
+              echo "WARNING: build/pkg_version.sh not found"
+            fi
+
+            # Copy generated cloudsmith-upload.sh
+            if [ -f build/cloudsmith-upload.sh ]; then
+              cp build/cloudsmith-upload.sh artifacts/macos-arm64/package/
+            else
+              echo "WARNING: build/cloudsmith-upload.sh not found"
+            fi
+          
       - run:
           name: Cloudsmith upload
           when: always
@@ -203,11 +256,12 @@ jobs:
     steps:
       - checkout
       - run: chmod a+x ci/*.sh
-
       - run:
-          name: Android ARM64 build, tests and package
+          name: Android ARM64 build
           shell: /bin/bash
-          command: ci/circleci-build-android-arm64.sh
+          command: |
+            chmod +x ci/circleci-build-android-arm64.sh
+            ci/circleci-build-android-arm64.sh
           no_output_timeout: 45m
 
       - run:
@@ -219,6 +273,12 @@ jobs:
               \( -name '*.tar.gz' -o -name '*.xml' -o -name '*.log' \) \
               -exec cp -f '{}' artifacts/android-arm64/package/ \; \
               || true
+            # Copy pkg_version.sh (required for Cloudsmith)
+            if [ -f build/pkg_version.sh ]; then
+              cp build/pkg_version.sh artifacts/android-arm64/package/
+            else
+              echo "WARNING: build/pkg_version.sh not found"
+            fi              
 
       - run:
           name: Cloudsmith upload
@@ -264,9 +324,11 @@ jobs:
       - run: chmod a+x ci/*.sh
 
       - run:
-          name: Android ARMHF build, tests and package
-          shell: /bin/bash          
-          command: ci/circleci-build-android-armhf.sh
+          name: Android ARMHF build
+          shell: /bin/bash
+          command: |
+            chmod +x ci/circleci-build-android-armhf.sh
+            ci/circleci-build-android-armhf.sh
           no_output_timeout: 45m
 
       - run:
@@ -278,6 +340,12 @@ jobs:
               \( -name '*.tar.gz' -o -name '*.xml' -o -name '*.log' \) \
               -exec cp -f '{}' artifacts/android-armhf/package/ \; \
               || true
+            # Copy pkg_version.sh (required for Cloudsmith)
+            if [ -f build/pkg_version.sh ]; then
+              cp build/pkg_version.sh artifacts/android-armhf/package/
+            else
+              echo "WARNING: build/pkg_version.sh not found"
+            fi              
 
       - run:
           name: Cloudsmith upload
