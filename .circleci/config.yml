@@ -11,30 +11,6 @@ parameters:
     type: string
     default: CLOUDSMITH_API_KEY
 
-commands:
-  retain-linux-artifacts:
-    steps:
-      - run:
-          name: Prepare retained evidence
-          when: always
-          command: |
-            rm -rf test-results
-            mkdir -p test-results
-            if test -d artifacts; then
-              find artifacts -type f -name '*ctest.xml' \
-                -exec cp -f '{}' test-results/ \;
-            fi
-            # NEW: Copy pkg_version.sh (required for Cloudsmith)
-            if [ -f build/pkg_version.sh ]; then
-              cp build/pkg_version.sh artifacts/<< parameters.target >>/package/
-            else
-              echo "WARNING: build/pkg_version.sh not found"
-            fi            
-      - store_test_results:
-          path: test-results
-      - store_artifacts:
-          path: artifacts
-
 jobs:
 
   linux-catalogue:
@@ -66,6 +42,22 @@ jobs:
           command: ci/circleci-build-ubuntu-docker.sh
           no_output_timeout: 45m
       - run:
+          name: Retain Linux artifacts
+          when: always
+          command: |
+            mkdir -p artifacts/<< parameters.target >>/package
+            find build -maxdepth 2 -type f \
+              \( -name '*.tar.gz' -o -name '*.xml' -o -name '*.log' -o -name 'SHA256SUMS' \) \
+              -exec cp -f '{}' artifacts/<< parameters.target >>/package/ \; \
+              || true
+
+            # Copy pkg_version.sh
+            if [ -f build/pkg_version.sh ]; then
+              cp build/pkg_version.sh artifacts/<< parameters.target >>/package/
+            else
+              echo "WARNING: build/pkg_version.sh not found"
+            fi
+      - run:
           name: Cloudsmith upload
           when: always
           command: |
@@ -74,7 +66,6 @@ jobs:
             export BUILD_DIR="$PWD/artifacts/<< parameters.target >>/package"
             export CLOUDSMITH_PKG_EXT="gz"
             ci/cloudsmith-upload.sh
-      - retain-linux-artifacts
 
   flatpak:
     parameters:
