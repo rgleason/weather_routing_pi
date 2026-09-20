@@ -55,13 +55,19 @@ def recover(workflow_id, output):
 
     for job_name, target in TARGETS.items():
         job = selected[job_name]
+        prefix = PurePosixPath("artifacts", target, "package")
+        local_package = output / prefix
+        local_archives = list(local_package.glob("xweather_routing_pi-*.tar.gz"))
+        local_metadata = list(local_package.glob("xweather_routing_pi-*.xml"))
+        if len(local_archives) == 1 and len(local_metadata) == 1:
+            print(f"Using current workflow artifact for {job_name}")
+            continue
         project = quote(job["project_slug"], safe="/")
         artifacts_url = (
             f"https://circleci.com/api/v1.1/project/{project}/"
             f"{job['job_number']}/artifacts"
         )
         artifacts = fetch_json(artifacts_url)
-        prefix = PurePosixPath("artifacts", target, "package")
         packages = []
         for artifact in artifacts:
             path = PurePosixPath(artifact["path"])
@@ -69,12 +75,6 @@ def recover(workflow_id, output):
                 path.name.endswith(".tar.gz") or path.name.endswith(".xml")
             ):
                 packages.append(artifact)
-        local_package = output / prefix
-        local_archives = list(local_package.glob("xweather_routing_pi-*.tar.gz"))
-        local_metadata = list(local_package.glob("xweather_routing_pi-*.xml"))
-        if not packages and len(local_archives) == 1 and len(local_metadata) == 1:
-            print(f"Using current workflow artifact for {job_name}")
-            continue
         if len(packages) != 2:
             raise ValueError(f"Expected archive and XML for {job_name}: {packages}")
         for artifact in packages:

@@ -11,10 +11,18 @@ import xml.etree.ElementTree as ET
 from importlib.util import module_from_spec, spec_from_file_location
 
 
-TARGETS = {
-    "trixie", "bookworm", "jammy", "noble", "bookworm-arm64",
-    "flatpak-x86_64", "flatpak-aarch64", "windows-x86", "macos-arm64",
+EXPECTED_TARGETS = {
+    "trixie": ("debian-x86_64", "13", "x86_64"),
+    "bookworm": ("debian-x86_64", "12", "x86_64"),
+    "jammy": ("ubuntu-x86_64", "22.04", "x86_64"),
+    "noble": ("ubuntu-x86_64", "24.04", "x86_64"),
+    "bookworm-arm64": ("debian-arm64", "12", "arm64"),
+    "flatpak-x86_64": ("flatpak-32-x86_64", "25.08", "x86_64"),
+    "flatpak-aarch64": ("flatpak-32-aarch64", "25.08", "aarch64"),
+    "windows-x86": ("msvc-wx32", "10.0.20348", "x86"),
+    "macos-arm64": ("darwin-wx32", "15.3.2", "arm64"),
 }
+TARGETS = set(EXPECTED_TARGETS)
 PACKAGE = "xweather_routing_pi"
 REPOSITORY = "pob220/xweather-routing-alpha-oss"
 SUMMARY = "Advanced weather routing with departure and arrival planning."
@@ -61,10 +69,12 @@ def inspect_pair(directory):
     target = tuple(value(root, key) for key in ("target", "target-version", "target-arch"))
     if any(not re.fullmatch(r"[\w.+-]+", item) for item in target):
         raise ValueError(f"Invalid target: {target}")
-    if target[0].startswith("flatpak-") and target[0] not in {"flatpak-x86_64", "flatpak-aarch64"}:
-        raise ValueError(f"Invalid Flatpak catalogue target: {target[0]}")
-    if target[1] == "22.04" and target[0] != "ubuntu-wx32-x86_64":
-        raise ValueError(f"Missing Ubuntu 22.04 wxWidgets ABI marker: {target[0]}")
+    matrix_name = directory.parent.name
+    if target != EXPECTED_TARGETS.get(matrix_name):
+        raise ValueError(
+            f"Unexpected target for {matrix_name}: {target}; "
+            f"expected {EXPECTED_TARGETS.get(matrix_name)}"
+        )
     libraries = {f"lib{PACKAGE}.so", f"lib{PACKAGE}.dylib", f"{PACKAGE}.dll"}
     with tarfile.open(archive, "r:gz") as package:
         members = package.getmembers()
@@ -72,7 +82,14 @@ def inspect_pair(directory):
             raise ValueError(f"Unsafe archive path: {archive}")
         if sum(item.isfile() and PurePosixPath(item.name).name in libraries for item in members) != 1:
             raise ValueError(f"Missing/duplicate xWeatherRouting library: {archive}")
-        if any(re.match(r"(?:lib)?(?:weather_routing_pi\.(?:so|dylib|dll)|gtest|gmock)", PurePosixPath(item.name).name) for item in members):
+        if any(
+            re.fullmatch(
+                r"(?:lib)?weather_routing_pi\.(?:so|dylib|dll)",
+                PurePosixPath(item.name).name,
+            )
+            or re.match(r"(?:lib)?g(?:test|mock)", PurePosixPath(item.name).name)
+            for item in members
+        ):
             raise ValueError(f"Standard plugin or test library included: {archive}")
         embedded_members = [item for item in members if item.name == "metadata.xml"]
         if len(embedded_members) != 1:

@@ -290,6 +290,11 @@ workflows:
     jobs:
       - windows-x86:
           filters: *validation-filters
+      - flatpak: *flatpak-x86
+      - flatpak: *flatpak-arm
       - recover-alpha:
           context: xgrib-deployment
-          requires: [windows-x86]
+          requires:
+            - windows-x86
+            - flatpak25.08-x86_64
+            - flatpak25.08-aarch64

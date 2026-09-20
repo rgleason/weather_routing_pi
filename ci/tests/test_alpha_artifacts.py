@@ -39,7 +39,9 @@ class AlphaArtifacts(unittest.TestCase):
             "name": plugin, "version": version, "api-version": "1.21",
             "summary": prepare.SUMMARY,
             "source": "https://github.com/pob220/xweather_routing_pi",
-            "target": name, "target-version": "13", "target-arch": "x86_64",
+            "target": prepare.EXPECTED_TARGETS[name][0],
+            "target-version": prepare.EXPECTED_TARGETS[name][1],
+            "target-arch": prepare.EXPECTED_TARGETS[name][2],
             "tarball-url": "https://invalid.example/placeholder",
         }
         for key, value in fields.items():
@@ -56,6 +58,14 @@ class AlphaArtifacts(unittest.TestCase):
     def test_rejects_standard_identity(self):
         directory, _, _ = self.pair("trixie", plugin="WeatherRouting")
         with self.assertRaisesRegex(ValueError, "Wrong plugin name"):
+            prepare.inspect_pair(directory)
+
+    def test_rejects_mismatched_catalogue_target(self):
+        directory, _, metadata = self.pair("flatpak-aarch64")
+        root = ET.parse(metadata).getroot()
+        root.find("target").text = "flatpak-aarch64"
+        ET.ElementTree(root).write(metadata)
+        with self.assertRaisesRegex(ValueError, "Unexpected target"):
             prepare.inspect_pair(directory)
 
     def test_incomplete_matrix_writes_nothing(self):
