@@ -27,13 +27,12 @@ if [ "${CIRCLECI_LOCAL,,}" = "true" ]; then
             sudo wget https://github.com/bdbcat/OCPNAndroidCommon/archive/master.zip -O ~/circleci-cache/master.zip
         fi
         MASTER_LOC=~/circleci-cache
-        #unzip -qq -o /home/circleci/circleci-cache/master.zip
     fi
 else
     MASTER_LOC=$(pwd)
     wget https://github.com/bdbcat/OCPNAndroidCommon/archive/master.zip
-    #unzip -qq -o master.zip
 fi
+
 echo "unzipping $MASTER_LOC/master.zip"
 
 unzip -qq -o $MASTER_LOC/master.zip

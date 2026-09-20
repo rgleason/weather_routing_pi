@@ -146,6 +146,10 @@ jobs:
       - retain-artifacts:
           target: "flatpak-<< parameters.arch >>"
           build_dir: build 
+      - run:
+          name: Debug Cloudsmith key
+          command: |
+            echo "CLOUDSMITH_API_KEY length: ${#CLOUDSMITH_API_KEY}"
           
       - run:
           name: Cloudsmith upload
@@ -156,8 +160,6 @@ jobs:
             export BUILD_DIR="$PWD/artifacts/flatpak-<< parameters.arch >>/package"
             export CLOUDSMITH_PKG_EXT="gz"
             ci/cloudsmith-upload.sh
-
-
 
 # ------------------------------------------------------------
 # JOB: macOS Universal
@@ -194,10 +196,10 @@ jobs:
           when: always
           command: |
             cd "$(git rev-parse --show-toplevel)"
-            chmod +x ci/cloudsmith-upload.sh
             export BUILD_DIR="$PWD/artifacts/macos-arm64/package"
             export CLOUDSMITH_PKG_EXT="gz"
-            ci/cloudsmith-upload.sh
+            chmod +x "$BUILD_DIR/cloudsmith-upload.sh"
+            "$BUILD_DIR/cloudsmith-upload.sh"
 
       - store_test_results:
           path: artifacts/macos-arm64/tests
