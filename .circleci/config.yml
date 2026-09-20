@@ -3,15 +3,71 @@ version: 2.1
 # Validation only. Publishing to an OpenCPN catalogue remains a separate,
 # explicitly approved operation and is intentionally absent from this file.
 
+# ---------------------------------------------------------
+# Win/server-2022 executor, images, env, 
+# shell support (bash.exe, powershell.exe, cmd.exe)
+# ----------------------------------------------------------
+
 orbs:
   win: circleci/windows@5.1.0
+  
+# ------------------------------------------------------------
+# Unified reusable command for artifact retention
+# ------------------------------------------------------------
+   
+commands:
+  retain-artifacts:
+    parameters:
+      target:
+        type: string
+      build_dir:
+        type: string
+        default: build
+    steps:
+      - run:
+          name: Retain artifacts for << parameters.target >>
+          when: always
+          command: |
+            mkdir -p artifacts/<< parameters.target >>/package
+
+            # Copy tarballs, XML, logs, SHA256SUMS
+            find << parameters.build_dir >> -maxdepth 2 -type f \
+              \( -name '*.tar.gz' -o -name '*.xml' -o -name '*.log' -o -name 'SHA256SUMS' \) \
+              -exec cp -f '{}' artifacts/<< parameters.target >>/package/ \; \
+              || true
+
+            # Copy pkg_version.sh (required for Cloudsmith)
+            if [ -f << parameters.build_dir >>/pkg_version.sh ]; then
+              cp << parameters.build_dir >>/pkg_version.sh artifacts/<< parameters.target >>/package/
+            else
+              echo "WARNING: pkg_version.sh not found in << parameters.build_dir >>"
+            fi
+
+            # Copy generated cloudsmith-upload.sh (required for Cloudsmith)
+            if [ -f << parameters.build_dir >>/cloudsmith-upload.sh ]; then
+              cp << parameters.build_dir >>/cloudsmith-upload.sh artifacts/<< parameters.target >>/package/
+            else
+              echo "WARNING: cloudsmith-upload.sh not found in << parameters.build_dir >>"
+            fi
+
+# ------------------------------------------------------------
+# Global pipeline parameters
+# ------------------------------------------------------------  
 
 parameters:
   cloudsmith_api_key:
     type: string
     default: CLOUDSMITH_API_KEY
+   
+# ------------------------------------------------------------
+# JOBS
+# ------------------------------------------------------------
 
 jobs:
+
+# ------------------------------------------------------------
+# JOB: Linux Catalogue
+# ------------------------------------------------------------
 
   linux-catalogue:
     parameters:
@@ -41,22 +97,11 @@ jobs:
           shell: /bin/bash
           command: ci/circleci-build-ubuntu-docker.sh
           no_output_timeout: 45m
-      - run:
-          name: Retain Linux artifacts
-          when: always
-          command: |
-            mkdir -p artifacts/<< parameters.target >>/package
-            find build -maxdepth 2 -type f \
-              \( -name '*.tar.gz' -o -name '*.xml' -o -name '*.log' -o -name 'SHA256SUMS' \) \
-              -exec cp -f '{}' artifacts/<< parameters.target >>/package/ \; \
-              || true
+ 
+      - retain-artifacts:
+          target: << parameters.target >>
+          build_dir: build 
 
-            # Copy pkg_version.sh
-            if [ -f build/pkg_version.sh ]; then
-              cp build/pkg_version.sh artifacts/<< parameters.target >>/package/
-            else
-              echo "WARNING: build/pkg_version.sh not found"
-            fi
       - run:
           name: Cloudsmith upload
           when: always
@@ -66,6 +111,10 @@ jobs:
             export BUILD_DIR="$PWD/artifacts/<< parameters.target >>/package"
             export CLOUDSMITH_PKG_EXT="gz"
             ci/cloudsmith-upload.sh
+            
+# ------------------------------------------------------------
+# JOB: Flatpak
+# ------------------------------------------------------------            
 
   flatpak:
     parameters:
@@ -93,21 +142,11 @@ jobs:
           shell: /bin/bash
           command: ci/circleci-build-flatpak.sh
           no_output_timeout: 45m
-      - run:
-          name: Retain Flatpak package
-          when: always
-          command: |
-            mkdir -p artifacts/flatpak-<< parameters.arch >>/package
-            find build -maxdepth 2 -type f \
-              \( -name '*.tar.gz' -o -name '*.xml' -o -name '*.log' \) \
-              -exec cp -f '{}' artifacts/flatpak-<< parameters.arch >>/package/ \; \
-              || true
-            # NEW: copy pkg_version.sh
-            if [ -f build/pkg_version.sh ]; then
-                cp build/pkg_version.sh artifacts/flatpak-<< parameters.arch >>/package/
-            else
-                echo "WARNING: build/pkg_version.sh not found"
-            fi              
+          
+      - retain-artifacts:
+          target: << parameters.target >>
+          build_dir: build 
+          
       - run:
           name: Cloudsmith upload
           when: always
@@ -117,7 +156,58 @@ jobs:
             export BUILD_DIR="$PWD/artifacts/flatpak-<< parameters.arch >>/package"
             export CLOUDSMITH_PKG_EXT="gz"
             ci/cloudsmith-upload.sh
-      - retain-linux-artifacts
+
+
+
+# ------------------------------------------------------------
+# JOB: macOS Universal
+# ------------------------------------------------------------
+
+  macos-universal:
+    macos:
+      xcode: "16.4.0"
+    resource_class: m4pro.medium
+
+    environment:
+      OCPN_TARGET: macos
+      CMAKE_BUILD_PARALLEL_LEVEL: "3"
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      WX_VER: "32"
+      CLOUDSMITH_API_KEY: << pipeline.parameters.cloudsmith_api_key >>
+
+    steps:
+      - checkout
+      - run: chmod a+x ci/*.sh cmake/*.sh
+
+      - run:
+          name: Native Apple-Silicon stock-API build, tests and package
+          shell: /bin/bash
+          command: ci/circleci-build-macos-universal.sh
+          no_output_timeout: 45m
+
+      - retain-artifacts:
+          target: macos-arm64
+          build_dir: build
+
+      - run:
+          name: Cloudsmith upload
+          when: always
+          command: |
+            cd "$(git rev-parse --show-toplevel)"
+            chmod +x ci/cloudsmith-upload.sh
+            export BUILD_DIR="$PWD/artifacts/macos-arm64/package"
+            export CLOUDSMITH_PKG_EXT="gz"
+            ci/cloudsmith-upload.sh
+
+      - store_test_results:
+          path: artifacts/macos-arm64/tests
+
+      - store_artifacts:
+          path: artifacts/macos-arm64
+
+# ------------------------------------------------------------
+# JOB: Windows MSVC
+# ------------------------------------------------------------
 
   windows-x86:
     executor:
@@ -149,6 +239,10 @@ jobs:
           command: ci\circleci-build-msvc.bat
           no_output_timeout: 45m
 
+      - retain-artifacts:
+          target: windows-x86
+          build_dir: build
+
       - run:
           name: Cloudsmith upload
           when: always
@@ -170,63 +264,9 @@ jobs:
           path: build
           destination: windows-x86
 
-  macos-universal:
-    macos:
-      xcode: "16.4.0"
-    resource_class: m4pro.medium
-
-    environment:
-      OCPN_TARGET: macos
-      CMAKE_BUILD_PARALLEL_LEVEL: "3"
-      HOMEBREW_NO_AUTO_UPDATE: "1"
-      WX_VER: "32"
-      CLOUDSMITH_API_KEY: << pipeline.parameters.cloudsmith_api_key >>
-
-    steps:
-      - checkout
-      - run: chmod a+x ci/*.sh cmake/*.sh
-      - run:
-          name: Native Apple-Silicon stock-API build, tests and package
-          shell: /bin/bash
-          command: ci/circleci-build-macos-universal.sh
-          no_output_timeout: 45m
-      - run:
-          name: Retain macOS package
-          when: always
-          command: |
-            mkdir -p artifacts/macos-arm64/package
-            find artifacts/macos-arm64 -maxdepth 2 -type f \
-              \( -name '*.tar.gz' -o -name '*.xml' -o -name '*.log' \) \
-              -exec cp -f '{}' artifacts/macos-arm64/package/ \; \
-              || true
-
-            # Copy pkg_version.sh (required for Cloudsmith)
-            if [ -f build/pkg_version.sh ]; then
-              cp build/pkg_version.sh artifacts/macos-arm64/package/
-            else
-              echo "WARNING: build/pkg_version.sh not found"
-            fi
-
-            # Copy generated cloudsmith-upload.sh
-            if [ -f build/cloudsmith-upload.sh ]; then
-              cp build/cloudsmith-upload.sh artifacts/macos-arm64/package/
-            else
-              echo "WARNING: build/cloudsmith-upload.sh not found"
-            fi
-          
-      - run:
-          name: Cloudsmith upload
-          when: always
-          command: |
-            cd "$(git rev-parse --show-toplevel)"
-            chmod +x ci/cloudsmith-upload.sh
-            export BUILD_DIR="$PWD/artifacts/macos-arm64/package"
-            export CLOUDSMITH_PKG_EXT="gz"
-            ci/cloudsmith-upload.sh
-      - store_test_results:
-          path: artifacts/macos-arm64/tests
-      - store_artifacts:
-          path: artifacts/macos-arm64
+# ------------------------------------------------------------
+# JOB: Android ARM64
+# ------------------------------------------------------------
 
   android-arm64:
     parameters:
@@ -247,6 +287,7 @@ jobs:
     steps:
       - checkout
       - run: chmod a+x ci/*.sh
+
       - run:
           name: Android ARM64 build
           shell: /bin/bash
@@ -255,21 +296,9 @@ jobs:
             ci/circleci-build-android-arm64.sh
           no_output_timeout: 45m
 
-      - run:
-          name: Retain Android ARM64 package
-          when: always
-          command: |
-            mkdir -p artifacts/android-arm64/package
-            find build -maxdepth 2 -type f \
-              \( -name '*.tar.gz' -o -name '*.xml' -o -name '*.log' \) \
-              -exec cp -f '{}' artifacts/android-arm64/package/ \; \
-              || true
-            # Copy pkg_version.sh (required for Cloudsmith)
-            if [ -f build/pkg_version.sh ]; then
-              cp build/pkg_version.sh artifacts/android-arm64/package/
-            else
-              echo "WARNING: build/pkg_version.sh not found"
-            fi              
+      - retain-artifacts:
+          target: android-arm64
+          build_dir: build
 
       - run:
           name: Cloudsmith upload
@@ -281,18 +310,9 @@ jobs:
             export CLOUDSMITH_PKG_EXT="gz"
             ci/cloudsmith-upload.sh
 
-      - run:
-          name: Prepare Android ARM64 test results directory
-          when: always
-          command: |
-            mkdir -p artifacts/android-arm64/tests
-
-      - store_test_results:
-          path: artifacts/android-arm64/tests
-
-      - store_artifacts:
-          path: artifacts/android-arm64
-
+# ------------------------------------------------------------
+# JOB: Android ARMHF
+# ------------------------------------------------------------
 
   android-armhf:
     parameters:
@@ -314,7 +334,7 @@ jobs:
       - checkout
       - run: chmod a+x ci/*.sh
 
-      - run:
+      - run:  
           name: Android ARMHF build
           shell: /bin/bash
           command: |
@@ -322,21 +342,9 @@ jobs:
             ci/circleci-build-android-armhf.sh
           no_output_timeout: 45m
 
-      - run:
-          name: Retain Android ARMHF package
-          when: always
-          command: |
-            mkdir -p artifacts/android-armhf/package
-            find build -maxdepth 2 -type f \
-              \( -name '*.tar.gz' -o -name '*.xml' -o -name '*.log' \) \
-              -exec cp -f '{}' artifacts/android-armhf/package/ \; \
-              || true
-            # Copy pkg_version.sh (required for Cloudsmith)
-            if [ -f build/pkg_version.sh ]; then
-              cp build/pkg_version.sh artifacts/android-armhf/package/
-            else
-              echo "WARNING: build/pkg_version.sh not found"
-            fi              
+      - retain-artifacts:
+          target: android-armhf
+          build_dir: build
 
       - run:
           name: Cloudsmith upload
@@ -348,20 +356,6 @@ jobs:
             export CLOUDSMITH_PKG_EXT="gz"
             ci/cloudsmith-upload.sh
 
-      - run:
-          name: Prepare Android ARMHF test results directory
-          when: always
-          command: |
-            mkdir -p artifacts/android-armhf/tests
-
-      - store_test_results:
-          path: artifacts/android-armhf/tests
-
-      - store_artifacts:
-          path: artifacts/android-armhf
-
-
-
 # -------------------------
 # Top-level anchor definition
 # -------------------------
@@ -370,6 +364,10 @@ validation-filters: &validation-filters
     ignore: [devel, tmp]
   tags:
     ignore: /.*/
+    
+# ------------------------------------------------------------
+# WORKFLOWS
+# ------------------------------------------------------------    
 
 workflows:
   validate:
