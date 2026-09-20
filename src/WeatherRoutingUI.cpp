@@ -1580,7 +1580,8 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
       0. /* initial */, 0.1 /* inc */);
   m_sMaxSwellMeters->SetToolTip(
       _("Maximum swell height to allow during routing.\nRoutes with swell "
-        "heights above this value will be avoided."));
+        "heights above this value will be avoided. Set 0 to disable this limit. "
+        "Quick requires wave data whenever this limit is enabled."));
   m_sMaxSwellMeters->SetMaxSize(wxSize(140, -1));
 
   fgSizer110->Add(m_sMaxSwellMeters, 1,
@@ -1641,12 +1642,13 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   auto engineBox = new wxStaticBoxSizer(
       new wxStaticBox(m_pBasic, wxID_ANY, _("Routing engine")), wxVERTICAL);
   m_cRoutingEngine = new wxChoice(engineBox->GetStaticBox(), wxID_ANY);
-  m_cRoutingEngine->Append(_("Main"));
   m_cRoutingEngine->Append(_("Quick"));
+  m_cRoutingEngine->Append(_("Standard"));
+  m_cRoutingEngine->Append(_("Professional"));
   m_cRoutingEngine->SetSelection(0);
   engineBox->Add(m_cRoutingEngine, 0, wxALL | wxEXPAND, 5);
   m_tRoutingEngineDescription = new wxStaticText(engineBox->GetStaticBox(), wxID_ANY,
-      _("Main: broader search with multiple recovery methods."));
+      _("Quick: fast contour search with independently validated arrival."));
   m_tRoutingEngineDescription->Wrap(430);
   engineBox->Add(m_tRoutingEngineDescription, 0, wxALL | wxEXPAND, 5);
   fgSizer112->Add(engineBox, 0, wxEXPAND | wxALL, 5);
@@ -1999,19 +2001,19 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   m_sQuickMemoryBudgetMiB = new wxSpinCtrl(m_pQuickEngine, wxID_ANY,
       "256", wxDefaultPosition, wxSize(160, -1), wxSP_ARROW_KEYS, 1,
       sizeof(void*) <= 4 ? 4095 : 4096, 256);
-  m_sQuickMemoryBudgetMiB->SetToolTip(_("Budget for Quick's tracked search storage. Weather, charts and OpenCPN require additional memory. Presets preserve this budget."));
+  m_sQuickMemoryBudgetMiB->SetToolTip(_("Search-storage allowance for the selected engine. Weather, charts and OpenCPN require additional memory. Presets preserve this allowance."));
   quickEngineSizer->Add(m_sQuickMemoryBudgetMiB, 0, wxALL, 5);
   quickLabel(_("Offshore time step (minutes)"));
   m_sQuickOffshoreStepMinutes = new wxSpinCtrl(m_pQuickEngine, wxID_ANY,
       "180", wxDefaultPosition, wxSize(160, -1), wxSP_ARROW_KEYS, 10, 360, 180);
-  m_sQuickOffshoreStepMinutes->SetToolTip(_("Nominal offshore step. Quick automatically uses finer steps near departure, destination and coastal regions."));
+  m_sQuickOffshoreStepMinutes->SetToolTip(_("Nominal offshore step. Quick reduces steps near the destination; Standard also refines departure and coastal search."));
   quickEngineSizer->Add(m_sQuickOffshoreStepMinutes, 0, wxALL, 5);
   quickLabel(_("Heading separation (degrees)"));
   m_sQuickHeadingStepDegrees = new wxSpinCtrlDouble(m_pQuickEngine, wxID_ANY,
       wxString::FromCDouble(weather_routing::kDefaultHeadingStepDegrees),
       wxDefaultPosition, wxSize(160, -1), wxSP_ARROW_KEYS, 5, 30,
       weather_routing::kDefaultHeadingStepDegrees, 1);
-  m_sQuickHeadingStepDegrees->SetToolTip(_("Nominal separation. Quick refines headings during approach and recovery."));
+  m_sQuickHeadingStepDegrees->SetToolTip(_("Search heading separation. Final connections are solved precisely. Standard also refines its search during approach and recovery."));
   quickEngineSizer->Add(m_sQuickHeadingStepDegrees, 0, wxALL, 5);
   quickLabel(_("Maximum search angle (degrees)"));
   m_sQuickMaximumSearchAngle = new wxSpinCtrl(m_pQuickEngine, wxID_ANY,
@@ -2451,7 +2453,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   m_cShorelineResolution->SetSelection(2);
   m_cShorelineResolution->SetMinSize(wxSize(
       wxMax(FromDIP(190), m_cShorelineResolution->GetBestSize().x), -1));
-  m_cShorelineResolution->SetToolTip(_("GSHHG shoreline detail for the selected engine; Main and Quick remember independent choices. "
+  m_cShorelineResolution->SetToolTip(_("GSHHG shoreline detail for the selected engine; Quick, Standard and Professional remember independent choices. "
                                        "High and Full can be installed with the button below. "
                                        "Chart geometry and minimum-depth checks are separate."));
   fgSizer11511->Add(m_cShorelineResolution, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);

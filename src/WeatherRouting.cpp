@@ -4508,12 +4508,12 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
           }
           if (scenario.route.hasQuickRoute) configuration.EngineSettings.engine = scenario.route.quickRoute
               ? weather_routing::RoutingEngine::Quick : weather_routing::RoutingEngine::Main;
-          if (scenario.route.hasQuickMemoryBudgetMiB) configuration.EngineSettings.quick.memoryBudgetMiB = scenario.route.quickMemoryBudgetMiB;
           if (scenario.route.hasRoutingEngine)
             configuration.EngineSettings.SetEngineId(scenario.route.routingEngine.ToStdString());
+          if (scenario.route.hasQuickMemoryBudgetMiB) configuration.EngineSettings.FastSettings().memoryBudgetMiB = scenario.route.quickMemoryBudgetMiB;
           if (scenario.route.hasGribTimelineCacheMiB) {
-            if (configuration.IsQuick())
-              configuration.QuickGribTimelineCacheMiB =
+            if (configuration.IsFastEngine())
+              configuration.FastGribTimelineCacheMiB() =
                   scenario.route.gribTimelineCacheMiB;
             else
               configuration.MainGribTimelineCacheMiB =
@@ -4521,17 +4521,17 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
           }
           if (scenario.route.hasChartShorelineResolution) configuration.ChartShorelineResolution = scenario.route.chartShorelineResolution;
           if (scenario.route.hasShorelineResolution) {
-            if (configuration.IsQuick()) configuration.QuickShorelineResolution = scenario.route.shorelineResolution;
+            if (configuration.IsFastEngine()) configuration.FastShorelineResolution() = scenario.route.shorelineResolution;
             else configuration.ShorelineResolution = scenario.route.shorelineResolution;
           }
           if (scenario.route.hasQuickOffshoreStepMinutes)
-            configuration.EngineSettings.quick.offshoreStepMinutes = scenario.route.quickOffshoreStepMinutes;
+            configuration.EngineSettings.FastSettings().offshoreStepMinutes = scenario.route.quickOffshoreStepMinutes;
           if (scenario.route.hasQuickHeadingStepDegrees)
-            configuration.EngineSettings.quick.headingStepDegrees = scenario.route.quickHeadingStepDegrees;
+            configuration.EngineSettings.FastSettings().headingStepDegrees = scenario.route.quickHeadingStepDegrees;
           if (scenario.route.hasQuickMaximumSearchAngle)
-            configuration.EngineSettings.quick.maximumSearchAngle = scenario.route.quickMaximumSearchAngle;
+            configuration.EngineSettings.FastSettings().maximumSearchAngle = scenario.route.quickMaximumSearchAngle;
           if (scenario.route.hasQuickOffshoreStepMinutes || scenario.route.hasQuickHeadingStepDegrees || scenario.route.hasQuickMaximumSearchAngle)
-            configuration.EngineSettings.quick.preset = {};
+            configuration.EngineSettings.FastSettings().preset = {};
           if (scenario.route.hasTimeStepSeconds || scenario.route.hasHeadingStepDegrees || scenario.route.hasRoutingEffortPercent)
             configuration.EngineSettings.mainPreset = {};
           if (scenario.route.hasRoutingEffortPercent)
@@ -4563,6 +4563,8 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
                 scenario.route.maxApparentWindKnots;
           if (scenario.route.hasOptimizeTacking)
             configuration.OptimizeTacking = scenario.route.optimizeTacking;
+          if (scenario.route.hasMaxSwellMeters)
+            configuration.MaxSwellMeters = scenario.route.maxSwellMeters;
           if (scenario.route.hasUpwindEfficiency)
             configuration.UpwindEfficiency = scenario.route.upwindEfficiency;
           if (scenario.route.hasDownwindEfficiency)
@@ -9023,8 +9025,9 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
     if (routemapoverlay->Finished()) {
       if (routemapoverlay->ReachedDestination()) {
         const auto engine = routemapoverlay->GetComputedSearchSettings().engine;
-        State = engine == "quick" ? _("Complete — Quick")
-            : engine == "main" ? _("Complete — Main") : _("Complete");
+        State = engine == "original" ? _("Complete — Quick")
+            : engine == "quick" ? _("Complete — Standard")
+            : engine == "main" ? _("Complete — Professional") : _("Complete");
       } else
         State = BuildRouteFailureState(routemapoverlay);
     } else {
@@ -9036,9 +9039,11 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
           return;
         }
       const auto computed = routemapoverlay->GetComputedSearchSettings();
+      weather_routing::RoutingEngineSettings computedEngine;
+      computedEngine.SetEngineId(computed.engine);
       State = computed.valid
           ? _("Settings changed — recompute (previous engine: ") +
-                wxString::FromUTF8(computed.engine) + ")"
+                wxGetTranslation(weather_routing::EngineTitle(computedEngine.engine)) + ")"
           : _("Not Computed");
     }
   }
@@ -9783,7 +9788,7 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
        route != eligible_routes.end(); ++route) {
     if (!*route) continue;
     const RouteMapConfiguration configuration = (*route)->GetConfiguration();
-    if (!configuration.DetectLand || configuration.IsQuick() ||
+    if (!configuration.DetectLand || configuration.IsFastEngine() ||
         configuration.chart_safety_missing_tile_retry_count > 0)
       continue;
     const wxString scope = ChartSafetySharedPrewarmScopeKey(configuration);
@@ -9798,7 +9803,7 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
        route != eligible_routes.end(); ++route) {
     if (!*route) continue;
     RouteMapConfiguration configuration = (*route)->GetConfiguration();
-    if (!configuration.DetectLand || configuration.IsQuick() ||
+    if (!configuration.DetectLand || configuration.IsFastEngine() ||
         configuration.chart_safety_missing_tile_retry_count > 0)
       continue;
     wxString scope = ChartSafetySharedPrewarmScopeKey(configuration);
@@ -11574,7 +11579,7 @@ void WeatherRouting::StartAll() {
           weatherroute->routemapoverlay->GetConfiguration();
       const auto admission =
           weather_routing::EvaluateGribTimelineCacheAdmission(
-              candidate.SelectedGribTimelineCacheMiB(), candidate.IsQuick(),
+              candidate.SelectedGribTimelineCacheMiB(), candidate.IsFastEngine(),
               availableMiB);
       if (admission.effective_mib > largestEffectiveMiB) {
         largestValue = candidate;
@@ -11604,14 +11609,14 @@ void WeatherRouting::BeginGribTimelineCacheBatch(
       weather_routing::AvailablePhysicalMemoryBytes();
   const std::uint64_t availableMiB = availableBytes / (1024ULL * 1024ULL);
   const auto admission = m_GribTimelineFrameCache->Configure(
-      configuration.SelectedGribTimelineCacheMiB(), configuration.IsQuick(),
+      configuration.SelectedGribTimelineCacheMiB(), configuration.IsFastEngine(),
       availableMiB);
   m_GribTimelineCacheBatchActive = true;
   wxLogMessage(
       "WR_GRIB_TIMELINE_CACHE_BEGIN engine=%s requested_mib=%d "
       "effective_mib=%d available_mib=%llu required_before_mib=%llu "
       "required_reserve_mib=%llu approved=%d shared_batch=1",
-      configuration.IsQuick() ? "quick" : "main", admission.requested_mib,
+      configuration.EngineSettings.EngineId().c_str(), admission.requested_mib,
       admission.effective_mib,
       static_cast<unsigned long long>(admission.available_mib),
       static_cast<unsigned long long>(admission.required_before_mib),
@@ -12102,8 +12107,7 @@ void WeatherRouting::ApplyLastUsedConfigurationDefaults(
   configuration.QuickGribTimelineCacheMiB =
       weather_routing::NormalizeGribTimelineCacheMiB(
           static_cast<int>(quick_grib_cache), true);
-  if (!hasSavedDefaults)
-    configuration.EngineSettings.mainPreset = {"balanced", weather_routing::kBalancedSearchPresetRevision};
+  weather_routing::ApplyFirstUseEngineDefaults(configuration.EngineSettings, hasSavedDefaults);
   long routing_effort_percent = configuration.RoutingEffortPercent;
   pConf->Read(_T("RoutingEffortPercent"), &routing_effort_percent,
               routing_effort_percent);

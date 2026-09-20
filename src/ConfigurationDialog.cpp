@@ -613,14 +613,13 @@ void ConfigurationDialog::SetConfigurations(
   for (const auto& config : configurations)
     sameEngine = sameEngine && config.EngineSettings.engine == firstEngine;
   m_cRoutingEngine->SetSelection(!sameEngine ? wxNOT_FOUND :
-      firstEngine == weather_routing::RoutingEngine::Main ? 0 :
-      firstEngine == weather_routing::RoutingEngine::Quick ? 1 : wxNOT_FOUND);
-  SET_SPIN_VALUE(QuickMemoryBudgetMiB, (*it).EngineSettings.quick.memoryBudgetMiB);
+      weather_routing::EngineSelection(firstEngine));
+  SET_SPIN_VALUE(QuickMemoryBudgetMiB, (*it).EngineSettings.FastSettings().memoryBudgetMiB);
   SET_SPIN(MainGribTimelineCacheMiB);
-  SET_SPIN(QuickGribTimelineCacheMiB);
-  SET_SPIN_VALUE(QuickOffshoreStepMinutes, (*it).EngineSettings.quick.offshoreStepMinutes);
-  SET_SPIN_DOUBLE_VALUE(QuickHeadingStepDegrees, (*it).EngineSettings.quick.headingStepDegrees);
-  SET_SPIN_VALUE(QuickMaximumSearchAngle, (*it).EngineSettings.quick.maximumSearchAngle);
+  SET_SPIN_VALUE(QuickGribTimelineCacheMiB, (*it).IsOriginal() ? (*it).EngineSettings.originalGribTimelineCacheMiB : (*it).QuickGribTimelineCacheMiB);
+  SET_SPIN_VALUE(QuickOffshoreStepMinutes, (*it).EngineSettings.FastSettings().offshoreStepMinutes);
+  SET_SPIN_DOUBLE_VALUE(QuickHeadingStepDegrees, (*it).EngineSettings.FastSettings().headingStepDegrees);
+  SET_SPIN_VALUE(QuickMaximumSearchAngle, (*it).EngineSettings.FastSettings().maximumSearchAngle);
   SET_SPIN(ArrivalSafetyMarginMinutes);
   SET_SPIN(DepartureTimeOptimizationConcurrentRoutes);
   const int firstRoutingEffort =
@@ -861,7 +860,7 @@ bool ConfigurationDialog::HandleEngineEdit(wxObject* control) {
       const bool chartMode = m_WeatherRouting.HasEnhancedChartSafety() &&
           m_cbUseExperimentalChartSafety->GetValue() && m_cbEnforceExperimentalChartSafety->GetValue();
       if (chartMode) config.ChartShorelineResolution = resolution;
-      else if (config.IsQuick()) config.QuickShorelineResolution = resolution;
+      else if (config.IsFastEngine()) config.FastShorelineResolution() = resolution;
       else config.ShorelineResolution = resolution;
       config.shoreline_dataset.reset();
       config.shoreline_description.clear();
@@ -869,7 +868,8 @@ bool ConfigurationDialog::HandleEngineEdit(wxObject* control) {
     }
     if (control == m_cRoutingEngine) {
       if (m_cRoutingEngine->GetSelection() == wxNOT_FOUND) continue;
-      config.EngineSettings.SetEngineId(m_cRoutingEngine->GetSelection() == 0 ? "main" : "quick");
+      config.EngineSettings.engine = weather_routing::EngineFromSelection(m_cRoutingEngine->GetSelection());
+      config.EngineSettings.unsupportedId.clear();
     }
     if (control == m_sTimeStepHours || control == m_sTimeStepMinutes) {
       // Preserve the other component for mixed selections unless it was edited.
@@ -886,28 +886,35 @@ bool ConfigurationDialog::HandleEngineEdit(wxObject* control) {
     if (control == m_cbUseReverseReachabilityRecovery)
       config.UseReverseReachabilityRecovery = m_cbUseReverseReachabilityRecovery->IsChecked();
     if (control == m_sQuickMemoryBudgetMiB)
-      config.EngineSettings.quick.memoryBudgetMiB = m_sQuickMemoryBudgetMiB->GetValue();
+      config.EngineSettings.FastSettings().memoryBudgetMiB = m_sQuickMemoryBudgetMiB->GetValue();
     if (control == m_sMainGribTimelineCacheMiB)
       config.MainGribTimelineCacheMiB =
           weather_routing::NormalizeGribTimelineCacheMiB(
               m_sMainGribTimelineCacheMiB->GetValue(), false);
     if (control == m_sQuickGribTimelineCacheMiB)
-      config.QuickGribTimelineCacheMiB =
+      config.FastGribTimelineCacheMiB() =
           weather_routing::NormalizeGribTimelineCacheMiB(
               m_sQuickGribTimelineCacheMiB->GetValue(), true);
     if (control == m_sQuickOffshoreStepMinutes)
-      config.EngineSettings.quick.offshoreStepMinutes = m_sQuickOffshoreStepMinutes->GetValue();
+      config.EngineSettings.FastSettings().offshoreStepMinutes = m_sQuickOffshoreStepMinutes->GetValue();
     if (control == m_sQuickHeadingStepDegrees)
-      config.EngineSettings.quick.headingStepDegrees = m_sQuickHeadingStepDegrees->GetValue();
+      config.EngineSettings.FastSettings().headingStepDegrees = m_sQuickHeadingStepDegrees->GetValue();
     if (control == m_sQuickMaximumSearchAngle)
-      config.EngineSettings.quick.maximumSearchAngle = m_sQuickMaximumSearchAngle->GetValue();
+      config.EngineSettings.FastSettings().maximumSearchAngle = m_sQuickMaximumSearchAngle->GetValue();
     if (mainField) config.EngineSettings.mainPreset = {};
-    if (quickField) config.EngineSettings.quick.preset = {};
+    if (quickField) config.EngineSettings.FastSettings().preset = {};
     route->SetConfiguration(config);
     m_WeatherRouting.SaveLastUsedConfigurationDefaults(config);
   }
-  UpdateEngineControls();
-  RefreshEnginePresetStatus();
+  if (control == m_cRoutingEngine) {
+    std::list<RouteMapConfiguration> selected;
+    for (auto* route : m_WeatherRouting.CurrentRouteMaps(false))
+      selected.push_back(route->GetConfiguration());
+    SetConfigurations(selected);
+  } else {
+    UpdateEngineControls();
+    RefreshEnginePresetStatus();
+  }
   m_WeatherRouting.UpdateCurrentConfigurations();
   m_WeatherRouting.ScheduleAutoSave();
   return true;
@@ -915,8 +922,8 @@ bool ConfigurationDialog::HandleEngineEdit(wxObject* control) {
 
 void ConfigurationDialog::UpdateEngineControls() {
   const int engine = m_cRoutingEngine->GetSelection();
-  m_pMainEngine->Show(engine == 0);
-  m_pQuickEngine->Show(engine == 1);
+  m_pMainEngine->Show(engine == 2);
+  m_pQuickEngine->Show(engine == 0 || engine == 1);
   m_bResetAdvanced->Enable(engine != wxNOT_FOUND);
   m_cEnginePreset->Enable(engine != wxNOT_FOUND);
   bool running = false;
@@ -951,15 +958,15 @@ void ConfigurationDialog::UpdateEngineControls() {
   m_cShorelineResolution->Enable(!running);
   m_cShorelineResolution->SetToolTip(chartAuthoritative
       ? _("Chart geometry and depth checks are authoritative. This separately saved shoreline choice controls preliminary scouting. It starts at Crude; increase it for finer coastal detail.")
-      : _("Shoreline detail for the selected engine. Main and Quick remember independent choices. High and Full require installation from Shoreline data on Advanced. Lower resolutions omit smaller coastal features."));
+      : _("Shoreline detail for the selected engine. Quick, Standard and Professional remember independent choices. High and Full require installation from Shoreline data on Advanced. Lower resolutions omit smaller coastal features."));
   m_pMainEngine->Enable(!running);
   m_pQuickEngine->Enable(!running);
   if (running) m_bResetAdvanced->Enable(false);
-  m_tRoutingEngineDescription->SetLabel(engine == 0
-      ? _("Main: broader search with multiple recovery methods.")
-      : engine == 1
-          ? _("Quick: faster, smaller search; may miss a faster or feasible route.")
-          : _("Mixed or unsupported engines. Select Main or Quick to edit engine settings."));
+  m_tRoutingEngineDescription->SetLabel(engine == 2
+      ? _("Professional: broader search with multiple recovery methods.")
+      : engine == 1 ? _("Standard: bounded adaptive search with recovery.")
+      : engine == 0 ? _("Quick: fast contour search with independently validated arrival; may miss a feasible route.")
+      : _("Mixed or unsupported engines. Select Quick, Standard or Professional."));
   m_tRoutingEngineDescription->Wrap(430);
   // These legacy controls do not tune either native engine. Preserve their
   // saved values for compatibility without suggesting that they affect search.
@@ -968,9 +975,9 @@ void ConfigurationDialog::UpdateEngineControls() {
     allNative = allNative && ModernNativeRouteEnabled(route->GetConfiguration());
   m_cbInvertedRegions->Enable(!allNative);
   // Both native engines pass this option to the shared polar evaluator.
-  m_cbOptimizeTacking->Enable(!running);
+  m_cbOptimizeTacking->Enable(!running && engine != 0);
   m_cIntegrator->Enable(!allNative);
-  // Departure concurrency is a scheduler setting shared by both native engines.
+  // Departure concurrency is a scheduler setting shared by all three engines.
   m_sDepartureTimeOptimizationConcurrentRoutes->Enable(!running);
   m_pAdvanced->Layout();
   m_pAdvanced->FitInside();
@@ -982,7 +989,7 @@ void ConfigurationDialog::RefreshEnginePresetStatus() {
   const int engine = m_cRoutingEngine->GetSelection();
   for (auto* route : m_WeatherRouting.CurrentRouteMaps(false)) {
     const auto config = route->GetConfiguration();
-    const auto& preset = engine == 1 ? config.EngineSettings.quick.preset
+    const auto& preset = (engine == 0 || engine == 1) ? config.EngineSettings.FastSettings().preset
                                     : config.EngineSettings.mainPreset;
     wxString label = preset.id == "balanced"
         ? wxString::Format(_("Balanced (revision %d)"), preset.revision)
@@ -1004,9 +1011,9 @@ void ConfigurationDialog::OnResetAdvanced(wxCommandEvent&) {
   // The configuration editor applies changes immediately. Previewing the
   // explicit reset gives it an Apply/Cancel boundary without changing that
   // established workflow or modifying routes before the user accepts.
-  const wxString values = engine == 0
-      ? _("Main — Balanced\nTime step: 1 hour\nHeading separation: 10 degrees\nRouting effort: 100%\nMaximum search angle: 120 degrees\nOptional reverse reachability recovery: off")
-      : _("Quick — Balanced\nOffshore time step: 3 hours (adaptive)\nHeading separation: 10 degrees (adaptive)\nMaximum search angle: 120 degrees");
+  const wxString values = engine == 2
+      ? _("Professional — Balanced\nTime step: 1 hour\nHeading separation: 10 degrees\nRouting effort: 100%\nMaximum search angle: 120 degrees\nOptional reverse reachability recovery: off")
+      : _("Quick / Standard — Balanced\nOffshore time step: 3 hours (adaptive)\nHeading separation: 10 degrees (adaptive)\nMaximum search angle: 120 degrees");
   wxMessageDialog preview(this, values +
       _("\n\nApplies to all selected routes. Memory and GRIB cache budgets, vessel, weather and safety settings are preserved."),
       _("Reset engine to preset"), wxOK | wxCANCEL);
@@ -1015,7 +1022,8 @@ void ConfigurationDialog::OnResetAdvanced(wxCommandEvent&) {
   std::list<RouteMapConfiguration> configurations;
   for (auto* route : routes) {
     auto config = route->GetConfiguration();
-    if (engine == 0) weather_routing::ResetMainToBalanced(config);
+    if (engine == 2) weather_routing::ResetMainToBalanced(config);
+    else if (engine == 0) config.EngineSettings.ResetOriginalToBalanced();
     else config.EngineSettings.ResetQuickToBalanced();
     route->SetConfiguration(config);
     m_WeatherRouting.SaveLastUsedConfigurationDefaults(config);
@@ -1296,29 +1304,28 @@ void ConfigurationDialog::Update() {
           != m_edited_controls.end();
     };
     if (edited(m_cRoutingEngine) && m_cRoutingEngine->GetSelection() != wxNOT_FOUND) {
-      configuration.EngineSettings.engine = m_cRoutingEngine->GetSelection() == 0
-          ? weather_routing::RoutingEngine::Main : weather_routing::RoutingEngine::Quick;
+      configuration.EngineSettings.engine = weather_routing::EngineFromSelection(m_cRoutingEngine->GetSelection());
       configuration.EngineSettings.unsupportedId.clear();
     }
     if (edited(m_sQuickMemoryBudgetMiB))
-      configuration.EngineSettings.quick.memoryBudgetMiB = m_sQuickMemoryBudgetMiB->GetValue();
+      configuration.EngineSettings.FastSettings().memoryBudgetMiB = m_sQuickMemoryBudgetMiB->GetValue();
     if (edited(m_sMainGribTimelineCacheMiB))
       configuration.MainGribTimelineCacheMiB =
           weather_routing::NormalizeGribTimelineCacheMiB(
               m_sMainGribTimelineCacheMiB->GetValue(), false);
     if (edited(m_sQuickGribTimelineCacheMiB))
-      configuration.QuickGribTimelineCacheMiB =
+      configuration.FastGribTimelineCacheMiB() =
           weather_routing::NormalizeGribTimelineCacheMiB(
               m_sQuickGribTimelineCacheMiB->GetValue(), true);
     if (edited(m_sQuickOffshoreStepMinutes))
-      configuration.EngineSettings.quick.offshoreStepMinutes = m_sQuickOffshoreStepMinutes->GetValue();
+      configuration.EngineSettings.FastSettings().offshoreStepMinutes = m_sQuickOffshoreStepMinutes->GetValue();
     if (edited(m_sQuickHeadingStepDegrees))
-      configuration.EngineSettings.quick.headingStepDegrees = m_sQuickHeadingStepDegrees->GetValue();
+      configuration.EngineSettings.FastSettings().headingStepDegrees = m_sQuickHeadingStepDegrees->GetValue();
     if (edited(m_sQuickMaximumSearchAngle))
-      configuration.EngineSettings.quick.maximumSearchAngle = m_sQuickMaximumSearchAngle->GetValue();
+      configuration.EngineSettings.FastSettings().maximumSearchAngle = m_sQuickMaximumSearchAngle->GetValue();
     if (edited(m_sQuickOffshoreStepMinutes) || edited(m_sQuickHeadingStepDegrees) ||
         edited(m_sQuickMaximumSearchAngle))
-      configuration.EngineSettings.quick.preset = {};
+      configuration.EngineSettings.FastSettings().preset = {};
     if (edited(m_sTimeStepHours) || edited(m_sTimeStepMinutes) ||
         edited(m_sByDegrees) || edited(m_cRoutingEffortPercent) ||
         edited(m_sMaxSearchAngle) || edited(m_cbUseReverseReachabilityRecovery))
@@ -1384,7 +1391,7 @@ void ConfigurationDialog::Update() {
   }
 
   double by = m_sByDegrees->GetValue();
-  if (m_cRoutingEngine->GetSelection() == 0 &&
+  if (m_cRoutingEngine->GetSelection() == 2 &&
       m_sToDegree->GetValue() - m_sFromDegree->GetValue() < 2 * by) {
     wxMessageDialog mdlg(
         this, _("Warning: less than 4 different degree steps specified\n"),

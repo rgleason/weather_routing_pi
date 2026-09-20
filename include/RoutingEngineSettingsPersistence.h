@@ -44,6 +44,31 @@ RoutingEngineSettings ReadRoutingEngineSettingsWith(Reader read) {
   if (!read("QuickSearchPreset", value) &&
       (read("QuickOffshoreStepMinutes", value) || read("QuickHeadingStepDegrees", value) || read("QuickMaximumSearchAngle", value)))
     settings.quick.preset = {};
+  integer("OriginalMemoryBudgetMiB", settings.original.memoryBudgetMiB);
+  integer("OriginalOffshoreStepMinutes", settings.original.offshoreStepMinutes);
+  integer("OriginalMaximumSearchAngle", settings.original.maximumSearchAngle);
+  if (read("OriginalShorelineResolution", value)) {
+    long parsed;
+    settings.originalShorelineResolution = value.ToLong(&parsed) && parsed >= 0 && parsed <= 4
+        ? static_cast<int>(parsed) : 4;
+  }
+  integer("OriginalGribTimelineCacheMiB", settings.originalGribTimelineCacheMiB);
+  if (read("OriginalHeadingStepDegrees", value)) {
+    double parsed;
+    if (value.ToCDouble(&parsed) && std::isfinite(parsed))
+      settings.original.headingStepDegrees = parsed;
+  }
+  if (read("OriginalSearchPreset", value)) settings.original.preset.id = value.ToStdString();
+  else if (read("OriginalOffshoreStepMinutes", value) ||
+           read("OriginalHeadingStepDegrees", value) || read("OriginalMaximumSearchAngle", value))
+    settings.original.preset = {};
+  integer("OriginalSearchPresetRevision", settings.original.preset.revision);
+  settings.original.memoryBudgetMiB = std::clamp(settings.original.memoryBudgetMiB, 1, 4096);
+  settings.original.offshoreStepMinutes = std::clamp(settings.original.offshoreStepMinutes, 10, 360);
+  settings.original.headingStepDegrees = std::clamp(settings.original.headingStepDegrees, 5.0, 30.0);
+  settings.original.maximumSearchAngle = std::clamp(settings.original.maximumSearchAngle, 0, 180);
+  settings.originalShorelineResolution = std::clamp(settings.originalShorelineResolution, 0, 4);
+  settings.originalGribTimelineCacheMiB = NormalizeGribTimelineCacheMiB(settings.originalGribTimelineCacheMiB, true);
   return settings;
 }
 
@@ -58,6 +83,14 @@ void WriteRoutingEngineSettingsWith(const RoutingEngineSettings& settings, Write
   write("QuickMaximumSearchAngle", wxString::Format("%d", settings.quick.maximumSearchAngle));
   write("QuickOffshoreStepMinutes", wxString::Format("%d", settings.quick.offshoreStepMinutes));
   write("QuickHeadingStepDegrees", wxString::FromCDouble(settings.quick.headingStepDegrees, 10));
+  write("OriginalSearchPreset", wxString::FromUTF8(settings.original.preset.id));
+  write("OriginalSearchPresetRevision", wxString::Format("%d", settings.original.preset.revision));
+  write("OriginalMemoryBudgetMiB", wxString::Format("%d", settings.original.memoryBudgetMiB));
+  write("OriginalMaximumSearchAngle", wxString::Format("%d", settings.original.maximumSearchAngle));
+  write("OriginalOffshoreStepMinutes", wxString::Format("%d", settings.original.offshoreStepMinutes));
+  write("OriginalHeadingStepDegrees", wxString::FromCDouble(settings.original.headingStepDegrees, 10));
+  write("OriginalShorelineResolution", wxString::Format("%d", settings.originalShorelineResolution));
+  write("OriginalGribTimelineCacheMiB", wxString::Format("%d", settings.originalGribTimelineCacheMiB));
 }
 
 inline RoutingEngineSettings ReadRoutingEngineSettings(const TiXmlElement& element) {

@@ -56,6 +56,8 @@ struct RoutingScenarioEnvironment {
 };
 
 struct RoutingScenarioRouteSettings {
+  double maxSwellMeters{20};
+  bool hasMaxSwellMeters{false};
   int chartShorelineResolution{0};
   bool hasChartShorelineResolution{false};
   int shorelineResolution{4};

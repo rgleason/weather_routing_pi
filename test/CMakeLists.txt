@@ -37,6 +37,7 @@ html
 adv
 aui
 REQUIRED)
+include(${wxWidgets_USE_FILE})
 
 set(TEST_SRC
     ShorelineDataset_tests.cpp
@@ -74,6 +75,9 @@ set(TEST_SRC
     SunCalculator_tests.cpp
     TimeZoneDisplay_tests.cpp
     ModernNativeEngine_tests.cpp
+    OriginalEngine_tests.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/vendor/original-routing-engine/src/Engine.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/vendor/original-routing-engine/src/Contour.cpp
     ArrivalPlanner_tests.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/AppendOnlyCache.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/ChartSafetyCache.cpp

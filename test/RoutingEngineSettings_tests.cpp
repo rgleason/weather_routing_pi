@@ -6,6 +6,64 @@
 #include "ShorelineSettings.h"
 
 namespace wr = weather_routing;
+TEST(RoutingEngineSettings, ThreeTitlesKeepStableSavedIdsAndBasicOrder) {
+  wr::RoutingEngineSettings settings;
+  for (int i = 0; i < 3; ++i) {
+    settings.engine = wr::EngineFromSelection(i);
+    EXPECT_EQ(wr::EngineSelection(settings.engine), i);
+    EXPECT_STREQ(wr::EngineTitle(settings.engine),
+                 i == 0 ? "Quick" : i == 1 ? "Standard" : "Professional");
+    EXPECT_EQ(settings.EngineId(), i == 0 ? "original" : i == 1 ? "quick" : "main");
+  }
+  EXPECT_EQ(wr::EngineFromSelection(-1), wr::RoutingEngine::Unsupported);
+}
+TEST(RoutingEngineSettings, FirstInstallQuickButUpgradePreservesEveryExistingSelection) {
+  wr::RoutingEngineSettings fresh;
+  wr::ApplyFirstUseEngineDefaults(fresh, false);
+  EXPECT_EQ(fresh.engine, wr::RoutingEngine::Original);
+  for (const char* id : {"original", "quick", "main", "unknown"}) {
+    TiXmlElement xml("Configuration");
+    xml.SetAttribute("RoutingEngine", id);
+    auto saved = wr::ReadRoutingEngineSettings(xml);
+    const auto before = saved;
+    wr::ApplyFirstUseEngineDefaults(saved, true);
+    EXPECT_EQ(saved, before);
+  }
+  TiXmlElement legacy("Configuration");
+  auto existing = wr::ReadRoutingEngineSettings(legacy);
+  wr::ApplyFirstUseEngineDefaults(existing, true);
+  EXPECT_EQ(existing.engine, wr::RoutingEngine::Main);
+}
+TEST(RoutingEngineSettings, AllThreeBlocksSurviveSwitchSaveReinstallAndIndependentReset) {
+  wr::RoutingEngineSettings settings;
+  settings.quick = {512, 240, 15, 90, {"custom", 0}};
+  settings.original = {128, 120, 12.5, 100, {"custom", 0}};
+  settings.mainPreset = {"custom", 7};
+  settings.originalShorelineResolution = 4;
+  settings.originalGribTimelineCacheMiB = 1024;
+  for (int i = 0; i < 3; ++i) {
+    settings.engine = wr::EngineFromSelection(i);
+    TiXmlElement xml("Configuration");
+    wr::WriteRoutingEngineSettings(settings, xml);
+    EXPECT_EQ(wr::ReadRoutingEngineSettings(xml), settings);
+    wxStringInputStream empty("");
+    wxFileConfig profile(empty);
+    wr::WriteRoutingEngineSettings(settings, profile);
+    wxStringOutputStream output;
+    ASSERT_TRUE(profile.Save(output));
+    wxStringInputStream restoredInput(output.GetString());
+    wxFileConfig restored(restoredInput);
+    EXPECT_EQ(wr::ReadRoutingEngineSettings(restored), settings);
+  }
+  const auto before = settings;
+  settings.ResetOriginalToBalanced();
+  EXPECT_EQ(settings.quick, before.quick);
+  EXPECT_EQ(settings.mainPreset, before.mainPreset);
+  EXPECT_EQ(settings.original.memoryBudgetMiB, 128);
+  EXPECT_EQ(settings.originalShorelineResolution, 4);
+  EXPECT_EQ(settings.originalGribTimelineCacheMiB, 1024);
+  EXPECT_EQ(settings.original.offshoreStepMinutes, 180);
+}
 namespace {
 // Search actions accept the same fields as RouteMapConfiguration without
 // coupling persistence tests to the OpenCPN host and routing worker lifecycle.

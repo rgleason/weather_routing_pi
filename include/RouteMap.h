@@ -236,10 +236,20 @@ struct RouteMapConfiguration {
   int QuickGribTimelineCacheMiB{
       weather_routing::kQuickGribTimelineCacheDefaultMiB};
   int SelectedGribTimelineCacheMiB() const {
-    return IsQuick() ? QuickGribTimelineCacheMiB : MainGribTimelineCacheMiB;
+    return IsOriginal() ? EngineSettings.originalGribTimelineCacheMiB :
+        IsQuick() ? QuickGribTimelineCacheMiB : MainGribTimelineCacheMiB;
   }
+  int& FastGribTimelineCacheMiB() {
+    return IsOriginal() ? EngineSettings.originalGribTimelineCacheMiB : QuickGribTimelineCacheMiB;
+  }
+  int& FastShorelineResolution() {
+    return IsOriginal() ? EngineSettings.originalShorelineResolution : QuickShorelineResolution;
+  }
+  bool IsOriginal() const { return EngineSettings.engine == weather_routing::RoutingEngine::Original; }
+  bool IsFastEngine() const { return IsOriginal() || IsQuick(); }
   int SelectedShorelineResolution() const {
-    return IsQuick() ? QuickShorelineResolution : ShorelineResolution;
+    return IsOriginal() ? EngineSettings.originalShorelineResolution :
+        IsQuick() ? QuickShorelineResolution : ShorelineResolution;
   }
   int EffectiveShorelineResolution() const {
     return chart_safety_scout_preview ||

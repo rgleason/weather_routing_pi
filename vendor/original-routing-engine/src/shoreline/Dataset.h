@@ -1,4 +1,6 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// Reader extracted from xweather_routing_pi
+// d71a9f8d18ceeb0a0c45dcdd533e6052e3775424. SPDX-License-Identifier:
+// GPL-3.0-or-later
 #pragma once
 #include <filesystem>
 #include <memory>
@@ -6,7 +8,7 @@
 #include <cstddef>
 #include <stdexcept>
 
-namespace weather_routing {
+namespace original_routing::shoreline {
 class ShorelineQueryError : public std::runtime_error {
 public:
   using std::runtime_error::runtime_error;
@@ -23,9 +25,8 @@ public:
   ShorelineDataset(const ShorelineDataset&) = delete;
   ShorelineDataset& operator=(const ShorelineDataset&) = delete;
   bool CrossesLand(double lat1, double lon1, double lat2, double lon2);
-  // Complete buffered-segment query, including islands between offset lines.
   bool WithinLandMargin(double lat1, double lon1, double lat2, double lon2,
-                        double margin);
+                        double marginNm);
   std::size_t CacheBytes() const;
   int Version() const;
   // A failed read invalidates this snapshot until the manager prepares it
@@ -44,11 +45,11 @@ void InstallShorelineGzip(const std::filesystem::path& archive,
                           const std::filesystem::path& destination,
                           const std::string& expected_hash,
                           std::size_t expected_bytes);
-}  // namespace weather_routing
+}  // namespace original_routing::shoreline
 
 #include <functional>
 #include <vector>
-namespace weather_routing {
+namespace original_routing::shoreline {
 enum class ShorelineDownloadResult { Complete, Failed, Cancelled };
 using ShorelineDownload = std::function<ShorelineDownloadResult(
     const std::string&, const std::filesystem::path&)>;
@@ -58,4 +59,4 @@ std::string DownloadShorelineMirrors(const std::vector<std::string>& sources,
                                      const std::filesystem::path& destination,
                                      const std::string& hash,
                                      std::size_t bytes);
-}  // namespace weather_routing
+}  // namespace original_routing::shoreline

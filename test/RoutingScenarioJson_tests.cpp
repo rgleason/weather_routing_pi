@@ -278,6 +278,9 @@ TEST(RoutingScenarioJson, EngineIdAndIndependentQuickSamplingAreValidated) {
   const std::vector<std::pair<std::string, bool>> cases = {
       {R"("routingEngine":"quick","quickOffshoreStepMinutes":240,"quickHeadingStepDegrees":15,"quickMaximumSearchAngle":95)", true},
       {R"("routingEngine":"main","quickRoute":true)", true},
+      {R"("routingEngine":"original","quickOffshoreStepMinutes":180,"maxSwellMeters":0)", true},
+      {R"("routingEngine":"original","maxSwellMeters":-1)", false},
+      {R"("routingEngine":"original","maxSwellMeters":"bad")", false},
       {R"("routingEngine":"future")", false},
       {R"("routingEngine":true)", false},
       {R"("quickOffshoreStepMinutes":9)", false},

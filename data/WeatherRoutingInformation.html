@@ -12,6 +12,28 @@ a certain time.  By merging the results of many calculations,
 it is possible to form a map determining routes
 to any given location within the map.
 
+<h3>Routing engines (1.17.4)</h3>
+<p>Basic offers <b>Quick</b> (Hardened Original contour search),
+<b>Standard</b> (the former Quick engine), and <b>Professional</b> (the former
+Main engine). Quick is the first-install default. Existing routes and saved
+defaults keep their algorithm and numerical settings after upgrading.</p>
+<p>Each engine remembers its own tuning, shoreline resolution and GRIB cache.
+Advanced shows the selected engine's controls. Reset engine to preset previews
+an Apply/Cancel action and preserves safety, weather, boat and memory settings.</p>
+<p>Quick requires a real endpoint connection and independent chronological
+validation. Missing currents fail when currents are enabled; missing waves
+fail when a GRIB-based Max Swell limit is active. Supply the data or deliberately
+disable the unwanted constraint (Max Swell zero disables that limit). Quick
+does not silently waive the configured shoreline margin at either endpoint.
+Isochrones and route-to-cursor traces are approximate search previews, not
+validated sailing tracks. No engine guarantees an optimal route or navigation
+safety independent of the available data.</p>
+<p>All engines initially use Intermediate GSHHG. Crude, Low and Intermediate
+are bundled; High and Full are optional installations through Shoreline data.
+Chart/depth enforcement is separate and requires a compatible host.
+Quick and Standard start at three-hour nominal steps and 10-degree headings;
+Professional starts at one hour, 10 degrees and 100% effort. Review the boat,
+wind-angle limits, weather coverage and safety limits before calculating.</p>
 <h3>Quick Start</h3>
 First, load the grib file used for routing using the grib plugin.  Next, open the Weather Routing plugin from the main toolbar and right click the map and Select "Weather Route Position" at the starting location.  Repeat this step for the destination.  Now, in the Weather Routing window from the Configuration menu (next to File) Select "New".  From here you must configure your vessel correctly in the boat dialog; add a polar to specify how the boat sails.  When ready, select "Compute" from the Configuration menu to compute the weather route.
 

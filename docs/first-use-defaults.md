@@ -161,3 +161,11 @@ settings); `src/RouteMap.cpp` (constructor); `src/ConfigurationDialog.cpp`
 engine inputs); `src/WeatherDataProvider.cpp` (data fallback);
 `include/DepartureScheduler.h` (concurrency); `include/ChartSafetyDefaults.h`;
 `data/boats/Boat.xml` and its example polar.
+# Naming update for 1.17.4
+
+This document retains the original investigation and decisions below. In the
+released three-engine UI, Main is now Professional and the former Quick is
+Standard. Hardened Original is the new Quick and the first-install default.
+All three use the reviewed 10-degree heading/Intermediate-shoreline defaults
+and memory-aware GRIB cache admission. Existing saved settings are preserved.
+See [current engine settings](quick-routing.md) for the authoritative UI guide.

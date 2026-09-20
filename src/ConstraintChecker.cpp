@@ -288,6 +288,9 @@ bool GshhsSegmentSafetyHitsLand(RouteMapConfiguration* configuration,
       if (!configuration || !configuration->shoreline_dataset)
         throw std::runtime_error(
             "Required plugin shoreline data was not prepared");
+      if (configuration->IsOriginal())
+        return configuration->shoreline_dataset->WithinLandMargin(
+            a, b, c, d, safety_margin_nm);
       return configuration->shoreline_dataset->CrossesLand(a, b, c, d);
     } catch (const std::bad_alloc&) {
       throw;
@@ -300,6 +303,7 @@ bool GshhsSegmentSafetyHitsLand(RouteMapConfiguration* configuration,
     }
   };
   if (crosses(lat1, lon1, lat2, lon2)) return true;
+  if (configuration && configuration->IsOriginal()) return false;
 
   if (safety_margin_nm <= 0.0) return false;
 

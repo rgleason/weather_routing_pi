@@ -1,8 +1,9 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-// Reads the OpenCPN/zyGrib preprocessed GSHHG polygon format. Geometry and
-// cache implementation is independent of the host's GSHHS crossing
+// Reader extracted from xweather_routing_pi
+// d71a9f8d18ceeb0a0c45dcdd533e6052e3775424. SPDX-License-Identifier:
+// GPL-3.0-or-later Reads the OpenCPN/zyGrib preprocessed GSHHG polygon format.
+// Geometry and cache implementation is independent of the host's GSHHS crossing
 // implementation.
-#include "ShorelineDataset.h"
+#include "Dataset.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -18,7 +19,7 @@
 #include <vector>
 #include <zlib.h>
 
-namespace weather_routing {
+namespace original_routing::shoreline {
 namespace {
 constexpr double eps = 1e-10;
 struct Point {
@@ -351,8 +352,7 @@ bool ShorelineDataset::CrossesLand(double lat1, double lon1, double lat2,
     const double y1 = (lat1 + 90) * 16, y2 = (lat2 + 90) * 16;
     const int bx = int(std::floor(x1)), by = int(std::floor(y1));
     const auto interior = [](double a, double b, int cell) {
-      return std::min(a, b) > cell + eps &&
-             std::max(a, b) < cell + 1 - eps;
+      return std::min(a, b) > cell + eps && std::max(a, b) < cell + 1 - eps;
     };
     // Most integration segments stay strictly inside one indexed subcell.
     // Its midpoint containment and complete segment/edge intersections also
@@ -577,9 +577,9 @@ void InstallShorelineGzip(const std::filesystem::path& archive,
     throw;
   }
 }
-}  // namespace weather_routing
+}  // namespace original_routing::shoreline
 
-namespace weather_routing {
+namespace original_routing::shoreline {
 std::string DownloadShorelineMirrors(const std::vector<std::string>& sources,
                                      const ShorelineDownload& download,
                                      const std::filesystem::path& archive,
@@ -625,4 +625,4 @@ std::string DownloadShorelineMirrors(const std::vector<std::string>& sources,
   throw std::runtime_error(
       "All shoreline download sources failed; existing data retained. " + last);
 }
-}  // namespace weather_routing
+}  // namespace original_routing::shoreline
