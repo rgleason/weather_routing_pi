@@ -97,4 +97,5 @@ fi
 
 make flatpak-build
 make flatpak-pkg
+../ci/embed-built-metadata.sh .
 python3 ../ci/verify-shoreline-package.py .

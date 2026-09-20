@@ -48,6 +48,7 @@ DESTDIR="$stage_dir" cmake --install "$package_build" --prefix /usr \
 cmake --build "$package_build" --target package \
   2>&1 | tee "$log_dir/package.log"
 
+"$source_dir/ci/embed-built-metadata.sh" "$package_build"
 "$source_dir/ci/test-catalogue-archive.sh" "$package_build" "$stage_dir" \
   2>&1 | tee "$log_dir/archive-validation.log"
 

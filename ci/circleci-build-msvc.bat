@@ -155,6 +155,14 @@ if not "%METADATA_COUNT%"=="1" (
 )
 for %%F in (%PLUGIN_PACKAGE%-*.tar.gz) do tar -tzf "%%F" > package-contents.txt
 if errorlevel 1 exit /b %errorlevel%
+for %%A in (%PLUGIN_PACKAGE%-*.tar.gz) do for %%M in (%PLUGIN_PACKAGE%-*.xml) do python "%SCRIPTDIR%embed-package-metadata.py" "%%A" "%%M" "%%A"
+if errorlevel 1 exit /b %errorlevel%
+for %%F in (%PLUGIN_PACKAGE%-*.tar.gz) do tar -tzf "%%F" > package-contents.txt
+findstr /x /c:"metadata.xml" package-contents.txt >nul
+if errorlevel 1 (
+  echo Package does not contain root-level metadata.xml
+  exit /b 1
+)
 findstr /i /c:"plugins/%PLUGIN_PACKAGE%.dll" package-contents.txt >nul
 if errorlevel 1 (
   echo Package does not contain the WeatherRouting DLL

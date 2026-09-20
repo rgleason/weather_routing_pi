@@ -68,6 +68,12 @@ def inspect_pair(directory):
             raise ValueError(f"Missing/duplicate xWeatherRouting library: {archive}")
         if any(re.match(r"(?:lib)?(?:weather_routing_pi\.(?:so|dylib|dll)|gtest|gmock)", PurePosixPath(item.name).name) for item in members):
             raise ValueError(f"Standard plugin or test library included: {archive}")
+        embedded_members = [item for item in members if item.name == "metadata.xml"]
+        if len(embedded_members) != 1:
+            raise ValueError(f"Missing/duplicate embedded metadata: {archive}")
+        embedded = package.extractfile(embedded_members[0]).read()
+        if (ET.fromstring(embedded).findtext("version") or "").strip() != version:
+            raise ValueError(f"Embedded metadata version mismatch: {archive}")
     return archive, root, version, target, metadata.name
 
 

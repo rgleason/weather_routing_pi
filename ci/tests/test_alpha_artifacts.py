@@ -45,6 +45,12 @@ class AlphaArtifacts(unittest.TestCase):
         for key, value in fields.items():
             ET.SubElement(root, key).text = value
         ET.ElementTree(root).write(metadata)
+        embed_spec = importlib.util.spec_from_file_location(
+            "embed_fixture",
+            Path(__file__).parents[1] / "embed-package-metadata.py")
+        embed = importlib.util.module_from_spec(embed_spec)
+        embed_spec.loader.exec_module(embed)
+        embed.embed(archive, metadata, archive)
         return directory, archive, metadata
 
     def test_rejects_standard_identity(self):

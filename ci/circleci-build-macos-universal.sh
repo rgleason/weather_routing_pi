@@ -105,6 +105,8 @@ archive_source=${archives[0]}
 metadata_source=${metadata_files[0]}
 
 cp -f "$archive_source" "$metadata_source" "$package_dir/"
+"$repo/ci/embed-built-metadata.sh" "$build_package"
+cp -f "$archive_source" "$package_dir/"
 (cd "$package_dir" && find . -maxdepth 1 -type f ! -name SHA256SUMS \
   -print0 | xargs -0 shasum -a 256 >SHA256SUMS)
 archive="$package_dir/$(basename "$archive_source")"
