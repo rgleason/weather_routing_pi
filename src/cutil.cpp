@@ -28,6 +28,11 @@
 #include <stdarg.h>
 #include <math.h>
 
+#ifdef _MSC_VER
+#include <windows.h>
+#include <winnt.h>
+#endif
+
 #include "cutil.h"
 
 double round_msvc(double x) { return (floor(x + 0.5)); }
