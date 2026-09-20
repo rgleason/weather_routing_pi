@@ -179,4 +179,20 @@ rem Use script-relative paths while SCRIPTDIR is still in scope.
 python "%SCRIPTDIR%verify-shoreline-package.py" "%SCRIPTDIR%..\build"
 if errorlevel 1 exit /b %errorlevel%
 
+rem Retain the verified package explicitly.  CircleCI's Windows executor puts
+rem find.exe ahead of Git's Unix find, so the shared Unix retention command
+rem cannot safely discover Windows artifacts.
+if exist ..\artifacts\windows-x86 rmdir /s /q ..\artifacts\windows-x86
+mkdir ..\artifacts\windows-x86\package
+if errorlevel 1 exit /b %errorlevel%
+copy /y %PLUGIN_PACKAGE%-*.tar.gz ..\artifacts\windows-x86\package\
+if errorlevel 1 exit /b %errorlevel%
+copy /y %PLUGIN_PACKAGE%-*.xml ..\artifacts\windows-x86\package\
+if errorlevel 1 exit /b %errorlevel%
+mkdir ..\artifacts\windows-x86\tests
+if errorlevel 1 exit /b %errorlevel%
+copy /y test-results\ctest.xml ..\artifacts\windows-x86\tests\ctest.xml
+if errorlevel 1 exit /b %errorlevel%
+dir ..\artifacts\windows-x86\package
+
 endlocal

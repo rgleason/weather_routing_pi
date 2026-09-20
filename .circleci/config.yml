@@ -137,8 +137,13 @@ jobs:
           name: Native Windows build, tests and package
           command: ci\circleci-build-msvc.bat
           no_output_timeout: 45m
-      - retain-artifacts:
-          target: windows-x86
+      - store_test_results:
+          path: artifacts/windows-x86/tests
+      - store_artifacts:
+          path: artifacts/windows-x86
+      - persist_to_workspace:
+          root: .
+          paths: [artifacts/windows-x86]
 
   deploy-alpha:
     docker:
