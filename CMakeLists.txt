@@ -126,7 +126,7 @@ set(PARENT "opencpn")
 #Default is github.com. Now set in pluginconfigure.cmake
 #set(GIT_REPOSITORY_SERVER "github.com")
 
-## Specifies Cloudsmith upload repository suffix for each catalog
+## Cloudsmith upload repository suffix for each catalog
 set(PROD "prod")   #Standard Repos
 set(BETA "beta")   #Standard Repos
 set(ALPHA "alpha") #Standard Repos
@@ -187,7 +187,7 @@ set_property(
 )
 message(STATUS "${CMLOC}Build type: ${CMAKE_BUILD_TYPE}")
 
-# ----- Statements below used to setup standard variables required by the CMAKE  -##
+# ----- Statements below used to setup standard variables required by the CMAKE---##
 # ----- process -- Do not remove -##
 
 project(${PACKAGE})
@@ -220,13 +220,17 @@ option(Plugin_CXX11 "Use c++11" OFF)
 
 include("PluginConfigure")
 
+if(PLUGIN_USE_SVG)
+  add_compile_definitions(PLUGIN_USE_SVG)
+endif()
+
 ##===========================================================
 ## ----- Do not change section above - needed to configure build process --------##
 ## ----- Change below to match project requirements for source, headers, etc. ---##
 
 add_definitions(-DUSE_S57)
 
-## ---- Section Below - Add your project SET(SRCS and SET(HDRS  etc..
+## ---- Sources and Headers  - Add your project SET(SRCS and SET(HDRS  etc..
 
 
 SET(SRCS
@@ -371,7 +375,6 @@ SET (HDRS
             src/headless/RoutingScenarioJson.h
 )
 
-add_definitions(-DPLUGIN_USE_SVG)
 
 ## ----- Section above - Add your project SET(SRCS and SET(HDRS  etc.-------##
 ## ----- If using JSON validation in plugin section below is needed --------##
@@ -411,7 +414,7 @@ if(NOT CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
 endif()
 
 if(CMAKE_DL_LIBS)
-  target_link_libraries(${PACKAGE_NAME} ${CMAKE_DL_LIBS})
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ${CMAKE_DL_LIBS})
 endif()
 
 
@@ -422,7 +425,7 @@ if (NOT OCPN_FLATPAK_CONFIG)
 
   if (WIN32)
     add_subdirectory(opencpn-libs/WindowsHeaders)
-    target_link_libraries(${PACKAGE_NAME} windows::headers)
+    target_link_libraries(${PACKAGE_NAME} PRIVATE windows::headers)
   endif (WIN32)
 
   if(NOT OCPN_IN_TREE_SOURCE_DIR)
@@ -450,35 +453,38 @@ if (NOT OCPN_FLATPAK_CONFIG)
   else ()
     message(FATAL_ERROR "Missing opencpn-libs/api-${OCPN_API_VERSION_MINOR}")
   endif ()
-  target_link_libraries(${PACKAGE_NAME} ocpn::api)
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::api)
 
   add_subdirectory(opencpn-libs/tinyxml)
-  target_link_libraries(${PACKAGE_NAME} ocpn::tinyxml)
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::tinyxml)
 
   add_subdirectory(opencpn-libs/odapi)
-  target_link_libraries(${PACKAGE_NAME} ocpn::odapi)
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::odapi)
 
   add_subdirectory(opencpn-libs/jsonlib)
-  target_link_libraries(${PACKAGE_NAME} ocpn::jsonlib)
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::jsonlib)
 
   add_subdirectory(opencpn-libs/plugin_dc)
-  target_link_libraries(${PACKAGE_NAME} ocpn::plugin-dc)
+  if(TARGET _DC_UTILS AND TARGET wx::core)
+    target_link_libraries(_DC_UTILS PRIVATE wx::core)
+  endif()
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::plugin-dc)
 
   add_subdirectory(opencpn-libs/pugixml)
-  target_link_libraries(${PACKAGE_NAME} ocpn::pugixml)
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::pugixml)
 
   # @todo Why would this not be required on UNIX?  
   # @todo@ On macos the build fails without it, and macos is UNIX
   # @todo See https://cmake.org/cmake/help/latest/variable/UNIX.html
   
   add_subdirectory(opencpn-libs/bzip2)
-  target_link_libraries(${PACKAGE_NAME} ocpn::bzip2)
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::bzip2)
 
   add_subdirectory(opencpn-libs/zlib)
-  target_link_libraries(${PACKAGE_NAME} ocpn::zlib)
- 
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::zlib)
+
   add_subdirectory(opencpn-libs/libtess2)
-  target_link_libraries(${PACKAGE_NAME} ocpn::libtess2)
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::libtess2)
 
 endif(NOT OCPN_FLATPAK_CONFIG)
 
@@ -490,8 +496,6 @@ add_definitions(-DTIXML_USE_STL)
 
 # Do not need Json Schema Validation
 
-
-##------- Change below to match project requirements --------------------##
 
 ##------- Change below to match project requirements --------------
 
@@ -508,7 +512,8 @@ include("PluginLocalization")
 include("PluginPackage")
 
 ##================================================================
-## ----- Do not change section above - needed to configure build process --##
+## Diagnostics
+##================================================================
 
 message(STATUS "${CMLOC}include directories: ")
 get_property(

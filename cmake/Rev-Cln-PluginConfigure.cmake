@@ -57,16 +57,13 @@ else ()
       OUTPUT_VARIABLE GIT_STATUS
       OUTPUT_STRIP_TRAILING_WHITESPACE
     )
-    string(FIND "${GIT_STATUS}" "..." START_TRACKED)
+    string(FIND ${GIT_STATUS} "..." START_TRACKED)
     if (NOT START_TRACKED EQUAL -1)
+      string(FIND ${GIT_STATUS} "/" END_TRACKED)
       math(EXPR START_TRACKED "${START_TRACKED}+3")
-      string(SUBSTRING "${GIT_STATUS}" ${START_TRACKED} -1 TRACKED_STATUS)
-      string(FIND "${TRACKED_STATUS}" "/" END_TRACKED)
-      string(SUBSTRING "${TRACKED_STATUS}" 0 ${END_TRACKED}
-                       GIT_REPOSITORY_REMOTE
-      )
-      message(STATUS "${CMLOC}GIT_REPOSITORY_REMOTE: ${GIT_REPOSITORY_REMOTE}")
-
+      math(EXPR END_TRACKED "${END_TRACKED}-${START_TRACKED}")
+      string(SUBSTRING ${GIT_STATUS} ${START_TRACKED} ${END_TRACKED}
+                       GIT_REPOSITORY_REMOTE)
       execute_process(
         COMMAND git remote get-url ${GIT_REPOSITORY_REMOTE}
         WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
@@ -98,11 +95,7 @@ else ()
     set(GIT_REPOSITORY_TAG "")
   endif ()
 endif ()
-if (DEFINED PLUGIN_GIT_REPOSITORY
-    AND NOT "${PLUGIN_GIT_REPOSITORY}" STREQUAL "")
-  set(GIT_REPOSITORY "${PLUGIN_GIT_REPOSITORY}")
-  message(STATUS "${CMLOC}Using configured canonical plugin repository")
-endif ()
+
 message(STATUS "${CMLOC}GIT_REPOSITORY: ${GIT_REPOSITORY}")
 message(STATUS "${CMLOC}Git Branch: \"${GIT_REPOSITORY_BRANCH}\"")
 message(STATUS "${CMLOC}Git Tag: \"${GIT_REPOSITORY_TAG}\"")
@@ -580,11 +573,9 @@ if (NOT QT_ANDROID)
 
   set(USE_WX_CONFIG_MODE OFF)
 
-  # The Flatpak SDK's wxWidgets CONFIG export can reference OpenGL::GLU even
-  # when that target is unavailable. The module finder uses wx-config and
-  # avoids importing the broken wx::wxgl link interface.
-  if (MSVC OR OCPN_FLATPAK_BUILD)
-    message(STATUS "${CMLOC}Using legacy FindwxWidgets for MSVC/Flatpak")
+  # MSVC: force legacy FindwxWidgets (matches your hand-built wxWidgets)
+  if (MSVC)
+    message(STATUS "${CMLOC}MSVC: using legacy FindwxWidgets")
   else ()
     # 1) Try CONFIG-mode with explicit root, if provided
     if (wxWidgets_ROOT_DIR)
@@ -619,13 +610,13 @@ if (NOT QT_ANDROID)
   if (NOT USE_WX_CONFIG_MODE)
     message(STATUS "${CMLOC}Using legacy FindwxWidgets")
 
-	if (MSVC AND wxWidgets_ROOT_DIR)
-		set(wxWidgets_LIB_DIR "${wxWidgets_ROOT_DIR}/lib/vc_dll")
-		set(wxWidgets_INCLUDE_DIRS "${wxWidgets_ROOT_DIR}/lib/vc_dll/mswud")
-		set(wxWidgets_EXCLUDE_COMMON_LIBRARIES TRUE)
-	endif ()
+    if (MSVC AND wxWidgets_ROOT_DIR)
+      set(wxWidgets_LIB_DIR "${wxWidgets_ROOT_DIR}/lib/vc_dll")
+      set(wxWidgets_INCLUDE_DIRS "${wxWidgets_ROOT_DIR}/lib/vc_dll/mswud")
+      set(wxWidgets_EXCLUDE_COMMON_LIBRARIES TRUE)
+    endif ()
 
-    find_package(wxWidgets MODULE REQUIRED COMPONENTS ${wxWidgets_USE_LIBS})
+    find_package(wxWidgets REQUIRED COMPONENTS ${wxWidgets_USE_LIBS})
     include(${wxWidgets_USE_FILE})
 
     message(STATUS "${CMLOC} wxWidgets Include: ${wxWidgets_INCLUDE_DIRS}")
