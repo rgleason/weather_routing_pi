@@ -12,6 +12,12 @@ parameters:
   build_xweather_identity:
     type: boolean
     default: false
+  recover_alpha_deploy:
+    type: boolean
+    default: false
+  recover_alpha_workflow_id:
+    type: string
+    default: ""
 
 orbs:
   win: circleci/windows@5.1.0
@@ -154,6 +160,29 @@ jobs:
       - store_artifacts:
           path: alpha-publication
 
+  recover-alpha:
+    docker:
+      - image: cimg/python:3.13
+    resource_class: small
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - run:
+          name: Recover previously reviewed green build artifacts
+          command: python3 ci/fetch-circleci-workflow-artifacts.py << pipeline.parameters.recover_alpha_workflow_id >>
+      - run:
+          name: Install deployment client
+          command: python -m pip install --user cloudsmith-cli
+      - run:
+          name: Verify publication guards
+          command: python3 -m unittest discover -s ci/tests -v
+      - run:
+          name: Upload reviewed xWeatherRouting Alpha artifacts
+          command: bash ci/deploy-alpha-artifacts.sh
+      - store_artifacts:
+          path: alpha-publication
+
 validation-filters: &validation-filters
   branches:
     ignore: [devel, tmp]
@@ -166,6 +195,7 @@ workflows:
       and:
         - not: << pipeline.parameters.run_workflow_deploy >>
         - not: << pipeline.parameters.run_windows_only >>
+        - not: << pipeline.parameters.recover_alpha_deploy >>
     jobs:
       - linux-catalogue: &trixie
           name: debian13-x86_64
@@ -218,7 +248,10 @@ workflows:
           filters: *validation-filters
 
   deploy_reviewed_alpha:
-    when: << pipeline.parameters.run_workflow_deploy >>
+    when:
+      and:
+        - << pipeline.parameters.run_workflow_deploy >>
+        - not: << pipeline.parameters.recover_alpha_deploy >>
     jobs:
       - linux-catalogue: *trixie
       - linux-catalogue: *bookworm
@@ -246,3 +279,12 @@ workflows:
       - deploy-alpha:
           context: xgrib-deployment
           requires: [hold-for-alpha-approval]
+
+  recover_reviewed_alpha:
+    when: << pipeline.parameters.recover_alpha_deploy >>
+    jobs:
+      - windows-x86:
+          filters: *validation-filters
+      - recover-alpha:
+          context: xgrib-deployment
+          requires: [windows-x86]

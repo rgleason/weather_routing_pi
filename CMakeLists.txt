@@ -85,7 +85,7 @@ else()
 endif()
 set(PACKAGE_CONTACT "Sean d'Epagnier; Weather Routing Plugin Team")
 set(SHORT_DESCRIPTION
-    "Advanced deterministic weather routing with departure and arrival planning.")
+    "Advanced weather routing with departure and arrival planning.")
 set(LONG_DESCRIPTION
     "WeatherRouting offers Quick, Standard and Professional engines with independent saved settings and explicit search presets. Quick uses hardened contour routing with independent chronological validation. Standard provides bounded adaptive search; Professional adds broader recovery methods. All support plugin-managed GSHHG shorelines; optional chart-backed safety requires a compatible host.")
 

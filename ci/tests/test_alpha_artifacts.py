@@ -37,7 +37,7 @@ class AlphaArtifacts(unittest.TestCase):
         root = ET.Element("plugin", version="1")
         fields = {
             "name": plugin, "version": version, "api-version": "1.21",
-            "summary": "Upgraded weather routing with three validated engines.",
+            "summary": prepare.SUMMARY,
             "source": "https://github.com/pob220/xweather_routing_pi",
             "target": name, "target-version": "13", "target-arch": "x86_64",
             "tarball-url": "https://invalid.example/placeholder",
@@ -77,6 +77,7 @@ class AlphaArtifacts(unittest.TestCase):
             with tarfile.open(archive, "r:gz") as package:
                 self.assertEqual(package.getnames().count("metadata.xml"), 1)
                 embedded = ET.fromstring(package.extractfile("metadata.xml").read())
+            self.assertEqual(embedded.findtext("summary"), prepare.SUMMARY)
             self.assertIn("/pob220/xweather-routing-alpha-oss/",
                           embedded.findtext("tarball-url"))
             self.assertNotIn("--pkg_repo--", embedded.findtext("tarball-url"))

@@ -17,6 +17,8 @@ TARGETS = {
 }
 PACKAGE = "xweather_routing_pi"
 REPOSITORY = "pob220/xweather-routing-alpha-oss"
+SUMMARY = "Advanced weather routing with departure and arrival planning."
+LEGACY_SUMMARY = "Advanced deterministic weather routing with departure and arrival planning."
 
 
 def value(root, field):
@@ -43,7 +45,11 @@ def inspect_pair(directory):
     root = ET.parse(metadata).getroot()
     if root.tag != "plugin" or value(root, "name") != "xWeatherRouting":
         raise ValueError(f"Wrong plugin name: {metadata}")
-    if len(value(root, "summary")) > 72:
+    summary = value(root, "summary")
+    if summary not in {SUMMARY, LEGACY_SUMMARY}:
+        raise ValueError(f"Unexpected catalogue summary: {metadata}")
+    root.find("summary").text = SUMMARY
+    if len(SUMMARY) > 72:
         raise ValueError(f"Catalogue summary exceeds 72 characters: {metadata}")
     if value(root, "api-version") != "1.21":
         raise ValueError(f"Unexpected stock API requirement: {metadata}")
