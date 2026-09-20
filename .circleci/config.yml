@@ -36,18 +36,20 @@ commands:
               -exec cp -f '{}' artifacts/<< parameters.target >>/package/ \; \
               || true
 
-            # Copy pkg_version.sh (required for Cloudsmith)
-            if [ -f << parameters.build_dir >>/pkg_version.sh ]; then
-              cp << parameters.build_dir >>/pkg_version.sh artifacts/<< parameters.target >>/package/
+            # Copy pkg_version.sh (required for Cloudsmith) — search subdirs since CMake generates it in a build subdir
+            pkg_version_path=$(find << parameters.build_dir >> -maxdepth 4 -name 'pkg_version.sh' -type f 2>/dev/null | head -n 1)
+            if [ -n "$pkg_version_path" ]; then
+              cp "$pkg_version_path" artifacts/<< parameters.target >>/package/
             else
-              echo "WARNING: pkg_version.sh not found in << parameters.build_dir >>"
+              echo "WARNING: pkg_version.sh not found under << parameters.build_dir >>"
             fi
 
-            # Copy generated cloudsmith-upload.sh (required for Cloudsmith)
-            if [ -f << parameters.build_dir >>/cloudsmith-upload.sh ]; then
-              cp << parameters.build_dir >>/cloudsmith-upload.sh artifacts/<< parameters.target >>/package/
+            # Copy generated cloudsmith-upload.sh (required for Cloudsmith) — search subdirs since CMake generates it in a build subdir
+            cloudsmith_path=$(find << parameters.build_dir >> -maxdepth 4 -name 'cloudsmith-upload.sh' -type f 2>/dev/null | head -n 1)
+            if [ -n "$cloudsmith_path" ]; then
+              cp "$cloudsmith_path" artifacts/<< parameters.target >>/package/
             else
-              echo "WARNING: cloudsmith-upload.sh not found in << parameters.build_dir >>"
+              echo "WARNING: cloudsmith-upload.sh not found under << parameters.build_dir >>"
             fi
 
 # ------------------------------------------------------------
