@@ -107,11 +107,11 @@ TEST(RoutingEngineSettings, ResetMainChangesOnlyItsSearchTuning) {
   const auto before = c;
   wr::ResetMainToBalanced(c);
   EXPECT_EQ(c.DeltaTime, 3600);
-  EXPECT_EQ(c.ByDegrees, 5);
+  EXPECT_EQ(c.ByDegrees, 10);
   EXPECT_EQ(c.RoutingEffortPercent, 100);
   EXPECT_EQ(c.MaxSearchAngle, 120);
   EXPECT_FALSE(c.UseReverseReachabilityRecovery);
-  EXPECT_EQ(c.EngineSettings.mainPreset, (wr::SearchPreset{"balanced", 1}));
+  EXPECT_EQ(c.EngineSettings.mainPreset, (wr::SearchPreset{"balanced", 2}));
   EXPECT_EQ(c.EngineSettings.quick, before.EngineSettings.quick);
   EXPECT_EQ(c.EngineSettings.engine, before.EngineSettings.engine);
   EXPECT_EQ(c.MinimumDepthMeters, before.MinimumDepthMeters);
@@ -126,7 +126,7 @@ TEST(RoutingEngineSettings, ResetQuickPreservesItsMemoryBudgetAndEveryMainValue)
   c.EngineSettings.quick = {96, 240, 15, 85, {"custom", 0}};
   const auto before = c;
   c.EngineSettings.ResetQuickToBalanced();
-  EXPECT_EQ(c.EngineSettings.quick, (wr::QuickSearchSettings{96, 180, 20, 120, {"balanced", 1}}));
+  EXPECT_EQ(c.EngineSettings.quick, (wr::QuickSearchSettings{96, 180, 10, 120, {"balanced", 2}}));
   EXPECT_EQ(c.EngineSettings.mainPreset, before.EngineSettings.mainPreset);
   EXPECT_EQ(c.DeltaTime, before.DeltaTime);
   EXPECT_EQ(c.ByDegrees, before.ByDegrees);
@@ -160,8 +160,21 @@ TEST(RoutingEngineSettings, MissingQuickFieldsInitializeOnlyNewSettings) {
   auto settings = wr::ReadRoutingEngineSettings(xml);
   EXPECT_EQ(settings.quick.memoryBudgetMiB, 96);
   EXPECT_EQ(settings.quick.offshoreStepMinutes, 180);
-  EXPECT_EQ(settings.quick.headingStepDegrees, 20);
+  EXPECT_EQ(settings.quick.headingStepDegrees, 10);
   EXPECT_EQ(settings.mainPreset.id, "custom");
+}
+
+TEST(RoutingEngineSettings, OldBalancedPresetKeepsItsResolvedSampling) {
+  TiXmlDocument document;
+  document.Parse(R"(<Configuration RoutingEngine="quick" QuickSearchPreset="balanced" QuickSearchPresetRevision="1" QuickOffshoreStepMinutes="180" QuickHeadingStepDegrees="20" QuickMaximumSearchAngle="120" QuickShorelineResolution="0" QuickGribTimelineCacheMiB="64" />)");
+  auto& xml = *document.RootElement();
+  const auto settings = wr::ReadRoutingEngineSettings(xml);
+  EXPECT_EQ(settings.quick.headingStepDegrees, 20);
+  EXPECT_EQ(settings.quick.preset, (wr::SearchPreset{"balanced", 1}));
+  EXPECT_EQ(wr::ReadShorelineResolution(xml, wr::kDefaultQuickShorelineResolution, "QuickShorelineResolution"), 0);
+  wr::WriteRoutingEngineSettings(settings, xml);
+  EXPECT_EQ(wr::ReadRoutingEngineSettings(xml), settings);
+  EXPECT_STREQ(xml.Attribute("QuickGribTimelineCacheMiB"), "64");
 }
 
 TEST(ShorelineSettings, MigrationAndIndependentEngineRoundTrips) {

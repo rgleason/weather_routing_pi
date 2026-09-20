@@ -6,6 +6,8 @@
 ///////////////////////////////////////////////////////////////////////////
 
 #include "WeatherRoutingUI.h"
+#include "GribTimelineCachePolicy.h"
+#include "RoutingEngineSettings.h"
 #include <vector>
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1867,7 +1869,8 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
 
   m_sByDegrees = new wxSpinCtrlDouble(
       m_pMainEngine, wxID_ANY, wxEmptyString, wxDefaultPosition,
-      wxSize(140, -1), wxSP_ARROW_KEYS, 0.1, 60., 5., 0.1 /*inc*/);
+      wxSize(140, -1), wxSP_ARROW_KEYS, 0.1, 60.,
+      weather_routing::kDefaultHeadingStepDegrees, 0.1 /*inc*/);
   bSizer3->Add(m_sByDegrees, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
 
   m_staticText118 =
@@ -1962,9 +1965,9 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
       0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
   m_sMainGribTimelineCacheMiB = new wxSpinCtrl(
       mainResources->GetStaticBox(), wxID_ANY,
-      wxString::Format("%d", sizeof(void*) <= 4 ? 192 : 512),
+      wxString::Format("%d", weather_routing::kMainGribTimelineCacheDefaultMiB),
       wxDefaultPosition, wxSize(140, -1), wxSP_ARROW_KEYS, 16,
-      sizeof(void*) <= 4 ? 192 : 8192, sizeof(void*) <= 4 ? 192 : 512);
+      sizeof(void*) <= 4 ? 192 : 8192, weather_routing::kMainGribTimelineCacheDefaultMiB);
   mainGribCacheRow->Add(m_sMainGribTimelineCacheMiB, 0,
                         wxALL | wxALIGN_CENTER_VERTICAL, 5);
   mainGribCacheRow->Add(
@@ -2004,7 +2007,9 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   quickEngineSizer->Add(m_sQuickOffshoreStepMinutes, 0, wxALL, 5);
   quickLabel(_("Heading separation (degrees)"));
   m_sQuickHeadingStepDegrees = new wxSpinCtrlDouble(m_pQuickEngine, wxID_ANY,
-      "20", wxDefaultPosition, wxSize(160, -1), wxSP_ARROW_KEYS, 5, 30, 20, 1);
+      wxString::FromCDouble(weather_routing::kDefaultHeadingStepDegrees),
+      wxDefaultPosition, wxSize(160, -1), wxSP_ARROW_KEYS, 5, 30,
+      weather_routing::kDefaultHeadingStepDegrees, 1);
   m_sQuickHeadingStepDegrees->SetToolTip(_("Nominal separation. Quick refines headings during approach and recovery."));
   quickEngineSizer->Add(m_sQuickHeadingStepDegrees, 0, wxALL, 5);
   quickLabel(_("Maximum search angle (degrees)"));
@@ -2020,9 +2025,10 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
                        _("GRIB timeline cache limit")),
       0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
   m_sQuickGribTimelineCacheMiB = new wxSpinCtrl(
-      quickResources->GetStaticBox(), wxID_ANY, "64", wxDefaultPosition,
+      quickResources->GetStaticBox(), wxID_ANY,
+      wxString::Format("%d", weather_routing::kQuickGribTimelineCacheDefaultMiB), wxDefaultPosition,
       wxSize(140, -1), wxSP_ARROW_KEYS, 16,
-      sizeof(void*) <= 4 ? 192 : 8192, 64);
+      sizeof(void*) <= 4 ? 192 : 8192, weather_routing::kQuickGribTimelineCacheDefaultMiB);
   quickGribCacheRow->Add(m_sQuickGribTimelineCacheMiB, 0,
                          wxALL | wxALIGN_CENTER_VERTICAL, 5);
   quickGribCacheRow->Add(
@@ -2661,7 +2667,8 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
 
   m_sFromDegree = new wxSpinCtrl(sbCourses->GetStaticBox(), wxID_ANY,
                                  wxEmptyString, wxDefaultPosition,
-                                 wxSize(140, -1), wxSP_ARROW_KEYS, 0, 180, 0);
+                                 wxSize(140, -1), wxSP_ARROW_KEYS, 0, 180,
+                                 weather_routing::kDefaultFromDegree);
   bSizer4->Add(m_sFromDegree, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
 
   m_staticText115 =
@@ -2672,7 +2679,8 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
 
   m_sToDegree = new wxSpinCtrl(sbCourses->GetStaticBox(), wxID_ANY,
                                wxEmptyString, wxDefaultPosition,
-                               wxSize(140, -1), wxSP_ARROW_KEYS, 0, 180, 180);
+                               wxSize(140, -1), wxSP_ARROW_KEYS, 0, 180,
+                               weather_routing::kDefaultToDegree);
   bSizer4->Add(m_sToDegree, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
 
   m_cbUseOptimalAngles = new wxCheckBox(

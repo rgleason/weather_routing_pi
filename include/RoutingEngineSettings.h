@@ -5,6 +5,12 @@
 #include <string_view>
 
 namespace weather_routing {
+constexpr int kBalancedSearchPresetRevision = 2;
+constexpr double kDefaultFromDegree = 40.0;
+constexpr double kDefaultToDegree = 160.0;
+constexpr double kDefaultHeadingStepDegrees = 10.0;
+constexpr int kDefaultQuickShorelineResolution = 2;
+
 enum class RoutingEngine { Main, Quick, Unsupported };
 
 struct SearchPreset {
@@ -16,9 +22,9 @@ struct SearchPreset {
 struct QuickSearchSettings {
   int memoryBudgetMiB{256};
   int offshoreStepMinutes{180};
-  double headingStepDegrees{20.0};
+  double headingStepDegrees{kDefaultHeadingStepDegrees};
   int maximumSearchAngle{120};
-  SearchPreset preset{"balanced", 1};
+  SearchPreset preset{"balanced", kBalancedSearchPresetRevision};
   bool operator==(const QuickSearchSettings&) const = default;
 };
 
@@ -85,10 +91,10 @@ struct RoutingSearchSnapshot {
 template <typename Configuration>
 void ResetMainToBalanced(Configuration& configuration) {
   configuration.DeltaTime = 3600;
-  configuration.ByDegrees = 5.0;
+  configuration.ByDegrees = kDefaultHeadingStepDegrees;
   configuration.RoutingEffortPercent = 100;
   configuration.MaxSearchAngle = 120;
   configuration.UseReverseReachabilityRecovery = false;
-  configuration.EngineSettings.mainPreset = {"balanced", 1};
+  configuration.EngineSettings.mainPreset = {"balanced", kBalancedSearchPresetRevision};
 }
 }  // namespace weather_routing

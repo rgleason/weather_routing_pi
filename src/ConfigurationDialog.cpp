@@ -1005,8 +1005,8 @@ void ConfigurationDialog::OnResetAdvanced(wxCommandEvent&) {
   // explicit reset gives it an Apply/Cancel boundary without changing that
   // established workflow or modifying routes before the user accepts.
   const wxString values = engine == 0
-      ? _("Main — Balanced\nTime step: 1 hour\nHeading separation: 5 degrees\nRouting effort: 100%\nMaximum search angle: 120 degrees\nOptional reverse reachability recovery: off")
-      : _("Quick — Balanced\nOffshore time step: 3 hours (adaptive)\nHeading separation: 20 degrees (adaptive)\nMaximum search angle: 120 degrees");
+      ? _("Main — Balanced\nTime step: 1 hour\nHeading separation: 10 degrees\nRouting effort: 100%\nMaximum search angle: 120 degrees\nOptional reverse reachability recovery: off")
+      : _("Quick — Balanced\nOffshore time step: 3 hours (adaptive)\nHeading separation: 10 degrees (adaptive)\nMaximum search angle: 120 degrees");
   wxMessageDialog preview(this, values +
       _("\n\nApplies to all selected routes. Memory and GRIB cache budgets, vessel, weather and safety settings are preserved."),
       _("Reset engine to preset"), wxOK | wxCANCEL);

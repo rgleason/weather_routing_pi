@@ -8212,7 +8212,7 @@ bool WeatherRouting::OpenXML(wxString filename, bool reportfailure) {
                        e, "DepartureTimeOptimizationConcurrentRoutes", 0)));
         configuration.EngineSettings = weather_routing::ReadRoutingEngineSettings(*e);
         configuration.ShorelineResolution = weather_routing::ReadShorelineResolution(*e, weather_routing::ShorelineManager::DefaultResolution());
-        configuration.QuickShorelineResolution = weather_routing::ReadShorelineResolution(*e, 0, "QuickShorelineResolution");
+        configuration.QuickShorelineResolution = weather_routing::ReadShorelineResolution(*e, weather_routing::kDefaultQuickShorelineResolution, "QuickShorelineResolution");
         configuration.ChartShorelineResolution = weather_routing::ReadShorelineResolution(*e, 0, "ChartShorelineResolution");
         configuration.MainGribTimelineCacheMiB =
             weather_routing::NormalizeGribTimelineCacheMiB(
@@ -12088,7 +12088,7 @@ void WeatherRouting::ApplyLastUsedConfigurationDefaults(
   const bool hasSavedDefaults = pConf->GetNumberOfEntries() > 0;
   configuration.EngineSettings = weather_routing::ReadRoutingEngineSettings(*pConf);
   configuration.ShorelineResolution = weather_routing::ReadShorelineResolution(*pConf, weather_routing::ShorelineManager::DefaultResolution());
-  configuration.QuickShorelineResolution = weather_routing::ReadShorelineResolution(*pConf, 0, "QuickShorelineResolution");
+  configuration.QuickShorelineResolution = weather_routing::ReadShorelineResolution(*pConf, weather_routing::kDefaultQuickShorelineResolution, "QuickShorelineResolution");
   configuration.ChartShorelineResolution = weather_routing::ReadShorelineResolution(*pConf, 0, "ChartShorelineResolution");
   long main_grib_cache = configuration.MainGribTimelineCacheMiB;
   long quick_grib_cache = configuration.QuickGribTimelineCacheMiB;
@@ -12103,7 +12103,7 @@ void WeatherRouting::ApplyLastUsedConfigurationDefaults(
       weather_routing::NormalizeGribTimelineCacheMiB(
           static_cast<int>(quick_grib_cache), true);
   if (!hasSavedDefaults)
-    configuration.EngineSettings.mainPreset = {"balanced", 1};
+    configuration.EngineSettings.mainPreset = {"balanced", weather_routing::kBalancedSearchPresetRevision};
   long routing_effort_percent = configuration.RoutingEffortPercent;
   pConf->Read(_T("RoutingEffortPercent"), &routing_effort_percent,
               routing_effort_percent);
@@ -12171,10 +12171,10 @@ RouteMapConfiguration WeatherRouting::DefaultConfiguration() {
   configuration.UseReverseReachabilityRecovery = false;
   configuration.Anchoring = false;
 
-  configuration.FromDegree = 0;
-  configuration.ToDegree = 180;
+  configuration.FromDegree = weather_routing::kDefaultFromDegree;
+  configuration.ToDegree = weather_routing::kDefaultToDegree;
   configuration.UseOptimalAngles = false;
-  configuration.ByDegrees = 5;
+  configuration.ByDegrees = weather_routing::kDefaultHeadingStepDegrees;
   configuration.UseMotor = false;
   configuration.MotorSpeedThreshold = 2.0;
   configuration.MotorSpeed = 5.0;
