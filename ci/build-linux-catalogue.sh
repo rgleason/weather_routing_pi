@@ -47,4 +47,12 @@ cmake --build "$package_build" --target package \
 find "$package_build" -maxdepth 1 -type f \
   \( -name '*.tar.gz' -o -name '*.xml' \) \
   -exec cp -f '{}' "$package_dir/" \;
-sha256sum "$package_dir"/* >"$package_dir/SHA256SUMS"
+
+# Copy deployment helpers required by cloudsmith-upload.sh
+for helper in pkg_version.sh cloudsmith-upload.sh; do
+  if [ -f "$package_build/$helper" ]; then
+    cp -f "$package_build/$helper" "$package_dir/"
+  fi
+done
+
+sha256sum "$package_dir"/*.tar.gz "$package_dir"/*.xml >"$package_dir/SHA256SUMS"
