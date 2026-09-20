@@ -70,8 +70,9 @@ def recover(workflow_id, output):
             ):
                 packages.append(artifact)
         local_package = output / prefix
-        local_pairs = list(local_package.glob("*.tar.gz")) + list(local_package.glob("*.xml"))
-        if not packages and len(local_pairs) == 2:
+        local_archives = list(local_package.glob("xweather_routing_pi-*.tar.gz"))
+        local_metadata = list(local_package.glob("xweather_routing_pi-*.xml"))
+        if not packages and len(local_archives) == 1 and len(local_metadata) == 1:
             print(f"Using current workflow artifact for {job_name}")
             continue
         if len(packages) != 2:
