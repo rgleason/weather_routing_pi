@@ -144,7 +144,7 @@ jobs:
           no_output_timeout: 45m
           
       - retain-artifacts:
-          target: << parameters.target >>
+          target: "flatpak-<< parameters.arch >>"
           build_dir: build 
           
       - run:
