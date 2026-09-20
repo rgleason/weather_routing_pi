@@ -40,7 +40,11 @@ TEST(RoutingEngineSettings, AllThreeBlocksSurviveSwitchSaveReinstallAndIndepende
   settings.original = {128, 120, 12.5, 100, {"custom", 0}};
   settings.mainPreset = {"custom", 7};
   settings.originalShorelineResolution = 4;
-  settings.originalGribTimelineCacheMiB = 1024;
+  // Persistence stores the effective value supported by this process. The
+  // Windows catalogue target is 32-bit and deliberately caps this at 192 MiB.
+  const int originalCacheMiB =
+      wr::NormalizeGribTimelineCacheMiB(1024, true);
+  settings.originalGribTimelineCacheMiB = originalCacheMiB;
   for (int i = 0; i < 3; ++i) {
     settings.engine = wr::EngineFromSelection(i);
     TiXmlElement xml("Configuration");
@@ -61,7 +65,7 @@ TEST(RoutingEngineSettings, AllThreeBlocksSurviveSwitchSaveReinstallAndIndepende
   EXPECT_EQ(settings.mainPreset, before.mainPreset);
   EXPECT_EQ(settings.original.memoryBudgetMiB, 128);
   EXPECT_EQ(settings.originalShorelineResolution, 4);
-  EXPECT_EQ(settings.originalGribTimelineCacheMiB, 1024);
+  EXPECT_EQ(settings.originalGribTimelineCacheMiB, originalCacheMiB);
   EXPECT_EQ(settings.original.offshoreStepMinutes, 180);
 }
 namespace {

@@ -6,6 +6,9 @@ parameters:
   run_workflow_deploy:
     type: boolean
     default: false
+  run_windows_only:
+    type: boolean
+    default: false
 
 orbs:
   win: circleci/windows@5.1.0
@@ -153,7 +156,9 @@ validation-filters: &validation-filters
 workflows:
   validate:
     when:
-      not: << pipeline.parameters.run_workflow_deploy >>
+      and:
+        - not: << pipeline.parameters.run_workflow_deploy >>
+        - not: << pipeline.parameters.run_windows_only >>
     jobs:
       - linux-catalogue: &trixie
           name: debian13-x86_64
@@ -194,6 +199,15 @@ workflows:
       - windows-x86:
           filters: *validation-filters
       - macos-universal:
+          filters: *validation-filters
+
+  validate_windows_only:
+    when:
+      and:
+        - not: << pipeline.parameters.run_workflow_deploy >>
+        - << pipeline.parameters.run_windows_only >>
+    jobs:
+      - windows-x86:
           filters: *validation-filters
 
   deploy_reviewed_alpha:
