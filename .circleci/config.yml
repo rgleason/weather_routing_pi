@@ -1,85 +1,49 @@
 version: 2.1
 
-# Validation only. Publishing to an OpenCPN catalogue remains a separate,
-# explicitly approved operation and is intentionally absent from this file.
-
-# ---------------------------------------------------------
-# Win/server-2022 executor, images, env, 
-# shell support (bash.exe, powershell.exe, cmd.exe)
-# ----------------------------------------------------------
+# Validation never receives deployment credentials. A reviewed Alpha release
+# is a separate parameter-gated workflow with a manual approval hold.
+parameters:
+  run_workflow_deploy:
+    type: boolean
+    default: false
 
 orbs:
   win: circleci/windows@5.1.0
-  
-# ------------------------------------------------------------
-# Unified reusable command for artifact retention
-# ------------------------------------------------------------
-   
+
 commands:
   retain-artifacts:
     parameters:
-      target:
-        type: string
-      build_dir:
-        type: string
-        default: build
+      target: {type: string}
+      build_dir: {type: string, default: build}
     steps:
       - run:
           name: Retain artifacts for << parameters.target >>
           when: always
           command: |
-            mkdir -p artifacts/<< parameters.target >>/package
-
-            # Copy tarballs, XML, logs, SHA256SUMS
-            find << parameters.build_dir >> -maxdepth 2 -type f \
+            mkdir -p artifacts/<< parameters.target >>/package test-results
+            find << parameters.build_dir >> -maxdepth 3 -type f \
               \( -name '*.tar.gz' -o -name '*.xml' -o -name '*.log' -o -name 'SHA256SUMS' \) \
-              -exec cp -f '{}' artifacts/<< parameters.target >>/package/ \; \
-              || true
-
-            # Copy pkg_version.sh (required for Cloudsmith)
-            if [ -f << parameters.build_dir >>/pkg_version.sh ]; then
-              cp << parameters.build_dir >>/pkg_version.sh artifacts/<< parameters.target >>/package/
-            else
-              echo "WARNING: pkg_version.sh not found in << parameters.build_dir >>"
-            fi
-
-            # Copy generated cloudsmith-upload.sh (required for Cloudsmith)
-            if [ -f << parameters.build_dir >>/cloudsmith-upload.sh ]; then
-              cp << parameters.build_dir >>/cloudsmith-upload.sh artifacts/<< parameters.target >>/package/
-            else
-              echo "WARNING: cloudsmith-upload.sh not found in << parameters.build_dir >>"
-            fi
-
-# ------------------------------------------------------------
-# Global pipeline parameters
-# ------------------------------------------------------------  
-
-parameters:
-  cloudsmith_api_key:
-    type: string
-    default: CLOUDSMITH_API_KEY
-   
-# ------------------------------------------------------------
-# JOBS
-# ------------------------------------------------------------
+              -exec cp -f '{}' artifacts/<< parameters.target >>/package/ \; || true
+            find artifacts -type f -name '*ctest.xml' \
+              -exec cp -f '{}' test-results/ \; || true
+      - store_test_results:
+          path: test-results
+      - store_artifacts:
+          path: artifacts/<< parameters.target >>
+      - persist_to_workspace:
+          root: .
+          paths: [artifacts/<< parameters.target >>]
 
 jobs:
-
-# ------------------------------------------------------------
-# JOB: Linux Catalogue
-# ------------------------------------------------------------
-
   linux-catalogue:
     parameters:
       target: {type: string}
       image: {type: string}
       dockerfile: {type: string, default: ci/Dockerfile.linux}
       resource_class: {type: string, default: medium}
-
     machine:
       image: ubuntu-2404:current
     resource_class: << parameters.resource_class >>
-
     environment:
       OCPN_TARGET: << parameters.target >>
       DOCKER_IMAGE: << parameters.image >>
@@ -87,348 +51,177 @@ jobs:
       BUILD_GTK3: "true"
       WX_VER: "32"
       CMAKE_BUILD_PARALLEL_LEVEL: "3"
-      CLOUDSMITH_API_KEY: << pipeline.parameters.cloudsmith_api_key >>
-
     steps:
       - checkout
       - run: chmod a+x ci/*.sh
       - run:
+          name: Publication contract tests
+          command: python3 -m unittest discover -s ci/tests -v
+      - run:
           name: Stock-API tests, clean package and archive validation
-          shell: /bin/bash
           command: ci/circleci-build-ubuntu-docker.sh
           no_output_timeout: 45m
- 
       - retain-artifacts:
           target: << parameters.target >>
-          build_dir: build 
-
-      - run:
-          name: Cloudsmith upload
-          when: always
-          command: |
-            cd "$(git rev-parse --show-toplevel)"
-            chmod +x ci/cloudsmith-upload.sh
-            export BUILD_DIR="$PWD/artifacts/<< parameters.target >>/package"
-            export CLOUDSMITH_PKG_EXT="gz"
-            ci/cloudsmith-upload.sh
-            
-# ------------------------------------------------------------
-# JOB: Flatpak
-# ------------------------------------------------------------            
 
   flatpak:
     parameters:
       arch: {type: string}
       resource_class: {type: string, default: medium}
-
     machine:
       image: ubuntu-2404:current
     resource_class: << parameters.resource_class >>
-
     environment:
       OCPN_TARGET: flatpak
       BUILD_ARCH: << parameters.arch >>
       FLATPAK_BRANCH: stable
-      CLOUDSMITH_PKG_EXT: gz
       SDK_VER: "25.08"
       WX_VER: "32"
-      CLOUDSMITH_API_KEY: << pipeline.parameters.cloudsmith_api_key >>
-
     steps:
       - checkout
       - run: chmod a+x ci/*.sh
       - run:
           name: Flatpak build and package
-          shell: /bin/bash
           command: ci/circleci-build-flatpak.sh
           no_output_timeout: 45m
-          
       - retain-artifacts:
-          target: "flatpak-<< parameters.arch >>"
-          build_dir: build 
-      - run:
-          name: Debug Cloudsmith key
-          command: |
-            echo "CLOUDSMITH_API_KEY length: ${#CLOUDSMITH_API_KEY}"
-          
-      - run:
-          name: Cloudsmith upload
-          when: always
-          command: |
-            cd "$(git rev-parse --show-toplevel)"
-            chmod +x ci/cloudsmith-upload.sh
-            export BUILD_DIR="$PWD/artifacts/flatpak-<< parameters.arch >>/package"
-            export CLOUDSMITH_PKG_EXT="gz"
-            ci/cloudsmith-upload.sh
-
-# ------------------------------------------------------------
-# JOB: macOS Universal
-# ------------------------------------------------------------
+          target: flatpak-<< parameters.arch >>
 
   macos-universal:
     macos:
       xcode: "16.4.0"
     resource_class: m4pro.medium
-
     environment:
       OCPN_TARGET: macos
       CMAKE_BUILD_PARALLEL_LEVEL: "3"
       HOMEBREW_NO_AUTO_UPDATE: "1"
       WX_VER: "32"
-      CLOUDSMITH_API_KEY: << pipeline.parameters.cloudsmith_api_key >>
-
     steps:
       - checkout
       - run: chmod a+x ci/*.sh cmake/*.sh
-
       - run:
           name: Native Apple-Silicon stock-API build, tests and package
-          shell: /bin/bash
           command: ci/circleci-build-macos-universal.sh
           no_output_timeout: 45m
-
       - retain-artifacts:
           target: macos-arm64
-          build_dir: build
-
-      - run:
-          name: Cloudsmith upload
-          when: always
-          command: |
-            cd "$(git rev-parse --show-toplevel)"
-            export BUILD_DIR="$PWD/artifacts/macos-arm64/package"
-            export CLOUDSMITH_PKG_EXT="gz"
-            chmod +x "$BUILD_DIR/cloudsmith-upload.sh"
-            "$BUILD_DIR/cloudsmith-upload.sh"
-
-      - store_test_results:
-          path: artifacts/macos-arm64/tests
-
-      - store_artifacts:
-          path: artifacts/macos-arm64
-
-# ------------------------------------------------------------
-# JOB: Windows MSVC
-# ------------------------------------------------------------
 
   windows-x86:
     executor:
       name: win/server-2022
       shell: bash.exe
-
     environment:
       OCPN_TARGET: MSVC
       MSVC_VERSION: "2022"
       WX_VER: "32"
-      CLOUDSMITH_API_KEY: << pipeline.parameters.cloudsmith_api_key >>
-
     steps:
       - checkout
-
       - run:
-          name: Ensure Python3 exists on Windows
-          shell: powershell.exe
-          command: |
-            if (-Not (Get-Command python3 -ErrorAction SilentlyContinue)) {
-              Write-Host "Installing Python3..."
-              choco install python --version=3.10.11 -y
-            }
-
-      - run:
-          privileged: false
           shell: cmd.exe
           name: Native Windows build, tests and package
           command: ci\circleci-build-msvc.bat
           no_output_timeout: 45m
-
       - retain-artifacts:
           target: windows-x86
-          build_dir: build
 
+  deploy-alpha:
+    docker:
+      - image: cimg/python:3.13
+    resource_class: small
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
       - run:
-          name: Cloudsmith upload
-          when: always
-          command: |
-            export PATH="/c/Python310:/c/Python310/Scripts:$PATH"
-            export PATH="/c/Program Files/Python310:/c/Program Files/Python310/Scripts:$PATH"
-            export PATH="/c/Users/circleci/AppData/Local/Programs/Python/Python310:/c/Users/circleci/AppData/Local/Programs/Python/Python310/Scripts:$PATH"
-            
-            cd "$(git rev-parse --show-toplevel)"
-            chmod +x ci/cloudsmith-upload.sh
-            export BUILD_DIR="$PWD/build"
-            export CLOUDSMITH_PKG_EXT="exe"
-            ci/cloudsmith-upload.sh
-
-      - store_test_results:
-          path: build/test-results
-
+          name: Install deployment client
+          command: python -m pip install --user cloudsmith-cli
+      - run:
+          name: Verify publication guards
+          command: python3 -m unittest discover -s ci/tests -v
+      - run:
+          name: Upload reviewed xWeatherRouting Alpha artifacts
+          command: bash ci/deploy-alpha-artifacts.sh
       - store_artifacts:
-          path: build
-          destination: windows-x86
+          path: alpha-publication
 
-# ------------------------------------------------------------
-# JOB: Android ARM64
-# ------------------------------------------------------------
-
-  android-arm64:
-    parameters:
-      resource_class: {type: string, default: medium}
-
-    machine:
-      image: ubuntu-2404:current
-    resource_class: << parameters.resource_class >>
-
-    environment:
-      OCPN_TARGET: android-arm64
-      WX_VER: "32"
-      ANDROID_NDK_VERSION: "26.1.10909125"
-      ANDROID_SDK_VERSION: "34"
-      CMAKE_BUILD_PARALLEL_LEVEL: "3"
-      CLOUDSMITH_API_KEY: << pipeline.parameters.cloudsmith_api_key >>
-
-    steps:
-      - checkout
-      - run: chmod a+x ci/*.sh
-
-      - run:
-          name: Android ARM64 build
-          shell: /bin/bash
-          command: |
-            chmod +x ci/circleci-build-android-arm64.sh
-            ci/circleci-build-android-arm64.sh
-          no_output_timeout: 45m
-
-      - retain-artifacts:
-          target: android-arm64
-          build_dir: build
-
-      - run:
-          name: Cloudsmith upload
-          when: always
-          command: |
-            cd "$(git rev-parse --show-toplevel)"
-            chmod +x ci/cloudsmith-upload.sh
-            export BUILD_DIR="$PWD/artifacts/android-arm64/package"
-            export CLOUDSMITH_PKG_EXT="gz"
-            ci/cloudsmith-upload.sh
-
-# ------------------------------------------------------------
-# JOB: Android ARMHF
-# ------------------------------------------------------------
-
-  android-armhf:
-    parameters:
-      resource_class: {type: string, default: medium}
-
-    machine:
-      image: ubuntu-2404:current
-    resource_class: << parameters.resource_class >>
-
-    environment:
-      OCPN_TARGET: android-armhf
-      WX_VER: "32"
-      ANDROID_NDK_VERSION: "26.1.10909125"
-      ANDROID_SDK_VERSION: "34"
-      CMAKE_BUILD_PARALLEL_LEVEL: "3"
-      CLOUDSMITH_API_KEY: << pipeline.parameters.cloudsmith_api_key >>
-
-    steps:
-      - checkout
-      - run: chmod a+x ci/*.sh
-
-      - run:  
-          name: Android ARMHF build
-          shell: /bin/bash
-          command: |
-            chmod +x ci/circleci-build-android-armhf.sh
-            ci/circleci-build-android-armhf.sh
-          no_output_timeout: 45m
-
-      - retain-artifacts:
-          target: android-armhf
-          build_dir: build
-
-      - run:
-          name: Cloudsmith upload
-          when: always
-          command: |
-            cd "$(git rev-parse --show-toplevel)"
-            chmod +x ci/cloudsmith-upload.sh
-            export BUILD_DIR="$PWD/artifacts/android-armhf/package"
-            export CLOUDSMITH_PKG_EXT="gz"
-            ci/cloudsmith-upload.sh
-
-# -------------------------
-# Top-level anchor definition
-# -------------------------
 validation-filters: &validation-filters
   branches:
     ignore: [devel, tmp]
   tags:
     ignore: /.*/
-    
-# ------------------------------------------------------------
-# WORKFLOWS
-# ------------------------------------------------------------    
 
 workflows:
   validate:
+    when:
+      not: << pipeline.parameters.run_workflow_deploy >>
     jobs:
-      - linux-catalogue:
+      - linux-catalogue: &trixie
           name: debian13-x86_64
           target: trixie
           image: debian:trixie
           filters: *validation-filters
-
-      - linux-catalogue:
+      - linux-catalogue: &bookworm
           name: debian12-x86_64
           target: bookworm
           image: debian:bookworm
           filters: *validation-filters
-
-      - linux-catalogue:
+      - linux-catalogue: &jammy
           name: ubuntu22.04-x86_64
           target: jammy
           image: ubuntu:22.04
           dockerfile: ci/Dockerfile.jammy
           filters: *validation-filters
-
-      - linux-catalogue:
+      - linux-catalogue: &noble
           name: ubuntu24.04-x86_64
           target: noble
           image: ubuntu:24.04
           filters: *validation-filters
-
-      - linux-catalogue:
+      - linux-catalogue: &bookworm-arm64
           name: debian12-arm64
           target: bookworm-arm64
           image: arm64v8/debian:bookworm
           resource_class: arm.medium
           filters: *validation-filters
-
-      - flatpak:
+      - flatpak: &flatpak-x86
           name: flatpak25.08-x86_64
           arch: x86_64
           filters: *validation-filters
-
-      - flatpak:
+      - flatpak: &flatpak-arm
           name: flatpak25.08-aarch64
           arch: aarch64
           resource_class: arm.medium
           filters: *validation-filters
-
       - windows-x86:
           filters: *validation-filters
-
       - macos-universal:
           filters: *validation-filters
 
-      - android-arm64:
-          name: android-arm64
-          resource_class: medium
+  deploy_reviewed_alpha:
+    when: << pipeline.parameters.run_workflow_deploy >>
+    jobs:
+      - linux-catalogue: *trixie
+      - linux-catalogue: *bookworm
+      - linux-catalogue: *jammy
+      - linux-catalogue: *noble
+      - linux-catalogue: *bookworm-arm64
+      - flatpak: *flatpak-x86
+      - flatpak: *flatpak-arm
+      - windows-x86:
           filters: *validation-filters
-
-      - android-armhf:
-          name: android-armhf
-          resource_class: medium
+      - macos-universal:
           filters: *validation-filters
+      - hold-for-alpha-approval:
+          type: approval
+          requires:
+            - debian13-x86_64
+            - debian12-x86_64
+            - ubuntu22.04-x86_64
+            - ubuntu24.04-x86_64
+            - debian12-arm64
+            - flatpak25.08-x86_64
+            - flatpak25.08-aarch64
+            - windows-x86
+            - macos-universal
+      - deploy-alpha:
+          context: xgrib-deployment
+          requires: [hold-for-alpha-approval]

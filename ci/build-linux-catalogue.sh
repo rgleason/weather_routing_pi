@@ -14,9 +14,15 @@ package_dir=${artifact_dir}/package
 mkdir -p "$test_build" "$package_build" "$stage_dir" \
   "$log_dir" "$test_dir" "$package_dir"
 
+identity_argument=-DWEATHER_ROUTING_XWEATHER_IDENTITY=OFF
+if [[ "${CIRCLE_PROJECT_REPONAME:-}" == "xweather_routing_pi" ]]; then
+  identity_argument=-DWEATHER_ROUTING_XWEATHER_IDENTITY=ON
+fi
+
 cmake -S "$source_dir" -B "$test_build" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX=/usr/local \
+  "$identity_argument" \
   -DWEATHER_ROUTING_STANDALONE_API=ON \
   -DOCPN_BUILD_TEST=ON 2>&1 | tee "$log_dir/configure-tests.log"
 cmake --build "$test_build" \
@@ -31,6 +37,7 @@ ctest --test-dir "$test_build" --output-on-failure \
 cmake -S "$source_dir" -B "$package_build" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX=/usr/local \
+  "$identity_argument" \
   -DWEATHER_ROUTING_STANDALONE_API=ON \
   -DOCPN_BUILD_TEST=OFF 2>&1 | tee "$log_dir/configure-package.log"
 cmake --build "$package_build" \

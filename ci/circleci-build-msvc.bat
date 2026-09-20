@@ -8,6 +8,8 @@ setlocal EnableExtensions
 set "SCRIPTDIR=%~dp0"
 set "GIT_HOME=C:\Program Files\Git"
 if "%CONFIGURATION%" == "" set "CONFIGURATION=RelWithDebInfo"
+set "WR_XWEATHER_IDENTITY=OFF"
+if /I "%CIRCLE_PROJECT_REPONAME%" == "xweather_routing_pi" set "WR_XWEATHER_IDENTITY=ON"
 
 rem CMake 4's FindGettext module requires msgfmt and msgmerge at configure
 rem time.  Install the same pinned package used by xGRIB's validated Windows
@@ -90,6 +92,7 @@ cmake -T v141_xp -G "Visual Studio 16 2019" ^
     -DCMAKE_GENERATOR_PLATFORM=Win32 ^
     -DCMAKE_BUILD_TYPE=%CONFIGURATION% ^
     -DWEATHER_ROUTING_STANDALONE_API=ON ^
+    -DWEATHER_ROUTING_XWEATHER_IDENTITY=%WR_XWEATHER_IDENTITY% ^
     -DOCPN_BUILD_TEST=ON ^
     -DwxWidgets_LIB_DIR=%wxWidgets_LIB_DIR% ^
     -DwxWidgets_ROOT_DIR=%wxWidgets_ROOT_DIR% ^
@@ -99,6 +102,7 @@ cmake -A Win32 -G "Visual Studio 17 2022" ^
     -DCMAKE_GENERATOR_PLATFORM=Win32 ^
     -DCMAKE_BUILD_TYPE=%CONFIGURATION% ^
     -DWEATHER_ROUTING_STANDALONE_API=ON ^
+    -DWEATHER_ROUTING_XWEATHER_IDENTITY=%WR_XWEATHER_IDENTITY% ^
     -DOCPN_BUILD_TEST=ON ^
     -DwxWidgets_LIB_DIR=%wxWidgets_LIB_DIR% ^
     -DwxWidgets_ROOT_DIR=%wxWidgets_ROOT_DIR% ^
@@ -122,7 +126,13 @@ if errorlevel 1 exit /b %errorlevel%
 if exist stage rmdir /s /q stage
 cmake --install . --config %CONFIGURATION% --prefix stage
 if errorlevel 1 exit /b %errorlevel%
-if not exist stage\plugins\weather_routing_pi.dll (
+set "PLUGIN_PACKAGE=weather_routing_pi"
+set "OTHER_PACKAGE=xweather_routing_pi"
+if /I "%WR_XWEATHER_IDENTITY%" == "ON" (
+  set "PLUGIN_PACKAGE=xweather_routing_pi"
+  set "OTHER_PACKAGE=weather_routing_pi"
+)
+if not exist stage\plugins\%PLUGIN_PACKAGE%.dll (
   echo Staged WeatherRouting DLL is missing
   exit /b 1
 )
@@ -133,24 +143,24 @@ rem directly so packaging does not depend on a generated convenience project.
 cpack -G TGZ -C %CONFIGURATION% --config CPackConfig.cmake
 if errorlevel 1 exit /b %errorlevel%
 
-for /f %%C in ('dir /b /a:-d weather_routing_pi-*.tar.gz 2^>nul ^| find /c /v ""') do set "ARCHIVE_COUNT=%%C"
+for /f %%C in ('dir /b /a:-d %PLUGIN_PACKAGE%-*.tar.gz 2^>nul ^| find /c /v ""') do set "ARCHIVE_COUNT=%%C"
 if not "%ARCHIVE_COUNT%"=="1" (
   echo Expected exactly one WeatherRouting archive, found %ARCHIVE_COUNT%
   exit /b 1
 )
-for /f %%C in ('dir /b /a:-d weather_routing_pi-*.xml 2^>nul ^| find /c /v ""') do set "METADATA_COUNT=%%C"
+for /f %%C in ('dir /b /a:-d %PLUGIN_PACKAGE%-*.xml 2^>nul ^| find /c /v ""') do set "METADATA_COUNT=%%C"
 if not "%METADATA_COUNT%"=="1" (
   echo Expected exactly one WeatherRouting metadata file, found %METADATA_COUNT%
   exit /b 1
 )
-for %%F in (weather_routing_pi-*.tar.gz) do tar -tzf "%%F" > package-contents.txt
+for %%F in (%PLUGIN_PACKAGE%-*.tar.gz) do tar -tzf "%%F" > package-contents.txt
 if errorlevel 1 exit /b %errorlevel%
-findstr /i /c:"plugins/weather_routing_pi.dll" package-contents.txt >nul
+findstr /i /c:"plugins/%PLUGIN_PACKAGE%.dll" package-contents.txt >nul
 if errorlevel 1 (
   echo Package does not contain the WeatherRouting DLL
   exit /b 1
 )
-findstr /i /c:"plugins/xweather_routing_pi.dll" package-contents.txt >nul
+findstr /i /c:"plugins/%OTHER_PACKAGE%.dll" package-contents.txt >nul
 if not errorlevel 1 (
   echo Package contains the preview xWeatherRouting DLL identity
   exit /b 1
