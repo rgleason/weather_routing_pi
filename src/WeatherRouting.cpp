@@ -12140,7 +12140,7 @@ RouteMapConfiguration WeatherRouting::DefaultConfiguration() {
 
   configuration.Integrator = RouteMapConfiguration::NEWTON;
 
-  configuration.MaxDivertedCourse = 90;
+  configuration.MaxDivertedCourse = weather_routing::kDefaultMaxDivertedCourse;
   configuration.MaxCourseAngle = 180;
   configuration.MaxSearchAngle = 120;
   configuration.MaxTrueWindKnots = 50;      // Safety margin for wind speed

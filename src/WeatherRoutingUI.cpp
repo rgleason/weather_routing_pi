@@ -1502,7 +1502,8 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
 
   m_sMaxDivertedCourse = new wxSpinCtrl(
       sbConstraints->GetStaticBox(), wxID_ANY, wxEmptyString, wxDefaultPosition,
-      wxSize(-1, -1), wxSP_ARROW_KEYS, 0, 180, 180);
+      wxSize(-1, -1), wxSP_ARROW_KEYS, 0, 180,
+      weather_routing::kDefaultMaxDivertedCourse);
   m_sMaxDivertedCourse->SetToolTip(
       _("Hard limit on how far route geometry may divert from the great-circle "
         "route. This is separate from Advanced > Max Search Angle: increasing "

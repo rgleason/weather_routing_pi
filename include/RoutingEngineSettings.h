@@ -10,6 +10,7 @@ constexpr double kDefaultFromDegree = 40.0;
 constexpr double kDefaultToDegree = 160.0;
 constexpr double kDefaultHeadingStepDegrees = 10.0;
 constexpr int kDefaultQuickShorelineResolution = 2;
+constexpr int kDefaultMaxDivertedCourse = 120;
 
 enum class RoutingEngine { Main, Quick, Unsupported };
 
