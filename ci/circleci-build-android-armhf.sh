@@ -17,7 +17,7 @@ ls -la
 
 # Get the OCPN Android build support package.
 # FOR LOCAL BUILD - have a local version to avoid big download each run - need to stage it but not commit it. DO NOT COMMIT AND PUSH master.zip
-if [ "${CIRCLECI_LOCAL,,}" = "true" ]; then
+if [ "$(printf '%s' "$CIRCLECI_LOCAL" | tr 'A-Z' 'a-z')" = "true" ]; then
     if [[ -d ~/circleci-cache ]]; then
         if [[ -f ~/circleci-cache/apt-proxy ]]; then
             cat ~/circleci-cache/apt-proxy | sudo tee -a /etc/apt/apt.conf.d/00aptproxy

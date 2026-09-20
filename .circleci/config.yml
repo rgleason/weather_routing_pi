@@ -230,8 +230,10 @@ jobs:
           shell: powershell.exe
           command: |
             if (-Not (Get-Command python3 -ErrorAction SilentlyContinue)) {
-              Write-Host "Installing Python3..."
-              choco install python --version=3.10.11 -y
+              Write-Host "python3 not found — using py launcher instead"
+              Set-Alias python3 py
+            } else {
+              Write-Host "python3 already available"
             }
 
       - run:
