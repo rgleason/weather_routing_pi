@@ -14,6 +14,7 @@ docker build --build-arg "BASE_IMAGE=${DOCKER_IMAGE}" \
   -t weather-routing-linux-build ci
 docker run --rm \
   -e "CIRCLE_PROJECT_REPONAME=${CIRCLE_PROJECT_REPONAME:-}" \
+  -e "WEATHER_ROUTING_CI_XWEATHER=${WEATHER_ROUTING_CI_XWEATHER:-false}" \
   -e "OCPN_TARGET=${OCPN_TARGET}" \
   -e "CMAKE_BUILD_PARALLEL_LEVEL=${CMAKE_BUILD_PARALLEL_LEVEL:-3}" \
   -v "${PWD}:/src:rw" \

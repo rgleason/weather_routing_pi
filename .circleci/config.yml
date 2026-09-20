@@ -9,6 +9,9 @@ parameters:
   run_windows_only:
     type: boolean
     default: false
+  build_xweather_identity:
+    type: boolean
+    default: false
 
 orbs:
   win: circleci/windows@5.1.0
@@ -54,6 +57,7 @@ jobs:
       BUILD_GTK3: "true"
       WX_VER: "32"
       CMAKE_BUILD_PARALLEL_LEVEL: "3"
+      WEATHER_ROUTING_CI_XWEATHER: << pipeline.parameters.build_xweather_identity >>
     steps:
       - checkout
       - run: chmod a+x ci/*.sh
@@ -80,6 +84,7 @@ jobs:
       FLATPAK_BRANCH: stable
       SDK_VER: "25.08"
       WX_VER: "32"
+      WEATHER_ROUTING_CI_XWEATHER: << pipeline.parameters.build_xweather_identity >>
     steps:
       - checkout
       - run: chmod a+x ci/*.sh
@@ -99,6 +104,7 @@ jobs:
       CMAKE_BUILD_PARALLEL_LEVEL: "3"
       HOMEBREW_NO_AUTO_UPDATE: "1"
       WX_VER: "32"
+      WEATHER_ROUTING_CI_XWEATHER: << pipeline.parameters.build_xweather_identity >>
     steps:
       - checkout
       - run: chmod a+x ci/*.sh cmake/*.sh
@@ -117,6 +123,7 @@ jobs:
       OCPN_TARGET: MSVC
       MSVC_VERSION: "2022"
       WX_VER: "32"
+      WEATHER_ROUTING_CI_XWEATHER: << pipeline.parameters.build_xweather_identity >>
     steps:
       - checkout
       - run:

@@ -15,7 +15,8 @@ mkdir -p "$test_build" "$package_build" "$stage_dir" \
   "$log_dir" "$test_dir" "$package_dir"
 
 identity_argument=-DWEATHER_ROUTING_XWEATHER_IDENTITY=OFF
-if [[ "${CIRCLE_PROJECT_REPONAME:-}" == "xweather_routing_pi" ]]; then
+if [[ "${WEATHER_ROUTING_CI_XWEATHER:-false}" == "true" ||
+      "${CIRCLE_PROJECT_REPONAME:-}" == "xweather_routing_pi" ]]; then
   identity_argument=-DWEATHER_ROUTING_XWEATHER_IDENTITY=ON
 fi
 

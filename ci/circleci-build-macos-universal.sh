@@ -64,7 +64,8 @@ common_args=(
   "-DwxWidgets_CONFIG_EXECUTABLE=$WX_CONFIG"
   -DWEATHER_ROUTING_STANDALONE_API=ON
 )
-if [[ "${CIRCLE_PROJECT_REPONAME:-}" == "xweather_routing_pi" ]]; then
+if [[ "${WEATHER_ROUTING_CI_XWEATHER:-false}" == "true" ||
+      "${CIRCLE_PROJECT_REPONAME:-}" == "xweather_routing_pi" ]]; then
   common_args+=(-DWEATHER_ROUTING_XWEATHER_IDENTITY=ON)
 else
   common_args+=(-DWEATHER_ROUTING_XWEATHER_IDENTITY=OFF)

@@ -9,10 +9,9 @@ if [[ -f "$build_dir/CMakeCache.txt" ]] &&
   package_name=xweather_routing_pi
 fi
 
-mapfile -t archives < <(find "$build_dir" -maxdepth 1 -type f \
-  -name "${package_name}-*.tar.gz" | sort)
-mapfile -t metadata_files < <(find "$build_dir" -maxdepth 1 -type f \
-  -name "${package_name}-*.xml" | sort)
+shopt -s nullglob
+archives=("$build_dir"/"${package_name}"-*.tar.gz)
+metadata_files=("$build_dir"/"${package_name}"-*.xml)
 test "${#archives[@]}" -eq 1
 test "${#metadata_files[@]}" -eq 1
 
