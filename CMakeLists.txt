@@ -143,7 +143,7 @@ endif()
 
 # Keep validation independent of the OpenCPN publishing repositories.  Alpha
 # publication remains a separate, explicitly approved later step.
-set(CLOUDSMITH_USER "opencpn")
+set(CLOUDSMITH_USER "rick-gleason")
 
 set(XML_INFO_URL "https://github.com/${PLUGIN_GIT_REPOSITORY}")
 set(XML_SUMMARY ${SHORT_DESCRIPTION})
