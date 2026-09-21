@@ -168,12 +168,11 @@ EOF$delimstrnum
     else
 		cat > build.sh << EOF$delimstrnum
 	        apt-get -qq --allow-unauthenticated update
-	        apt-get -y --no-install-recommends --allow-change-held-packages --allow-unauthenticated install \
-	        git cmake build-essential gettext wx-common libgtk2.0-dev \
-	        libwxbase3.2-dev libwxgtk3.2-dev \
-	        libbz2-dev libcurl4-openssl-dev libexpat1-dev libcairo2-dev \
-	        libarchive-dev liblzma-dev libexif-dev lsb-release
-EOF$delimstrnum
+			apt-get -y --no-install-recommends --allow-change-held-packages --allow-unauthenticated install \
+				git cmake build-essential gettext wx-common libgtk2.0-dev \
+				libwxbase3.0-dev libwxgtk3.0-gtk3-dev \
+				libbz2-dev libcurl4-openssl-dev libexpat1-dev libcairo2-dev \
+				libarchive-dev liblzma-dev libexif-dev lsb-release
         $delimstrnum = $delimstrnum + 1
     fi
 fi

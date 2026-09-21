@@ -65,7 +65,7 @@ cmake \
   -DOCPN_TARGET_TUPLE="darwin-wx32;10;universal" \
   -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
   -DCPACK_GENERATOR=TGZ \
-  -DCPACK_PACKAGE_FILE_NAME="weather_routing_pi-${PLUGIN_VERSION}-darwin-wx32"
+  -DCPACK_PACKAGE_FILE_NAME="weather_routing_pi-${PLUGIN_VERSION}-darwin-wx32" \
   ..
 
 if [[ -z "$CI" ]]; then
