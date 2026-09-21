@@ -81,11 +81,15 @@ cmake -A Win32 -G "Visual Studio 17 2022" ^
     ..
 )
 
-
 cd
 dir
 
+REM Build for windows
 echo Build for windows
 
-:cmake --build . --target tarball --config %CONFIGURATION%
-cmake --build . --target package --config %CONFIGURATION%
+echo Build the plugin itself
+cmake --build . --config %CONFIGURATION%
+
+REM Run CPack to generate the plugin tarball
+echo Running CPack packaging...
+cpack -G TGZ

@@ -59,25 +59,21 @@ export OPENSSL_ROOT_DIR='/usr/local'
 # Build and package
 cd build
 cmake \
-  "-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE:-Release}" \
   -DCMAKE_INSTALL_PREFIX= \
   -DCMAKE_OSX_DEPLOYMENT_TARGET=${MACOSX_DEPLOYMENT_TARGET} \
   -DOCPN_TARGET_TUPLE="darwin-wx32;10;universal" \
   -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+  -DwxWidgets_CONFIG_EXECUTABLE=/usr/local/bin/wx-config \
   -DCPACK_GENERATOR=TGZ \
+  -DCPACK_PROJECT_CONFIG_FILE=../cmake/PluginCPackOptions.cmake \
   -DCPACK_PACKAGE_FILE_NAME="weather_routing_pi-${PLUGIN_VERSION}-darwin-wx32" \
   ..
 
-if [[ -z "$CI" ]]; then
-    echo '$CI not found in environment, assuming local setup'
-    echo "Complete build using 'cd build; make tarball' or so."
-    exit 0
-fi
+echo "Building macOS universal plugin..."
+cmake --build . --config Release --target install
 
-# non-reproducible error on first invocation, seemingly tarball-conf-stamp
-# is not created as required.
-
-make package || make package
+echo "Running CPack..."
+cpack -G TGZ
 
 # Create the cached /usr/local archive
 if [ -n "$CI"  ]; then

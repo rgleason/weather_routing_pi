@@ -205,7 +205,7 @@ jobs:
           no_output_timeout: 45m
 
       - retain-artifacts:
-          target: macos-arm64
+          target: macos-universal
           build_dir: build
           
 # Use orb-based upload instead of custom script
@@ -219,11 +219,10 @@ jobs:
           when: always
           command: |
             cd "$(git rev-parse --show-toplevel)"
-            export BUILD_DIR="$PWD/artifacts/macos-arm64/package"
+            export BUILD_DIR="$PWD/build"
             export CLOUDSMITH_PKG_EXT="gz"
-            chmod +x "$BUILD_DIR/cloudsmith-upload.sh"
             "$BUILD_DIR/cloudsmith-upload.sh"
-
+            
       - store_test_results:
           path: artifacts/macos-arm64/tests
 
