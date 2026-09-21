@@ -150,7 +150,15 @@ jobs:
           name: Debug Cloudsmith key
           command: |
             echo "CLOUDSMITH_API_KEY length: ${#CLOUDSMITH_API_KEY}"
-          
+      - run:
+          name: Install Cloudsmith CLI (pipx)
+          when: always
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y pipx python3-venv
+            pipx ensurepath
+            pipx install cloudsmith-cli
+   
       - run:
           name: Cloudsmith upload
           when: always
