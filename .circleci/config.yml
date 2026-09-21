@@ -190,6 +190,12 @@ jobs:
       - retain-artifacts:
           target: macos-arm64
           build_dir: build
+          
+# Use orb-based upload instead of custom script
+#      - cloudsmith/upload:
+#          repo: rick-gleason/weather-routing-beta
+#          path: artifacts/macos-arm64/package/weather_routing_pi-*.xml
+#          version: << pipeline.parameters.pkg_version >>          
 
       - run:
           name: Cloudsmith upload
@@ -225,14 +231,14 @@ jobs:
     steps:
       - checkout
 
-      # Ensure python3 resolves to py.exe (must be done in bash, not PowerShell)
+      # Install Python 3 reliably
       - run:
-          name: Ensure python3 resolves to py.exe
-          shell: bash.exe
+          name: Install Python3
+          shell: powershell.exe
           command: |
-            if ! command -v python3 >/dev/null 2>&1; then
-              alias python3='py'
-            fi
+            if (-Not (Get-Command python3 -ErrorAction SilentlyContinue)) {
+              choco install python --version=3.10.11 -y
+            }
 
       - run:
           privileged: false

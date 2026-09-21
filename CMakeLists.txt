@@ -135,7 +135,7 @@ set(ALPHA "alpha") #Standard Repos
 #set (CLOUDSMITH_BASE_REPOSITORY "${GIT_REPOSITORY_NAME}")
 #set (CLOUDSMITH_BASE_REPOSITORY "opencpn-plugins")  # Ricks's customization
 set(CLOUDSMITH_BASE_REPOSITORY "weather-routing")
-if(WEATHER_ROUTING_XWEATHER_IDENTITY)
+if(WEATHER_ROUTING_XWEATHER_IDENTITY)git s
   set(PLUGIN_GIT_REPOSITORY "pob220/xweather_routing_pi")
 else()
   set(PLUGIN_GIT_REPOSITORY "pob220/weather_routing_pi")
@@ -201,6 +201,18 @@ if(MSVC)
 endif()
 
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
+# For MacOS Universal - so the script will run
+if(GENERATE_CLOUDSMITH_SCRIPTS)
+    configure_file(${CMAKE_SOURCE_DIR}/ci/cloudsmith-upload.sh.in
+                   ${CMAKE_BINARY_DIR}/cloudsmith-upload.sh @ONLY)
+endif()
+
+if(GENERATE_PKG_VERSION_SCRIPT)
+    configure_file(${CMAKE_SOURCE_DIR}/ci/pkg_version.sh.in
+                   ${CMAKE_BINARY_DIR}/pkg_version.sh @ONLY)
+endif()
+
 
 ##========================================================
 

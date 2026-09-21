@@ -34,6 +34,10 @@ fi
 #Install python virtual environment
 /usr/bin/python3 -m venv $HOME/cs-venv
 
+source $HOME/cs-venv/bin/activate
+pip install pipx
+pipx install cloudsmith-cli
+
 # Download required binaries using wget, since curl causes an issue with Xcode 13.1 and some specific certificates.
 # Inspect the response code to see if the file is downloaded properly.
 # If the download failed or file does not exist, then exit with an error.
@@ -90,9 +94,13 @@ cmake \
   -DCMAKE_INSTALL_PREFIX=app/files \
   -DBUILD_TYPE_PACKAGE:STRING=tarball \
   -DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET \
+  -DGENERATE_CLOUDSMITH_SCRIPTS=ON \
+  -DGENERATE_PKG_VERSION_SCRIPT=ON \
   "/" \
   ..
 make
 make install
 make package
 
+cp build/cloudsmith-upload.sh artifacts/macos-arm64/package/ || echo "WARNING: cloudsmith-upload.sh missing"
+cp build/pkg_version.sh artifacts/macos-arm64/package/ || echo "WARNING: pkg_version.sh missing"
