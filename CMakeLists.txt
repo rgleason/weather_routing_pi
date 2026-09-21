@@ -90,8 +90,8 @@ set(LONG_DESCRIPTION
     "WeatherRouting offers Quick, Standard and Professional engines with independent saved settings and explicit search presets. Quick uses hardened contour routing with independent chronological validation. Standard provides bounded adaptive search; Professional adds broader recovery methods. All support plugin-managed GSHHG shorelines; optional chart-backed safety requires a compatible host.")
 
 set(VERSION_MAJOR "1")
-set(VERSION_MINOR "17")
-set(VERSION_PATCH "4")
+set(VERSION_MINOR "18")
+set(VERSION_PATCH "0")
 set(VERSION_TWEAK "0")
 # Keep all five approved source archives for verification and regression tests.
 # Packages ship only Crude, Low and Intermediate; High and Full are optional
@@ -113,7 +113,7 @@ foreach(_archive IN LISTS _shoreline_archives)
   endif()
 endforeach()
 unset(_shoreline_archives)
-set(VERSION_DATE  "20/09/2026") # DD/MM/YYYY format
+set(VERSION_DATE  "21/09/2026") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov511")
 
 set(OCPN_API_VERSION_MAJOR "1")
