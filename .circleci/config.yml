@@ -100,7 +100,16 @@ jobs:
  
       - retain-artifacts:
           target: << parameters.target >>
-          build_dir: build 
+          build_dir: build
+
+      - run:
+          name: Install Cloudsmith CLI (pipx)
+          when: always
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y pipx python3-venv
+            pipx ensurepath
+            pipx install cloudsmith-cli
 
       - run:
           name: Cloudsmith upload
