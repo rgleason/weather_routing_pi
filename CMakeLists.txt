@@ -135,7 +135,7 @@ set(ALPHA "alpha") #Standard Repos
 #set (CLOUDSMITH_BASE_REPOSITORY "${GIT_REPOSITORY_NAME}")
 #set (CLOUDSMITH_BASE_REPOSITORY "opencpn-plugins")  # Ricks's customization
 set(CLOUDSMITH_BASE_REPOSITORY "weather-routing")
-if(WEATHER_ROUTING_XWEATHER_IDENTITY)git s
+if(WEATHER_ROUTING_XWEATHER_IDENTITY)
   set(PLUGIN_GIT_REPOSITORY "pob220/xweather_routing_pi")
 else()
   set(PLUGIN_GIT_REPOSITORY "pob220/weather_routing_pi")

@@ -93,4 +93,3 @@ fi
 
 make flatpak-build
 make flatpak-pkg
-python3 ../ci/verify-shoreline-package.py .

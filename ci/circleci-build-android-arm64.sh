@@ -14,7 +14,7 @@ git submodule update --init opencpn-libs
 ls -la
 
 # FOR LOCAL BUILD - have a local version to avoid big download each run - need to stage it but not commit it. DO NOT COMMIT AND PUSH master.zip
-if [ "$(printf '%s' "$CIRCLECI_LOCAL" | tr 'A-Z' 'a-z')" = "true" ]; then
+if [ "${CIRCLECI_LOCAL,,}" = "true" ]; then
     if [[ -d ~/circleci-cache ]]; then
         if [[ -f ~/circleci-cache/apt-proxy ]]; then
             cat ~/circleci-cache/apt-proxy | sudo tee -a /etc/apt/apt.conf.d/00aptproxy
@@ -68,23 +68,11 @@ sudo apt remove python3-six python3-colorama python3-urllib3
 export LC_ALL=C.UTF-8  LANG=C.UTF-8
 python3 -m pip install --user -q cmake -vv
 
-# Install Android SDK command-line tools and NDK if not present
-ANDROID_SDK_ROOT=/home/circleci/android-sdk
-if [ ! -d "$ANDROID_SDK_ROOT/ndk/${ANDROID_NDK_VERSION}" ]; then
-  mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
-  wget -q "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" -O cmdline-tools.zip
-  unzip -q cmdline-tools.zip -d "$ANDROID_SDK_ROOT/cmdline-tools"
-  mv "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" "$ANDROID_SDK_ROOT/cmdline-tools/latest"
-  export PATH="$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin"
-  export ANDROID_HOME="$ANDROID_SDK_ROOT"
-  yes | sdkmanager --install "ndk;${ANDROID_NDK_VERSION}" --sdk_root="$ANDROID_SDK_ROOT" 2>&1 | tail -5
-fi
-
 last_ndk=$(ls -d /home/circleci/android-sdk/ndk/* | tail -1)
 test -d /opt/android || sudo mkdir -p /opt/android
 sudo ln -sf $last_ndk /opt/android/ndk
 
-if [ -z "$BUILD_TYPE" ]; then
+if [ ! -z "$(BUILD_TYPE)" ]; then
   tag=$(git tag --contains HEAD)
   current_branch=$(git branch --show-current)
   if [ -n "$tag" ] || [ "$current_branch" = "master" ]; then
