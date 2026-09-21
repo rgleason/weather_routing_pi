@@ -48,6 +48,21 @@ echo Check if poedit has been installed
 poedit -version
 echo Done check
 
+echo Installing gettext tools required by CMake (msgmerge, msgfmt)...
+
+:: Install gettext via Chocolatey
+choco install gettext -y
+
+:: Add gettext binaries to PATH for this session
+set "PATH=C:\ProgramData\chocolatey\lib\gettext\tools\bin;%PATH%"
+
+:: Verify installation
+where msgmerge.exe
+where msgfmt.exe
+
+echo Gettext installation complete.
+
+
 echo Create build environment
 
 if "%MSVC_VERSION%" == "2019" (
