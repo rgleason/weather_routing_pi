@@ -5,13 +5,13 @@ version: 2.1
 parameters:
   run_workflow_deploy:
     type: boolean
-    default: false
+    default: true
   run_windows_only:
     type: boolean
     default: false
   build_xweather_identity:
     type: boolean
-    default: false
+    default: true
   recover_alpha_deploy:
     type: boolean
     default: false
