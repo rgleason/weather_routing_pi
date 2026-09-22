@@ -8,6 +8,8 @@ setlocal
 
 set "CONFIGURATION=RelWithDebInfo"
 
+goto :main
+
 REM ------------------------------------------------------------
 REM Helper: Fail early if a command fails
 REM ------------------------------------------------------------
@@ -27,6 +29,14 @@ if not exist "%~1" (
     exit /b 1
 )
 goto :eof
+
+:main
+
+REM ------------------------------------------------------------
+REM  Start actual build logic here
+REM ------------------------------------------------------------
+
+REM (your CMake configure, build, install, CPack, DLL detection, etc.)
 
 
 REM ------------------------------------------------------------
