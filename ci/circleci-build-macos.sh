@@ -18,18 +18,19 @@ done
 if [ -n "${WX_VER}" ] && [ "${WX_VER}" -eq "32" ]; then
     echo "Building for WXVERSION 32";
     WX_URL=https://download.opencpn.org/s/Djqm4SXzYjF8nBw/download
-    WX_DOWNLOAD=/tmp/wx321_opencpn50_macos1010.tar.xz
-    WX_EXECUTABLE=/tmp/wx321_opencpn50_macos1010/bin/wx-config
-    WX_CONFIG="--prefix=/tmp/wx321_opencpn50_macos1010"
+    WX_DOWNLOAD=/tmp/wx321_opencpn50_macos1015.tar.xz
+    WX_EXECUTABLE=/tmp/wx321_opencpn50_macos1015/bin/wx-config
+    WX_CONFIG="--prefix=/tmp/wx321_opencpn50_macos1015"
     MACOSX_DEPLOYMENT_TARGET=10.15
 else
     echo "Building for WXVERSION 315";
     WX_URL=https://download.opencpn.org/s/MCiRiq4fJcKD56r/download
-    WX_DOWNLOAD=/tmp/wx315_opencpn50_macos1010.tar.xz
-    WX_EXECUTABLE=/tmp/wx315_opencpn50_macos1010/bin/wx-config
-    WX_CONFIG="--prefix=/tmp/wx315_opencpn50_macos1010"
-    MACOSX_DEPLOYMENT_TARGET=10.10
+    WX_DOWNLOAD=/tmp/wx315_opencpn50_macos1015.tar.xz
+    WX_EXECUTABLE=/tmp/wx315_opencpn50_macos1015/bin/wx-config
+    WX_CONFIG="--prefix=/tmp/wx315_opencpn50_macos1015"
+    MACOSX_DEPLOYMENT_TARGET=10.15
 fi
+
 
 #Install python virtual environment
 /usr/bin/python3 -m venv $HOME/cs-venv
@@ -69,18 +70,6 @@ fi
 
 export MACOSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET
 
-# MacOS .pkg installer is deprecated in OCPN 5.6.2+
-# use brew to get Packages.pkg
-#if brew list --cask --versions packages; then
-#    version=$(brew list --cask --versions packages)
-#    version="${version/"packages "/}"
-#    sudo installer \
-#        -pkg /usr/local/Caskroom/packages/$version/packages/Packages.pkg \
-#        -target /
-#else
-#    brew install --cask packages
-#fi
-
 git submodule update --init opencpn-libs
 
 rm -rf build && mkdir build && cd build
@@ -93,6 +82,19 @@ cmake \
   "/" \
   ..
 make
-make install
-make package
+if [ $? -ne 0 ]; then
+    echo "ERROR: make failed — no dylib produced."
+    exit 1
+fi
 
+make install
+if [ $? -ne 0 ]; then
+    echo "ERROR: make install failed."
+    exit 1
+fi
+
+make package
+if [ $? -ne 0 ]; then
+    echo "ERROR: make package failed."
+    exit 1
+fi
