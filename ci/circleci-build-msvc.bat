@@ -8,6 +8,8 @@ setlocal
 
 set "CONFIGURATION=RelWithDebInfo"
 
+goto :main
+
 REM ------------------------------------------------------------
 REM Helper: Fail early if a command fails
 REM ------------------------------------------------------------
@@ -32,6 +34,7 @@ goto :eof
 REM ------------------------------------------------------------
 REM  Setup basic environment
 REM ------------------------------------------------------------
+:main
 set "SCRIPTDIR=%~dp0"
 set "GIT_HOME=C:\Program Files\Git"
 
