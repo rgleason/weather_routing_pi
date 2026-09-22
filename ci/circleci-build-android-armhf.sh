@@ -1,5 +1,4 @@
-#!/bin/bash -xe
-
+#!/bin/sh  -xe
 
 #
 # Build the Android artifacts inside the circleci linux container

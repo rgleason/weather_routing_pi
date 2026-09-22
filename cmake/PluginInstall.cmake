@@ -11,18 +11,18 @@ if (OCPN_FLATPAK_CONFIG)
 endif (OCPN_FLATPAK_CONFIG)
 
 if (NOT APPLE)
-  target_link_libraries(${PACKAGE_NAME} 
-    PRIVATE ${wxWidgets_LIBRARIES}
-    PRIVATE ${EXTRA_LIBS}
-    )
+  target_link_libraries(${PACKAGE_NAME}
+	   PRIVATE ${wxWidgets_LIBRARIES}
+       PRIVATE	${EXTRA_LIBS}
+	   )
 endif (NOT APPLE)
 
 if (WIN32)
   if (MSVC)
     # TARGET_LINK_LIBRARIES(${PACKAGE_NAME} gdiplus.lib glu32.lib)
     target_link_libraries(${PACKAGE_NAME}
-  	  PRIVATE ${OPENGL_LIBRARIES}
-	 )
+	    PRIVATE ${OPENGL_LIBRARIES}
+	    )
     # add_subdirectory(libs/ocpn-api) target_link_libraries(${PACKAGE_NAME}
     # ocpn::api) message(STATUS "${CMLOC}Added ocpn-api for MSVC")
   endif (MSVC)
@@ -32,8 +32,8 @@ if (WIN32)
     # headers
     add_definitions(" -DUNICODE")
     target_link_libraries(${PACKAGE_NAME}
-      PRIVATE  ${OPENGL_LIBRARIES}
-	  )
+         PRIVATE ${OPENGL_LIBRARIES}
+		 )
     set(CMAKE_SHARED_LINKER_FLAGS "-L../buildwin")
     # add_subdirectory(libs/ocpn-api) target_link_libraries(${PACKAGE_NAME}
     # ocpn::api) message(STATUS "${CMLOC}Added ocpn-api for MINGW")
@@ -60,10 +60,9 @@ if (UNIX
   include_directories(${BZIP2_INCLUDE_DIR})
   find_package(ZLIB REQUIRED)
   include_directories(${ZLIB_INCLUDE_DIR})
-  target_link_libraries(${PACKAGE_NAME}
-    PRIVATE ${BZIP2_LIBRARIES}
-    PRIVATE  ${ZLIB_LIBRARY} PRIVATE 
-	)
+  target_link_libraries(${PACKAGE_NAME} 
+      PRIVATE ${BZIP2_LIBRARIES} 
+	  PRIVATE ${ZLIB_LIBRARY})
 endif (
   UNIX
   AND NOT APPLE
@@ -148,7 +147,9 @@ if (APPLE)
   )
 
   find_package(ZLIB REQUIRED)
-  target_link_libraries(${PACKAGE_NAME} ${ZLIB_LIBRARIES} PRIVATE )
+  target_link_libraries(${PACKAGE_NAME}
+		PRIVATE ${ZLIB_LIBRARIES}
+		)
 
   # For Apple build, we need to copy the "data" directory contents to the build
   # directory, so that the packager can pick them up.
