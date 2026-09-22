@@ -1,0 +1,199 @@
+#!/usr/bin/env bash
+#
+# Upload .tar.gz and .xml artifacts to Cloudsmith using FILES format.
+#
+
+set -euo pipefail
+
+PROD_REPO=${CLOUDSMITH_PROD_REPO:-'@CLOUDSMITH_USER@/@CLOUDSMITH_BASE_REPOSITORY@-@PROD@'}
+BETA_REPO=${CLOUDSMITH_BETA_REPO:-'@CLOUDSMITH_USER@/@CLOUDSMITH_BASE_REPOSITORY@-@BETA@'}
+ALPHA_REPO=${CLOUDSMITH_ALPHA_REPO:-'@CLOUDSMITH_USER@/@CLOUDSMITH_BASE_REPOSITORY@-@ALPHA@'}
+
+LOCAL_BUILD=false
+PKG_EXT_DEFAULT_DEB='deb'
+PKG_EXT_DEFAULT_EXE='exe'
+
+if [ "${CIRCLECI:-}" != "" ]; then
+    BUILD_ID=${CIRCLE_BUILD_NUM:-1}
+    BUILD_DIR="$HOME/project/build"
+    BUILD_BRANCH=${CIRCLE_BRANCH:-""}
+    BUILD_TAG=${CIRCLE_TAG:-""}
+    PKG_EXT=${CLOUDSMITH_PKG_EXT:-$PKG_EXT_DEFAULT_DEB}
+elif [ "${TRAVIS:-}" != "" ]; then
+    BUILD_ID=${TRAVIS_BUILD_NUM:-1}
+    BUILD_DIR="$TRAVIS_BUILD_DIR/build"
+    BUILD_BRANCH=${TRAVIS_BRANCH:-""}
+    BUILD_TAG=${TRAVIS_TAG:-""}
+    [ "$BUILD_BRANCH" = "$BUILD_TAG" ] && BUILD_BRANCH=""
+    PKG_EXT=${CLOUDSMITH_PKG_EXT:-$PKG_EXT_DEFAULT_DEB}
+elif [ "${APPVEYOR:-}" != "" ]; then
+    BUILD_ID=${APPVEYOR_BUILD_NUMBER:-1}
+    BUILD_DIR="$(pwd)"
+    BUILD_BRANCH=${APPVEYOR_REPO_BRANCH:-""}
+    BUILD_TAG=${APPVEYOR_REPO_TAG_NAME:-""}
+    PKG_EXT=${CLOUDSMITH_PKG_EXT:-$PKG_EXT_DEFAULT_EXE}
+else
+    BUILD_ID=${CIRCLE_BUILD_NUM:-1}
+    BUILD_DIR="."
+    BUILD_BRANCH=${CIRCLE_BRANCH:-""}
+    BUILD_TAG=${CIRCLE_TAG:-""}
+    PKG_EXT=${CLOUDSMITH_PKG_EXT:-$PKG_EXT_DEFAULT_DEB}
+    LOCAL_BUILD=true
+fi
+
+if [ -z "${CLOUDSMITH_API_KEY:-}" ] && [ "$LOCAL_BUILD" = false ]; then
+    echo "Cannot deploy to Cloudsmith, missing \$CLOUDSMITH_API_KEY"
+    exit 0
+fi
+
+install_cloudsmith_cli() {
+    if [ "${DEPLOY_USE_ORB:-}" = "true" ]; then
+        return
+    fi
+
+    if command -v cloudsmith >/dev/null 2>&1; then
+        return
+    fi
+
+    if command -v pyenv >/dev/null 2>&1; then
+        python3 -m pip install --user cloudsmith-cli
+    elif [ -d "$HOME/cs-venv" ]; then
+        # shellcheck disable=SC1090
+        source "$HOME/cs-venv/bin/activate"
+        python -m pip install cloudsmith-cli
+    elif command -v dnf >/dev/null 2>&1; then
+        sudo dnf -y install python3-pip python3-setuptools
+        sudo python3 -m pip install -q cloudsmith-cli
+    elif command -v apt-get >/dev/null 2>&1; then
+        sudo apt-get update
+        sudo apt-get install -y python3-pip python3-setuptools
+        sudo python3 -m pip install -q cloudsmith-cli
+    fi
+}
+
+if [ "${CIRCLECI:-}" != "" ] || [ "${TRAVIS:-}" != "" ]; then
+    install_cloudsmith_cli
+fi
+
+commit=$(git rev-parse --short=7 HEAD 2>/dev/null || echo "unknown")
+tag=$(git tag --contains HEAD 2>/dev/null || echo "")
+
+xml=$(ls "$BUILD_DIR"/*.xml)
+tarball=$(ls "$BUILD_DIR"/*.tar.gz)
+tarball_basename=${tarball##*/}
+
+source "$BUILD_DIR/pkg_version.sh"
+
+if [ -n "${OCPN_TARGET:-}" ]; then
+    tarball_name=@PACKAGE_NAME@-@PACKAGE_VERSION@-${PKG_TARGET}-@COMPOUND_ARCH_DASH@@PKG_TARGET_WX_VER@@PKG_BUILD_GTK@-${PKG_TARGET_VERSION}-${OCPN_TARGET}-tarball
+else
+    tarball_name=@PACKAGE_NAME@-@PACKAGE_VERSION@-${PKG_TARGET}-@COMPOUND_ARCH_DASH@@PKG_TARGET_WX_VER@@PKG_BUILD_GTK@-${PKG_TARGET_VERSION}-tarball
+fi
+
+pkg=$(ls "$BUILD_DIR"/*.${PKG_EXT} 2>/dev/null || echo "")
+
+[ -z "$BUILD_TAG" ] && [ -n "$tag" ] && BUILD_TAG="$tag"
+[ -z "$BUILD_BRANCH" ] && BUILD_BRANCH="master"
+
+BUILD_BRANCH_LOWER=$(echo "$BUILD_BRANCH" | tr 'A-Z' 'a-z')
+
+if [ "$BUILD_BRANCH_LOWER" = "master" ]; then
+    if [ -n "$BUILD_TAG" ]; then
+        VERSION="$BUILD_TAG"
+        REPO="$PROD_REPO"
+    else
+        VERSION="@PROJECT_VERSION@+${BUILD_ID}.${commit}"
+        REPO="$BETA_REPO"
+    fi
+else
+    if [ -n "$BUILD_TAG" ]; then
+        VERSION="$BUILD_TAG"
+        REPO="$BETA_REPO"
+    else
+        VERSION="@PROJECT_VERSION@+${BUILD_ID}.${commit}"
+        REPO="$ALPHA_REPO"
+    fi
+fi
+
+update_xml_metadata() {
+    local xml_file=$1
+    if [ "${APPVEYOR:-}" != "" ] || [ "$LOCAL_BUILD" = true ]; then
+        while IFS= read -r line; do
+            line=${line//--pkg_repo--/$REPO}
+            line=${line//--name--/$tarball_name}
+            line=${line//--version--/$VERSION}
+            line=${line//--filename--/$tarball_basename}
+            echo "$line"
+        done < "$xml_file" > "$xml_file.tmp"
+        mv "$xml_file.tmp" "$xml_file"
+    else
+        sudo sed -i -e "s|--pkg_repo--|$REPO|" \
+                    -e "s|--name--|$tarball_name|" \
+                    -e "s|--version--|$VERSION|" \
+                    -e "s|--filename--|$tarball_basename|" "$xml_file"
+    fi
+}
+
+update_xml_metadata "$xml"
+
+cur_dir=$(pwd)
+gunzip -f "$tarball"
+cd "$BUILD_DIR"
+tarball_tar=$(ls *.tar)
+cp "$xml" metadata.xml
+
+if [ "${TRAVIS:-}" != "" ] || [ "${CIRCLECI:-}" != "" ] || [ -n "${LOCAL_DEPLOY:-}" ]; then
+    mkdir build_tar
+    cp "$tarball_tar" build_tar/
+    cd build_tar
+    tar -xf "$tarball_tar"
+    rm "$tarball_tar"
+    rm -rf root
+    cp ../metadata.xml .
+    tar -cf build_tarfile.tar *
+    mv build_tarfile.tar ../"$tarball_tar"
+    cd ..
+    rm -rf build_tar
+else
+    tar -rf "$tarball_tar" metadata.xml
+fi
+
+gzip -f "$tarball_tar"
+cd "$cur_dir"
+
+have_any() { [ $# -gt 0 ]; }
+
+if [ -n "${LOCAL_DEPLOY:-}" ]; then
+    if [ -d "/home/circleci/circleci-output" ]; then
+        sudo cp "$BUILD_DIR"/*.gz ~/circleci-output
+        if have_any "$BUILD_DIR"/*.deb; then
+            sudo cp "$BUILD_DIR"/*.deb ~/circleci-output
+        elif have_any "$BUILD_DIR"/*.exe; then
+            sudo cp "$BUILD_DIR"/*.exe ~/circleci-output
+        fi
+    fi
+elif [ "$LOCAL_BUILD" = false ]; then
+    if [ "${CIRCLE_PROJECT_USERNAME:-}" = "${CIRCLE_USERNAME:-}" ] || \
+       { [ -n "${collab_users:-}" ] && [ -n "${git_user:-}" ] && [[ "$collab_users" =~ $git_user ]]; }; then
+
+        cloudsmith push files "$REPO" "$xml" \
+            --republish --no-wait-for-sync \
+            --name @PACKAGE_NAME@-metadata \
+            --version "$VERSION" \
+            --summary "@PACKAGE@ opencpn plugin metadata"
+
+        cloudsmith push files "$REPO" "$tarball" \
+            --republish --no-wait-for-sync \
+            --name "$tarball_name" \
+            --version "$VERSION" \
+            --summary "@PACKAGE@ opencpn plugin tarball"
+
+        if [ "$PKG_EXT" != "gz" ] && [ -n "$pkg" ]; then
+            cloudsmith push files "$REPO" "$pkg" \
+                --republish --no-wait-for-sync \
+                --name "opencpn-package-@PACKAGE@-${VERSION}.${PKG_EXT}" \
+                --version "$VERSION" \
+                --summary "@PACKAGE@ installer package"
+        fi
+    fi
+fi

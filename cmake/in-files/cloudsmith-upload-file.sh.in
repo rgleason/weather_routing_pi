@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+
+#
+# Upload the .tar.gz and .xml artifacts to Cloudsmith using the FILES format.
+# Raw is not available on the Core (Free) plan used for open‑source repos.
+#
+
+set -xe
+
+PROD_REPO=${CLOUDSMITH_PROD_REPO:-'@CLOUDSMITH_USER@/@CLOUDSMITH_BASE_REPOSITORY@-@PROD@'}
+BETA_REPO=${CLOUDSMITH_BETA_REPO:-'@CLOUDSMITH_USER@/@CLOUDSMITH_BASE_REPOSITORY@-@BETA@'}
+ALPHA_REPO=${CLOUDSMITH_ALPHA_REPO:-'@CLOUDSMITH_USER@/@CLOUDSMITH_BASE_REPOSITORY@-@ALPHA@'}
+
+LOCAL_BUILD=false
+
+if [ "$CIRCLECI" ]; then
+    BUILD_ID=${CIRCLE_BUILD_NUM:-1}
+    BUILD_DIR=$HOME/project/build
+    BUILD_BRANCH=$CIRCLE_BRANCH
+    BUILD_TAG=$CIRCLE_TAG
+    PKG_EXT=${CLOUDSMITH_PKG_EXT:-'deb'}
+elif [ "$TRAVIS" ]; then
+    BUILD_ID=${TRAVIS_BUILD_NUM:-1}
+    BUILD_DIR=$TRAVIS_BUILD_DIR/build
+    BUILD_BRANCH=$TRAVIS_BRANCH
+    BUILD_TAG=$TRAVIS_TAG
+    if [ "$BUILD_BRANCH" = "$BUILD_TAG" ]; then BUILD_BRANCH=""; fi
+    PKG_EXT=${CLOUDSMITH_PKG_EXT:-'deb'}
+elif [ "$APPVEYOR" ]; then
+    BUILD_ID=${APPVEYOR_BUILD_NUMBER:-1}
+    BUILD_DIR=$(pwd)
+    BUILD_BRANCH=$APPVEYOR_REPO_BRANCH
+    BUILD_TAG=$APPVEYOR_REPO_TAG_NAME
+    PKG_EXT=${CLOUDSMITH_PKG_EXT:-'exe'}
+else
+    BUILD_ID=${CIRCLE_BUILD_NUM:-1}
+    BUILD_DIR=.
+    BUILD_BRANCH=$CIRCLE_BRANCH
+    BUILD_TAG=$CIRCLE_TAG
+    PKG_EXT=${CLOUDSMITH_PKG_EXT:-'deb'}
+    LOCAL_BUILD=true
+fi
+
+set +x
+if [ -z "$CLOUDSMITH_API_KEY" ] && [ "$LOCAL_BUILD" = "false" ]; then
+    echo 'Cannot deploy to Cloudsmith, missing $CLOUDSMITH_API_KEY'
+    exit 0
+fi
+set -x
+
+# Install cloudsmith-cli if needed
+if [ "$CIRCLECI" ] || [ "$TRAVIS" ]; then
+    if [ "$DEPLOY_USE_ORB" != "true" ]; then
+        if pyenv versions >/dev/null 2>&1; then
+            sudo python3 -m pip install cloudsmith-cli
+        elif test -d $HOME/cs-venv; then
+            source $HOME/cs-venv/bin/activate
+            python -m pip install cloudsmith-cli
+        elif dnf --version >/dev/null 2>&1; then
+            sudo dnf -y install python3-pip python3-setuptools
+            sudo python3 -m pip install cloudsmith-cli
+        elif apt-get --version >/dev/null 2>&1; then
+            sudo apt update
+            sudo apt install -y python3-pip python3-setuptools
+            sudo python3 -m pip install cloudsmith-cli
+        fi
+    fi
+fi
+
+commit=$(git rev-parse --short=7 HEAD) || commit="unknown"
+tag=$(git tag --contains HEAD)
+
+xml=$(ls $BUILD_DIR/*.xml)
+tarball=$(ls $BUILD_DIR/*.tar.gz)
+tarball_basename=${tarball##*/}
+
+source $BUILD_DIR/pkg_version.sh
+
+if [ -n "${OCPN_TARGET}" ]; then
+    tarball_name=@PACKAGE_NAME@-@PACKAGE_VERSION@-${PKG_TARGET}-@COMPOUND_ARCH_DASH@@PKG_TARGET_WX_VER@@PKG_BUILD_GTK@-${PKG_TARGET_VERSION}-${OCPN_TARGET}-tarball
+else
+    tarball_name=@PACKAGE_NAME@-@PACKAGE_VERSION@-${PKG_TARGET}-@COMPOUND_ARCH_DASH@@PKG_TARGET_WX_VER@@PKG_BUILD_GTK@-${PKG_TARGET_VERSION}-tarball
+fi
+
+pkg=$(ls $BUILD_DIR/*.${PKG_EXT} 2>/dev/null || echo "")
+
+# Determine version and repo
+if [ "$BUILD_TAG" = "" ] && [ "$tag" != "" ]; then BUILD_TAG=$tag; fi
+if [ "$BUILD_BRANCH" = "" ]; then BUILD_BRANCH="master"; fi
+
+BUILD_BRANCH_LOWER=$(echo $BUILD_BRANCH | tr '[A-Z]' '[a-z]')
+
+if [ "$BUILD_BRANCH_LOWER" = "master" ]; then
+    if [ -n "$BUILD_TAG" ]; then
+        VERSION=$BUILD_TAG
+        REPO="$PROD_REPO"
+    else
+        VERSION="@PROJECT_VERSION@+${BUILD_ID}.${commit}"
+        REPO="$BETA_REPO"
+    fi
+else
+    if [ -n "$BUILD_TAG" ]; then
+        VERSION=$BUILD_TAG
+        REPO="$BETA_REPO"
+    else
+        VERSION="@PROJECT_VERSION@+${BUILD_ID}.${commit}"
+        REPO="$ALPHA_REPO"
+    fi
+fi
+
+# Substitute metadata variables
+if [ "$APPVEYOR" ] || [ "$LOCAL_BUILD" = true ]; then
+    while read line; do
+        line=${line//--pkg_repo--/$REPO}
+        line=${line//--name--/$tarball_name}
+        line=${line//--version--/$VERSION}
+        line=${line//--filename--/$tarball_basename}
+        echo $line
+    done < "$xml" > xml.tmp && cp xml.tmp $xml && rm xml.tmp
+else
+    sudo sed -i -e "s|--pkg_repo--|$REPO|"  $xml
+    sudo sed -i -e "s|--name--|$tarball_name|" $xml
+    sudo sed -i -e "s|--version--|$VERSION|" $xml
+    sudo sed -i -e "s|--filename--|$tarball_basename|" $xml
+fi
+
+# Repack tarball with metadata.xml
+gunzip -f $tarball
+cd "$BUILD_DIR"
+tarball_tar=$(ls *.tar)
+cp $xml metadata.xml
+
+if [ "$TRAVIS" ] || [ "$CIRCLECI" ] || [ ! -z ${LOCAL_DEPLOY+x} ]; then
+    mkdir build_tar
+    cp $tarball_tar build_tar/.
+    cd build_tar
+    tar -xf $tarball_tar
+    rm *.tar
+    rm -rf root
+    cp ../metadata.xml .
+    tar -cf build_tarfile.tar *
+    cp build_tarfile.tar ../$tarball_tar
+    cd ..
+    rm -rf build_tar
+else
+    tar -rf $tarball_tar metadata.xml
+fi
+
+gzip -f $tarball_tar
+cd "$cur_dir"
+
+# Upload using FILES format
+if [ "$LOCAL_BUILD" = false ]; then
+    if [ "$CIRCLE_PROJECT_USERNAME" = "$CIRCLE_USERNAME" ] || [[ -n "${collab_users+1}" && "$collab_users" =~ "$git_user" ]]; then
+
+        cloudsmith push files $REPO $xml \
+            --republish --no-wait-for-sync \
+            --name @PACKAGE_NAME@-metadata \
+            --version ${VERSION} \
+            --summary "@PACKAGE@ opencpn plugin metadata"
+
+        cloudsmith push files $REPO $tarball \
+            --republish --no-wait-for-sync \
+            --name $tarball_name \
+            --version ${VERSION} \
+            --summary "@PACKAGE@ opencpn plugin tarball"
+
+        if [ "${PKG_EXT}" != "gz" ] && [ "$pkg" != "" ]; then
+            cloudsmith push files $REPO $pkg \
+                --republish --no-wait-for-sync \
+                --name opencpn-package-@PACKAGE@-${VERSION}.${PKG_EXT} \
+                --version ${VERSION} \
+                --summary "@PACKAGE@ installer package"
+        fi
+    fi
+fi
