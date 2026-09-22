@@ -142,7 +142,7 @@ call "%VCPKG_ROOT%\bootstrap-vcpkg.bat"
 call :check_error "vcpkg bootstrap failed"
 
 echo Installing gettext
-"%VCPKG_ROOT%\vcpkg" install gettext:x86-windows
+"%VCPKG_ROOT%\vcpkg" install gettext:x86-windows --classic
 call :check_error "Failed to install gettext via vcpkg"
 echo gettext installed
 
