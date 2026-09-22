@@ -1,76 +1,139 @@
 ::
-:: Build the MSVC artifacts
+:: Build the MSVC artifacts for OpenCPN plugins
+:: Supports flexible CONFIGURATION (Release / RelWithDebInfo)
 ::
 
 @echo off
 setlocal
 
+set "CONFIGURATION=RelWithDebInfo"
+
+REM ------------------------------------------------------------
+REM Helper: Fail early if a command fails
+REM ------------------------------------------------------------
+:check_error
+if %ERRORLEVEL% NEQ 0 (
+    echo ERROR: %1
+    exit /b 1
+)
+goto :eof
+
+REM ------------------------------------------------------------
+REM Helper: Fail if a file does not exist
+REM ------------------------------------------------------------
+:require_file
+if not exist "%~1" (
+    echo ERROR: Required file not found: %~1
+    exit /b 1
+)
+goto :eof
+
+
+REM ------------------------------------------------------------
+REM  Setup basic environment
+REM ------------------------------------------------------------
 set "SCRIPTDIR=%~dp0"
 set "GIT_HOME=C:\Program Files\Git"
+
+REM Default to RelWithDebInfo if not provided
 if "%CONFIGURATION%"=="" set "CONFIGURATION=RelWithDebInfo"
 
 set "wx_vers=wx%WX_VER%"
-echo Building %wx_vers%
-echo Building with MSVC %MSVC_VERSION%
+echo Building %wx_vers% using MSVC %MSVC_VERSION%
+echo Build configuration: %CONFIGURATION%
 
-rem Base PATH setup
+REM Add local tools to PATH
 set "PATH=%SCRIPTDIR%.local\bin;%PATH%"
 echo SCRIPTDIR: %SCRIPTDIR%
 dir "%SCRIPTDIR%"
 dir "%SCRIPTDIR%.."
 dir "%SCRIPTDIR%..\msvc"
 
-rem wx + deps
+REM ------------------------------------------------------------
+REM  wxWidgets + dependency setup
+REM ------------------------------------------------------------
 call "%SCRIPTDIR%..\msvc\win_deps.bat" %wx_vers%
+
+REM Add CMake and wx-config to PATH
 set "PATH=%SCRIPTDIR%.local\bin;%PATH%;C:\Program Files\CMake\bin"
 call "%SCRIPTDIR%..\cache\wx-config.bat"
 
+REM Extra PATH from wx-config
 set "PATH=%EXTRA_PATH%;%PATH%"
 echo EXTRA_PATH: %EXTRA_PATH%
-echo USING wxWidgets_LIB_DIR: %wxWidgets_LIB_DIR%
-echo USING wxWidgets_ROOT_DIR: %wxWidgets_ROOT_DIR%
-echo USING OCPN_TARGET_TUPLE: %TARGET_TUPLE%
+echo wxWidgets_LIB_DIR: %wxWidgets_LIB_DIR%
+echo wxWidgets_ROOT_DIR: %wxWidgets_ROOT_DIR%
+echo OCPN_TARGET_TUPLE: %TARGET_TUPLE%
 
-rem Ensure MSVC environment
+REM ------------------------------------------------------------
+REM  Ensure MSVC environment is active
+REM ------------------------------------------------------------
 nmake /? >nul 2>&1
 if errorlevel 1 (
   set "VS_HOME=C:\Program Files\Microsoft Visual Studio\2022"
   call "%VS_HOME%\Community\VC\Auxiliary\Build\vcvars32.bat"
 )
 
-rem Submodules
+REM ------------------------------------------------------------
+REM  Update required submodules
+REM ------------------------------------------------------------
 git submodule update --init opencpn-libs
-
 dir
 
-rem Fresh build dir
+REM ------------------------------------------------------------
+REM  Create fresh build directory
+REM ------------------------------------------------------------
 if exist build (rmdir /s /q build)
 mkdir build
 cd build
 dir
 
-rem OpenCPN + NSIS toolchain
+REM ------------------------------------------------------------
+REM Download OpenCPN Windows toolchain + NSIS
+REM ------------------------------------------------------------
+echo Downloading opencpn.lib
 wget https://sourceforge.net/projects/opencpnplugins/files/opencpn.lib
+call :check_error "Failed to download opencpn.lib"
+call :require_file "opencpn.lib"
+
+echo Downloading OpenCPN_buildwin
 wget https://download.opencpn.org/s/oibxM3kzfzKcSc3/download/OpenCPN_buildwin-4.99a.7z
+call :check_error "Failed to download OpenCPN_buildwin"
+call :require_file "OpenCPN_buildwin-4.99a.7z"
+
+echo Extracting OpenCPN_buildwin
 7z x -y OpenCPN_buildwin-4.99a.7z -o..\buildwin
+call :check_error "Failed to extract OpenCPN_buildwin"
+
+echo Downloading NSIS installer
 wget https://download.opencpn.org/s/54HsBDLNzRZLL6i/download/nsis-3.04-setup.exe
+call :check_error "Failed to download NSIS"
+call :require_file "nsis-3.04-setup.exe"
+
+echo Installing NSIS
 nsis-3.04-setup.exe /S
+call :check_error "Failed to install NSIS"
 
-echo Check if poedit has been installed
+echo Checking for Poedit installation
 poedit -version
-echo Done check
+echo Poedit check complete
 
-rem vcpkg + gettext
-echo Install vcpkg
+REM ------------------------------------------------------------
+REM  Install vcpkg + gettext
+REM ------------------------------------------------------------
+echo Installing vcpkg
 set "VCPKG_ROOT=%CD%\vcpkg"
 git clone https://github.com/microsoft/vcpkg "%VCPKG_ROOT%"
 call "%VCPKG_ROOT%\bootstrap-vcpkg.bat"
 
-echo Install gettext
+echo Installing gettext
 "%VCPKG_ROOT%\vcpkg" install gettext:x86-windows
-echo Gettext installed.
+echo gettext installed
 
-echo Create build environment
+REM ------------------------------------------------------------
+REM  Configure CMake project
+REM ------------------------------------------------------------
+echo Configuring CMake project
 
 if "%MSVC_VERSION%"=="2019" (
   cmake -T v141_xp -G "Visual Studio 16 2019" ^
@@ -92,15 +155,92 @@ if "%MSVC_VERSION%"=="2019" (
     ..
 )
 
-echo Build for Windows
-
-rem Build everything
+REM ------------------------------------------------------------
+REM  Build plugin + install staging directory
+REM ------------------------------------------------------------
+echo Building plugin
 cmake --build . --config %CONFIGURATION%
 
-rem Install into staging directory for CPack
+echo Installing plugin into staging directory
 cmake --build . --target INSTALL --config %CONFIGURATION%
 
-rem Run CPack to generate the plugin package
+REM ------------------------------------------------------------
+REM  Run CPack to generate TGZ package
+REM ------------------------------------------------------------
+echo Running CPack
 cpack -G TGZ
+
+REM ------------------------------------------------------------
+REM  Locate CPack output and copy tarball to top-level build directory
+REM ------------------------------------------------------------
+echo Searching for CPack TGZ output
+set "TARBALL_PATH="
+
+for /r "%CD%\_CPack_Packages" %%f in (*.tar.gz) do (
+    echo Found package: %%f
+    set "TARBALL_PATH=%%f"
+)
+
+if "%TARBALL_PATH%"=="" (
+    echo ERROR: No TGZ package found under _CPack_Packages.
+    exit /b 1
+)
+
+copy "%TARBALL_PATH%" "%CD%"
+echo Copied TGZ package to build directory.
+
+
+REM ------------------------------------------------------------
+REM  Automatically detect DLL configuration (Release / RelWithDebInfo / Debug)
+REM ------------------------------------------------------------
+echo Detecting DLL location...
+
+set "DLL_PATH="
+set "DLL_CONFIG="
+
+for %%C in (Release RelWithDebInfo Debug MinSizeRel) do (
+    if exist "%CD%\%%C\weather_routing_pi.dll" (
+        set "DLL_PATH=%CD%\%%C\weather_routing_pi.dll"
+        set "DLL_CONFIG=%%C"
+    )
+)
+
+if "%DLL_PATH%"=="" (
+    echo ERROR: No DLL found in any configuration directory.
+    echo Searched: Release, RelWithDebInfo, Debug, MinSizeRel
+    exit /b 1
+)
+
+echo Found DLL in configuration: %DLL_CONFIG%
+echo DLL path: %DLL_PATH%
+
+copy "%DLL_PATH%" "%CD%"
+echo DLL copied to build directory.
+
+REM ------------------------------------------------------------
+REM Summary of produced artifacts
+REM ------------------------------------------------------------
+echo.
+echo ------------------------------------------------------------
+echo Build Summary
+echo ------------------------------------------------------------
+
+if exist "%CD%\weather_routing_pi.dll" (
+    echo DLL: weather_routing_pi.dll
+) else (
+    echo DLL: NOT FOUND
+)
+
+for %%f in ("%CD%\weather_routing_pi-*.xml") do (
+    echo XML: %%~nxf
+)
+
+for %%f in ("%CD%\weather_routing_pi-*.tar.gz") do (
+    echo TGZ: %%~nxf
+)
+
+echo ------------------------------------------------------------
+echo Summary complete.
+echo.
 
 endlocal

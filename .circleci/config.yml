@@ -21,35 +21,36 @@ workflows:
 ## ----------------------
 ## OpenCPN 5.8 Plugins  (Also work in 5.10)
 ## ----------------------
-          - build-android-arm64:
-              <<: *std-filters
-          - build-android-armhf:
-                <<: *std-filters
-          - build-flatpak-aarch64-2208:
-              <<: *std-filters
-          - build-flatpak-x86-2208:
-              <<: *std-filters
-          - build-flatpak-aarch64-2408:
-              <<: *std-filters
-          - build-flatpak-x86-2408:
-              <<: *std-filters
+         # stop CircleCI from calling the Android jobs.
+         # - build-android-arm64:
+         #     <<: *std-filters
+         # - build-android-armhf:
+         #       <<: *std-filters
+#          - build-flatpak-aarch64-2208:
+#              <<: *std-filters
+#          - build-flatpak-x86-2208:
+#              <<: *std-filters
+#          - build-flatpak-aarch64-2408:
+#              <<: *std-filters
+#          - build-flatpak-x86-2408:
+#              <<: *std-filters
           - build-msvc-wx32-2022:
               <<: *std-filters
-          - build-debian-armhf-13-trixie:
-              <<: *std-filters
-          - build-debian-arm64-13-trixie:
-              <<: *std-filters
-          - build-debian-x86_64-13-trixie:
-              <<: *std-filters
-          - build-debian-arm64-12-bookworm:
-              <<: *std-filters
-          - build-debian-armhf-12-bookworm:
-              <<: *std-filters
-          - build-debian-x86_64-12-bookworm:
-              <<: *std-filters
+#          - build-debian-armhf-13-trixie:
+#              <<: *std-filters
+#          - build-debian-arm64-13-trixie:
+#              <<: *std-filters
+#          - build-debian-x86_64-13-trixie:
+#              <<: *std-filters
+#          - build-debian-arm64-12-bookworm:
+#              <<: *std-filters
+#          - build-debian-armhf-12-bookworm:
+#              <<: *std-filters
+#          - build-debian-x86_64-12-bookworm:
+#              <<: *std-filters
 ## KEEP needed for Jammy with wx32
-          - build-ubuntu-x86_64-2204-jammy:
-              <<: *std-filters
+#          - build-ubuntu-x86_64-2204-jammy:
+#              <<: *std-filters
           - build-macos-universal:
               <<: *std-filters
 
@@ -204,6 +205,9 @@ jobs:
             privileged: False
             shell: cmd.exe
             command: ci\circleci-build-msvc.bat
+        - run:
+            shell: bash.exe
+            command: ls -R build            
         - deploy-code:
             deploy_use_orb: false
     build-flatpak-aarch64-2208:

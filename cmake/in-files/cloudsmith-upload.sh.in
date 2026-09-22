@@ -150,6 +150,11 @@ gzip -f $tarball_tar
 
 cur_dir=$(pwd)
 
+if [ -z "$tarball" ]; then
+    echo "MSVC build produced no tarball; skipping Cloudsmith upload."
+    exit 0
+fi
+
 # Upload using FILES format
 if [ "$LOCAL_BUILD" = false ]; then
     if [ "$CIRCLE_PROJECT_USERNAME" = "$CIRCLE_USERNAME" ] || [[ -n "${collab_users+1}" && "$collab_users" =~ "$git_user" ]]; then
