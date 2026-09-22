@@ -84,7 +84,6 @@ parameters:
     type: string
     default: CLOUDSMITH_API_KEY
     
-parameters:
   plugin_version:
     type: string
     default: "1.17.12.0"
@@ -93,7 +92,6 @@ parameters:
 # Validate Parameters   
 # ------------------------------------------------------------
    
-parameters:
   run_validate:
     type: boolean
     default: false    
@@ -102,7 +100,6 @@ parameters:
 # Build and Deploy Parameters
 # CircleCI treats 1 as truthy and 0 as falsy, so you can map directly:
 # ------------------------------------------------------------
-parameters:
 
   # debian13-x86_64
   build_debian_x86_64_13:
