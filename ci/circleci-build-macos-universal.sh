@@ -16,6 +16,7 @@ fi
 rm -rf build && mkdir build
 exec > >(tee build/build.log) 2>&1
 
+export PLUGIN_VERSION="${PLUGIN_VERSION:-1.17.12.0}"
 export MACOSX_DEPLOYMENT_TARGET=10.10
 export OPENSSL_ROOT_DIR='/usr/local'
 

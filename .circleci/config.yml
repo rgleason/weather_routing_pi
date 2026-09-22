@@ -4,6 +4,31 @@ version: 2.1
 # explicitly approved operation and is intentionally absent from this file.
 
 # ---------------------------------------------------------
+# Build and Deploy Matrix
+# ---------------------------------------------------------
+
+matrix:
+  debian_x86_64_13:     { build: 1, deploy: 1 }
+  debian_x86_64_12:     { build: 0, deploy: 0 }
+  debian_arm64_12:      { build: 0, deploy: 0 }
+  debian_arm64_13:      { build: 0, deploy: 0 }
+  debian_armhf_13:      { build: 0, deploy: 0 }
+
+  ubuntu_x86_64_2204:   { build: 1, deploy: 1 }
+  ubuntu_x86_64_2404:   { build: 1, deploy: 0 }
+
+  flatpak_x86_2408:     { build: 1, deploy: 1 }
+  flatpak_aarch64_2408: { build: 0, deploy: 0 }
+
+  macos_universal:      { build: 1, deploy: 1 }
+
+  msvc_wx32_2022:       { build: 1, deploy: 1 }
+
+  android_arm64:        { build: 0, deploy: 0 }
+  android_armhf:        { build: 0, deploy: 0 }
+
+
+# ---------------------------------------------------------
 # Win/server-2022 executor, images, env, 
 # shell support (bash.exe, powershell.exe, cmd.exe)
 # ----------------------------------------------------------
@@ -58,6 +83,79 @@ parameters:
   cloudsmith_api_key:
     type: string
     default: CLOUDSMITH_API_KEY
+    
+parameters:
+  plugin_version:
+    type: string
+    default: "1.17.12.0"
+    
+# ------------------------------------------------------------
+# Validate Parameters   
+# ------------------------------------------------------------
+   
+parameters:
+  run_validate:
+    type: boolean
+    default: false    
+
+# ------------------------------------------------------------
+# Build and Deploy Parameters
+# CircleCI treats 1 as truthy and 0 as falsy, so you can map directly:
+# ------------------------------------------------------------
+parameters:
+  # debian13-x86_64
+  build_debian_x86_64_13:   { type: boolean, default: << pipeline.parameters.matrix.debian_x86_64_13.build >> }
+  deploy_debian_x86_64_13:  { type: boolean, default: << pipeline.parameters.matrix.debian_x86_64_13.deploy >> }
+
+  # debian12-x86_64
+  build_debian_x86_64_12:   { type: boolean, default: << pipeline.parameters.matrix.debian_x86_64_12.build >> }
+  deploy_debian_x86_64_12:  { type: boolean, default: << pipeline.parameters.matrix.debian_x86_64_12.deploy >> }
+
+  # debian12-arm64
+  build_debian_arm64_12:    { type: boolean, default: << pipeline.parameters.matrix.debian_arm64_12.build >> }
+  deploy_debian_arm64_12:   { type: boolean, default: << pipeline.parameters.matrix.debian_arm64_12.deploy >> }
+
+  # debian13-arm64
+  build_debian_arm64_13:    { type: boolean, default: << pipeline.parameters.matrix.debian_arm64_13.build >> }
+  deploy_debian_arm64_13:   { type: boolean, default: << pipeline.parameters.matrix.debian_arm64_13.deploy >> }
+
+  # debian13-armhf
+  build_debian_armhf_13:    { type: boolean, default: << pipeline.parameters.matrix.debian_armhf_13.build >> }
+  deploy_debian_armhf_13:   { type: boolean, default: << pipeline.parameters.matrix.debian_armhf_13.deploy >> }
+
+  # ubuntu22.04-x86_64
+  build_ubuntu_x86_64_2204: { type: boolean, default: << pipeline.parameters.matrix.ubuntu_x86_64_2204.build >> }
+  deploy_ubuntu_x86_64_2204:{ type: boolean, default: << pipeline.parameters.matrix.ubuntu_x86_64_2204.deploy >> }
+
+  # ubuntu24.04-x86_64
+  build_ubuntu_x86_64_2404: { type: boolean, default: << pipeline.parameters.matrix.ubuntu_x86_64_2404.build >> }
+  deploy_ubuntu_x86_64_2404:{ type: boolean, default: << pipeline.parameters.matrix.ubuntu_x86_64_2404.deploy >> }
+
+  # flatpak25.08-x86_64
+  build_flatpak_x86_2408:   { type: boolean, default: << pipeline.parameters.matrix.flatpak_x86_2408.build >> }
+  deploy_flatpak_x86_2408:  { type: boolean, default: << pipeline.parameters.matrix.flatpak_x86_2408.deploy >> }
+
+  # flatpak25.08-aarch64
+  build_flatpak_aarch64_2408: { type: boolean, default: << pipeline.parameters.matrix.flatpak_aarch64_2408.build >> }
+  deploy_flatpak_aarch64_2408:{ type: boolean, default: << pipeline.parameters.matrix.flatpak_aarch64_2408.deploy >> }
+
+  # macOS universal
+  build_macos_universal:    { type: boolean, default: << pipeline.parameters.matrix.macos_universal.build >> }
+  deploy_macos_universal:   { type: boolean, default: << pipeline.parameters.matrix.macos_universal.deploy >> }
+
+  # windows-x86 (msvc_wx32_2022)
+  build_msvc_wx32_2022:     { type: boolean, default: << pipeline.parameters.matrix.msvc_wx32_2022.build >> }
+  deploy_msvc_wx32_2022:    { type: boolean, default: << pipeline.parameters.matrix.msvc_wx32_2022.deploy >> }
+
+  # android-arm64
+  build_android_arm64:      { type: boolean, default: << pipeline.parameters.matrix.android_arm64.build >> }
+  deploy_android_arm64:     { type: boolean, default: << pipeline.parameters.matrix.android_arm64.deploy >> }
+
+  # android-armhf
+  build_android_armhf:      { type: boolean, default: << pipeline.parameters.matrix.android_armhf.build >> }
+  deploy_android_armhf:     { type: boolean, default: << pipeline.parameters.matrix.android_armhf.deploy >> }
+
+    
    
 # ------------------------------------------------------------
 # JOBS
@@ -193,6 +291,7 @@ jobs:
       HOMEBREW_NO_AUTO_UPDATE: "1"
       WX_VER: "32"
       CLOUDSMITH_API_KEY: << pipeline.parameters.cloudsmith_api_key >>
+      PLUGIN_VERSION: << pipeline.parameters.plugin_version >>
 
     steps:
       - checkout
@@ -409,11 +508,12 @@ validation-filters: &validation-filters
     ignore: /.*/
     
 # ------------------------------------------------------------
-# WORKFLOWS
+# WORKFLOWS   VALIDATE
 # ------------------------------------------------------------    
 
 workflows:
   validate:
+    when: << pipeline.parameters.run_validate >>
     jobs:
       - linux-catalogue:
           name: debian13-x86_64
@@ -428,6 +528,13 @@ workflows:
           filters: *validation-filters
 
       - linux-catalogue:
+          name: debian12-arm64
+          target: bookworm-arm64
+          image: arm64v8/debian:bookworm
+          resource_class: arm.medium
+          filters: *validation-filters          
+
+      - linux-catalogue:
           name: ubuntu22.04-x86_64
           target: jammy
           image: ubuntu:22.04
@@ -438,13 +545,6 @@ workflows:
           name: ubuntu24.04-x86_64
           target: noble
           image: ubuntu:24.04
-          filters: *validation-filters
-
-      - linux-catalogue:
-          name: debian12-arm64
-          target: bookworm-arm64
-          image: arm64v8/debian:bookworm
-          resource_class: arm.medium
           filters: *validation-filters
 
       - flatpak:
@@ -458,10 +558,10 @@ workflows:
           resource_class: arm.medium
           filters: *validation-filters
 
-      - windows-x86:
+      - macos-universal:
           filters: *validation-filters
 
-      - macos-universal:
+      - windows-x86:
           filters: *validation-filters
 
       - android-arm64:
@@ -473,3 +573,77 @@ workflows:
           name: android-armhf
           resource_class: medium
           filters: *validation-filters
+
+# ------------------------------------------------------------
+# WORKFLOWS  BUILD / DEPLOY
+# ------------------------------------------------------------    
+
+
+workflows:
+  build_and_deploy:
+    jobs:
+      # debian13-x86_64
+      - build-debian-x86_64-13:
+          when: << pipeline.parameters.build_debian_x86_64_13 >>
+      - deploy-debian-x86_64-13:
+          when: << pipeline.parameters.deploy_debian_x86_64_13 >>
+
+      # debian12-x86_64
+      - build-debian-x86_64-12:
+          when: << pipeline.parameters.build_debian_x86_64_12 >>
+      - deploy-debian-x86_64-12:
+          when: << pipeline.parameters.deploy_debian_x86_64_12 >>
+
+      # debian12-arm64
+      - build-debian-arm64-12:
+          when: << pipeline.parameters.build_debian_arm64_12 >>
+      - deploy-debian-arm64-12:
+          when: << pipeline.parameters.deploy_debian_arm64_12 >>
+
+      # ubuntu22.04-x86_64
+      - build-ubuntu-x86_64-2204:
+          when: << pipeline.parameters.build_ubuntu_x86_64_2204 >>
+      - deploy-ubuntu-x86_64-2204:
+          when: << pipeline.parameters.deploy_ubuntu_x86_64_2204 >>
+
+      # ubuntu24.04-x86_64
+      - build-ubuntu-x86_64-2404:
+          when: << pipeline.parameters.build_ubuntu_x86_64_2404 >>
+      - deploy-ubuntu-x86_64-2404:
+          when: << pipeline.parameters.deploy_ubuntu_x86_64_2404 >>
+
+      # flatpak25.08-x86_64
+      - build-flatpak-x86-2408:
+          when: << pipeline.parameters.build_flatpak_x86_2408 >>
+      - deploy-flatpak-x86-2408:
+          when: << pipeline.parameters.deploy_flatpak_x86_2408 >>
+
+      # flatpak25.08-aarch64
+      - build-flatpak-aarch64-2408:
+          when: << pipeline.parameters.build_flatpak_aarch64_2408 >>
+      - deploy-flatpak-aarch64-2408:
+          when: << pipeline.parameters.deploy_flatpak_aarch64_2408 >>
+
+      # macOS universal
+      - build-macos-universal:
+          when: << pipeline.parameters.build_macos_universal >>
+      - deploy-macos-universal:
+          when: << pipeline.parameters.deploy_macos_universal >>
+
+      # windows-x86 (msvc_wx32_2022)
+      - build-msvc-wx32-2022:
+          when: << pipeline.parameters.build_msvc_wx32_2022 >>
+      - deploy-msvc-wx32-2022:
+          when: << pipeline.parameters.deploy_msvc_wx32_2022 >>
+
+      # android-arm64
+      - build-android-arm64:
+          when: << pipeline.parameters.build_android_arm64 >>
+      - deploy-android-arm64:
+          when: << pipeline.parameters.deploy_android_arm64 >>
+
+      # android-armhf
+      - build-android-armhf:
+          when: << pipeline.parameters.build_android_armhf >>
+      - deploy-android-armhf:
+          when: << pipeline.parameters.deploy_android_armhf >>
