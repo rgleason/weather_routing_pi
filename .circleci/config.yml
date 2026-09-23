@@ -169,6 +169,10 @@ jobs:
         steps:
         - checkout
         - run: sudo chmod go+w /usr/local
+        - run:
+            name: Set macOS deployment target
+            command: |
+              export MACOSX_DEPLOYMENT_TARGET=10.15        
 #        - restore_cache:
 #            key: "{{checksum \"build-deps/macos-cache-stamp\"}}\
 #              -{{checksum \"cmake/MacosWxwidgets.cmake\"}}\
@@ -183,6 +187,11 @@ jobs:
             paths:
               - /tmp/local.cache.tar
               - /Users/distiller/project/cache
+        - run:
+            name: Show SDK version
+            command: |
+              xcrun --sdk macosx --show-sdk-version
+              xcrun --sdk macosx --show-sdk-path              
         - run: >
               sh -c "otool -L build/*.dylib"
         - run: >

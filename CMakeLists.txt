@@ -68,6 +68,8 @@ if(COMMAND cmake_policy)
   endif (POLICY CMP0177)
 endif (COMMAND cmake_policy)
 
+set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15")
+
 # set for vscode/vscodium
 set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
 
