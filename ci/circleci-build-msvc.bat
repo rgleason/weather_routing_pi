@@ -139,13 +139,25 @@ REM  Gettext for use with po Internationalization files (MSVC)
 REM ------------------------------------------------------------
 
 echo Downloading native Windows gettext tools
-set GETTEXT_URL=https://github.com/mlocati/gettext-iconv-windows/releases/download/v0.22.5/gettext0.22.5-iconv1.17-win64.zip
+set GETTEXT_URL=https://github.com/mlocati/gettext-iconv-windows/releases/download/v0.22.5/gettext0.22.5-iconv1.17-win64.zip?raw=1
 
-curl -L %GETTEXT_URL% -o gettext.zip
+curl -L -f %GETTEXT_URL% -o gettext.zip || (
+    echo First download attempt failed, retrying...
+    curl -L -f %GETTEXT_URL% -o gettext.zip
+)
 call :check_error "Failed to download gettext tools"
 
-powershell -Command "Expand-Archive -Force gettext.zip -DestinationPath gettext-tools"
-call :check_error "Failed to extract gettext tools"
+for %%A in (gettext.zip) do set GETTEXT_SIZE=%%~zA
+echo Downloaded gettext.zip size: %GETTEXT_SIZE%
+
+if %GETTEXT_SIZE% LSS 1000000 (
+    echo ERROR: Downloaded gettext.zip is too small. GitHub returned an HTML page instead of the binary.
+    type gettext.zip
+    exit /b 1
+)
+
+7z x -y gettext.zip -ogettext-tools
+call :check_error "Failed to extract gettext tools with 7zip"
 
 if not exist "gettext-tools\bin\msgfmt.exe" (
     echo ERROR: msgfmt.exe missing after extracting gettext tools.
@@ -156,7 +168,7 @@ set GETTEXT_BIN=%CD%\gettext-tools\bin
 set PATH=%GETTEXT_BIN%;%PATH%
 
 echo Gettext installed successfully.
-echo GETTEXT_BIN: %GETTEXT_BIN%
+
 
 REM ------------------------------------------------------------
 REM  Configure CMake project
@@ -237,7 +249,16 @@ setlocal enabledelayedexpansion
 set "DLL_PATH="
 set "DLL_CONFIG="
 
-for %%C in (Release RelWithDebInfo Debug MinSizeRel) do (
+for %%C in (
+    Release
+    RelWithDebInfo
+    Debug
+    MinSizeRel
+    x64\Release
+    x64\RelWithDebInfo
+    x64\Debug
+    x64\MinSizeRel
+	) do (
     if exist "%CD%\%%C\weather_routing_pi.dll" (
         set "DLL_PATH=%CD%\%%C\weather_routing_pi.dll"
         set "DLL_CONFIG=%%C"
