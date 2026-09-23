@@ -120,8 +120,10 @@ cmake \
   -DCMAKE_INSTALL_PREFIX=app/files \
   -DBUILD_TYPE_PACKAGE:STRING=tarball \
   -DCMAKE_OSX_DEPLOYMENT_TARGET="$MACOSX_DEPLOYMENT_TARGET" \
-  "/" \
+  -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" \
   ..
+
+
 if [ $? -ne 0 ]; then
     echo "ERROR: cmake configure failed."
     exit 1

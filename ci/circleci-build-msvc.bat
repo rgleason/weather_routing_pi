@@ -135,7 +135,26 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 REM ------------------------------------------------------------
-REM  Install vcpkg + gettext
+REM  Configure gettext tools from buildwin
+REM ------------------------------------------------------------
+set "BUILDWIN_ROOT=%CD%\..\buildwin"
+set "GETTEXT_BIN=%BUILDWIN_ROOT%\gettext\bin"
+
+set "GETTEXT_MSGMERGE_EXECUTABLE=%GETTEXT_BIN%\msgmerge.exe"
+set "GETTEXT_MSGFMT_EXECUTABLE=%GETTEXT_BIN%\msgfmt.exe"
+set "GETTEXT_XGETTEXT_EXECUTABLE=%GETTEXT_BIN%\xgettext.exe"
+
+REM Sanity check
+if not exist "%GETTEXT_MSGFMT_EXECUTABLE%" (
+    echo ERROR: msgfmt.exe missing from buildwin gettext.
+    exit /b 1
+)
+
+echo Using gettext tools from: %GETTEXT_BIN%
+
+
+REM ------------------------------------------------------------
+REM  Install vcpkg (for libs only, NOT gettext tools)
 REM ------------------------------------------------------------
 echo Installing vcpkg
 set "VCPKG_ROOT=%CD%\vcpkg"
@@ -143,27 +162,13 @@ set "VCPKG_ROOT=%CD%\vcpkg"
 git clone https://github.com/microsoft/vcpkg "%VCPKG_ROOT%"
 call :check_error "Failed to clone vcpkg repository"
 
-REM This check must CLOSE properly
-if not exist "%VCPKG_ROOT%\installed\x86-windows\tools\gettext\msgfmt.exe" (
-    echo msgfmt.exe not found yet — continuing to install gettext
-)
-
-
-
 call "%VCPKG_ROOT%\bootstrap-vcpkg.bat"
 call :check_error "vcpkg bootstrap failed"
 
-echo Installing gettext
-call "%VCPKG_ROOT%\vcpkg.exe" install gettext-tools:x86-windows --classic
-call :check_error "Failed to install gettext-tools via vcpkg"
-
-echo gettext installed
-
-REM Verify installation
-if not exist "%VCPKG_ROOT%\installed\x86-windows\tools\gettext\msgfmt.exe" (
-    echo ERROR: msgfmt.exe missing after vcpkg install.
-    exit /b 1
-)
+REM (Optional) install any library dependencies via vcpkg here
+REM Example:
+REM call "%VCPKG_ROOT%\vcpkg.exe" install zlib:x86-windows --classic
+REM call :check_error "Failed to install zlib via vcpkg"
 
 
 REM ------------------------------------------------------------
