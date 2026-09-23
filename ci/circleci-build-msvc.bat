@@ -136,20 +136,18 @@ if %ERRORLEVEL% NEQ 0 (
     echo Poedit found.
 )
 
-
-
 REM ------------------------------------------------------------
 REM  Install vcpkg (for libs)
 REM ------------------------------------------------------------
-echo Installing vcpkg
-set "VCPKG_ROOT=%CD%\vcpkg"
+REM  echo Installing vcpkg
+REM  set "VCPKG_ROOT=%CD%\vcpkg"
 
-git clone https://github.com/microsoft/vcpkg "%VCPKG_ROOT%"
-call :check_error "Failed to clone vcpkg repository"
-set PATH=%VCPKG_ROOT%;%PATH%
+REM git clone https://github.com/microsoft/vcpkg "%VCPKG_ROOT%"
+REM call :check_error "Failed to clone vcpkg repository"
+REM set PATH=%VCPKG_ROOT%;%PATH%
 
-call "%VCPKG_ROOT%\bootstrap-vcpkg.bat"
-call :check_error "vcpkg bootstrap failed"
+REM call "%VCPKG_ROOT%\bootstrap-vcpkg.bat"
+REM call :check_error "vcpkg bootstrap failed"
 
 
 REM ------------------------------------------------------------
@@ -186,6 +184,7 @@ echo Configuring CMake project
 if "%MSVC_VERSION%"=="2019" (
   cmake -T v141_xp -G "Visual Studio 16 2019" ^
     -DCMAKE_GENERATOR_PLATFORM=Win32 ^
+	--config %CONFIGURATION%
     -DCMAKE_BUILD_TYPE=%CONFIGURATION% ^
     -DwxWidgets_LIB_DIR=%wxWidgets_LIB_DIR% ^
     -DwxWidgets_ROOT_DIR=%wxWidgets_ROOT_DIR% ^
@@ -196,6 +195,7 @@ if "%MSVC_VERSION%"=="2019" (
 ) else (
   cmake -A Win32 -G "Visual Studio 17 2022" ^
     -DCMAKE_GENERATOR_PLATFORM=Win32 ^
+	--config %CONFIGURATION%
     -DCMAKE_BUILD_TYPE=%CONFIGURATION% ^
     -DwxWidgets_LIB_DIR=%wxWidgets_LIB_DIR% ^
     -DwxWidgets_ROOT_DIR=%wxWidgets_ROOT_DIR% ^

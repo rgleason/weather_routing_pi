@@ -42,10 +42,10 @@ WX_CONFIG="--prefix=${WX_PREFIX}"
 # ------------------------------------------------------------
 #  Clean stale cached wx bundles
 # ------------------------------------------------------------
-#rm -rf /tmp/wx321_opencpn50_macos1010 \
-#       /tmp/wx315_opencpn50_macos1010 \
-#       /tmp/wx321_opencpn50_macos1015 \
-#       /tmp/wx315_opencpn50_macos1015
+rm -rf /tmp/wx321_opencpn50_macos1010 \
+       /tmp/wx315_opencpn50_macos1010 \
+       /tmp/wx321_opencpn50_macos1015 \
+       /tmp/wx315_opencpn50_macos1015
 
 # ------------------------------------------------------------
 #  Python virtual environment (for i18n, etc.) - no longer used

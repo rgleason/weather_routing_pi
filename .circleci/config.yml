@@ -205,12 +205,11 @@ jobs:
     build-msvc-wx32-2022:
         executor:
             name: win/server-2022
-            shell: bash.exe
         environment:
-        - OCPN_TARGET: MSVC
-        - MSVC_VERSION: 2022
-        - WX_VER: 32
-        - DEPLOY_USE_ORB: false
+          OCPN_TARGET: MSVC
+          MSVC_VERSION: 2022
+          WX_VER: 32
+          DEPLOY_USE_ORB: false
         steps:
         - checkout
         - run:
