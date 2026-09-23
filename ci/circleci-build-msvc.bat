@@ -135,35 +135,63 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 REM ------------------------------------------------------------
-REM  Gettext for use with po Internationalization files (MSVC)
+REM  Download and install gettext tools (future-proof, never breaks)
 REM ------------------------------------------------------------
 
 echo Downloading native Windows gettext tools
-set GETTEXT_URL=https://github.com/mlocati/gettext-iconv-windows/releases/download/v0.22.5/gettext0.22.5-iconv1.17-win64.zip?raw=1
 
-curl -L -f %GETTEXT_URL% -o gettext.zip || (
-    echo First download attempt failed, retrying...
-    curl -L -f %GETTEXT_URL% -o gettext.zip
+REM Known working versions (fallback chain)
+set GETTEXT_URL_1=https://github.com/mlocati/gettext-iconv-windows/releases/download/v0.22.5/gettext-iconv-windows-x86_64-0.22.5.zip
+set GETTEXT_URL_2=https://github.com/mlocati/gettext-iconv-windows/releases/download/v0.22.4/gettext-iconv-windows-x86_64-0.22.4.zip
+set GETTEXT_URL_3=https://github.com/mlocati/gettext-iconv-windows/releases/download/v0.22.3/gettext-iconv-windows-x86_64-0.22.3.zip
+
+REM Try each URL until one succeeds
+for %%U in ("%GETTEXT_URL_1%" "%GETTEXT_URL_2%" "%GETTEXT_URL_3%") do (
+    echo Trying %%~U
+    curl -L -f -o gettext.zip %%~U && goto :gettext_download_ok
 )
-call :check_error "Failed to download gettext tools"
 
+echo ERROR: All gettext download attempts failed.
+exit /b 1
+
+:gettext_download_ok
+REM Validate file size (must be > 1MB)
 for %%A in (gettext.zip) do set GETTEXT_SIZE=%%~zA
 echo Downloaded gettext.zip size: %GETTEXT_SIZE%
 
+if "%GETTEXT_SIZE%"=="" (
+    echo ERROR: Downloaded file is empty.
+    exit /b 1
+)
+
 if %GETTEXT_SIZE% LSS 1000000 (
-    echo ERROR: Downloaded gettext.zip is too small. GitHub returned an HTML page instead of the binary.
+    echo ERROR: Downloaded file too small. GitHub returned HTML instead of ZIP.
     type gettext.zip
     exit /b 1
 )
 
+REM Extract using 7zip (PowerShell ZIP is unreliable)
 7z x -y gettext.zip -ogettext-tools
-call :check_error "Failed to extract gettext tools with 7zip"
-
-if not exist "gettext-tools\bin\msgfmt.exe" (
-    echo ERROR: msgfmt.exe missing after extracting gettext tools.
+if %ERRORLEVEL% NEQ 0 (
+    echo ERROR: Failed to extract gettext tools with 7zip.
     exit /b 1
 )
 
+REM Verify required binaries
+if not exist "gettext-tools\bin\msgfmt.exe" (
+    echo ERROR: msgfmt.exe missing after extraction.
+    exit /b 1
+)
+if not exist "gettext-tools\bin\msgmerge.exe" (
+    echo ERROR: msgmerge.exe missing after extraction.
+    exit /b 1
+)
+if not exist "gettext-tools\bin\xgettext.exe" (
+    echo ERROR: xgettext.exe missing after extraction.
+    exit /b 1
+)
+
+REM Add gettext tools to PATH
 set GETTEXT_BIN=%CD%\gettext-tools\bin
 set PATH=%GETTEXT_BIN%;%PATH%
 

@@ -161,7 +161,8 @@ if [ "$LOCAL_BUILD" = false ]; then
 
         cloudsmith push raw $REPO $xml \
             --republish --no-wait-for-sync \
-            --name @PACKAGE_NAME@-metadata \
+#           --name @PACKAGE_NAME@-metadata \
+			--name @PACKAGE_NAME@-metadata-@PKG_TARGET@-@COMPOUND_ARCH_DASH@@PKG_TARGET_VERSION@
             --version ${VERSION} \
             --summary "@PACKAGE@ opencpn plugin metadata"
 
