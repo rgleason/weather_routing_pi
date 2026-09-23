@@ -128,8 +128,11 @@ call :check_error "Failed to install NSIS"
 
 echo Checking for Poedit installation
 poedit -version >nul 2>&1
-call :check_error "Poedit is not installed or not in PATH"
-echo Poedit check complete
+if %ERRORLEVEL% NEQ 0 (
+    echo Poedit not found — continuing without it.
+) else (
+    echo Poedit found.
+)
 
 REM ------------------------------------------------------------
 REM  Install vcpkg + gettext
