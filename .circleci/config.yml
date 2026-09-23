@@ -172,7 +172,8 @@ jobs:
         - run:
             name: Set macOS deployment target
             command: |
-              export MACOSX_DEPLOYMENT_TARGET=10.15        
+              echo 'export MACOSX_DEPLOYMENT_TARGET=10.15' >> $BASH_ENV
+              source $BASH_ENV
 #        - restore_cache:
 #            key: "{{checksum \"build-deps/macos-cache-stamp\"}}\
 #              -{{checksum \"cmake/MacosWxwidgets.cmake\"}}\
@@ -197,11 +198,26 @@ jobs:
         - run: >
               sh -c "cat build/*.xml"
         - run:
+            name: Ensure Cloudsmith CLI is installed
+            command: |
+              if [ ! -d "$HOME/cs-venv" ]; then
+                echo "Cloudsmith venv missing — installing CLI"
+                python3 -m venv "$HOME/cs-venv"
+                source "$HOME/cs-venv/bin/activate"
+                pip install cloudsmith-cli
+              else
+                source "$HOME/cs-venv/bin/activate"
+              fi
+        - run:
+            name: Verify build artifacts exist
+            command: |
+              ls -l build/*.tar.gz || (echo "No tarball found!" && exit 1)
+        - run:
             name: Upload to Cloudsmith
             command: |
               source "$HOME/cs-venv/bin/activate"
               export PATH="$HOME/cs-venv/bin:$PATH"
-              ./cloudsmith-upload.sh
+              bash ci/cloudsmith-upload.sh
     build-msvc-wx32-2022:
         executor:
             name: win/server-2022
@@ -212,13 +228,27 @@ jobs:
           DEPLOY_USE_ORB: false
         steps:
         - checkout
+        
         - run:
             privileged: False
             shell: cmd.exe
             command: ci\circleci-build-msvc.bat
         - run:
-            shell: bash.exe
-            command: ls -R build            
+            shell: powershell.exe
+            command: Get-ChildItem -Recurse build
+        - run:
+            shell: cmd.exe
+            command: copy build\*.tar.gz .
+        - run:
+            shell: cmd.exe
+            command: copy build\weather_routing_pi.dll .
+        - run:
+            shell: cmd.exe
+            command: |
+              if not exist "C:\Program Files\Git\bin\bash.exe" (
+                echo ERROR: Git Bash not found. Cannot run cloudsmith-upload.sh.
+                exit 1
+              )            
         - deploy-code:
             deploy_use_orb: false
     build-flatpak-aarch64-2208:

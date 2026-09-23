@@ -7,7 +7,7 @@
 setlocal
 
 set "CONFIGURATION=RelWithDebInfo"
-set VCPKG_ROOT=C:\Users\circleci\vcpkg
+REM set VCPKG_ROOT=C:\Users\circleci\vcpkg
 REM Do NOT prepend global vcpkg to PATH
 REM We will use the local vcpkg inside build/
 
@@ -37,13 +37,6 @@ goto :eof
 :main
 
 REM ------------------------------------------------------------
-REM  Start actual build logic here
-REM ------------------------------------------------------------
-
-REM (your CMake configure, build, install, CPack, DLL detection, etc.)
-
-
-REM ------------------------------------------------------------
 REM  Setup basic environment
 REM ------------------------------------------------------------
 set "SCRIPTDIR=%~dp0"
@@ -67,10 +60,12 @@ REM ------------------------------------------------------------
 REM  wxWidgets + dependency setup
 REM ------------------------------------------------------------
 call "%SCRIPTDIR%..\msvc\win_deps.bat" %wx_vers%
+call :check_error "win_deps.bat failed"
 
 REM Add CMake and wx-config to PATH
 set "PATH=%SCRIPTDIR%.local\bin;%PATH%;C:\Program Files\CMake\bin"
 call "%SCRIPTDIR%..\cache\wx-config.bat"
+call :check_error "wx-config.bat failed"
 
 REM Extra PATH from wx-config
 set "PATH=%EXTRA_PATH%;%PATH%"
@@ -86,12 +81,14 @@ nmake /? >nul 2>&1
 if errorlevel 1 (
   set "VS_HOME=C:\Program Files\Microsoft Visual Studio\2022"
   call "%VS_HOME%\Community\VC\Auxiliary\Build\vcvars32.bat"
+  call :check_error "Failed to load MSVC environment"  
 )
 
 REM ------------------------------------------------------------
 REM  Update required submodules
 REM ------------------------------------------------------------
 git submodule update --init opencpn-libs
+call :check_error "Submodule update failed"
 dir
 
 REM ------------------------------------------------------------
@@ -99,6 +96,7 @@ REM  Create fresh build directory
 REM ------------------------------------------------------------
 if exist build (rmdir /s /q build)
 mkdir build
+call :check_error "Failed to create build directory"
 cd build
 dir
 
@@ -137,45 +135,28 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 REM ------------------------------------------------------------
-REM  Install vcpkg (for libs)
-REM ------------------------------------------------------------
-REM  echo Installing vcpkg
-REM  set "VCPKG_ROOT=%CD%\vcpkg"
-
-REM git clone https://github.com/microsoft/vcpkg "%VCPKG_ROOT%"
-REM call :check_error "Failed to clone vcpkg repository"
-REM set PATH=%VCPKG_ROOT%;%PATH%
-
-REM call "%VCPKG_ROOT%\bootstrap-vcpkg.bat"
-REM call :check_error "vcpkg bootstrap failed"
-
-
-REM ------------------------------------------------------------
-REM  Gettext for use with po  Internationalization files
+REM  Gettext for use with po Internationalization files (MSVC)
 REM ------------------------------------------------------------
 
-echo Installing MSYS2
-curl -L -o msys2.exe ^
-  https://github.com/msys2/msys2-installer/releases/latest/download/msys2-x86_64-latest.exe
-call :check_error "Failed to download MSYS2 installer"
+echo Downloading native Windows gettext tools
+set GETTEXT_URL=https://github.com/mlocati/gettext-iconv-windows/releases/download/v0.22.5/gettext0.22.5-iconv1.17-win64.zip
 
-msys2.exe /S
-call :check_error "Failed to extract MSYS2"
+curl -L %GETTEXT_URL% -o gettext.zip
+call :check_error "Failed to download gettext tools"
 
-echo Updating MSYS2
-C:\msys64\usr\bin\bash -lc "pacman -Sy --noconfirm"
-call :check_error "MSYS2 update failed"
+powershell -Command "Expand-Archive -Force gettext.zip -DestinationPath gettext-tools"
+call :check_error "Failed to extract gettext tools"
 
-echo Installing gettext tools (UCRT64)
-C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-ucrt-x86_64-gettext"
-call :check_error "Failed to install gettext tools"
-
-REM Sanity check
-if not exist "C:\msys64\ucrt64\bin\msgfmt.exe" (
-    echo ERROR: gettext tools missing.
+if not exist "gettext-tools\bin\msgfmt.exe" (
+    echo ERROR: msgfmt.exe missing after extracting gettext tools.
     exit /b 1
 )
 
+set GETTEXT_BIN=%CD%\gettext-tools\bin
+set PATH=%GETTEXT_BIN%;%PATH%
+
+echo Gettext installed successfully.
+echo GETTEXT_BIN: %GETTEXT_BIN%
 
 REM ------------------------------------------------------------
 REM  Configure CMake project
@@ -185,27 +166,22 @@ echo Configuring CMake project
 if "%MSVC_VERSION%"=="2019" (
   cmake -T v141_xp -G "Visual Studio 16 2019" ^
     -DCMAKE_GENERATOR_PLATFORM=Win32 ^
-	--config %CONFIGURATION%
-    -DCMAKE_BUILD_TYPE=%CONFIGURATION% ^
     -DwxWidgets_LIB_DIR=%wxWidgets_LIB_DIR% ^
     -DwxWidgets_ROOT_DIR=%wxWidgets_ROOT_DIR% ^
-	-DGETTEXT_MSGFMT_EXECUTABLE="C:/msys64/ucrt64/bin/msgfmt.exe" ^
-	-DGETTEXT_MSGMERGE_EXECUTABLE="C:/msys64/ucrt64/bin/msgmerge.exe" ^
-	-DGETTEXT_XGETTEXT_EXECUTABLE="C:/msys64/ucrt64/bin/xgettext.exe" ^
+    -DGETTEXT_MSGFMT_EXECUTABLE=%GETTEXT_BIN%\msgfmt.exe ^
+    -DGETTEXT_MSGMERGE_EXECUTABLE=%GETTEXT_BIN%\msgmerge.exe ^
+    -DGETTEXT_XGETTEXT_EXECUTABLE=%GETTEXT_BIN%\xgettext.exe ^
     ..
 ) else (
   cmake -A Win32 -G "Visual Studio 17 2022" ^
     -DCMAKE_GENERATOR_PLATFORM=Win32 ^
-	--config %CONFIGURATION%
-    -DCMAKE_BUILD_TYPE=%CONFIGURATION% ^
     -DwxWidgets_LIB_DIR=%wxWidgets_LIB_DIR% ^
     -DwxWidgets_ROOT_DIR=%wxWidgets_ROOT_DIR% ^
-	-DGETTEXT_MSGFMT_EXECUTABLE="C:/msys64/ucrt64/bin/msgfmt.exe" ^
-	-DGETTEXT_MSGMERGE_EXECUTABLE="C:/msys64/ucrt64/bin/msgmerge.exe" ^
-	-DGETTEXT_XGETTEXT_EXECUTABLE="C:/msys64/ucrt64/bin/xgettext.exe" ^
+    -DGETTEXT_MSGFMT_EXECUTABLE=%GETTEXT_BIN%\msgfmt.exe ^
+    -DGETTEXT_MSGMERGE_EXECUTABLE=%GETTEXT_BIN%\msgmerge.exe ^
+    -DGETTEXT_XGETTEXT_EXECUTABLE=%GETTEXT_BIN%\xgettext.exe ^
     ..
 )
-
 
 call :check_error "CMake configuration failed"
 
@@ -251,13 +227,11 @@ call :check_error "Failed to copy TGZ package to build directory"
 
 echo Copied TGZ package to build directory.
 
-
 REM ------------------------------------------------------------
 REM  Automatically detect DLL configuration (Release / RelWithDebInfo / Debug)
 REM ------------------------------------------------------------
 echo Detecting DLL location...
 
-REM Enable delayed expansion so variables inside FOR loops update correctly
 setlocal enabledelayedexpansion
 
 set "DLL_PATH="
@@ -270,7 +244,6 @@ for %%C in (Release RelWithDebInfo Debug MinSizeRel) do (
     )
 )
 
-REM Restore normal expansion
 endlocal & set "DLL_PATH=%DLL_PATH%" & set "DLL_CONFIG=%DLL_CONFIG%"
 
 if "%DLL_PATH%"=="" (
@@ -287,9 +260,7 @@ call :check_error "Failed to copy DLL to build directory"
 
 echo DLL copied to build directory.
 
-REM ------------------------------------------------------------
-REM Summary of produced artifacts
-REM ------------------------------------------------------------
+
 echo.
 echo ------------------------------------------------------------
 echo Build Summary
