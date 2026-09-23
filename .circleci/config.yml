@@ -196,9 +196,6 @@ jobs:
               sh -c "otool -L build/*.dylib"
         - run: >
               sh -c "cat build/*.xml"
-        - deploy-code:
-            deploy_use_orb: false
-            install_python: false
         - run:
             name: Upload to Cloudsmith
             command: |
