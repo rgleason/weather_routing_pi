@@ -53,6 +53,13 @@ rm -rf /tmp/wx321_opencpn50_macos1010 \
 /usr/bin/python3 -m venv "$HOME/cs-venv"
 source "$HOME/cs-venv/bin/activate"
 
+echo "DEBUG: PATH after venv activation:"
+echo "$PATH"
+
+echo "DEBUG: cloudsmith location:"
+which cloudsmith || echo "cloudsmith NOT FOUND"
+
+
 # ------------------------------------------------------------
 #  Download wx bundle (10.15) if needed
 # ------------------------------------------------------------

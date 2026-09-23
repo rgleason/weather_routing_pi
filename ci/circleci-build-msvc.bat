@@ -147,15 +147,16 @@ call :check_error "Failed to clone vcpkg repository"
 call "%VCPKG_ROOT%\bootstrap-vcpkg.bat"
 call :check_error "vcpkg bootstrap failed"
 
-echo Installing gettext
-call "%VCPKG_ROOT%\vcpkg.exe" install gettext:x86-windows --classic
-call :check_error "Failed to install gettext via vcpkg"
+echo Installing gettext tools (MinGW)
+call "%VCPKG_ROOT%\vcpkg.exe" install gettext-tools:x64-mingw-static --classic
+call :check_error "Failed to install gettext-tools via vcpkg"
 
 REM Verify gettext tools in the new vcpkg layout
-if not exist "%VCPKG_ROOT%\packages\gettext_x86-windows\tools\gettext\bin\msgfmt.exe" (
-    echo ERROR: msgfmt.exe missing in vcpkg gettext tools.
+if not exist "%VCPKG_ROOT%\packages\gettext-tools_x64-mingw-static\tools\gettext\bin\msgfmt.exe" (
+    echo ERROR: msgfmt.exe missing in MinGW gettext tools.
     exit /b 1
 )
+
 
 
 REM ------------------------------------------------------------
@@ -169,8 +170,8 @@ if "%MSVC_VERSION%"=="2019" (
     -DCMAKE_BUILD_TYPE=%CONFIGURATION% ^
     -DwxWidgets_LIB_DIR=%wxWidgets_LIB_DIR% ^
     -DwxWidgets_ROOT_DIR=%wxWidgets_ROOT_DIR% ^
-    -DGETTEXT_MSGMERGE_EXECUTABLE=%VCPKG_ROOT%/packages/gettext_x86-windows/tools/gettext/bin/msgmerge.exe ^
-    -DGETTEXT_MSGFMT_EXECUTABLE=%VCPKG_ROOT%/packages/gettext_x86-windows/tools/gettext/bin/msgfmt.exe ^
+    -DGETTEXT_MSGMERGE_EXECUTABLE=%VCPKG_ROOT%/packages/gettext-tools_x64-mingw-static/tools/gettext/bin/msgmerge.exe ^
+    -DGETTEXT_MSGFMT_EXECUTABLE=%VCPKG_ROOT%/packages/gettext-tools_x64-mingw-static/tools/gettext/bin/msgfmt.exe ^
     ..
 ) else (
   cmake -A Win32 -G "Visual Studio 17 2022" ^
@@ -178,8 +179,8 @@ if "%MSVC_VERSION%"=="2019" (
     -DCMAKE_BUILD_TYPE=%CONFIGURATION% ^
     -DwxWidgets_LIB_DIR=%wxWidgets_LIB_DIR% ^
     -DwxWidgets_ROOT_DIR=%wxWidgets_ROOT_DIR% ^
-    -DGETTEXT_MSGMERGE_EXECUTABLE=%VCPKG_ROOT%/packages/gettext_x86-windows/tools/gettext/bin/msgmerge.exe ^
-    -DGETTEXT_MSGFMT_EXECUTABLE=%VCPKG_ROOT%/packages/gettext_x86-windows/tools/gettext/bin/msgfmt.exe ^
+    -DGETTEXT_MSGMERGE_EXECUTABLE=%VCPKG_ROOT%/packages/gettext-tools_x64-mingw-static/tools/gettext/bin/msgmerge.exe ^
+    -DGETTEXT_MSGFMT_EXECUTABLE=%VCPKG_ROOT%/packages/gettext-tools_x64-mingw-static/tools/gettext/bin/msgfmt.exe ^
     ..
 )
 
