@@ -51,6 +51,7 @@ rm -rf /tmp/wx321_opencpn50_macos1010 \
 #  Python virtual environment (for i18n, etc.)
 # ------------------------------------------------------------
 /usr/bin/python3 -m venv "$HOME/cs-venv"
+source "$HOME/cs-venv/bin/activate"
 
 # ------------------------------------------------------------
 #  Download wx bundle (10.15) if needed
