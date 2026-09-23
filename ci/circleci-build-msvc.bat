@@ -148,12 +148,15 @@ if not exist "%VCPKG_ROOT%\installed\x86-windows\tools\gettext\msgfmt.exe" (
     echo msgfmt.exe not found yet — continuing to install gettext
 )
 
+
+
 call "%VCPKG_ROOT%\bootstrap-vcpkg.bat"
 call :check_error "vcpkg bootstrap failed"
 
 echo Installing gettext
-call "%VCPKG_ROOT%\vcpkg.exe" install gettext:x86-windows --classic
-call :check_error "Failed to install gettext via vcpkg"
+call "%VCPKG_ROOT%\vcpkg.exe" install gettext-tools:x86-windows --classic
+call :check_error "Failed to install gettext-tools via vcpkg"
+
 echo gettext installed
 
 REM Verify installation
