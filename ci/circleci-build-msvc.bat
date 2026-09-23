@@ -138,7 +138,7 @@ if %ERRORLEVEL% NEQ 0 (
 
 
 REM ------------------------------------------------------------
-REM  Install vcpkg (for libs and gettext tools)
+REM  Install vcpkg (for libs)
 REM ------------------------------------------------------------
 echo Installing vcpkg
 set "VCPKG_ROOT=%CD%\vcpkg"
@@ -150,16 +150,32 @@ set PATH=%VCPKG_ROOT%;%PATH%
 call "%VCPKG_ROOT%\bootstrap-vcpkg.bat"
 call :check_error "vcpkg bootstrap failed"
 
-echo Downloading gettext tools for Windows
-set GETTEXT_URL=https://github.com/mlocati/gettext-iconv-windows/releases/download/v0.22.5/gettext0.22.5-iconv1.17-win64.zip
 
-curl -L %GETTEXT_URL% -o gettext.zip
-powershell -Command "Expand-Archive gettext.zip -DestinationPath gettext-tools"
+REM ------------------------------------------------------------
+REM  Gettext for use with po  Internationalization files
+REM ------------------------------------------------------------
 
-if not exist "gettext-tools\bin\msgfmt.exe" (
-    echo ERROR: msgfmt.exe missing after extracting gettext tools.
+echo Installing MSYS2
+curl -L -o msys2.exe https://repo.msys2.org/distrib/x86_64/msys2-base-x86_64-latest.sfx.exe
+call :check_error "Failed to download MSYS2 installer"
+
+msys2.exe -y -oC:\msys64
+call :check_error "Failed to extract MSYS2"
+
+echo Updating MSYS2
+C:\msys64\usr\bin\bash -lc "pacman -Sy --noconfirm"
+call :check_error "MSYS2 update failed"
+
+echo Installing gettext tools (UCRT64)
+C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-ucrt-x86_64-gettext"
+call :check_error "Failed to install gettext tools"
+
+REM Sanity check
+if not exist "C:\msys64\ucrt64\bin\msgfmt.exe" (
+    echo ERROR: gettext tools missing.
     exit /b 1
 )
+
 
 REM ------------------------------------------------------------
 REM  Configure CMake project
@@ -172,9 +188,9 @@ if "%MSVC_VERSION%"=="2019" (
     -DCMAKE_BUILD_TYPE=%CONFIGURATION% ^
     -DwxWidgets_LIB_DIR=%wxWidgets_LIB_DIR% ^
     -DwxWidgets_ROOT_DIR=%wxWidgets_ROOT_DIR% ^
-	-DGETTEXT_MSGFMT_EXECUTABLE=%CD%/gettext-tools/bin/msgfmt.exe ^
-	-DGETTEXT_MSGMERGE_EXECUTABLE=%CD%/gettext-tools/bin/msgmerge.exe ^
-	-DGETTEXT_XGETTEXT_EXECUTABLE=%CD%/gettext-tools/bin/xgettext.exe ^
+	-DGETTEXT_MSGFMT_EXECUTABLE="C:/msys64/ucrt64/bin/msgfmt.exe" ^
+	-DGETTEXT_MSGMERGE_EXECUTABLE="C:/msys64/ucrt64/bin/msgmerge.exe" ^
+	-DGETTEXT_XGETTEXT_EXECUTABLE="C:/msys64/ucrt64/bin/xgettext.exe" ^
     ..
 ) else (
   cmake -A Win32 -G "Visual Studio 17 2022" ^
@@ -182,9 +198,9 @@ if "%MSVC_VERSION%"=="2019" (
     -DCMAKE_BUILD_TYPE=%CONFIGURATION% ^
     -DwxWidgets_LIB_DIR=%wxWidgets_LIB_DIR% ^
     -DwxWidgets_ROOT_DIR=%wxWidgets_ROOT_DIR% ^
-	-DGETTEXT_MSGFMT_EXECUTABLE=%CD%/gettext-tools/bin/msgfmt.exe ^
-	-DGETTEXT_MSGMERGE_EXECUTABLE=%CD%/gettext-tools/bin/msgmerge.exe ^
-	-DGETTEXT_XGETTEXT_EXECUTABLE=%CD%/gettext-tools/bin/xgettext.exe ^
+	-DGETTEXT_MSGFMT_EXECUTABLE="C:/msys64/ucrt64/bin/msgfmt.exe" ^
+	-DGETTEXT_MSGMERGE_EXECUTABLE="C:/msys64/ucrt64/bin/msgmerge.exe" ^
+	-DGETTEXT_XGETTEXT_EXECUTABLE="C:/msys64/ucrt64/bin/xgettext.exe" ^
     ..
 )
 
