@@ -48,17 +48,16 @@ rm -rf /tmp/wx321_opencpn50_macos1010 \
        /tmp/wx315_opencpn50_macos1015
 
 # ------------------------------------------------------------
-#  Python virtual environment (for i18n, etc.)
+#  Python virtual environment (for i18n, etc.) - no longer used
 # ------------------------------------------------------------
-/usr/bin/python3 -m venv "$HOME/cs-venv"
-source "$HOME/cs-venv/bin/activate"
+#/usr/bin/python3 -m venv "$HOME/cs-venv"
+#source "$HOME/cs-venv/bin/activate"
 
-echo "DEBUG: PATH after venv activation:"
-echo "$PATH"
+#echo "DEBUG: PATH after venv activation:"
+#echo "$PATH"
 
-echo "DEBUG: cloudsmith location:"
-which cloudsmith || echo "cloudsmith NOT FOUND"
-
+#echo "DEBUG: cloudsmith location:"
+#which cloudsmith || echo "cloudsmith NOT FOUND"
 
 # ------------------------------------------------------------
 #  Download wx bundle (10.15) if needed

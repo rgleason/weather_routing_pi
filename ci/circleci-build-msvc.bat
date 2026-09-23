@@ -8,7 +8,9 @@ setlocal
 
 set "CONFIGURATION=RelWithDebInfo"
 set VCPKG_ROOT=C:\Users\circleci\vcpkg
-set PATH=%VCPKG_ROOT%;%PATH%
+REM Do NOT prepend global vcpkg to PATH
+REM We will use the local vcpkg inside build/
+
 
 goto :main
 
@@ -143,6 +145,7 @@ set "VCPKG_ROOT=%CD%\vcpkg"
 
 git clone https://github.com/microsoft/vcpkg "%VCPKG_ROOT%"
 call :check_error "Failed to clone vcpkg repository"
+set PATH=%VCPKG_ROOT%;%PATH%
 
 call "%VCPKG_ROOT%\bootstrap-vcpkg.bat"
 call :check_error "vcpkg bootstrap failed"
@@ -170,8 +173,8 @@ if "%MSVC_VERSION%"=="2019" (
     -DCMAKE_BUILD_TYPE=%CONFIGURATION% ^
     -DwxWidgets_LIB_DIR=%wxWidgets_LIB_DIR% ^
     -DwxWidgets_ROOT_DIR=%wxWidgets_ROOT_DIR% ^
-    -DGETTEXT_MSGMERGE_EXECUTABLE=%VCPKG_ROOT%/packages/gettext-tools_x64-mingw-static/tools/gettext/bin/msgmerge.exe ^
-    -DGETTEXT_MSGFMT_EXECUTABLE=%VCPKG_ROOT%/packages/gettext-tools_x64-mingw-static/tools/gettext/bin/msgfmt.exe ^
+	-DGETTEXT_MSGMERGE_EXECUTABLE=%VCPKG_ROOT%/packages/gettext-tools_x64-mingw-static/tools/gettext/bin/msgmerge.exe ^
+	-DGETTEXT_MSGFMT_EXECUTABLE=%VCPKG_ROOT%/packages/gettext-tools_x64-mingw-static/tools/gettext/bin/msgfmt.exe ^
     ..
 ) else (
   cmake -A Win32 -G "Visual Studio 17 2022" ^
@@ -179,8 +182,8 @@ if "%MSVC_VERSION%"=="2019" (
     -DCMAKE_BUILD_TYPE=%CONFIGURATION% ^
     -DwxWidgets_LIB_DIR=%wxWidgets_LIB_DIR% ^
     -DwxWidgets_ROOT_DIR=%wxWidgets_ROOT_DIR% ^
-    -DGETTEXT_MSGMERGE_EXECUTABLE=%VCPKG_ROOT%/packages/gettext-tools_x64-mingw-static/tools/gettext/bin/msgmerge.exe ^
-    -DGETTEXT_MSGFMT_EXECUTABLE=%VCPKG_ROOT%/packages/gettext-tools_x64-mingw-static/tools/gettext/bin/msgfmt.exe ^
+	-DGETTEXT_MSGMERGE_EXECUTABLE=%VCPKG_ROOT%/packages/gettext-tools_x64-mingw-static/tools/gettext/bin/msgmerge.exe ^
+	-DGETTEXT_MSGFMT_EXECUTABLE=%VCPKG_ROOT%/packages/gettext-tools_x64-mingw-static/tools/gettext/bin/msgfmt.exe ^
     ..
 )
 
