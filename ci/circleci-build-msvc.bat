@@ -155,10 +155,11 @@ REM  Gettext for use with po  Internationalization files
 REM ------------------------------------------------------------
 
 echo Installing MSYS2
-curl -L -o msys2.exe https://repo.msys2.org/distrib/x86_64/msys2-base-x86_64-latest.sfx.exe
+curl -L -o msys2.exe ^
+  https://github.com/msys2/msys2-installer/releases/latest/download/msys2-x86_64-latest.exe
 call :check_error "Failed to download MSYS2 installer"
 
-msys2.exe -y -oC:\msys64
+msys2.exe /S
 call :check_error "Failed to extract MSYS2"
 
 echo Updating MSYS2
