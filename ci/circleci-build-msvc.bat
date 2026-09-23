@@ -134,27 +134,9 @@ if %ERRORLEVEL% NEQ 0 (
     echo Poedit found.
 )
 
-REM ------------------------------------------------------------
-REM  Configure gettext tools from buildwin
-REM ------------------------------------------------------------
-set "BUILDWIN_ROOT=%CD%\..\buildwin"
-set "GETTEXT_BIN=%BUILDWIN_ROOT%\gettext\bin"
-
-set "GETTEXT_MSGMERGE_EXECUTABLE=%GETTEXT_BIN%\msgmerge.exe"
-set "GETTEXT_MSGFMT_EXECUTABLE=%GETTEXT_BIN%\msgfmt.exe"
-set "GETTEXT_XGETTEXT_EXECUTABLE=%GETTEXT_BIN%\xgettext.exe"
-
-REM Sanity check
-if not exist "%GETTEXT_MSGFMT_EXECUTABLE%" (
-    echo ERROR: msgfmt.exe missing from buildwin gettext.
-    exit /b 1
-)
-
-echo Using gettext tools from: %GETTEXT_BIN%
-
 
 REM ------------------------------------------------------------
-REM  Install vcpkg (for libs only, NOT gettext tools)
+REM  Install vcpkg (for libs and gettext tools)
 REM ------------------------------------------------------------
 echo Installing vcpkg
 set "VCPKG_ROOT=%CD%\vcpkg"
@@ -165,10 +147,15 @@ call :check_error "Failed to clone vcpkg repository"
 call "%VCPKG_ROOT%\bootstrap-vcpkg.bat"
 call :check_error "vcpkg bootstrap failed"
 
-REM (Optional) install any library dependencies via vcpkg here
-REM Example:
-REM call "%VCPKG_ROOT%\vcpkg.exe" install zlib:x86-windows --classic
-REM call :check_error "Failed to install zlib via vcpkg"
+echo Installing gettext
+call "%VCPKG_ROOT%\vcpkg.exe" install gettext:x86-windows --classic
+call :check_error "Failed to install gettext via vcpkg"
+
+REM Verify gettext tools in the new vcpkg layout
+if not exist "%VCPKG_ROOT%\packages\gettext_x86-windows\tools\gettext\bin\msgfmt.exe" (
+    echo ERROR: msgfmt.exe missing in vcpkg gettext tools.
+    exit /b 1
+)
 
 
 REM ------------------------------------------------------------
@@ -182,8 +169,8 @@ if "%MSVC_VERSION%"=="2019" (
     -DCMAKE_BUILD_TYPE=%CONFIGURATION% ^
     -DwxWidgets_LIB_DIR=%wxWidgets_LIB_DIR% ^
     -DwxWidgets_ROOT_DIR=%wxWidgets_ROOT_DIR% ^
-    -DGETTEXT_MSGMERGE_EXECUTABLE=%VCPKG_ROOT%/installed/x86-windows/tools/gettext/msgmerge.exe ^
-    -DGETTEXT_MSGFMT_EXECUTABLE=%VCPKG_ROOT%/installed/x86-windows/tools/gettext/msgfmt.exe ^
+    -DGETTEXT_MSGMERGE_EXECUTABLE=%VCPKG_ROOT%/packages/gettext_x86-windows/tools/gettext/bin/msgmerge.exe ^
+    -DGETTEXT_MSGFMT_EXECUTABLE=%VCPKG_ROOT%/packages/gettext_x86-windows/tools/gettext/bin/msgfmt.exe ^
     ..
 ) else (
   cmake -A Win32 -G "Visual Studio 17 2022" ^
@@ -191,10 +178,11 @@ if "%MSVC_VERSION%"=="2019" (
     -DCMAKE_BUILD_TYPE=%CONFIGURATION% ^
     -DwxWidgets_LIB_DIR=%wxWidgets_LIB_DIR% ^
     -DwxWidgets_ROOT_DIR=%wxWidgets_ROOT_DIR% ^
-    -DGETTEXT_MSGMERGE_EXECUTABLE=%VCPKG_ROOT%/installed/x86-windows/tools/gettext/msgmerge.exe ^
-    -DGETTEXT_MSGFMT_EXECUTABLE=%VCPKG_ROOT%/installed/x86-windows/tools/gettext/msgfmt.exe ^
+    -DGETTEXT_MSGMERGE_EXECUTABLE=%VCPKG_ROOT%/packages/gettext_x86-windows/tools/gettext/bin/msgmerge.exe ^
+    -DGETTEXT_MSGFMT_EXECUTABLE=%VCPKG_ROOT%/packages/gettext_x86-windows/tools/gettext/bin/msgfmt.exe ^
     ..
 )
+
 
 call :check_error "CMake configuration failed"
 
