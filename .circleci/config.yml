@@ -199,6 +199,8 @@ jobs:
         - deploy-code:
             deploy_use_orb: false
             install_python: false
+        - run:
+            name: Upload to Cloudsmith
             command: |
               source "$HOME/cs-venv/bin/activate"
               export PATH="$HOME/cs-venv/bin:$PATH"
