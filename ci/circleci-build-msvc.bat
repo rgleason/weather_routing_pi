@@ -7,6 +7,8 @@
 setlocal
 
 set "CONFIGURATION=RelWithDebInfo"
+set VCPKG_ROOT=C:\Users\circleci\vcpkg
+set PATH=%VCPKG_ROOT%;%PATH%
 
 goto :main
 
@@ -138,13 +140,25 @@ set "VCPKG_ROOT=%CD%\vcpkg"
 git clone https://github.com/microsoft/vcpkg "%VCPKG_ROOT%"
 call :check_error "Failed to clone vcpkg repository"
 
+REM This check must CLOSE properly
+if not exist "%VCPKG_ROOT%\installed\x86-windows\tools\gettext\msgfmt.exe" (
+    echo msgfmt.exe not found yet — continuing to install gettext
+)
+
 call "%VCPKG_ROOT%\bootstrap-vcpkg.bat"
 call :check_error "vcpkg bootstrap failed"
 
 echo Installing gettext
-"%VCPKG_ROOT%\vcpkg" install gettext:x86-windows --classic
+call "%VCPKG_ROOT%\vcpkg.exe" install gettext:x86-windows --classic
 call :check_error "Failed to install gettext via vcpkg"
 echo gettext installed
+
+REM Verify installation
+if not exist "%VCPKG_ROOT%\installed\x86-windows\tools\gettext\msgfmt.exe" (
+    echo ERROR: msgfmt.exe missing after vcpkg install.
+    exit /b 1
+)
+
 
 REM ------------------------------------------------------------
 REM  Configure CMake project
