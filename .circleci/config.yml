@@ -169,10 +169,10 @@ jobs:
         steps:
         - checkout
         - run: sudo chmod go+w /usr/local
-        - restore_cache:
-            key: "{{checksum \"build-deps/macos-cache-stamp\"}}\
-              -{{checksum \"cmake/MacosWxwidgets.cmake\"}}\
-              -{{checksum \"ci/circleci-build-macos-universal.sh\"}}"
+#        - restore_cache:
+#            key: "{{checksum \"build-deps/macos-cache-stamp\"}}\
+#              -{{checksum \"cmake/MacosWxwidgets.cmake\"}}\
+#              -{{checksum \"ci/circleci-build-macos-universal.sh\"}}"
         - run: chmod a+x ci/*.sh
         - run: chmod a+x cmake/*.sh
         - run: ci/circleci-build-macos-universal.sh
