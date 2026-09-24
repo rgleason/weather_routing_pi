@@ -591,7 +591,13 @@ public:
                  bearing = wr::initialBearingDegrees(s.point, target);
     double a = std::abs(std::remainder(bearing - from, 360.));
     const auto targetOffset = offset(s.point, target);
-    for (double padding : {1., 5., 15.}) {
+    // The configured angle limit need not be the edge of the boat's polar.
+    // E.g. a 160-degree limit with a 150-degree polar leaves only the old
+    // 145-degree trial usable, and a small wind shift can invalidate that leg.
+    // Try a few more interior headings before abandoning an otherwise feasible
+    // prefix. These bounded trials only run after the direct connector fails;
+    // every accepted manoeuvre still uses precise integration and validation.
+    for (double padding : {1., 5., 15., 25., 35., 45.}) {
       const double angle =
           a < 90 ? request.constraints.minimumTrueWindAngleDegrees + padding
                  : request.constraints.maximumTrueWindAngleDegrees - padding;
