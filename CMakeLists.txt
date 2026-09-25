@@ -91,8 +91,10 @@ set(LONG_DESCRIPTION
 
 set(VERSION_MAJOR "1")
 set(VERSION_MINOR "18")
-set(VERSION_PATCH "7")
+set(VERSION_PATCH "8")
 set(VERSION_TWEAK "0")
+
+# Paul this stuff shouldn't be here really, gets too confusing. Make a cmake/shoreline.cmake and then link that.
 # Keep all five approved source archives for verification and regression tests.
 # Packages ship only Crude, Low and Intermediate; High and Full are optional
 # checksum-verified downloads shared by both plugin identities.
@@ -137,15 +139,23 @@ set(ALPHA "alpha") #Standard Repos
 #set(CLOUDSMITH_BASE_REPOSITORY "weather_routing")
 #set(CLOUDSMITH_USER "opencpn")
 
+
+# Paul, this isn't deploying to 
+#   opencpn/weather-routing-alpha
+#   opencpn/weather-routing-beta
+#   opencpn/weather-routing-prod
+# as it should.  See the 3 SET above.
+# I've tried several things here.
+
 if(WEATHER_ROUTING_XWEATHER_IDENTITY)
-  set(PLUGIN_GIT_REPOSITORY "pob220/xweather_routing_pi")
+   set(PLUGIN_GIT_REPOSITORY "pob220/xweather_routing_pi")
 else()
-  set(CLOUDSMITH_USER "opencpn")
-  set(CLOUDSMITH_BASE_REPOSITORY "weather_routing")
+   set(CLOUDSMITH_USER "opencpn")
+   set(CLOUDSMITH_BASE_REPOSITORY "weather-routing")
     # Keep validation independent of the OpenCPN publishing repositories.  Alpha
     # publication remains a separate, explicitly approved later step.
     # Ricks's customization
-    # set(PLUGIN_GIT_REPOSITORY "opencpn/weather_routing")
+    # set(PLUGIN_GIT_REPOSITORY "opencpn/weather-routing")
     # set(PLUGIN_GIT_REPOSITORY "rick-gleason/weather_routing")
 endif()
 
