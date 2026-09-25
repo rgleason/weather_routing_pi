@@ -2,9 +2,45 @@
 
 == Weather Routing Plugin
 
-This lists *default Configuration* settings. Hitting *Reset all Advanced* will reset the _Advanced Tab_ configuration to these default settings.
+=== Current defaults (1.18.3)
 
-NOTE: Upoin intial installation (following the instructions), the plugin should be setup to allow the user to select any of the _Configurations_ from the Main Menu and then press _Compute_ and the routing should _Complete_  
+Basic offers *Quick*, *Standard* and *Professional*, in that order. Quick is
+the hardened Original contour engine; Standard was previously called Quick,
+and Professional was Main. A first installation without saved defaults selects
+Quick. Existing routes and last-used defaults keep their algorithm and values.
+
+All three engines remember their own tuning, shoreline resolution and GRIB
+cache preference. Advanced displays only the selected engine's controls.
+*Reset engine to preset* has an Apply/Cancel preview and resets only search
+tuning, preserving safety, weather, boat and memory settings.
+
+Quick/Standard start at a nominal three-hour step and 10-degree headings;
+Professional starts at one hour, 10 degrees and 100% effort. The permitted
+wind-angle range starts at 40–160 degrees; Max Diverted Course is 120 degrees.
+True/apparent wind limits start at 50 knots, Max Swell at 20 metres, Detect Land
+is enabled, and currents/motor are disabled. Review these limits for your boat.
+
+Intermediate GSHHG is initially selected. Crude, Low and Intermediate are
+bundled; High and Full can be installed from *Shoreline data*. Chart/depth
+enforcement requires a compatible host and is off on first installation.
+Do not disable land detection merely to obtain a completed route.
+
+Quick requires current coverage when currents are enabled, and wave coverage
+when a GRIB-based wave limit is active. Max Swell zero deliberately disables
+that limit. Quick rejects endpoints inside the selected shoreline margin;
+there is no implicit harbour-margin waiver. Search previews are not accepted
+sailing tracks: only a completed, independently validated route is accepted.
+
+On 64-bit systems the preferred timeline cache is 2,048 MiB per engine;
+memory admission reduces the effective allowance where necessary. Search
+and weather caches are separate, and are not a total OpenCPN memory limit.
+
+=== Historical example setup
+
+The following describes older bundled examples, not current factory defaults.
+
+NOTE: Examples require suitable polars, complete weather coverage and valid
+endpoints. Completion is not guaranteed merely by retaining default settings.
 
 NOTE: If you are _learning_ at this point and want to run the *Examples*, don't change the _configuration defaults_.
 
@@ -108,4 +144,3 @@ interval.
 
 If you are having trouble, set the Configuration to these defaults or
 select *Configuration > Reset all Advanced*:
-

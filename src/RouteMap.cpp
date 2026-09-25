@@ -149,6 +149,7 @@ RouteMapConfiguration::RouteMapConfiguration()
       ArrivalPlanningEvaluatedRoutes(0),
       ArrivalPlanningFeasibleRoutes(0),
       ArrivalPlanningScheduleMarginSeconds(0),
+      UseCurrentTime(false),
       DepartureTimeOptimizationEnabled(false),
       DepartureTimeOptimizationRangeMinutes(360),
       DepartureTimeOptimizationStepMinutes(60),

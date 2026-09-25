@@ -58,7 +58,7 @@ private:
   int requested_mib_{kMainGribTimelineCacheDefaultMiB};
   int effective_mib_{kMainGribTimelineCacheDefaultMiB};
   int current_limit_mib_{kMainGribTimelineCacheDefaultMiB};
-  int standard_mib_{kMainGribTimelineCacheDefaultMiB};
+  int standard_mib_{GribTimelineCacheFallbackMiB(false)};
   std::uint64_t required_reserve_mib_{};
   bool runtime_guard_enabled_{};
   bool configured_{};

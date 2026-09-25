@@ -1,6 +1,7 @@
-# Weather Routing integration branch
+# WeatherRouting 1.18.4 integration candidate
 
-See [1.17.7 changes](docs/release-1.17.7.md) and [Main/Quick engine settings](docs/quick-routing.md).
+See [1.18.4 changes](docs/release-1.18.4.md) and [Quick, Standard and Professional settings](docs/quick-routing.md).
+The branch scope and validation are recorded in [the integration notes](docs/integration-1.18.4.md).
 
 The optional hardened-OpenCPN planning-provider boundary is documented in
 [docs/external_control_provider_preview_b.md](docs/external_control_provider_preview_b.md).

@@ -32,6 +32,7 @@
 #include "supercpn/weather_routing/ArrivalPlanner.h"
 #include "supercpn/weather_routing/Engine.h"
 #include "supercpn/weather_routing/QuickEngine.h"
+#include "original_routing/Engine.h"
 
 namespace {
 namespace wr = supercpn::weather_routing;
@@ -354,7 +355,7 @@ private:
         // 150k fine weather keys. Retaining the working set avoids repeatedly
         // interpolating evicted points; 500k entries remains a bounded cache
         // (roughly tens of MiB for this compact sample).
-        const size_t cacheLimit = configuration_.IsQuick() ? 32768U : 500000U;
+        const size_t cacheLimit = configuration_.IsFastEngine() ? 32768U : 500000U;
         if (sharedCache_->samples.size() >= cacheLimit) {
           size_t erase = cacheLimit / 10;
           for (auto it = sharedCache_->samples.begin();
@@ -528,7 +529,8 @@ private:
     if (index >= configuration_.boat.Polars.size()) return result;
     PolarSpeedStatus status = POLAR_SPEED_SUCCESS;
     double speed = configuration_.boat.Polars[index].Speed(
-        twa, tws, &status, false, configuration_.OptimizeTacking);
+        twa, tws, &status, false,
+        configuration_.OptimizeTacking && !configuration_.IsOriginal());
     if (!std::isfinite(speed) || speed <= 0.0) return result;
     if (configuration_.UseMotor && speed < configuration_.MotorSpeedThreshold) {
       result.mode = wr::PropulsionMode::Motor;
@@ -562,7 +564,11 @@ public:
                       RouteMapConfiguration configuration)
       : overlay_(overlay), configuration_(std::move(configuration)) {}
 
-  bool pointForbidden(wr::GeoPoint) const override {
+  bool pointForbidden(wr::GeoPoint point) const override {
+    if (configuration_.IsOriginal() && configuration_.DetectLand &&
+        !configuration_.UseChartSafetyForPropagation && configuration_.shoreline_dataset)
+      return configuration_.shoreline_dataset->CrossesLand(
+          point.latitude, point.longitude, point.latitude, point.longitude);
     // Known start/destination points are allowed to egress from a configured
     // margin. Every actual segment is still chart-checked below and again by
     // independent dense final validation on the UI thread.
@@ -648,7 +654,7 @@ private:
     const double bearing = wr::initialBearingDegrees(start, end);
     bool safe = ConstraintChecker::CheckLandConstraint(
         configuration, start.latitude, start.longitude, end.latitude,
-        end.longitude, bearing);
+        end.longitude, bearing, !configuration.IsOriginal());
     if (!configuration.shoreline_error.empty())
       throw weather_routing::ShorelineQueryError(
           configuration.shoreline_error.ToStdString());
@@ -660,7 +666,7 @@ private:
       configuration.SafetyMarginLand = std::max(0.0, margin);
       safe = ConstraintChecker::CheckLandConstraint(
           configuration, start.latitude, start.longitude, end.latitude,
-          end.longitude, bearing);
+          end.longitude, bearing, !configuration.IsOriginal());
     }
     if (!safe) return true;
     if (configuration.DetectBoundary &&
@@ -803,6 +809,14 @@ wr::RoutingRequest BuildRequest(RouteMapOverlay& overlay,
   request.environment.zeroCurrentAcknowledged = true;
   request.environment.missingWaves = wr::MissingWavePolicy::AllowWithWarning;
   request.environment.missingWavesAcknowledged = true;
+  if (configuration.IsOriginal()) {
+    // Enabling currents or a wave ceiling requests a real constraint, not
+    // permission to invent data. The old engines keep their historic policy.
+    request.environment.missingCurrent = wr::MissingCurrentPolicy::Disallow;
+    request.environment.zeroCurrentAcknowledged = false;
+    request.environment.missingWaves = wr::MissingWavePolicy::DisallowWhenConstrained;
+    request.environment.missingWavesAcknowledged = false;
+  }
 
   if (configuration.MaxTrueWindKnots > 0.0)
     request.constraints.maximumTrueWindKnots = configuration.MaxTrueWindKnots;
@@ -882,14 +896,14 @@ wr::RoutingRequest BuildRequest(RouteMapOverlay& overlay,
 
   const weather_routing::RoutingResourcePolicy resources =
       weather_routing::SelectRoutingResourcePolicy(
-          routeDistance, configuration.IsQuick() ? 100 : configuration.RoutingEffortPercent,
+          routeDistance, configuration.IsFastEngine() ? 100 : configuration.RoutingEffortPercent,
           configuration.chart_safety_scout_preview);
   request.limits.maximumGeneratedStates = resources.maximum_generated_states;
   request.limits.maximumCoastalEndpointGeneratedStates =
       resources.maximum_coastal_endpoint_generated_states;
   request.limits.maximumForwardGeneratedStates =
       resources.maximum_forward_generated_states;
-  if (!configuration.IsQuick() && !configuration.chart_safety_scout_preview) {
+  if (!configuration.IsFastEngine() && !configuration.chart_safety_scout_preview) {
     request.limits.maximumForwardArrivalGeneratedStates =
         resources.maximum_forward_generated_states / 10;
     request.limits.maximumGeneratedStates +=
@@ -906,6 +920,19 @@ wr::RoutingRequest BuildRequest(RouteMapOverlay& overlay,
   request.limits.maximumGraphGeneratedStates =
       resources.maximum_graph_generated_states;
   request.limits.maximumRetainedStates = resources.maximum_retained_states;
+  if (configuration.IsOriginal()) {
+    const auto& settings = configuration.EngineSettings.original;
+    request.options.timeStep = std::chrono::minutes(settings.offshoreStepMinutes);
+    request.options.headingStepDegrees = settings.headingStepDegrees;
+    request.options.maximumSearchAngleDegrees = settings.maximumSearchAngle;
+    request.options.routingEffortPercent = 100;
+    // Conservative state allowance, not a claim to bound host/GRIB memory.
+    // Contour vertices, retained parent traces and validation candidates are
+    // independently bounded; leave headroom for transient geometry storage.
+    request.limits.maximumRetainedStates =
+        static_cast<std::uint64_t>(settings.memoryBudgetMiB) * 1024 * 1024 / 4096;
+    request.limits.maximumGeneratedStates = 20000000;
+  }
   request.limits.maximumGraphLabels = resources.maximum_graph_labels;
   if (configuration.chart_safety_scout_preview) {
     request.options.routingEffortPercent = 100;
@@ -986,6 +1013,24 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
   wr::RoutingResult result;
   std::uint64_t quickGenerated = 0;
   auto solve = [&](const wr::RoutingRequest& solveRequest, const wr::RoutingEnvironment& solveEnvironment) {
+    if (configuration.IsOriginal()) {
+      auto bounded = solveRequest;
+      if (configuration.TimeMode == RouteMapConfiguration::ROUTE_BY_ARRIVAL_TIME) {
+        if (quickGenerated >= 20000000) {
+          wr::RoutingResult exhausted;
+          exhausted.status = wr::RoutingStatus::ResourceLimitReached;
+          exhausted.message = "Quick arrival search allowance reached";
+          return exhausted;
+        }
+        bounded.limits.maximumGeneratedStates = std::min<std::uint64_t>(
+            bounded.limits.maximumGeneratedStates, 20000000 - quickGenerated);
+      }
+      original_routing::Options originalOptions;
+      originalOptions.captureVisualization = true;
+      auto original = original_routing::Engine{}.route(bounded, solveEnvironment, originalOptions);
+      quickGenerated += original.diagnostics.generatedStates;
+      return original;
+    }
     if (!configuration.IsQuick())
       return engine.route(solveRequest, solveEnvironment);
     wr::QuickRoutingOptions quickOptions;
@@ -1045,9 +1090,9 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
     options.arrivalTolerance = wr::Duration{60};
     const int effort = weather_routing::NormalizeRoutingEffortPercent(
         configuration.RoutingEffortPercent);
-    options.maximumRouteEvaluations = configuration.IsQuick() ? 6U :
+    options.maximumRouteEvaluations = configuration.IsFastEngine() ? 6U :
         effort >= 400 ? 32U : effort >= 200 ? 24U : effort >= 150 ? 20U : 16U;
-    options.retainOnlyBestResult = configuration.IsQuick();
+    options.retainOnlyBestResult = configuration.IsFastEngine();
     wxString headlessMaximumEvaluations;
     wxString headlessMode;
     const bool headless =
@@ -1291,6 +1336,14 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
                          configuration.DepartureTimeOptimizationOffsetMinutes));
   if (!Complete(result.status)) {
     error = wxString::FromUTF8(result.message);
+    if (configuration.IsOriginal()) {
+      if (result.status == wr::RoutingStatus::WaveDataRequired)
+        error = _("Quick requires wave coverage to enforce Max Swell. Supply wave data, or deliberately set Max Swell to 0 to disable this limit.");
+      else if (result.status == wr::RoutingStatus::CurrentDataRequired)
+        error = _("Quick requires current coverage while Currents is enabled. Supply current data, or deliberately turn Currents off.");
+      else if (result.status == wr::RoutingStatus::WindForecastRequired)
+        error = _("Quick requires wind coverage for this route and time. Extend the GRIB coverage or configure an available climatology provider.");
+    }
     if (configuration.MaxSearchAngle > configuration.MaxDivertedCourse) {
       error += wxString::Format(
           _(". Max Diverted Course (%d°) is a separate hard route-geometry "

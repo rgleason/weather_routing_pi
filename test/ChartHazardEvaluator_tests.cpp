@@ -123,6 +123,10 @@ TEST(ChartHazardEvaluator, AppliesMinimumDepthInsidePluginMask) {
   ASSERT_TRUE(evaluator.CheckSegment(0.02, 0.02, 0.02, 0.02, options,
                                      &result));
   EXPECT_EQ(result.status, PI_SEGMENT_SAFETY_TOO_SHALLOW);
+  EXPECT_EQ(result.has_depth, 1);
+  EXPECT_DOUBLE_EQ(result.hit_depth_m, 1.0);
+  EXPECT_DOUBLE_EQ(result.required_depth_m, 2.0);
+  EXPECT_STREQ(result.chart_path, "synthetic.000");
 }
 
 TEST(ChartHazardEvaluator, ChartIdentityChangeNeverReusesOldDerivedMask) {

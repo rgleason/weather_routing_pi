@@ -15,6 +15,9 @@ message(STATUS "Downloading and building gtest from source (if required)")
 include(FetchContent)
 find_package(GTest 1.16 QUIET)
 if(NOT GTest_FOUND)
+    # Tests and the plugin share one Windows build tree.  Do not let
+    # GoogleTest's default install rules contaminate the plugin package.
+    set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
     FetchContent_Declare(
         googletest
         GIT_REPOSITORY https://github.com/google/googletest.git
@@ -37,9 +40,7 @@ html
 adv
 aui
 REQUIRED)
-if(wxWidgets_USE_FILE)
-    include(${wxWidgets_USE_FILE})
-endif()
+include(${wxWidgets_USE_FILE})
 
 set(TEST_SRC
     ShorelineDataset_tests.cpp
@@ -77,6 +78,9 @@ set(TEST_SRC
     SunCalculator_tests.cpp
     TimeZoneDisplay_tests.cpp
     ModernNativeEngine_tests.cpp
+    OriginalEngine_tests.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/vendor/original-routing-engine/src/Engine.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/vendor/original-routing-engine/src/Contour.cpp
     ArrivalPlanner_tests.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/AppendOnlyCache.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/ChartSafetyCache.cpp

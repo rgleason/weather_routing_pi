@@ -6,6 +6,68 @@
 #include "ShorelineSettings.h"
 
 namespace wr = weather_routing;
+TEST(RoutingEngineSettings, ThreeTitlesKeepStableSavedIdsAndBasicOrder) {
+  wr::RoutingEngineSettings settings;
+  for (int i = 0; i < 3; ++i) {
+    settings.engine = wr::EngineFromSelection(i);
+    EXPECT_EQ(wr::EngineSelection(settings.engine), i);
+    EXPECT_STREQ(wr::EngineTitle(settings.engine),
+                 i == 0 ? "Quick" : i == 1 ? "Standard" : "Professional");
+    EXPECT_EQ(settings.EngineId(), i == 0 ? "original" : i == 1 ? "quick" : "main");
+  }
+  EXPECT_EQ(wr::EngineFromSelection(-1), wr::RoutingEngine::Unsupported);
+}
+TEST(RoutingEngineSettings, FirstInstallQuickButUpgradePreservesEveryExistingSelection) {
+  wr::RoutingEngineSettings fresh;
+  wr::ApplyFirstUseEngineDefaults(fresh, false);
+  EXPECT_EQ(fresh.engine, wr::RoutingEngine::Original);
+  for (const char* id : {"original", "quick", "main", "unknown"}) {
+    TiXmlElement xml("Configuration");
+    xml.SetAttribute("RoutingEngine", id);
+    auto saved = wr::ReadRoutingEngineSettings(xml);
+    const auto before = saved;
+    wr::ApplyFirstUseEngineDefaults(saved, true);
+    EXPECT_EQ(saved, before);
+  }
+  TiXmlElement legacy("Configuration");
+  auto existing = wr::ReadRoutingEngineSettings(legacy);
+  wr::ApplyFirstUseEngineDefaults(existing, true);
+  EXPECT_EQ(existing.engine, wr::RoutingEngine::Main);
+}
+TEST(RoutingEngineSettings, AllThreeBlocksSurviveSwitchSaveReinstallAndIndependentReset) {
+  wr::RoutingEngineSettings settings;
+  settings.quick = {512, 240, 15, 90, {"custom", 0}};
+  settings.original = {128, 120, 12.5, 100, {"custom", 0}};
+  settings.mainPreset = {"custom", 7};
+  settings.originalShorelineResolution = 4;
+  // Persistence stores the effective value supported by this process. The
+  // Windows catalogue target is 32-bit and deliberately caps this at 192 MiB.
+  const int originalCacheMiB =
+      wr::NormalizeGribTimelineCacheMiB(1024, true);
+  settings.originalGribTimelineCacheMiB = originalCacheMiB;
+  for (int i = 0; i < 3; ++i) {
+    settings.engine = wr::EngineFromSelection(i);
+    TiXmlElement xml("Configuration");
+    wr::WriteRoutingEngineSettings(settings, xml);
+    EXPECT_EQ(wr::ReadRoutingEngineSettings(xml), settings);
+    wxStringInputStream empty("");
+    wxFileConfig profile(empty);
+    wr::WriteRoutingEngineSettings(settings, profile);
+    wxStringOutputStream output;
+    ASSERT_TRUE(profile.Save(output));
+    wxStringInputStream restoredInput(output.GetString());
+    wxFileConfig restored(restoredInput);
+    EXPECT_EQ(wr::ReadRoutingEngineSettings(restored), settings);
+  }
+  const auto before = settings;
+  settings.ResetOriginalToBalanced();
+  EXPECT_EQ(settings.quick, before.quick);
+  EXPECT_EQ(settings.mainPreset, before.mainPreset);
+  EXPECT_EQ(settings.original.memoryBudgetMiB, 128);
+  EXPECT_EQ(settings.originalShorelineResolution, 4);
+  EXPECT_EQ(settings.originalGribTimelineCacheMiB, originalCacheMiB);
+  EXPECT_EQ(settings.original.offshoreStepMinutes, 180);
+}
 namespace {
 // Search actions accept the same fields as RouteMapConfiguration without
 // coupling persistence tests to the OpenCPN host and routing worker lifecycle.
@@ -107,11 +169,11 @@ TEST(RoutingEngineSettings, ResetMainChangesOnlyItsSearchTuning) {
   const auto before = c;
   wr::ResetMainToBalanced(c);
   EXPECT_EQ(c.DeltaTime, 3600);
-  EXPECT_EQ(c.ByDegrees, 5);
+  EXPECT_EQ(c.ByDegrees, 10);
   EXPECT_EQ(c.RoutingEffortPercent, 100);
   EXPECT_EQ(c.MaxSearchAngle, 120);
   EXPECT_FALSE(c.UseReverseReachabilityRecovery);
-  EXPECT_EQ(c.EngineSettings.mainPreset, (wr::SearchPreset{"balanced", 1}));
+  EXPECT_EQ(c.EngineSettings.mainPreset, (wr::SearchPreset{"balanced", 2}));
   EXPECT_EQ(c.EngineSettings.quick, before.EngineSettings.quick);
   EXPECT_EQ(c.EngineSettings.engine, before.EngineSettings.engine);
   EXPECT_EQ(c.MinimumDepthMeters, before.MinimumDepthMeters);
@@ -126,7 +188,7 @@ TEST(RoutingEngineSettings, ResetQuickPreservesItsMemoryBudgetAndEveryMainValue)
   c.EngineSettings.quick = {96, 240, 15, 85, {"custom", 0}};
   const auto before = c;
   c.EngineSettings.ResetQuickToBalanced();
-  EXPECT_EQ(c.EngineSettings.quick, (wr::QuickSearchSettings{96, 180, 20, 120, {"balanced", 1}}));
+  EXPECT_EQ(c.EngineSettings.quick, (wr::QuickSearchSettings{96, 180, 10, 120, {"balanced", 2}}));
   EXPECT_EQ(c.EngineSettings.mainPreset, before.EngineSettings.mainPreset);
   EXPECT_EQ(c.DeltaTime, before.DeltaTime);
   EXPECT_EQ(c.ByDegrees, before.ByDegrees);
@@ -160,8 +222,21 @@ TEST(RoutingEngineSettings, MissingQuickFieldsInitializeOnlyNewSettings) {
   auto settings = wr::ReadRoutingEngineSettings(xml);
   EXPECT_EQ(settings.quick.memoryBudgetMiB, 96);
   EXPECT_EQ(settings.quick.offshoreStepMinutes, 180);
-  EXPECT_EQ(settings.quick.headingStepDegrees, 20);
+  EXPECT_EQ(settings.quick.headingStepDegrees, 10);
   EXPECT_EQ(settings.mainPreset.id, "custom");
+}
+
+TEST(RoutingEngineSettings, OldBalancedPresetKeepsItsResolvedSampling) {
+  TiXmlDocument document;
+  document.Parse(R"(<Configuration RoutingEngine="quick" QuickSearchPreset="balanced" QuickSearchPresetRevision="1" QuickOffshoreStepMinutes="180" QuickHeadingStepDegrees="20" QuickMaximumSearchAngle="120" QuickShorelineResolution="0" QuickGribTimelineCacheMiB="64" />)");
+  auto& xml = *document.RootElement();
+  const auto settings = wr::ReadRoutingEngineSettings(xml);
+  EXPECT_EQ(settings.quick.headingStepDegrees, 20);
+  EXPECT_EQ(settings.quick.preset, (wr::SearchPreset{"balanced", 1}));
+  EXPECT_EQ(wr::ReadShorelineResolution(xml, wr::kDefaultQuickShorelineResolution, "QuickShorelineResolution"), 0);
+  wr::WriteRoutingEngineSettings(settings, xml);
+  EXPECT_EQ(wr::ReadRoutingEngineSettings(xml), settings);
+  EXPECT_STREQ(xml.Attribute("QuickGribTimelineCacheMiB"), "64");
 }
 
 TEST(ShorelineSettings, MigrationAndIndependentEngineRoundTrips) {

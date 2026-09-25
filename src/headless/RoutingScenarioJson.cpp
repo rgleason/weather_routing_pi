@@ -163,8 +163,9 @@ bool LoadRoutingScenarioJson(const wxString& path,
     if (route.isMember("routingEngine")) {
       scenario.route.routingEngine = JsonString(route, "routingEngine");
       scenario.route.hasRoutingEngine = true;
-      if (scenario.route.routingEngine != "main" && scenario.route.routingEngine != "quick") {
-        error = "routingEngine must be main or quick";
+      if (scenario.route.routingEngine != "main" && scenario.route.routingEngine != "quick" &&
+          scenario.route.routingEngine != "original") {
+        error = "routingEngine must be original (Quick), quick (Standard), or main (Professional)";
         return false;
       }
     }
@@ -260,6 +261,15 @@ bool LoadRoutingScenarioJson(const wxString& path,
     if (JsonDouble(route, "maxApparentWindKnots", double_value)) {
       scenario.route.maxApparentWindKnots = double_value;
       scenario.route.hasMaxApparentWindKnots = true;
+    }
+    if (route.isMember("maxSwellMeters")) {
+      if (!JsonDouble(route, "maxSwellMeters", double_value) ||
+          !std::isfinite(double_value) || double_value < 0 || double_value > 100) {
+        error = "maxSwellMeters must be between 0 (disabled) and 100";
+        return false;
+      }
+      scenario.route.maxSwellMeters = double_value;
+      scenario.route.hasMaxSwellMeters = true;
     }
     if (JsonBool(route, "optimizeTacking", bool_value)) {
       scenario.route.optimizeTacking = bool_value;
@@ -396,7 +406,7 @@ bool SaveRoutingResultJson(const wxString& path,
     value["searchSettings"]["maximumSearchAngleDegrees"] = candidate.searchMaximumAngleDegrees;
     if (candidate.engine == "main")
       value["searchSettings"]["effortPercent"] = candidate.searchEffortPercent;
-    if (candidate.engine == "quick")
+    if (candidate.engine == "quick" || candidate.engine == "original")
       value["searchSettings"]["searchMemoryBudgetMiB"] = candidate.searchMemoryBudgetMiB;
     if (candidate.eta.IsValid())
       value["eta"] = TimeToJson(candidate.eta).ToUTF8().data();

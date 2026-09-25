@@ -370,6 +370,26 @@ bool ChartHazardEvaluator::CheckSegment(
     if (flags != 0) {
       SetHitResult(result, flags, *mask, y, x, static_cast<int>(sample),
                    static_cast<int>(steps));
+      result->required_depth_m = options.minimum_depth_m;
+      // A zero-margin endpoint query reads this exact raw chart cell.  Retain
+      // its measured depth so a shallow-start error can identify the value
+      // which actually caused rejection.  A dilated margin hit may originate
+      // in another cell, so do not attribute this cell's depth to it.
+      if (result->status == PI_SEGMENT_SAFETY_TOO_SHALLOW &&
+          options.check_depth && options.safety_margin_nm <= 0.0) {
+        std::shared_ptr<const ChartHazardTile> raw;
+        if (cache_.LookupSnapshot(lat_tile, lon_tile, true, &raw) && raw) {
+          const int index = row * raw->cols + col;
+          if (row < raw->rows && col < raw->cols &&
+              index >= 0 && index < static_cast<int>(raw->has_depth.size()) &&
+              raw->has_depth[index] &&
+              index < static_cast<int>(raw->min_depth_m.size())) {
+            result->has_depth = 1;
+            result->hit_depth_m = raw->min_depth_m[index];
+            result->min_depth_m = result->hit_depth_m;
+          }
+        }
+      }
       return true;
     }
     if (x == x1 && y == y1) break;
