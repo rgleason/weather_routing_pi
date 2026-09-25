@@ -45,7 +45,7 @@ def inspect_pair(directory):
         raise ValueError(f"Wrong archive identity: {archive.name}")
     metadata = archive.with_name(archive.name[:-7] + ".xml")
     if not metadata.is_file():
-        match = re.match(rf"{PACKAGE}-(\d+\.\d+\.\d+\.\d+)-", archive.name)
+        match = re.match(rf"{PACKAGE}-(\d+\.\d+\.\d+)-", archive.name)
         candidates = list(directory.glob(f"{PACKAGE}-{match[1]}-*.xml")) if match else []
         if len(candidates) != 1:
             raise ValueError(f"No unique same-version XML: {archive}")
@@ -64,7 +64,7 @@ def inspect_pair(directory):
     if value(root, "source") != "https://github.com/pob220/xweather_routing_pi":
         raise ValueError(f"Wrong source repository: {metadata}")
     version = value(root, "version")
-    if not re.fullmatch(r"\d+\.\d+\.\d+\.\d+", version) or not archive.name.startswith(f"{PACKAGE}-{version}-"):
+    if not re.fullmatch(r"\d+\.\d+\.\d+", version) or not archive.name.startswith(f"{PACKAGE}-{version}-"):
         raise ValueError(f"Archive/XML version mismatch: {archive}")
     target = tuple(value(root, key) for key in ("target", "target-version", "target-arch"))
     if any(not re.fullmatch(r"[\w.+-]+", item) for item in target):

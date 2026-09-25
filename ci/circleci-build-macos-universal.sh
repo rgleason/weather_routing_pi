@@ -131,7 +131,7 @@ grep -q "<source> https://github.com/pob220/${package_name} </source>" \
 package_version=$(sed -n \
   's:.*<version>[[:space:]]*\([^[:space:]<]*\)[[:space:]]*</version>.*:\1:p' \
   "$metadata")
-if [[ ! "$package_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+if [[ ! "$package_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "Invalid or missing package version in $metadata" >&2
   exit 1
 fi

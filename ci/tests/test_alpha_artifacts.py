@@ -20,7 +20,7 @@ class AlphaArtifacts(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
 
-    def pair(self, name, version="1.18.1.0", plugin="xWeatherRouting"):
+    def pair(self, name, version="1.18.3", plugin="xWeatherRouting"):
         directory = self.root / "artifacts" / name / "package"
         directory.mkdir(parents=True)
         archive = directory / f"xweather_routing_pi-{version}-{name}.tar.gz"
@@ -68,6 +68,11 @@ class AlphaArtifacts(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Unexpected target"):
             prepare.inspect_pair(directory)
 
+    def test_rejects_four_part_version(self):
+        directory, _, _ = self.pair("trixie", version="1.18.3.0")
+        with self.assertRaisesRegex(ValueError, "Archive/XML version mismatch"):
+            prepare.inspect_pair(directory)
+
     def test_incomplete_matrix_writes_nothing(self):
         self.pair("trixie")
         output = self.root / "release"
@@ -82,7 +87,7 @@ class AlphaArtifacts(unittest.TestCase):
         prepare.prepare(self.root / "artifacts", output, "abcdef1", "23")
         uploads = json.loads((output / "uploads.json").read_text())
         self.assertEqual(len(uploads), 18)
-        self.assertTrue(all(item["version"] == "1.18.1.0+23.abcdef1" for item in uploads))
+        self.assertTrue(all(item["version"] == "1.18.3+23.abcdef1" for item in uploads))
         for archive in output.glob("*.tar.gz"):
             with tarfile.open(archive, "r:gz") as package:
                 self.assertEqual(package.getnames().count("metadata.xml"), 1)
