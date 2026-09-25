@@ -168,11 +168,11 @@ ConfigurationDialog::ConfigurationDialog(WeatherRouting& weatherrouting)
   m_cbEnforceExperimentalChartSafety->Bind(
       wxEVT_CHECKBOX, &ConfigurationDialog::OnChartSafetyChanged, this);
   const wxString detect_land_note =
-      _("Detect Land uses the selected GSHHG shoreline resolution in Advanced. "
-        "Crude, Low and Intermediate are bundled for offline use; High "
-        "and Full can be installed from Shoreline data on Advanced. On a compatible "
-        "enhanced host, the separate chart-aware controls can additionally "
-        "use vector or CM93 chart geometry.");
+      _("Detect Land uses the selected GSHHG shoreline when chart enforcement "
+        "is off. Crude, Low and Intermediate are bundled; High and Full can be "
+        "installed from Shoreline data on Advanced. With both chart options "
+        "enabled on a compatible host, loaded charts decide route land and "
+        "depth safety; GSHHG helps the initial search.");
   m_cbDetectLand->SetToolTip(detect_land_note);
   m_sSafetyMarginLand->SetToolTip(
       detect_land_note + _("\n\nSpecify a minimum distance in nautical miles "
@@ -931,9 +931,6 @@ void ConfigurationDialog::UpdateEngineControls() {
   m_cRoutingEngine->Enable(!running);
   const bool chartAuthoritative = m_WeatherRouting.HasEnhancedChartSafety() &&
       m_cbUseExperimentalChartSafety->GetValue() && m_cbEnforceExperimentalChartSafety->GetValue();
-  m_cbDetectLand->SetLabel(chartAuthoritative
-      ? _("Detect Land (loaded charts enforced)")
-      : _("Detect Land (GSHHG shoreline only)"));
   int shoreline = wxNOT_FOUND;
   bool first = true;
   for (auto* route : m_WeatherRouting.CurrentRouteMaps(false)) {

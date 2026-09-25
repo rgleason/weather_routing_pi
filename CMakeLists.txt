@@ -92,7 +92,7 @@ set(LONG_DESCRIPTION
 set(VERSION_MAJOR "1")
 set(VERSION_MINOR "18")
 set(VERSION_PATCH "2")
-set(VERSION_TWEAK "0")
+set(VERSION_TWEAK "1")
 # Keep all five approved source archives for verification and regression tests.
 # Packages ship only Crude, Low and Intermediate; High and Full are optional
 # checksum-verified downloads shared by both plugin identities.

@@ -1,11 +1,11 @@
 # Weather Routing / xWeatherRouting 1.18.2
 
-This update makes the active land-checking mode visible beside **Detect Land**.
-The label says **GSHHG shoreline only** when loaded-chart checks are not
-enforced and **loaded charts enforced** when they are. GSHHG is shoreline data;
-it does not verify Palmerston's reefs, shoals or charted depths. The Basic page
-now says so explicitly. The search algorithms and their shoreline data have
-not changed.
+This update clarifies the data source beside **Detect Land**. Its stable label
+is **GSHHG shoreline check**. The Basic page explains that GSHHG shoreline is
+used by default. When both chart options are enabled on a compatible host,
+loaded charts enforce route land and depth safety while GSHHG helps the initial
+search. GSHHG alone does not verify Palmerston's reefs, shoals or charted
+depths. The search algorithms and their shoreline data have not changed.
 
 Quick retains at most 128 isochrone layers for display, as before. On a long
 voyage it now thins earlier display layers and samples later layers across the
@@ -21,6 +21,7 @@ An unresolved `PENDING_DATA` chart response now rejects an edge until the
 chart-safety request is serviced, including during final validation. It can no
 longer be interpreted as clear water.
 
-The user-facing version is 1.18.2; OpenCPN package metadata uses `1.18.2.0`.
+The user-facing version is 1.18.2; this wording update uses OpenCPN package
+metadata `1.18.2.1`.
 Debian 12 and 13 preview tarballs include root-level `metadata.xml` for direct
 import into OpenCPN.

@@ -1663,7 +1663,8 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   fgSizer23->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
 
   m_cbDetectLand =
-      new wxCheckBox(sbOptions->GetStaticBox(), wxID_ANY, _("Detect Land"),
+      new wxCheckBox(sbOptions->GetStaticBox(), wxID_ANY,
+                     _("Detect Land (GSHHG shoreline check)"),
                      wxDefaultPosition, wxDefaultSize, wxCHK_3STATE);
   m_cbDetectLand->SetToolTip(_("Detect land crossings and avoid them"));
   m_cbDetectLand->SetValue(true);
@@ -1712,9 +1713,9 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   sbOptions->Add(fgSizer23, 1, wxEXPAND | wxALL, 5);
   wxStaticText* safetyExplanation = new wxStaticText(
       sbOptions->GetStaticBox(), wxID_ANY,
-      _("GSHHG shoreline checks do not verify reefs or charted depths. "
-        "To enforce charted depths, enable Detect Land and both chart options. "
-        "Checking charts alone provides diagnostics without enforcing them."));
+      _("Detect Land uses GSHHG shoreline by default. With both chart options "
+        "enabled, loaded charts decide route land and depth safety; GSHHG helps "
+        "the initial search. GSHHG alone does not verify reefs or charted depths."));
   safetyExplanation->Wrap(440);
   sbOptions->Add(safetyExplanation, 0, wxEXPAND | wxALL, 5);
 
