@@ -493,14 +493,30 @@ RoutingTablePanel::RoutingTablePanel(wxWindow* parent,
   // Create a sizer for the panel
   m_mainSizer = new wxBoxSizer(wxVERTICAL);
 
-  wxBoxSizer* summarySizer = new wxBoxSizer(wxHORIZONTAL);
   m_summaryText = new wxStaticText(this, wxID_ANY, wxEmptyString);
   m_columnsButton = new wxButton(this, wxID_ANY, _("Columns..."));
   m_exportCsvButton = new wxButton(this, wxID_ANY, _("Export CSV..."));
+#ifdef __OCPN__ANDROID__
+  // wxQt hides the AUI floating pane caption, including its close button.
+  auto closeButton = new wxButton(this, wxID_ANY, _("Close"));
+  wxBoxSizer* actions = new wxBoxSizer(wxHORIZONTAL);
+  actions->Add(m_columnsButton, 0, wxALL, 5);
+  actions->Add(m_exportCsvButton, 0, wxALL, 5);
+  actions->Add(closeButton, 0, wxALL, 5);
+  m_mainSizer->Add(m_summaryText, 0, wxEXPAND | wxALL, 5);
+  m_mainSizer->Add(actions, 0, wxEXPAND);
+  closeButton->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+    wxAuiManager* manager = GetFrameAuiManager();
+    manager->GetPane(this).Show(false);
+    manager->Update();
+  });
+#else
+  wxBoxSizer* summarySizer = new wxBoxSizer(wxHORIZONTAL);
   summarySizer->Add(m_summaryText, 1, wxALIGN_CENTER_VERTICAL | wxALL, 5);
   summarySizer->Add(m_columnsButton, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
   summarySizer->Add(m_exportCsvButton, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
   m_mainSizer->Add(summarySizer, 0, wxEXPAND);
+#endif
   m_columnsButton->Bind(wxEVT_BUTTON, &RoutingTablePanel::OnChooseColumns,
                         this);
   m_exportCsvButton->Bind(wxEVT_BUTTON, &RoutingTablePanel::OnExportCsv, this);

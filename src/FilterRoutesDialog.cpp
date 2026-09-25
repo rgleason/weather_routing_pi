@@ -35,6 +35,7 @@
 #include "weather_routing_pi.h"
 #include "WeatherRouting.h"
 #include "FilterRoutesDialog.h"
+#include "AndroidDialogHeader.h"
 
 wxString FilterNames[] = {_("Start"), _("Start Time"), _("End"),
                           _("BoatFileName"), _("State")};
@@ -51,6 +52,7 @@ FilterRoutesDialog::FilterRoutesDialog(WeatherRouting* weatherrouting)
   for (int i = 0; i < NUM_FILTERS; i++) m_cCategory->Append(FilterNames[i]);
   m_cCategory->SetSelection(0);
 #ifdef __OCPN__ANDROID__
+  WR_AddAndroidDoneHeader(this, _("Filter routings"));
   wxSize sz = ::wxGetDisplaySize();
   SetSize(0, 0, sz.x, sz.y - 40);
 #endif

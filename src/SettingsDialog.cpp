@@ -30,6 +30,7 @@
 #include <math.h>
 
 #include "SettingsDialog.h"
+#include "WeatherRoutingWxCompat.h"
 #include "RouteMapOverlay.h"
 #include "weather_routing_pi.h"
 #include "WeatherRouting.h"
@@ -508,7 +509,40 @@ void SettingsDialog::LoadSettings() {
   pConf->Read(_T ( "SettingsDialogY" ), &p.y, p.y);
   SetPosition(p);
 #ifdef __OCPN__ANDROID__
+  // The footer is below the viewport when wxQt lays out the desktop form.
+  // Keep its two actions at the top of the Android dialog instead.
   wxSize sz = ::wxGetDisplaySize();
+  for (wxCheckBox* check : {m_cbDisplayCursorRoute, m_cbAlternatesForAll,
+                            m_cbMarkAtPolarChange, m_cbDisplayCurrent,
+                            m_cbDisplayWindBarbs,
+                            m_cbDisplayApparentWindBarbs, m_cbDisplayComfort}) {
+    check->SetMinSize(wxSize(wxMax(1, sz.x - 80), -1));
+  }
+  wxFlexGridSizer* androidRoot =
+      static_cast<wxFlexGridSizer*>(GetSizer());
+  wxFlexGridSizer* androidColumns = static_cast<wxFlexGridSizer*>(
+      androidRoot->GetItem(static_cast<size_t>(0))->GetSizer());
+  androidColumns->RemoveGrowableCol(1);
+  androidColumns->SetCols(1);
+  androidColumns->AddGrowableRow(1);
+  m_scrolledWindow4->SetMinSize(wxSize(-1, WR_FromDIP(this, 380)));
+  m_cblFields->SetMinSize(wxSize(-1, WR_FromDIP(this, 380)));
+  androidRoot->RemoveGrowableRow(0);
+  wxBoxSizer* androidHeader = new wxBoxSizer(wxHORIZONTAL);
+  androidHeader->Add(new wxStaticText(this, wxID_ANY, _("Routing settings")),
+                     0, wxALIGN_CENTER_VERTICAL | wxALL, 8);
+  wxButton* androidDone = new wxButton(this, wxID_ANY, _("Done"));
+  androidDone->SetMinSize(wxSize(WR_FromDIP(this, 88), WR_FromDIP(this, 44)));
+  androidDone->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { Hide(); });
+  androidHeader->Add(androidDone, 0, wxALL, 5);
+  wxButton* androidHelp = new wxButton(this, wxID_ANY, _("Help"));
+  androidHelp->SetMinSize(wxSize(WR_FromDIP(this, 88), WR_FromDIP(this, 44)));
+  androidHelp->Bind(wxEVT_BUTTON, [this](wxCommandEvent& event) {
+    OnHelp(event);
+  });
+  androidHeader->Add(androidHelp, 0, wxALL, 5);
+  androidRoot->Prepend(androidHeader, 0, wxEXPAND);
+  androidRoot->AddGrowableRow(1);
   SetSize(0, 0, sz.x, sz.y - 40);
 #endif
 }

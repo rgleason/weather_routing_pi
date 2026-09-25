@@ -941,6 +941,14 @@ private:
   wxFileName m_FileName;
 
   wxSize m_size;
+#ifdef __OCPN__ANDROID__
+  wxSize m_androidDisplaySize;
+  wxWindow* m_androidSizeSource{nullptr};
+  wxTimer m_androidLayoutTimer;
+  void FitAndroidDisplay();
+  void OnAndroidParentSize(wxSizeEvent& event);
+  void OnAndroidLayoutTimer(wxTimerEvent& event);
+#endif
 
   /**
    * Pointer to the closest Position object on the route to the user's cursor

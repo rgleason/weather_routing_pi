@@ -227,6 +227,94 @@ ConfigurationDialog::ConfigurationDialog(WeatherRouting& weatherrouting)
   UpdateRoutingTimeModeControls();
 
 #ifdef __OCPN__ANDROID__
+  // wxQt omits the dialog caption on Android. Keep Done available on both
+  // notebook pages, including the scrollable Advanced page.
+  GetSizer()->Detach(m_notebook7);
+  wxBoxSizer* androidLayout = new wxBoxSizer(wxVERTICAL);
+  wxBoxSizer* androidHeader = new wxBoxSizer(wxHORIZONTAL);
+  androidHeader->Add(new wxStaticText(this, wxID_ANY,
+                                      _("Routing configuration")),
+                     0, wxALIGN_CENTER_VERTICAL | wxALL, 8);
+  wxButton* done = new wxButton(this, wxID_ANY, _("Done"));
+  done->SetMinSize(wxSize(WR_FromDIP(this, 88), WR_FromDIP(this, 44)));
+  done->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { Hide(); });
+  androidHeader->Add(done, 0, wxALL, 5);
+  // wxQt's editable combo can obscure its drop-down arrow at full width.
+  // Give touch users an explicit picker for the named endpoints.
+  auto addEndpointPicker = [this, androidHeader](wxComboBox* combo,
+                                                  const wxString& label) {
+    wxButton* choose = new wxButton(this, wxID_ANY, label);
+    choose->SetMinSize(wxSize(WR_FromDIP(this, 125), WR_FromDIP(this, 44)));
+    choose->Bind(wxEVT_BUTTON, [this, combo, label](wxCommandEvent&) {
+      wxArrayString names;
+      for (unsigned int i = 0; i < combo->GetCount(); ++i)
+        names.Add(combo->GetString(i));
+      if (names.empty()) {
+        wxMessageBox(_("Add a position first."), label,
+                     wxOK | wxICON_INFORMATION, this);
+        return;
+      }
+      wxSingleChoiceDialog picker(this, label, _("Routing configuration"),
+                                  names);
+      const int initial = combo->FindString(combo->GetValue(), true);
+      if (initial != wxNOT_FOUND) picker.SetSelection(initial);
+      if (picker.ShowModal() != wxID_OK) return;
+      combo->SetSelection(picker.GetSelection());
+      Update();
+    });
+    androidHeader->Add(choose, 0, wxALL, 5);
+  };
+  addEndpointPicker(m_cStart, _("Choose start"));
+  addEndpointPicker(m_cEnd, _("Choose end"));
+  androidLayout->Add(androidHeader, 0, wxEXPAND);
+  androidLayout->Add(m_notebook7, 1, wxEXPAND | wxALL, 5);
+  SetSizer(androidLayout, true);
+
+  // The desktop Basic page uses two columns. On a tablet each column is too
+  // narrow for its controls and labels, so stack them in reading order.
+  wxFlexGridSizer* basicSizer =
+      static_cast<wxFlexGridSizer*>(m_pBasic->GetSizer());
+  basicSizer->RemoveGrowableCol(1);
+  basicSizer->SetCols(1);
+  wxFlexGridSizer* boatRow =
+      static_cast<wxFlexGridSizer*>(m_tBoat->GetContainingSizer());
+  boatRow->Detach(m_bBoatFilename);
+  boatRow->Detach(m_bEditBoat);
+  boatRow->SetRows(0);
+  boatRow->SetCols(1);
+  wxBoxSizer* boatActions = new wxBoxSizer(wxHORIZONTAL);
+  boatActions->Add(m_bBoatFilename, 0, wxALL, 5);
+  boatActions->Add(m_bEditBoat, 0, wxALL, 5);
+  boatRow->Add(boatActions, 0, wxEXPAND);
+  // wxQt measures checkbox text too narrowly in the generated horizontal
+  // sizers. Reserve the complete labels without changing the desktop grid.
+  m_cbUseCurrentTime->SetMinSize(WR_FromDIP(this, wxSize(185, 40)));
+  m_cbUseLocalTimeZone->SetMinSize(WR_FromDIP(this, wxSize(210, 40)));
+  m_cbDepartureTimeOptimizationEnabled->SetMinSize(
+      WR_FromDIP(this, wxSize(260, 40)));
+  m_cbUseExperimentalChartSafety->SetMinSize(
+      WR_FromDIP(this, wxSize(470, 40)));
+  m_cbEnforceExperimentalChartSafety->SetMinSize(
+      WR_FromDIP(this, wxSize(430, 40)));
+  m_cbUseGrib->SetMinSize(WR_FromDIP(this, wxSize(110, 40)));
+  m_cbAllowDataDeficient->SetMinSize(WR_FromDIP(this, wxSize(280, 40)));
+  m_cbUseReverseReachabilityRecovery->SetMinSize(
+      WR_FromDIP(this, wxSize(560, 40)));
+  m_cbAvoidCycloneTracks->SetMinSize(WR_FromDIP(this, wxSize(430, 40)));
+  m_cbUseMotor->SetMinSize(WR_FromDIP(this, wxSize(340, 40)));
+  m_cbUseOptimalAngles->SetMinSize(WR_FromDIP(this, wxSize(310, 40)));
+  m_cbInvertedRegions->SetMinSize(WR_FromDIP(this, wxSize(210, 40)));
+  m_cbAnchoring->SetMinSize(WR_FromDIP(this, wxSize(150, 40)));
+  m_cRoutingEffortPercent->Clear();
+  for (const wxString& label : {_("100% / Standard"), _("150% / Extended"),
+                                _("200% / Thorough"), _("400% / Exhaustive")})
+    m_cRoutingEffortPercent->Append(label);
+  m_cRoutingEffortPercent->SetSelection(0);
+  m_pBasic->Layout();
+  static_cast<wxBoxSizer*>(m_pAdvanced->GetSizer())->SetOrientation(wxVERTICAL);
+  m_pAdvanced->Layout();
+  m_pAdvanced->FitInside();
+
   wxSize sz = ::wxGetDisplaySize();
   SetSize(0, 0, sz.x, sz.y - 40);
 #else
@@ -512,6 +600,20 @@ void ConfigurationDialog::OnBoatFilename(wxCommandEvent& event) {
 #define SET_CONTROL(FIELD, CONTROL, SETTER, TYPE, NULLVALUE) \
   SET_CONTROL_VALUE((*it).FIELD, CONTROL, SETTER, TYPE, NULLVALUE)
 
+static void SetConfigurationChoiceValue(wxComboBox* combo,
+                                        const wxString& value) {
+#ifdef __OCPN__ANDROID__
+  // wxQt's editable combo does not update its displayed selection reliably
+  // through SetValue() when populated position names are restored.
+  const int index = combo->FindString(value, true);
+  if (index != wxNOT_FOUND) {
+    combo->SetSelection(index);
+    return;
+  }
+#endif
+  combo->SetValue(value);
+}
+
 #define SET_CHOICE_VALUE(FIELD, VALUE)                                        \
   do {                                                                        \
     bool allsame = true;                                                      \
@@ -524,11 +626,11 @@ void ConfigurationDialog::OnBoatFilename(wxCommandEvent& event) {
       }                                                                       \
     }                                                                         \
     if (allsame)                                                              \
-      m_c##FIELD->SetValue(value);                                            \
+      SetConfigurationChoiceValue(m_c##FIELD, value);                        \
     else {                                                                    \
       if (m_c##FIELD->GetString(m_c##FIELD->GetCount() - 1) != wxEmptyString) \
         m_c##FIELD->Append(wxEmptyString);                                    \
-      m_c##FIELD->SetValue(wxEmptyString);                                    \
+      SetConfigurationChoiceValue(m_c##FIELD, wxEmptyString);                \
     }                                                                         \
   } while (0)
 #define SET_CHOICE(FIELD) SET_CHOICE_VALUE(FIELD, (*it).FIELD)
@@ -948,8 +1050,13 @@ void ConfigurationDialog::UpdateEngineControls() {
   for (int q = 0; q < 5; ++q) {
     const bool available = weather_routing::ShorelineManager::Available(q);
     if (!available && q != shoreline) continue;
+#ifdef __OCPN__ANDROID__
+    wxString label = wxString::Format("%d / %s", q,
+        wxGetTranslation(weather_routing::kShorelineSpecs[q].quality));
+#else
     wxString label = wxString::Format("%d — %s", q,
         wxGetTranslation(weather_routing::kShorelineSpecs[q].quality));
+#endif
     if (!available) label += _(" (missing; install)");
     if (q == shoreline) selectedIndex = static_cast<int>(m_shorelineChoiceResolutions.size());
     m_shorelineChoiceResolutions.push_back(q);

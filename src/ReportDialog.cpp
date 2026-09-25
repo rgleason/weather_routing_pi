@@ -34,6 +34,7 @@
 #include "RouteMapOverlay.h"
 
 #include "WeatherRouting.h"
+#include "AndroidDialogHeader.h"
 
 ReportDialog::ReportDialog(WeatherRouting& weatherrouting)
 #ifndef __WXOSX__
@@ -48,6 +49,10 @@ ReportDialog::ReportDialog(WeatherRouting& weatherrouting)
   m_bReportStale = true;
   SetRouteMapOverlays(std::list<RouteMapOverlay*>());
 #ifdef __OCPN__ANDROID__
+  WR_AddAndroidDoneHeader(this, _("Routing report"));
+  m_bInformation->GetContainingSizer()->Detach(m_bInformation);
+  GetSizer()->GetItem(static_cast<size_t>(0))->GetSizer()->Add(
+      m_bInformation, 0, wxALL, 5);
   wxSize sz = ::wxGetDisplaySize();
   SetSize(0, 0, sz.x, sz.y - 40);
 #endif

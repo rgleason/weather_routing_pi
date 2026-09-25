@@ -32,6 +32,7 @@
 
 #include "AboutDialog.h"
 #include "weather_routing_pi.h"
+#include "WeatherRoutingWxCompat.h"
 
 AboutDialog::AboutDialog(wxWindow* parent) : AboutDialogBase(parent) {
   //     m_stVersion->SetLabel(wxString::Format(_T("%d.%d"),PLUGIN_VERSION_MAJOR,
@@ -42,6 +43,12 @@ AboutDialog::AboutDialog(wxWindow* parent) : AboutDialogBase(parent) {
       PLUGIN_VERSION_PATCH));
 
 #ifdef __OCPN__ANDROID__
+  // wxQt keeps the generated empty-label width after SetLabel(). Give the
+  // version and the wrapped description enough room for their actual text.
+  m_stVersion->SetMinSize(wxSize(WR_FromDIP(this, 125), -1));
+  m_staticText110->Wrap(WR_FromDIP(this, 560));
+  m_staticText110->SetMinSize(WR_FromDIP(this, wxSize(560, 380)));
+  Layout();
   wxSize sz = ::wxGetDisplaySize();
   SetSize(0, 0, sz.x, sz.y - 40);
 #endif

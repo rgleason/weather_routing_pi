@@ -1216,6 +1216,13 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
   wxFileConfig* pConf = GetOCPNConfigObject();
   pConf->SetPath(_T( "/Plugins/WeatherRouting" ));
 
+#ifdef __OCPN__ANDROID__
+  // The generated value column starts empty and wxQt does not grow it when
+  // route coordinates and weather values arrive. Reserve a readable width.
+  m_CursorPositionDialog.m_stPosition->SetMinSize(wxSize(WR_FromDIP(this, 410), -1));
+  m_RoutePositionDialog.m_stPosition->SetMinSize(wxSize(WR_FromDIP(this, 410), -1));
+#endif
+
   m_mConfiguration->AppendSeparator();
   m_mChartAwarenessSettings = new wxMenuItem(m_mConfiguration, wxID_ANY,
                                              _("Chart Awareness Settings..."),
@@ -1369,6 +1376,31 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
   wxBoxSizer* bSizer;
   bSizer = new wxBoxSizer(wxVERTICAL);
   this->SetSizer(bSizer);
+#ifdef __OCPN__ANDROID__
+  // wxQt does not expose a floating frame's menu bar or caption on Android.
+  // Put the existing menus and a close control inside the frame instead.
+  wxBoxSizer* androidHeader = new wxBoxSizer(wxHORIZONTAL);
+  auto addMenuButton = [this, androidHeader](const wxString& label,
+                                              wxMenu* menu) {
+    wxButton* button = new wxButton(this, wxID_ANY, label);
+    androidHeader->Add(button, 1, wxEXPAND | wxALL, 3);
+    button->Bind(wxEVT_BUTTON, [this, button, menu](wxCommandEvent&) {
+      const wxPoint below = ScreenToClient(
+          button->ClientToScreen(wxPoint(0, button->GetSize().y)));
+      PopupMenu(menu, below);
+    });
+  };
+  addMenuButton(_("File"), m_mFile);
+  addMenuButton(_("Position"), m_mPosition);
+  addMenuButton(_("Routing"), m_mConfiguration);
+  addMenuButton(_("View"), m_mView);
+  addMenuButton(_("Help"), m_mHelp);
+  wxButton* androidClose = new wxButton(this, wxID_ANY, _("Close"));
+  androidHeader->Add(androidClose, 1, wxEXPAND | wxALL, 3);
+  androidClose->Bind(wxEVT_BUTTON,
+                     [this](wxCommandEvent&) { Hide(); });
+  bSizer->Add(androidHeader, 0, wxEXPAND | wxALL, 3);
+#endif
   if (!m_disable_colpane) {
     m_colpane = new wxCollapsiblePane(this, wxID_ANY, _("Weather Routing"),
                                       wxDefaultPosition, wxDefaultSize,
@@ -1386,7 +1418,22 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
     m_panel = new WeatherRoutingPanel(m_colpaneWindow);
     bSizer->Add(m_panel, 1, wxEXPAND, 0);
   }
+#ifndef __OCPN__ANDROID__
   bSizer->SetSizeHints(this);
+#endif
+
+#ifdef __OCPN__ANDROID__
+  // In portrait, stacked panes give both lists the full screen width. The
+  // divider remains draggable for users who need more room for either list.
+  wxWindow* positions = m_panel->m_splitter1->GetWindow1();
+  wxWindow* routings = m_panel->m_splitter1->GetWindow2();
+  m_panel->m_splitter1->Unsplit(routings);
+  m_panel->m_splitter1->SplitHorizontally(positions, routings);
+  // The generated panel was fitted while its panes were side by side.  A
+  // frame minimum derived from that fit prevents wxQt from honouring the
+  // tablet-sized geometry once the panes are stacked.
+  SetMinSize(wxSize(0, 0));
+#endif
 
   m_panel->m_lPositions->InsertColumn(POSITION_NAME, _("Name"));
   m_panel->m_lPositions->InsertColumn(POSITION_LAT, _("Lat"));
@@ -1419,9 +1466,13 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
   pConf->Read(_T("DialogWidth"), &m_size.x, m_size.x);
   pConf->Read(_T("DialogHeight"), &m_size.y, m_size.y);
 #ifdef __OCPN__ANDROID__
-  wxSize sz = ::wxGetDisplaySize();
+  // wxQt can retain the old display size after tablet rotation. The chart
+  // canvas reports its current dimensions, excluding Android system bars.
+  wxWindow* canvas = GetCanvasByIndex(0);
+  wxSize sz = canvas ? canvas->GetClientSize() : ::wxGetDisplaySize();
+  m_androidDisplaySize = sz;
   m_size.x = sz.x * 9 / 10;
-  m_size.y = sz.y * 4 / 5;
+  m_size.y = sz.y * 9 / 10;
   p.x = (sz.x - m_size.x) / 2;
   p.y = (sz.y - m_size.y) / 2;
 #endif
@@ -1529,10 +1580,27 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
   m_tDownTimer.Connect(wxEVT_TIMER,
                        wxTimerEventHandler(WeatherRouting::OnDownTimer), NULL,
                        this);
+  m_androidSizeSource = m_weather_routing_pi.GetParentWindow();
+  if (m_androidSizeSource)
+    m_androidSizeSource->Bind(wxEVT_SIZE,
+                              &WeatherRouting::OnAndroidParentSize, this);
+  m_androidLayoutTimer.Connect(
+      wxEVT_TIMER, wxTimerEventHandler(WeatherRouting::OnAndroidLayoutTimer),
+      nullptr, this);
+  m_androidLayoutTimer.Start(1000);
 #endif
 }
 
 WeatherRouting::~WeatherRouting() {
+#ifdef __OCPN__ANDROID__
+  m_androidLayoutTimer.Stop();
+  m_androidLayoutTimer.Disconnect(
+      wxEVT_TIMER, wxTimerEventHandler(WeatherRouting::OnAndroidLayoutTimer),
+      nullptr, this);
+  if (m_androidSizeSource)
+    m_androidSizeSource->Unbind(wxEVT_SIZE,
+                                &WeatherRouting::OnAndroidParentSize, this);
+#endif
   // Disconnect Events
   if (m_mStabilityCorridorView) {
     m_mView->Unbind(wxEVT_COMMAND_MENU_SELECTED,
@@ -1736,6 +1804,29 @@ void WeatherRouting::HandleGribTimelineFrame(const wxString& requestToken,
 }
 
 #ifdef __OCPN__ANDROID__
+void WeatherRouting::FitAndroidDisplay() {
+  wxWindow* canvas = GetCanvasByIndex(0);
+  const wxSize display = canvas ? canvas->GetClientSize() : ::wxGetDisplaySize();
+  if (display == m_androidDisplaySize && GetSize() == m_size) return;
+  m_androidDisplaySize = display;
+  m_size = wxSize(display.x * 9 / 10, display.y * 9 / 10);
+  const wxPoint position((display.x - m_size.x) / 2,
+                         (display.y - m_size.y) / 2);
+  SetSize(position.x, position.y, m_size.x, m_size.y);
+  m_ConfigurationDialog.SetSize(0, 0, display.x,
+                                 display.y + (canvas ? 160 : 0));
+  Layout();
+}
+
+void WeatherRouting::OnAndroidParentSize(wxSizeEvent& event) {
+  event.Skip();
+  CallAfter([this]() { FitAndroidDisplay(); });
+}
+
+void WeatherRouting::OnAndroidLayoutTimer(wxTimerEvent&) {
+  FitAndroidDisplay();
+}
+
 void WeatherRouting::OnEvtPanGesture(wxQT_PanGestureEvent& event) {
   switch (event.GetState()) {
     case GestureStarted:
@@ -7340,10 +7431,34 @@ void WeatherRouting::OnSaveAllAsTracks(wxCommandEvent& event) {
 }
 
 void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
+#ifdef __OCPN__ANDROID__
+  if (!m_weather_routing_pi.HasEnhancedChartSafety()) {
+    wxMessageBox(
+        _("This OpenCPN Android build does not provide enhanced chart "
+          "safety. Weather Routing can still check land using GSHHG "
+          "shoreline data. Chart and depth enforcement requires a "
+          "compatible OpenCPN build."),
+        _("Chart Awareness Settings"), wxOK | wxICON_INFORMATION, this);
+    return;
+  }
+#endif
   wxDialog dialog(this, wxID_ANY, _("Chart Awareness Settings"),
                   wxDefaultPosition, wxDefaultSize,
                   wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
   wxBoxSizer* top = new wxBoxSizer(wxVERTICAL);
+#ifdef __OCPN__ANDROID__
+  // wxQt does not expose the native dialog buttons reliably when the
+  // content grows. Put the modal actions before the scrollable settings.
+  wxBoxSizer* androidActions = new wxBoxSizer(wxHORIZONTAL);
+  androidActions->Add(new wxStaticText(&dialog, wxID_ANY,
+                                       _("Chart awareness")),
+                      0, wxALIGN_CENTER_VERTICAL | wxALL, 8);
+  androidActions->Add(new wxButton(&dialog, wxID_OK, _("Apply")),
+                      0, wxALL, 5);
+  androidActions->Add(new wxButton(&dialog, wxID_CANCEL, _("Cancel")),
+                      0, wxALL, 5);
+  top->Add(androidActions, 0, wxEXPAND);
+#endif
 
   wxStaticText* capability = new wxStaticText(
       &dialog, wxID_ANY,
@@ -7560,6 +7675,7 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
   note->Wrap(420);
   top->Add(note, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
 
+#ifndef __OCPN__ANDROID__
   wxStdDialogButtonSizer* buttons = new wxStdDialogButtonSizer();
   wxButton* ok = new wxButton(&dialog, wxID_OK);
   wxButton* cancel = new wxButton(&dialog, wxID_CANCEL);
@@ -7567,6 +7683,7 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
   buttons->AddButton(cancel);
   buttons->Realize();
   top->Add(buttons, 0, wxALL | wxALIGN_RIGHT, 10);
+#endif
 
   clear->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
     bool ok = m_weather_routing_pi.ClearChartSafetyCache();
@@ -8096,8 +8213,13 @@ void WeatherRouting::AutoSaveXML() { SaveXML(m_FileName.GetFullPath()); }
 void WeatherRouting::OnRenderedTimer(wxTimerEvent&) {
   // don't do it until the window system is up and running
   if (GetClientSize().GetWidth() > 20) {
+#ifdef __OCPN__ANDROID__
+    m_panel->m_splitter1->SetSashPosition(
+        m_panel->m_splitter1->GetClientSize().y / 4, true);
+#else
     if (!sashpos) sashpos = GetClientSize().GetWidth() / 5;
     m_panel->m_splitter1->SetSashPosition(sashpos, true);
+#endif
     Disconnect(wxEVT_IDLE, wxTimerEventHandler(WeatherRouting::OnRenderedTimer),
                NULL, this);
   }

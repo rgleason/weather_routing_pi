@@ -1719,6 +1719,9 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
         "the initial search. GSHHG alone does not verify reefs or charted depths."));
   const wxString safetyExplanationText = safetyExplanation->GetLabel();
   safetyExplanation->Wrap(440);
+#ifdef __OCPN__ANDROID__
+  safetyExplanation->SetMinSize(wxSize(560, 65));
+#endif
   sbOptions->Add(safetyExplanation, 0, wxEXPAND | wxALL, 5);
 
   fgSizer112->Add(sbOptions, 1, wxEXPAND | wxALL, 5);
@@ -2480,8 +2483,13 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
                                           _("Shoreline resolution"));
   fgSizer11511->Add(m_tShorelineResolution, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
   m_cShorelineResolution = new wxChoice(sbOptions1->GetStaticBox(), wxID_ANY);
+#ifdef __OCPN__ANDROID__
+  for (const auto& label : {_("0 / Crude"), _("1 / Low"), _("2 / Intermediate"),
+                            _("3 / High"), _("4 / Full")})
+#else
   for (const auto& label : {_("0 — Crude"), _("1 — Low"), _("2 — Intermediate"),
                             _("3 — High"), _("4 — Full")})
+#endif
     m_cShorelineResolution->Append(label);
   m_cShorelineResolution->SetSelection(2);
   m_cShorelineResolution->SetMinSize(wxSize(

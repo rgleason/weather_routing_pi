@@ -29,6 +29,7 @@
 #include "Boat.h"
 #include "RouteMapOverlay.h"
 #include "WeatherRouting.h"
+#include "AndroidDialogHeader.h"
 #include "wx28compat.h"
 
 //---------------------------------------------------------------------------------------
@@ -45,8 +46,9 @@ PlotDialog::PlotDialog(WeatherRouting& weatherrouting)
 #endif
       m_WeatherRouting(weatherrouting) {
 #ifdef __OCPN__ANDROID__
+  WR_AddAndroidDoneHeader(this, _("Route plot"));
   wxSize sz = ::wxGetDisplaySize();
-  SetSize(0, 0, sz.x, sz.y - 40);
+  SetSize(0, 0, sz.x, sz.y * 88 / 100);
 #endif
 }
 
@@ -306,6 +308,12 @@ void PlotDialog::OnPaintPlot(wxPaintEvent& event) {
 
   wxPaintDC dc(window);
   dc.Clear();
+#ifdef __OCPN__ANDROID__
+  if (m_PlotData.empty()) {
+    dc.DrawText(_("Select a computed routing to display a plot."), 20, 20);
+    return;
+  }
+#endif
   dc.SetBackgroundMode(wxTRANSPARENT);
 
   int w, h;

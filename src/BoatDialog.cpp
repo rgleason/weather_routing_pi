@@ -38,6 +38,7 @@
 #include "BoatDialog.h"
 #include "RouteMapOverlay.h"
 #include "WeatherRouting.h"
+#include "WeatherRoutingWxCompat.h"
 
 wxString dummy_polar =
     _T("\
@@ -82,8 +83,37 @@ BoatDialog::BoatDialog(WeatherRouting& weatherrouting)
   pConf->SetPath(_T( "/PlugIns/WeatherRouting/BoatDialog" ));
 
 #ifdef __OCPN__ANDROID__
+  // The desktop side-by-side splitter leaves the polar list and all actions
+  // in a narrow strip on a portrait tablet. Stack the plot and polar editor.
+  m_splitter2->Disconnect(wxEVT_IDLE,
+                          wxIdleEventHandler(BoatDialogBase::m_splitter2OnIdle),
+                          NULL, this);
+  m_splitter2->Unsplit(m_panel21);
+  m_splitter2->SetSashGravity(0.5);
+  m_splitter2->SplitHorizontally(m_panel20, m_panel21);
+  GetSizer()->Detach(m_splitter2);
+  SetSizer(nullptr, false);
+  wxBoxSizer* androidLayout = new wxBoxSizer(wxVERTICAL);
+  wxBoxSizer* androidHeader = new wxBoxSizer(wxHORIZONTAL);
+  androidHeader->Add(new wxStaticText(this, wxID_ANY, _("Boat polars")),
+                     0, wxALIGN_CENTER_VERTICAL | wxALL, 8);
+  wxButton* close = new wxButton(this, wxID_ANY, _("Close"));
+  close->SetMinSize(wxSize(WR_FromDIP(this, 88), WR_FromDIP(this, 44)));
+  close->Bind(wxEVT_BUTTON, [this](wxCommandEvent& event) { OnClose(event); });
+  androidHeader->Add(close, 0, wxALL, 5);
+  wxButton* save = new wxButton(this, wxID_ANY, _("Save Boat"));
+  save->SetMinSize(wxSize(WR_FromDIP(this, 88), WR_FromDIP(this, 44)));
+  save->Bind(wxEVT_BUTTON,
+             [this](wxCommandEvent& event) { OnSaveBoat(event); });
+  androidHeader->Add(save, 0, wxALL, 5);
+  androidLayout->Add(androidHeader, 0, wxEXPAND);
+  androidLayout->Add(m_splitter2, 1, wxEXPAND);
+  SetSizer(androidLayout, true);
   wxSize sz = ::wxGetDisplaySize();
   SetSize(0, 0, sz.x, sz.y - 40);
+  CallAfter([this]() {
+    m_splitter2->SetSashPosition(m_splitter2->GetClientSize().y * 55 / 100);
+  });
 #else
   // hack to adjust items
   SetSize(wxSize(w, h));

@@ -36,6 +36,7 @@
 #include "weather_routing_pi.h"
 #include "WeatherRouting.h"
 #include "ConfigurationBatchDialog.h"
+#include "AndroidDialogHeader.h"
 
 ConfigurationBatchDialog::ConfigurationBatchDialog(WeatherRouting* parent)
 #ifndef __WXOSX__
@@ -49,6 +50,12 @@ ConfigurationBatchDialog::ConfigurationBatchDialog(WeatherRouting* parent)
       m_WeatherRouting(*parent) {
   Reset();
 #ifdef __OCPN__ANDROID__
+  WR_AddAndroidDoneHeader(this, _("Routing batch"));
+  wxSizer* androidHeader = GetSizer()->GetItem(static_cast<size_t>(0))->GetSizer();
+  for (wxButton* action : {m_bInformation, m_bReset, m_bGenerate}) {
+    action->GetContainingSizer()->Detach(action);
+    androidHeader->Add(action, 0, wxALL, 5);
+  }
   wxSize sz = ::wxGetDisplaySize();
   SetSize(0, 0, sz.x, sz.y - 40);
 #endif

@@ -222,13 +222,26 @@ void ShorelineManager::Show(wxWindow* parent) {
                          "This default is used when importing older routes; "
                          "existing route selections are preserved."));
   text->Wrap(WR_FromDIP(&dialog, 560));
+#ifdef __OCPN__ANDROID__
+  // wxQt reports a one-line best size after Wrap(); reserve room for the
+  // complete explanation so it is readable on the tablet.
+  text->SetMinSize(WR_FromDIP(&dialog, wxSize(560, 100)));
+#endif
   main->Add(text, 0, wxALL, 12);
   auto choice = new wxChoice(&dialog, wxID_ANY);
   for (int q = 0; q < 5; ++q)
+#ifdef __OCPN__ANDROID__
+    choice->Append(wxString::Format("%d - %s", q,
+                                    wxGetTranslation(kShorelineSpecs[q].quality)));
+#else
     choice->Append(wxString::Format("%d — %s", q, wxGetTranslation(kShorelineSpecs[q].quality)));
+#endif
   choice->SetSelection(DefaultResolution());
   main->Add(choice, 0, wxEXPAND | wxLEFT | wxRIGHT, 12);
   auto status = new wxStaticText(&dialog, wxID_ANY, "");
+#ifdef __OCPN__ANDROID__
+  status->SetMinSize(WR_FromDIP(&dialog, wxSize(560, 65)));
+#endif
   main->Add(status, 0, wxALL, 12);
   main->Add(new wxStaticText(&dialog, wxID_ANY, _("Installed file:")), 0,
             wxLEFT | wxRIGHT, 12);
@@ -241,6 +254,9 @@ void ShorelineManager::Show(wxWindow* parent) {
                        _("Shoreline tile cache limit (MiB; resolution is never "
                          "reduced automatically):"));
   cacheLabel->Wrap(WR_FromDIP(&dialog, 560));
+#ifdef __OCPN__ANDROID__
+  cacheLabel->SetMinSize(WR_FromDIP(&dialog, wxSize(560, 50)));
+#endif
   main->Add(cacheLabel, 0, wxLEFT | wxRIGHT | wxTOP, 12);
   auto cache = new wxSpinCtrl(&dialog, wxID_ANY);
   cache->SetRange(16, 256);
@@ -254,6 +270,9 @@ void ShorelineManager::Show(wxWindow* parent) {
   main->Add(actions, 0, wxALL, 12);
   auto installHighRes = new wxButton(
       &dialog, wxID_ANY, _("Install / update High and Full (3–4)..."));
+#ifdef __OCPN__ANDROID__
+  installHighRes->SetLabel(_("Install High + Full..."));
+#endif
   installHighRes->SetToolTip(_(
       "Download and verify both optional GSHHG resolutions. "
       "Afterwards all five shoreline resolutions are available offline."));
@@ -277,9 +296,15 @@ void ShorelineManager::Show(wxWindow* parent) {
                       : wxString::Format(
                             _("Not installed; %.1f MiB download, %.1f MiB installed (plus temporary space)"),
                             s.archive_bytes / 1048576.0, s.bytes / 1048576.0));
+#ifdef __OCPN__ANDROID__
+    status->SetLabel(wxString::Format(
+        _("Approved dataset: GSHHG 2.3.7 / %s\n%s"),
+        wxGetTranslation(s.quality), state));
+#else
     status->SetLabel(wxString::Format(
         _("Approved dataset: GSHHG 2.3.7 — %s\n%s"),
         wxGetTranslation(s.quality), state));
+#endif
     restore->SetLabel(Bundled(s) ? _("Restore selected bundled data")
                                  : _("Install / update selected data"));
     installedFile->ChangeValue(Wx(p));
