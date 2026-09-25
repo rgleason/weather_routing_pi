@@ -9,3 +9,6 @@ scroll on smaller displays.
 
 This release changes the settings layout only. Routing behaviour and saved
 configuration are unchanged.
+
+The Basic page also reflows its routing-engine description and chart-safety
+explanation to the available width, including after an engine selection changes.

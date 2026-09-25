@@ -1716,6 +1716,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
       _("Detect Land uses GSHHG shoreline by default. With both chart options "
         "enabled, loaded charts decide route land and depth safety; GSHHG helps "
         "the initial search. GSHHG alone does not verify reefs or charted depths."));
+  const wxString safetyExplanationText = safetyExplanation->GetLabel();
   safetyExplanation->Wrap(440);
   sbOptions->Add(safetyExplanation, 0, wxEXPAND | wxALL, 5);
 
@@ -1791,8 +1792,33 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   fgSizer106->Add(fgSizer112, 1, wxEXPAND | wxALL, 5);
 
   m_pBasic->SetSizer(fgSizer106);
+  // The engine description is replaced when the selected engine changes.
+  // Unwrap its current label before fitting it to the right-hand column.
+  const auto reflowBasicHelp = [=, this](int paneWidth) {
+    if (paneWidth <= 0)
+      return;
+    m_pBasic->Layout();
+    const int fallbackWidth = paneWidth / 2 - FromDIP(35);
+    const auto boxTextWidth = [=, this](wxStaticBoxSizer* box) {
+      const int boxWidth = box->GetStaticBox()->GetClientSize().x;
+      return wxMax(FromDIP(180),
+                   boxWidth > 0 ? boxWidth - FromDIP(20) : fallbackWidth);
+    };
+    wxString engineDescription = m_tRoutingEngineDescription->GetLabel();
+    engineDescription.Replace("\n", " ");
+    m_tRoutingEngineDescription->SetLabel(engineDescription);
+    m_tRoutingEngineDescription->Wrap(boxTextWidth(engineBox));
+    safetyExplanation->SetLabel(safetyExplanationText);
+    safetyExplanation->Wrap(boxTextWidth(sbOptions));
+    m_pBasic->Layout();
+  };
+  m_pBasic->Bind(wxEVT_SIZE, [=](wxSizeEvent& event) {
+    reflowBasicHelp(event.GetSize().x);
+    event.Skip();
+  });
   m_pBasic->Layout();
   fgSizer106->Fit(m_pBasic);
+  reflowBasicHelp(m_pBasic->GetClientSize().x);
   m_notebook7->AddPage(m_pBasic, _("Basic"), true);
   m_pAdvanced = new wxScrolledWindow(
       m_notebook7, wxID_ANY, wxDefaultPosition, wxDefaultSize,

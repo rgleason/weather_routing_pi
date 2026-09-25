@@ -967,7 +967,6 @@ void ConfigurationDialog::UpdateEngineControls() {
       : engine == 1 ? _("Standard: bounded adaptive search with recovery.")
       : engine == 0 ? _("Quick: fast contour search with independently validated arrival; may miss a feasible route.")
       : _("Mixed or unsupported engines. Select Quick, Standard or Professional."));
-  m_tRoutingEngineDescription->Wrap(430);
   // These legacy controls do not tune either native engine. Preserve their
   // saved values for compatibility without suggesting that they affect search.
   bool allNative = true;
@@ -981,6 +980,7 @@ void ConfigurationDialog::UpdateEngineControls() {
   m_sDepartureTimeOptimizationConcurrentRoutes->Enable(!running);
   m_pAdvanced->Layout();
   m_pAdvanced->FitInside();
+  m_pBasic->SendSizeEvent();
   m_pBasic->Layout();
 }
 
