@@ -21,11 +21,10 @@ workflows:
 ## ----------------------
 ## OpenCPN 5.8 Plugins  (Also work in 5.10)
 ## ----------------------
-         # stop CircleCI from calling the Android jobs.
-         # - build-android-arm64:
-         #     <<: *std-filters
-         # - build-android-armhf:
-         #       <<: *std-filters
+          - build-android-arm64:
+              <<: *std-filters
+          - build-android-armhf:
+                <<: *std-filters
           - build-flatpak-aarch64-2208:
               <<: *std-filters
           - build-flatpak-x86-2208:
@@ -58,8 +57,8 @@ workflows:
 ## OpenCPN 5.6.2 Plugins  Frozen - 28/05/2023
 ## ------------------------------------------
 ## Circleci will not build for macos 11 so removed - 18/10/2023
-         # - build-msvc-2022:
-         #     <<: *std-filters
+          - build-msvc-2022:
+              <<: *std-filters
 
 orbs:
     cloudsmith: cloudsmith/cloudsmith@1.0.5
@@ -169,15 +168,10 @@ jobs:
         steps:
         - checkout
         - run: sudo chmod go+w /usr/local
-        - run:
-            name: Set macOS deployment target
-            command: |
-              echo 'export MACOSX_DEPLOYMENT_TARGET=10.15' >> $BASH_ENV
-              source $BASH_ENV
-#        - restore_cache:
-#            key: "{{checksum \"build-deps/macos-cache-stamp\"}}\
-#              -{{checksum \"cmake/MacosWxwidgets.cmake\"}}\
-#              -{{checksum \"ci/circleci-build-macos-universal.sh\"}}"
+        - restore_cache:
+            key: "{{checksum \"build-deps/macos-cache-stamp\"}}\
+              -{{checksum \"cmake/MacosWxwidgets.cmake\"}}\
+              -{{checksum \"ci/circleci-build-macos-universal.sh\"}}"
         - run: chmod a+x ci/*.sh
         - run: chmod a+x cmake/*.sh
         - run: ci/circleci-build-macos-universal.sh
@@ -188,67 +182,28 @@ jobs:
             paths:
               - /tmp/local.cache.tar
               - /Users/distiller/project/cache
-        - run:
-            name: Show SDK version
-            command: |
-              xcrun --sdk macosx --show-sdk-version
-              xcrun --sdk macosx --show-sdk-path              
         - run: >
               sh -c "otool -L build/*.dylib"
         - run: >
               sh -c "cat build/*.xml"
-        - run:
-            name: Ensure Cloudsmith CLI is installed
-            command: |
-              if [ ! -d "$HOME/cs-venv" ]; then
-                echo "Cloudsmith venv missing — installing CLI"
-                python3 -m venv "$HOME/cs-venv"
-                source "$HOME/cs-venv/bin/activate"
-                pip install cloudsmith-cli
-              else
-                source "$HOME/cs-venv/bin/activate"
-              fi
-        - run:
-            name: Verify build artifacts exist
-            command: |
-              ls -l build/*.tar.gz || (echo "No tarball found!" && exit 1)
-        - run:
-            name: Upload to Cloudsmith
-            command: |
-              source "$HOME/cs-venv/bin/activate"
-              export PATH="$HOME/cs-venv/bin:$PATH"
-              bash ci/cloudsmith-upload.sh
+        - deploy-code:
+            deploy_use_orb: false
+            install_python: false
     build-msvc-wx32-2022:
         executor:
             name: win/server-2022
+            shell: bash.exe
         environment:
-          OCPN_TARGET: MSVC
-          MSVC_VERSION: 2022
-          WX_VER: 32
-          DEPLOY_USE_ORB: false
+        - OCPN_TARGET: MSVC
+        - MSVC_VERSION: 2022
+        - WX_VER: 32
+        - DEPLOY_USE_ORB: false
         steps:
         - checkout
-        
         - run:
             privileged: False
             shell: cmd.exe
             command: ci\circleci-build-msvc.bat
-        - run:
-            shell: powershell.exe
-            command: Get-ChildItem -Recurse build
-        - run:
-            shell: cmd.exe
-            command: copy build\*.tar.gz .
-        - run:
-            shell: cmd.exe
-            command: copy build\weather_routing_pi.dll .
-        - run:
-            shell: cmd.exe
-            command: |
-              if not exist "C:\Program Files\Git\bin\bash.exe" (
-                echo ERROR: Git Bash not found. Cannot run cloudsmith-upload.sh.
-                exit 1
-              )            
         - deploy-code:
             deploy_use_orb: false
     build-flatpak-aarch64-2208:

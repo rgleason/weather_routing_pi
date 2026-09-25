@@ -19,7 +19,7 @@
 # - xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx,                                       *
 # - xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx                                       *
 # -----------------------------------------------------------------------------
-# Frontend2 Author: Jon Gough Testplugin(TP) v1.0.341.0 30/04/2025 DD/MM/YYYY
+# Frontend2 Author: Jon Gough Testplugin(TP) v1.0.363.0 08/09/2026 DD/MM/YYYY
 # format buildCI:yes useODAPI:no validateJSON:no
 # ---------------------------------------------------------------------------
 ## -- When changing this file do NOT change the order of the sections.    -- ##
@@ -42,7 +42,7 @@ option(WEATHER_ROUTING_XWEATHER_IDENTITY
 unset(_xweather_identity_default)
 
 # define minimum cmake version
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.15)
 if(COMMAND cmake_policy)
   if (POLICY CMP0043)
     cmake_policy(SET CMP0043 NEW)
@@ -67,8 +67,6 @@ if(COMMAND cmake_policy)
     cmake_policy(SET CMP0177 NEW)
   endif (POLICY CMP0177)
 endif (COMMAND cmake_policy)
-
-set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15")
 
 # set for vscode/vscodium
 set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
@@ -135,7 +133,8 @@ set(ALPHA "alpha") #Standard Repos
 
 # Set if  Cloudsmith Base Repository name does not match your Git Repository name.
 #set (CLOUDSMITH_BASE_REPOSITORY "${GIT_REPOSITORY_NAME}")
-#set (CLOUDSMITH_BASE_REPOSITORY "opencpn-plugins")  # Ricks's customization
+#set (CLOUDSMITH_BASE_REPOSITORY "opencpn-plugins")  
+
 set(CLOUDSMITH_BASE_REPOSITORY "weather-routing")
 if(WEATHER_ROUTING_XWEATHER_IDENTITY)
   set(PLUGIN_GIT_REPOSITORY "pob220/xweather_routing_pi")
@@ -145,7 +144,8 @@ endif()
 
 # Keep validation independent of the OpenCPN publishing repositories.  Alpha
 # publication remains a separate, explicitly approved later step.
-set(CLOUDSMITH_USER "rick-gleason")
+# Ricks's customization
+set(CLOUDSMITH_USER "opencpn")
 
 set(XML_INFO_URL "https://github.com/${PLUGIN_GIT_REPOSITORY}")
 set(XML_SUMMARY ${SHORT_DESCRIPTION})
