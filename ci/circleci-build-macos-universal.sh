@@ -93,10 +93,12 @@ shopt -s nullglob
 package_name=weather_routing_pi
 plugin_name=WeatherRouting
 other_package_name=xweather_routing_pi
+source_repository=rgleason/weather_routing_pi
 if grep -q '^WEATHER_ROUTING_XWEATHER_IDENTITY:BOOL=ON$' "$build_package/CMakeCache.txt"; then
   package_name=xweather_routing_pi
   plugin_name=xWeatherRouting
   other_package_name=weather_routing_pi
+  source_repository=pob220/xweather_routing_pi
 fi
 archives=("$build_package"/"$package_name"-*.tar.gz)
 metadata_files=("$build_package"/"$package_name"-*.xml)
@@ -125,7 +127,7 @@ fi
 grep -q "<name> ${plugin_name} </name>" "$metadata"
 grep -q '<api-version> 1.21 </api-version>' "$metadata"
 grep -q '<target>darwin-wx32</target>' "$metadata"
-grep -q "<source> https://github.com/pob220/${package_name} </source>" \
+grep -q "<source> https://github.com/${source_repository} </source>" \
   "$metadata"
 
 package_version=$(sed -n \
