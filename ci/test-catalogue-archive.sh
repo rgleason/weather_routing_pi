@@ -25,6 +25,7 @@ trap 'rm -f "$listing"' EXIT
 tar -tzf "$archive" >"$listing"
 
 test "$(grep -c "/lib/opencpn/lib${package_name}\\.so$" "$listing")" -eq 1
+test "$(grep -c '^metadata\.xml$' "$listing")" -eq 1
 grep -q "/share/opencpn/plugins/${package_name}/data/" "$listing"
 grep -q "/LC_MESSAGES/opencpn-${package_name}\\.mo$" "$listing"
 if grep -Eqi "/libg(test|mock)|/lib${other_package_name}\\.so|opencpn-${other_package_name}\\.mo" \

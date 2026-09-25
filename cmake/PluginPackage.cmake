@@ -31,6 +31,7 @@ if (OCPN_FLATPAK_CONFIG)
   add_custom_target("flatpak-pkg")
   add_custom_command(
     TARGET flatpak-pkg
+    POST_BUILD
     COMMAND
       ${TAR} -czf
       ${PKG_NVR}-${ARCH}${PKG_TARGET_WX_VER}_${PKG_TARGET_NVR}.tar.gz --verbose

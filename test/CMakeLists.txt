@@ -37,6 +37,9 @@ html
 adv
 aui
 REQUIRED)
+if(wxWidgets_USE_FILE)
+    include(${wxWidgets_USE_FILE})
+endif()
 
 set(TEST_SRC
     ShorelineDataset_tests.cpp
