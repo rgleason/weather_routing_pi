@@ -1985,9 +1985,11 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
         "Increasing this can greatly accelerate routes using large or "
         "high-resolution GRIBs. Memory is allocated only as required. "
         "Larger limits are applied only when enough physical RAM remains."));
+  const wxString mainGribCacheHelpText = mainGribCacheHelp->GetLabel();
   mainGribCacheHelp->Wrap(430);
-  mainResources->Add(mainGribCacheHelp, 0, wxLEFT | wxRIGHT | wxBOTTOM, 5);
-  m_sMainGribTimelineCacheMiB->SetToolTip(mainGribCacheHelp->GetLabel());
+  mainResources->Add(mainGribCacheHelp, 0,
+                     wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 5);
+  m_sMainGribTimelineCacheMiB->SetToolTip(mainGribCacheHelpText);
   mainEngineSizer->Add(mainResources, 0, wxEXPAND, 0);
 
   m_pMainEngine->SetSizer(mainEngineSizer);
@@ -2046,9 +2048,11 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
         "Increasing this can greatly accelerate routes using large or "
         "high-resolution GRIBs. Memory is allocated only as required. "
         "Larger limits are applied only when enough physical RAM remains."));
+  const wxString quickGribCacheHelpText = quickGribCacheHelp->GetLabel();
   quickGribCacheHelp->Wrap(430);
-  quickResources->Add(quickGribCacheHelp, 0, wxLEFT | wxRIGHT | wxBOTTOM, 5);
-  m_sQuickGribTimelineCacheMiB->SetToolTip(quickGribCacheHelp->GetLabel());
+  quickResources->Add(quickGribCacheHelp, 0,
+                      wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 5);
+  m_sQuickGribTimelineCacheMiB->SetToolTip(quickGribCacheHelpText);
   quickPanelSizer->Add(quickResources, 0, wxEXPAND, 0);
   m_pQuickEngine->SetSizer(quickPanelSizer);
   engineSettingsBox->Add(m_pQuickEngine, 0, wxEXPAND, 0);
@@ -2511,27 +2515,32 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
                     wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
   fgSizer113->Insert(0, fgSizer11511, 0, wxEXPAND, 5);
+  auto depthExplanation = new wxStaticText(
+      sbOptions1->GetStaticBox(), wxID_ANY,
+      _("0 m disables only the depth limit; land checks remain separate. "
+        "A positive depth needs Detect Land and both chart options on Basic, "
+        "plus a compatible chart-safety host and chart coverage."));
+  const wxString depthExplanationText = depthExplanation->GetLabel();
+  depthExplanation->Wrap(440);
+  fgSizer113->Insert(1, depthExplanation, 0, wxEXPAND | wxALL, 5);
+
   m_bShorelineData = new wxButton(
       sbOptions1->GetStaticBox(), wxID_ANY,
       _("Shoreline data..."));
   m_bShorelineData->SetToolTip(
       _("Install or verify optional GSHHG High and Full datasets. "
         "The approved files are downloaded only when requested and work offline afterwards."));
-  fgSizer113->Insert(1, m_bShorelineData, 0, wxLEFT | wxRIGHT | wxBOTTOM, 5);
+  auto shorelineRow = new wxBoxSizer(wxHORIZONTAL);
+  shorelineRow->Add(m_bShorelineData, 0, wxALL, 5);
   auto shorelineNote = new wxStaticText(sbOptions1->GetStaticBox(), wxID_ANY,
       _("Lower shoreline resolutions omit smaller coastal features and may allow "
         "routes through land shown at higher resolutions. Chart and depth checks are separate."));
+  const wxString shorelineNoteText = shorelineNote->GetLabel();
   shorelineNote->Wrap(FromDIP(440));
-  fgSizer113->Insert(2, shorelineNote, 0, wxALL, 5);
+  shorelineRow->Add(shorelineNote, 0, wxALL, 5);
+  fgSizer113->Insert(2, shorelineRow, 0, wxEXPAND, 0);
 
   sbOptions1->Add(fgSizer113, 1, wxEXPAND, 5);
-  wxStaticText* depthExplanation = new wxStaticText(
-      sbOptions1->GetStaticBox(), wxID_ANY,
-      _("0 m disables only the depth limit; land checks remain separate. "
-        "A positive depth needs Detect Land and both chart options on Basic, "
-        "plus a compatible chart-safety host and chart coverage."));
-  depthExplanation->Wrap(440);
-  sbOptions1->Add(depthExplanation, 0, wxEXPAND | wxALL, 5);
 
   advancedRight->Add(sbOptions1, 0, wxEXPAND | wxALL, 5);
 
@@ -2703,7 +2712,39 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   bSizer8->Add(advancedRight, 1, wxEXPAND);
 
   m_pAdvanced->SetSizer(bSizer8);
+  // wxStaticText::Wrap inserts line breaks into its label. Always start with
+  // the original translated text so widening the dialog removes them.
+  const auto reflowAdvancedHelp = [=, this](int paneWidth) {
+    if (paneWidth <= 0)
+      return;
+    const int leftWidth = wxMax(FromDIP(180), paneWidth / 2 - FromDIP(50));
+    const int rightWidth = wxMax(FromDIP(180), paneWidth / 2 - FromDIP(35));
+    const int besideButton =
+        rightWidth - m_bShorelineData->GetBestSize().x - FromDIP(20);
+    const bool showBesideButton = besideButton >= FromDIP(300);
+    shorelineRow->SetOrientation(showBesideButton ? wxHORIZONTAL : wxVERTICAL);
+
+    mainGribCacheHelp->SetLabel(mainGribCacheHelpText);
+    mainGribCacheHelp->Wrap(leftWidth);
+    quickGribCacheHelp->SetLabel(quickGribCacheHelpText);
+    quickGribCacheHelp->Wrap(leftWidth);
+    depthExplanation->SetLabel(depthExplanationText);
+    depthExplanation->Wrap(rightWidth);
+    shorelineNote->SetLabel(shorelineNoteText);
+    shorelineNote->Wrap(showBesideButton ? besideButton : rightWidth);
+    m_pAdvanced->Layout();
+    m_pAdvanced->FitInside();
+  };
+  m_pAdvanced->Bind(wxEVT_SIZE, [=, lastWidth = 0](wxSizeEvent& event) mutable {
+    const int paneWidth = event.GetSize().x;
+    if (paneWidth != lastWidth) {
+      reflowAdvancedHelp(paneWidth);
+      lastWidth = paneWidth;
+    }
+    event.Skip();
+  });
   m_pAdvanced->Layout();
+  reflowAdvancedHelp(m_pAdvanced->GetClientSize().x);
   m_pAdvanced->FitInside();
   m_notebook7->AddPage(m_pAdvanced, _("Advanced"), false);
 
