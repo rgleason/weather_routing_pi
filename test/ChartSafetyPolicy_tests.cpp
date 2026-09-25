@@ -13,6 +13,15 @@ TEST(ChartSafetyPolicy, PositiveMinimumEnablesDepthAtRequestedThreshold) {
   EXPECT_DOUBLE_EQ(options.minimum_depth_m, 5.0);
 }
 
+TEST(ChartSafetyPolicy, PendingChartDataCannotPassSafetyChecks) {
+  EXPECT_FALSE(weather_routing::ChartSafetyRejects(PI_SEGMENT_SAFETY_SAFE));
+  EXPECT_TRUE(weather_routing::ChartSafetyRejects(
+      PI_SEGMENT_SAFETY_PENDING_DATA));
+  EXPECT_TRUE(weather_routing::ChartSafetyRejects(PI_SEGMENT_SAFETY_NO_DATA));
+  EXPECT_TRUE(weather_routing::ChartSafetyRejects(
+      PI_SEGMENT_SAFETY_TOO_SHALLOW));
+}
+
 TEST(ChartSafetyPolicy, ZeroNegativeAndInvalidMinimumDisableDepth) {
   const double values[] = {
       0.0, -1.0, std::numeric_limits<double>::quiet_NaN(),

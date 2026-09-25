@@ -583,14 +583,35 @@ static bool EndpointMeetsMinimumDepth(
           _("%s does not satisfy the configured minimum depth %.1f m"),
           endpoint_name, configuration.MinimumDepthMeters);
     }
+    if (queried && result.status == PI_SEGMENT_SAFETY_TOO_SHALLOW) {
+      const wxString source =
+          result.source == PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART
+              ? _("ENC/vector chart")
+          : result.source == PI_SEGMENT_SAFETY_SOURCE_PLUGIN_VECTOR
+              ? _("plugin vector chart")
+          : result.source == PI_SEGMENT_SAFETY_SOURCE_CM93
+              ? _("CM93 chart")
+              : _("unknown chart source");
+      *failure_reason += wxString::Format(
+          _("\nChart source: %s; checked sample: %.6f, %.6f."), source,
+          result.hit_sample_lat, result.hit_sample_lon);
+      if (result.chart_path[0])
+        *failure_reason += wxString::Format(
+            _("\nChart file: %s."), wxString::FromUTF8(result.chart_path));
+    }
   }
   wxLogMessage(
       "WR_MINIMUM_DEPTH_ENDPOINT_REJECTED route=\"%s -> %s\" "
       "endpoint=\"%s\" lat=%.8f lon=%.8f minimum_depth_m=%.3f "
-      "queried=%d status=%d has_depth=%d hit_depth_m=%.3f message=\"%s\"",
+      "queried=%d status=%d source=%d chart_path=\"%s\" "
+      "sample=(%.8f,%.8f) has_depth=%d hit_depth_m=%.3f message=\"%s\"",
       configuration.Start, configuration.End, endpoint_name, latitude,
       longitude, configuration.MinimumDepthMeters, queried ? 1 : 0,
       queried ? result.status : PI_SEGMENT_SAFETY_ERROR,
+      queried ? result.source : PI_SEGMENT_SAFETY_SOURCE_NONE,
+      queried ? wxString::FromUTF8(result.chart_path) : wxString(),
+      queried ? result.hit_sample_lat : std::numeric_limits<double>::quiet_NaN(),
+      queried ? result.hit_sample_lon : std::numeric_limits<double>::quiet_NaN(),
       queried ? result.has_depth : 0,
       queried ? result.hit_depth_m : std::numeric_limits<double>::quiet_NaN(),
       queried ? wxString::FromUTF8(result.message) : wxString("unavailable"));

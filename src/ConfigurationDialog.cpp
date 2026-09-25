@@ -931,6 +931,9 @@ void ConfigurationDialog::UpdateEngineControls() {
   m_cRoutingEngine->Enable(!running);
   const bool chartAuthoritative = m_WeatherRouting.HasEnhancedChartSafety() &&
       m_cbUseExperimentalChartSafety->GetValue() && m_cbEnforceExperimentalChartSafety->GetValue();
+  m_cbDetectLand->SetLabel(chartAuthoritative
+      ? _("Detect Land (loaded charts enforced)")
+      : _("Detect Land (GSHHG shoreline only)"));
   int shoreline = wxNOT_FOUND;
   bool first = true;
   for (auto* route : m_WeatherRouting.CurrentRouteMaps(false)) {

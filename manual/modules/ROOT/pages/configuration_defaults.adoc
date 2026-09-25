@@ -2,7 +2,7 @@
 
 == Weather Routing Plugin
 
-=== Current defaults (1.18.1)
+=== Current defaults (1.18.2)
 
 Basic offers *Quick*, *Standard* and *Professional*, in that order. Quick is
 the hardened Original contour engine; Standard was previously called Quick,

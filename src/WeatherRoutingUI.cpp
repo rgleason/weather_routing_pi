@@ -1712,7 +1712,8 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   sbOptions->Add(fgSizer23, 1, wxEXPAND | wxALL, 5);
   wxStaticText* safetyExplanation = new wxStaticText(
       sbOptions->GetStaticBox(), wxID_ANY,
-      _("To enforce charted depths, enable Detect Land and both chart options. "
+      _("GSHHG shoreline checks do not verify reefs or charted depths. "
+        "To enforce charted depths, enable Detect Land and both chart options. "
         "Checking charts alone provides diagnostics without enforcing them."));
   safetyExplanation->Wrap(440);
   sbOptions->Add(safetyExplanation, 0, wxEXPAND | wxALL, 5);

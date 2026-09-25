@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include <gtest/gtest.h>
 #include "original_routing/Engine.h"
+#include "original_routing/VisualizationSampler.h"
 #include <future>
 #include <cmath>
 #include <stdexcept>
@@ -80,6 +81,19 @@ TEST(OriginalEngine, DisplayIsBoundedAndDoesNotChangeAcceptedRoute) {
   EXPECT_FALSE(a.visualization.isochrones.empty());
   EXPECT_LE(a.visualization.isochrones.size(), 128U);
   EXPECT_TRUE(b.visualization.isochrones.empty());
+}
+TEST(OriginalEngine, VisualizationSamplesTheEntireVoyageWithinBound) {
+  original_routing::VisualizationSampler sampler;
+  std::vector<int> displayed;
+  for (int front = 0; front < 1024; ++front) {
+    if (sampler.shouldCapture(displayed)) displayed.push_back(front);
+    ASSERT_LE(displayed.size(), 128U);
+  }
+  ASSERT_FALSE(displayed.empty());
+  EXPECT_EQ(displayed.front(), 0);
+  EXPECT_GE(displayed.back(), 1008);
+  for (std::size_t i = 1; i < displayed.size(); ++i)
+    EXPECT_GT(displayed[i], displayed[i - 1]);
 }
 TEST(OriginalEngine, MissingRequestedDataAndCancellationCannotComplete) {
   auto r = request();

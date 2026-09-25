@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "Contour.h"
 #include "RoutingInternal.h"
+#include "original_routing/VisualizationSampler.h"
 #include <array>
 #include <memory>
 #include <numeric>
@@ -222,6 +223,7 @@ public:
   wr::RoutingStatus missingStatus{wr::RoutingStatus::NoFeasibleRoute};
   unsigned candidatesTried{};
   double largestStepNm{2};
+  original_routing::VisualizationSampler visualizationSampler;
   Search(const wr::RoutingRequest& r, const wr::RoutingEnvironment& e,
          const Options& o)
       : request(r), options(o), arena(r, o), environment(e) {
@@ -876,9 +878,9 @@ public:
     }
   }
   void captureFront(const IsoRouteList& front) {
-    if (!options.captureVisualization ||
-        result.visualization.isochrones.size() >= 128)
-      return;
+    if (!options.captureVisualization) return;
+    auto& layers = result.visualization.isochrones;
+    if (!visualizationSampler.shouldCapture(layers)) return;
     wr::IsochroneLayer layer;
     std::size_t remaining = 1024, traces = 4;
     for (const auto* route : front) {
@@ -917,8 +919,7 @@ public:
       if (contour.points.size() > 1)
         layer.contours.push_back(std::move(contour));
     }
-    if (!layer.contours.empty())
-      result.visualization.isochrones.push_back(std::move(layer));
+    if (!layer.contours.empty()) layers.push_back(std::move(layer));
   }
 
   wr::RoutingResult run() {
