@@ -176,9 +176,9 @@ void weather_routing_pi::OnAddressSpaceTimer(wxTimerEvent&) {
 
 int weather_routing_pi::Init() {
   AddLocaleCatalog(PLUGIN_CATALOG_NAME);
-  wxLogMessage("WR_BUILD version=%d.%d.%d.%d api=%d.%d process_bits=%u",
+  wxLogMessage("WR_BUILD version=%d.%d.%d api=%d.%d process_bits=%u",
                PLUGIN_VERSION_MAJOR, PLUGIN_VERSION_MINOR,
-               PLUGIN_VERSION_PATCH, PLUGIN_VERSION_TWEAK,
+               PLUGIN_VERSION_PATCH,
                OCPN_API_VERSION_MAJOR, OCPN_API_VERSION_MINOR,
                static_cast<unsigned>(sizeof(void*) * 8));
 #ifdef __WXMSW__

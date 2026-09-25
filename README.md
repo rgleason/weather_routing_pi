@@ -1,6 +1,6 @@
 # Weather Routing integration branch
 
-See [1.18.2 changes](docs/release-1.18.2.md) and [Quick, Standard and Professional settings](docs/quick-routing.md).
+See [1.18.3 changes](docs/release-1.18.3.md) and [Quick, Standard and Professional settings](docs/quick-routing.md).
 
 The optional hardened-OpenCPN planning-provider boundary is documented in
 [docs/external_control_provider_preview_b.md](docs/external_control_provider_preview_b.md).
