@@ -16,6 +16,13 @@
 
 namespace weather_routing {
 
+// A pending worker request is unresolved chart evidence, never safe water.
+// Defaulting new status values to rejection keeps both search and final
+// validation fail-closed as the optional host API evolves.
+inline bool ChartSafetyRejects(int status) {
+  return status != PI_SEGMENT_SAFETY_SAFE;
+}
+
 /**
  * Apply the route's minimum-depth policy to one host chart-safety request.
  *

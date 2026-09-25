@@ -86,6 +86,18 @@ TEST(ShorelineDataset, ShortSegmentsRetainEndpointAndCornerProtection) {
   EXPECT_TRUE(d.CrossesLand(.45, .21, .45, .21));
   EXPECT_FALSE(d.CrossesLand(.45, .19, .45, .19));
 }
+TEST(ShorelineDataset, CompleteBufferChecksMarginSymmetrically) {
+  Files f;
+  Fixture(f / "data");
+  ShorelineDataset d(f / "data");
+  EXPECT_FALSE(d.WithinLandMargin(.19, 0, .19, 1, 0));
+  EXPECT_FALSE(d.WithinLandMargin(.19, 0, .19, 1, .5));
+  EXPECT_TRUE(d.WithinLandMargin(.19, 0, .19, 1, .7));
+  EXPECT_TRUE(d.WithinLandMargin(.19, 1, .19, 0, .7));
+  EXPECT_TRUE(d.WithinLandMargin(.19, .5, .19, .5, .7));
+  EXPECT_TRUE(d.WithinLandMargin(.5, -.5, .5, 1.5, 0));
+  EXPECT_THROW(d.WithinLandMargin(.1, 0, .1, 1, -1), std::invalid_argument);
+}
 TEST(ShorelineDataset, GridBoundariesAndZeroLength) {
   Files f;
   Fixture(f / "data");

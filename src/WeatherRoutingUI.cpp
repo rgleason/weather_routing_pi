@@ -6,6 +6,8 @@
 ///////////////////////////////////////////////////////////////////////////
 
 #include "WeatherRoutingUI.h"
+#include "GribTimelineCachePolicy.h"
+#include "RoutingEngineSettings.h"
 #include <vector>
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1500,7 +1502,8 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
 
   m_sMaxDivertedCourse = new wxSpinCtrl(
       sbConstraints->GetStaticBox(), wxID_ANY, wxEmptyString, wxDefaultPosition,
-      wxSize(-1, -1), wxSP_ARROW_KEYS, 0, 180, 180);
+      wxSize(-1, -1), wxSP_ARROW_KEYS, 0, 180,
+      weather_routing::kDefaultMaxDivertedCourse);
   m_sMaxDivertedCourse->SetToolTip(
       _("Hard limit on how far route geometry may divert from the great-circle "
         "route. This is separate from Advanced > Max Search Angle: increasing "
@@ -1577,7 +1580,8 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
       0. /* initial */, 0.1 /* inc */);
   m_sMaxSwellMeters->SetToolTip(
       _("Maximum swell height to allow during routing.\nRoutes with swell "
-        "heights above this value will be avoided."));
+        "heights above this value will be avoided. Set 0 to disable this limit. "
+        "Quick requires wave data whenever this limit is enabled."));
   m_sMaxSwellMeters->SetMaxSize(wxSize(140, -1));
 
   fgSizer110->Add(m_sMaxSwellMeters, 1,
@@ -1638,12 +1642,13 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   auto engineBox = new wxStaticBoxSizer(
       new wxStaticBox(m_pBasic, wxID_ANY, _("Routing engine")), wxVERTICAL);
   m_cRoutingEngine = new wxChoice(engineBox->GetStaticBox(), wxID_ANY);
-  m_cRoutingEngine->Append(_("Main"));
   m_cRoutingEngine->Append(_("Quick"));
+  m_cRoutingEngine->Append(_("Standard"));
+  m_cRoutingEngine->Append(_("Professional"));
   m_cRoutingEngine->SetSelection(0);
   engineBox->Add(m_cRoutingEngine, 0, wxALL | wxEXPAND, 5);
   m_tRoutingEngineDescription = new wxStaticText(engineBox->GetStaticBox(), wxID_ANY,
-      _("Main: broader search with multiple recovery methods."));
+      _("Quick: fast contour search with independently validated arrival."));
   m_tRoutingEngineDescription->Wrap(430);
   engineBox->Add(m_tRoutingEngineDescription, 0, wxALL | wxEXPAND, 5);
   fgSizer112->Add(engineBox, 0, wxEXPAND | wxALL, 5);
@@ -1658,7 +1663,8 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   fgSizer23->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
 
   m_cbDetectLand =
-      new wxCheckBox(sbOptions->GetStaticBox(), wxID_ANY, _("Detect Land"),
+      new wxCheckBox(sbOptions->GetStaticBox(), wxID_ANY,
+                     _("Detect Land (GSHHG shoreline check)"),
                      wxDefaultPosition, wxDefaultSize, wxCHK_3STATE);
   m_cbDetectLand->SetToolTip(_("Detect land crossings and avoid them"));
   m_cbDetectLand->SetValue(true);
@@ -1707,8 +1713,10 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   sbOptions->Add(fgSizer23, 1, wxEXPAND | wxALL, 5);
   wxStaticText* safetyExplanation = new wxStaticText(
       sbOptions->GetStaticBox(), wxID_ANY,
-      _("To enforce charted depths, enable Detect Land and both chart options. "
-        "Checking charts alone provides diagnostics without enforcing them."));
+      _("Detect Land uses GSHHG shoreline by default. With both chart options "
+        "enabled, loaded charts decide route land and depth safety; GSHHG helps "
+        "the initial search. GSHHG alone does not verify reefs or charted depths."));
+  const wxString safetyExplanationText = safetyExplanation->GetLabel();
   safetyExplanation->Wrap(440);
   sbOptions->Add(safetyExplanation, 0, wxEXPAND | wxALL, 5);
 
@@ -1784,8 +1792,33 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   fgSizer106->Add(fgSizer112, 1, wxEXPAND | wxALL, 5);
 
   m_pBasic->SetSizer(fgSizer106);
+  // The engine description is replaced when the selected engine changes.
+  // Unwrap its current label before fitting it to the right-hand column.
+  const auto reflowBasicHelp = [=, this](int paneWidth) {
+    if (paneWidth <= 0)
+      return;
+    m_pBasic->Layout();
+    const int fallbackWidth = paneWidth / 2 - FromDIP(35);
+    const auto boxTextWidth = [=, this](wxStaticBoxSizer* box) {
+      const int boxWidth = box->GetStaticBox()->GetClientSize().x;
+      return wxMax(FromDIP(180),
+                   boxWidth > 0 ? boxWidth - FromDIP(20) : fallbackWidth);
+    };
+    wxString engineDescription = m_tRoutingEngineDescription->GetLabel();
+    engineDescription.Replace("\n", " ");
+    m_tRoutingEngineDescription->SetLabel(engineDescription);
+    m_tRoutingEngineDescription->Wrap(boxTextWidth(engineBox));
+    safetyExplanation->SetLabel(safetyExplanationText);
+    safetyExplanation->Wrap(boxTextWidth(sbOptions));
+    m_pBasic->Layout();
+  };
+  m_pBasic->Bind(wxEVT_SIZE, [=](wxSizeEvent& event) {
+    reflowBasicHelp(event.GetSize().x);
+    event.Skip();
+  });
   m_pBasic->Layout();
   fgSizer106->Fit(m_pBasic);
+  reflowBasicHelp(m_pBasic->GetClientSize().x);
   m_notebook7->AddPage(m_pBasic, _("Basic"), true);
   m_pAdvanced = new wxScrolledWindow(
       m_notebook7, wxID_ANY, wxDefaultPosition, wxDefaultSize,
@@ -1867,7 +1900,8 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
 
   m_sByDegrees = new wxSpinCtrlDouble(
       m_pMainEngine, wxID_ANY, wxEmptyString, wxDefaultPosition,
-      wxSize(140, -1), wxSP_ARROW_KEYS, 0.1, 60., 5., 0.1 /*inc*/);
+      wxSize(140, -1), wxSP_ARROW_KEYS, 0.1, 60.,
+      weather_routing::kDefaultHeadingStepDegrees, 0.1 /*inc*/);
   bSizer3->Add(m_sByDegrees, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
 
   m_staticText118 =
@@ -1962,9 +1996,9 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
       0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
   m_sMainGribTimelineCacheMiB = new wxSpinCtrl(
       mainResources->GetStaticBox(), wxID_ANY,
-      wxString::Format("%d", sizeof(void*) <= 4 ? 192 : 512),
+      wxString::Format("%d", weather_routing::kMainGribTimelineCacheDefaultMiB),
       wxDefaultPosition, wxSize(140, -1), wxSP_ARROW_KEYS, 16,
-      sizeof(void*) <= 4 ? 192 : 8192, sizeof(void*) <= 4 ? 192 : 512);
+      sizeof(void*) <= 4 ? 192 : 8192, weather_routing::kMainGribTimelineCacheDefaultMiB);
   mainGribCacheRow->Add(m_sMainGribTimelineCacheMiB, 0,
                         wxALL | wxALIGN_CENTER_VERTICAL, 5);
   mainGribCacheRow->Add(
@@ -1977,9 +2011,11 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
         "Increasing this can greatly accelerate routes using large or "
         "high-resolution GRIBs. Memory is allocated only as required. "
         "Larger limits are applied only when enough physical RAM remains."));
+  const wxString mainGribCacheHelpText = mainGribCacheHelp->GetLabel();
   mainGribCacheHelp->Wrap(430);
-  mainResources->Add(mainGribCacheHelp, 0, wxLEFT | wxRIGHT | wxBOTTOM, 5);
-  m_sMainGribTimelineCacheMiB->SetToolTip(mainGribCacheHelp->GetLabel());
+  mainResources->Add(mainGribCacheHelp, 0,
+                     wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 5);
+  m_sMainGribTimelineCacheMiB->SetToolTip(mainGribCacheHelpText);
   mainEngineSizer->Add(mainResources, 0, wxEXPAND, 0);
 
   m_pMainEngine->SetSizer(mainEngineSizer);
@@ -1995,17 +2031,19 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   m_sQuickMemoryBudgetMiB = new wxSpinCtrl(m_pQuickEngine, wxID_ANY,
       "256", wxDefaultPosition, wxSize(160, -1), wxSP_ARROW_KEYS, 1,
       sizeof(void*) <= 4 ? 4095 : 4096, 256);
-  m_sQuickMemoryBudgetMiB->SetToolTip(_("Budget for Quick's tracked search storage. Weather, charts and OpenCPN require additional memory. Presets preserve this budget."));
+  m_sQuickMemoryBudgetMiB->SetToolTip(_("Search-storage allowance for the selected engine. Weather, charts and OpenCPN require additional memory. Presets preserve this allowance."));
   quickEngineSizer->Add(m_sQuickMemoryBudgetMiB, 0, wxALL, 5);
   quickLabel(_("Offshore time step (minutes)"));
   m_sQuickOffshoreStepMinutes = new wxSpinCtrl(m_pQuickEngine, wxID_ANY,
       "180", wxDefaultPosition, wxSize(160, -1), wxSP_ARROW_KEYS, 10, 360, 180);
-  m_sQuickOffshoreStepMinutes->SetToolTip(_("Nominal offshore step. Quick automatically uses finer steps near departure, destination and coastal regions."));
+  m_sQuickOffshoreStepMinutes->SetToolTip(_("Nominal offshore step. Quick reduces steps near the destination; Standard also refines departure and coastal search."));
   quickEngineSizer->Add(m_sQuickOffshoreStepMinutes, 0, wxALL, 5);
   quickLabel(_("Heading separation (degrees)"));
   m_sQuickHeadingStepDegrees = new wxSpinCtrlDouble(m_pQuickEngine, wxID_ANY,
-      "20", wxDefaultPosition, wxSize(160, -1), wxSP_ARROW_KEYS, 5, 30, 20, 1);
-  m_sQuickHeadingStepDegrees->SetToolTip(_("Nominal separation. Quick refines headings during approach and recovery."));
+      wxString::FromCDouble(weather_routing::kDefaultHeadingStepDegrees),
+      wxDefaultPosition, wxSize(160, -1), wxSP_ARROW_KEYS, 5, 30,
+      weather_routing::kDefaultHeadingStepDegrees, 1);
+  m_sQuickHeadingStepDegrees->SetToolTip(_("Search heading separation. Final connections are solved precisely. Standard also refines its search during approach and recovery."));
   quickEngineSizer->Add(m_sQuickHeadingStepDegrees, 0, wxALL, 5);
   quickLabel(_("Maximum search angle (degrees)"));
   m_sQuickMaximumSearchAngle = new wxSpinCtrl(m_pQuickEngine, wxID_ANY,
@@ -2020,9 +2058,10 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
                        _("GRIB timeline cache limit")),
       0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
   m_sQuickGribTimelineCacheMiB = new wxSpinCtrl(
-      quickResources->GetStaticBox(), wxID_ANY, "64", wxDefaultPosition,
+      quickResources->GetStaticBox(), wxID_ANY,
+      wxString::Format("%d", weather_routing::kQuickGribTimelineCacheDefaultMiB), wxDefaultPosition,
       wxSize(140, -1), wxSP_ARROW_KEYS, 16,
-      sizeof(void*) <= 4 ? 192 : 8192, 64);
+      sizeof(void*) <= 4 ? 192 : 8192, weather_routing::kQuickGribTimelineCacheDefaultMiB);
   quickGribCacheRow->Add(m_sQuickGribTimelineCacheMiB, 0,
                          wxALL | wxALIGN_CENTER_VERTICAL, 5);
   quickGribCacheRow->Add(
@@ -2035,9 +2074,11 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
         "Increasing this can greatly accelerate routes using large or "
         "high-resolution GRIBs. Memory is allocated only as required. "
         "Larger limits are applied only when enough physical RAM remains."));
+  const wxString quickGribCacheHelpText = quickGribCacheHelp->GetLabel();
   quickGribCacheHelp->Wrap(430);
-  quickResources->Add(quickGribCacheHelp, 0, wxLEFT | wxRIGHT | wxBOTTOM, 5);
-  m_sQuickGribTimelineCacheMiB->SetToolTip(quickGribCacheHelp->GetLabel());
+  quickResources->Add(quickGribCacheHelp, 0,
+                      wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 5);
+  m_sQuickGribTimelineCacheMiB->SetToolTip(quickGribCacheHelpText);
   quickPanelSizer->Add(quickResources, 0, wxEXPAND, 0);
   m_pQuickEngine->SetSizer(quickPanelSizer);
   engineSettingsBox->Add(m_pQuickEngine, 0, wxEXPAND, 0);
@@ -2444,7 +2485,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   m_cShorelineResolution->SetSelection(2);
   m_cShorelineResolution->SetMinSize(wxSize(
       wxMax(FromDIP(190), m_cShorelineResolution->GetBestSize().x), -1));
-  m_cShorelineResolution->SetToolTip(_("GSHHG shoreline detail for the selected engine; Main and Quick remember independent choices. "
+  m_cShorelineResolution->SetToolTip(_("GSHHG shoreline detail for the selected engine; Quick, Standard and Professional remember independent choices. "
                                        "High and Full can be installed with the button below. "
                                        "Chart geometry and minimum-depth checks are separate."));
   fgSizer11511->Add(m_cShorelineResolution, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
@@ -2500,27 +2541,32 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
                     wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
   fgSizer113->Insert(0, fgSizer11511, 0, wxEXPAND, 5);
+  auto depthExplanation = new wxStaticText(
+      sbOptions1->GetStaticBox(), wxID_ANY,
+      _("0 m disables only the depth limit; land checks remain separate. "
+        "A positive depth needs Detect Land and both chart options on Basic, "
+        "plus a compatible chart-safety host and chart coverage."));
+  const wxString depthExplanationText = depthExplanation->GetLabel();
+  depthExplanation->Wrap(440);
+  fgSizer113->Insert(1, depthExplanation, 0, wxEXPAND | wxALL, 5);
+
   m_bShorelineData = new wxButton(
       sbOptions1->GetStaticBox(), wxID_ANY,
       _("Shoreline data..."));
   m_bShorelineData->SetToolTip(
       _("Install or verify optional GSHHG High and Full datasets. "
         "The approved files are downloaded only when requested and work offline afterwards."));
-  fgSizer113->Insert(1, m_bShorelineData, 0, wxLEFT | wxRIGHT | wxBOTTOM, 5);
+  auto shorelineRow = new wxBoxSizer(wxHORIZONTAL);
+  shorelineRow->Add(m_bShorelineData, 0, wxALL, 5);
   auto shorelineNote = new wxStaticText(sbOptions1->GetStaticBox(), wxID_ANY,
       _("Lower shoreline resolutions omit smaller coastal features and may allow "
         "routes through land shown at higher resolutions. Chart and depth checks are separate."));
+  const wxString shorelineNoteText = shorelineNote->GetLabel();
   shorelineNote->Wrap(FromDIP(440));
-  fgSizer113->Insert(2, shorelineNote, 0, wxALL, 5);
+  shorelineRow->Add(shorelineNote, 0, wxALL, 5);
+  fgSizer113->Insert(2, shorelineRow, 0, wxEXPAND, 0);
 
   sbOptions1->Add(fgSizer113, 1, wxEXPAND, 5);
-  wxStaticText* depthExplanation = new wxStaticText(
-      sbOptions1->GetStaticBox(), wxID_ANY,
-      _("0 m disables only the depth limit; land checks remain separate. "
-        "A positive depth needs Detect Land and both chart options on Basic, "
-        "plus a compatible chart-safety host and chart coverage."));
-  depthExplanation->Wrap(440);
-  sbOptions1->Add(depthExplanation, 0, wxEXPAND | wxALL, 5);
 
   advancedRight->Add(sbOptions1, 0, wxEXPAND | wxALL, 5);
 
@@ -2661,7 +2707,8 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
 
   m_sFromDegree = new wxSpinCtrl(sbCourses->GetStaticBox(), wxID_ANY,
                                  wxEmptyString, wxDefaultPosition,
-                                 wxSize(140, -1), wxSP_ARROW_KEYS, 0, 180, 0);
+                                 wxSize(140, -1), wxSP_ARROW_KEYS, 0, 180,
+                                 weather_routing::kDefaultFromDegree);
   bSizer4->Add(m_sFromDegree, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
 
   m_staticText115 =
@@ -2672,7 +2719,8 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
 
   m_sToDegree = new wxSpinCtrl(sbCourses->GetStaticBox(), wxID_ANY,
                                wxEmptyString, wxDefaultPosition,
-                               wxSize(140, -1), wxSP_ARROW_KEYS, 0, 180, 180);
+                               wxSize(140, -1), wxSP_ARROW_KEYS, 0, 180,
+                               weather_routing::kDefaultToDegree);
   bSizer4->Add(m_sToDegree, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
 
   m_cbUseOptimalAngles = new wxCheckBox(
@@ -2690,7 +2738,39 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   bSizer8->Add(advancedRight, 1, wxEXPAND);
 
   m_pAdvanced->SetSizer(bSizer8);
+  // wxStaticText::Wrap inserts line breaks into its label. Always start with
+  // the original translated text so widening the dialog removes them.
+  const auto reflowAdvancedHelp = [=, this](int paneWidth) {
+    if (paneWidth <= 0)
+      return;
+    const int leftWidth = wxMax(FromDIP(180), paneWidth / 2 - FromDIP(50));
+    const int rightWidth = wxMax(FromDIP(180), paneWidth / 2 - FromDIP(35));
+    const int besideButton =
+        rightWidth - m_bShorelineData->GetBestSize().x - FromDIP(20);
+    const bool showBesideButton = besideButton >= FromDIP(300);
+    shorelineRow->SetOrientation(showBesideButton ? wxHORIZONTAL : wxVERTICAL);
+
+    mainGribCacheHelp->SetLabel(mainGribCacheHelpText);
+    mainGribCacheHelp->Wrap(leftWidth);
+    quickGribCacheHelp->SetLabel(quickGribCacheHelpText);
+    quickGribCacheHelp->Wrap(leftWidth);
+    depthExplanation->SetLabel(depthExplanationText);
+    depthExplanation->Wrap(rightWidth);
+    shorelineNote->SetLabel(shorelineNoteText);
+    shorelineNote->Wrap(showBesideButton ? besideButton : rightWidth);
+    m_pAdvanced->Layout();
+    m_pAdvanced->FitInside();
+  };
+  m_pAdvanced->Bind(wxEVT_SIZE, [=, lastWidth = 0](wxSizeEvent& event) mutable {
+    const int paneWidth = event.GetSize().x;
+    if (paneWidth != lastWidth) {
+      reflowAdvancedHelp(paneWidth);
+      lastWidth = paneWidth;
+    }
+    event.Skip();
+  });
   m_pAdvanced->Layout();
+  reflowAdvancedHelp(m_pAdvanced->GetClientSize().x);
   m_pAdvanced->FitInside();
   m_notebook7->AddPage(m_pAdvanced, _("Advanced"), false);
 

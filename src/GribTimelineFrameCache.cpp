@@ -50,10 +50,12 @@ GribTimelineCacheAdmission GribTimelineFrameCache::Configure(
   requested_mib_ = admission.requested_mib;
   effective_mib_ = admission.effective_mib;
   current_limit_mib_ = effective_mib_;
-  standard_mib_ = quick ? kQuickGribTimelineCacheDefaultMiB
-                        : kMainGribTimelineCacheDefaultMiB;
-  required_reserve_mib_ = admission.required_reserve_mib;
-  runtime_guard_enabled_ = admission.approved && admission.large_cache_requested;
+  standard_mib_ = GribTimelineCacheFallbackMiB(quick);
+  required_reserve_mib_ = kGribTimelineCacheBaseReserveMiB +
+                          2ULL * effective_mib_;
+  // A reduced allowance may still exceed the historical floor and needs the
+  // same runtime guard as a fully admitted request.
+  runtime_guard_enabled_ = effective_mib_ > standard_mib_;
   configured_ = true;
   next_memory_check_milliseconds_ = 0;
   cache_.SetMaximumWeight(MiBToBytes(effective_mib_));

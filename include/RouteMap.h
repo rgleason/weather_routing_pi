@@ -229,17 +229,27 @@ struct RouteMapConfiguration {
   std::shared_ptr<weather_routing::ShorelineDataset> shoreline_dataset;
   wxString shoreline_description;
   int ShorelineResolution{2};  // Offline base default; saved route choices are preserved.
-  int QuickShorelineResolution{0};
+  int QuickShorelineResolution{weather_routing::kDefaultQuickShorelineResolution};
   int ChartShorelineResolution{0};  // Preliminary shoreline work in enforced chart mode.
   int MainGribTimelineCacheMiB{
       weather_routing::kMainGribTimelineCacheDefaultMiB};
   int QuickGribTimelineCacheMiB{
       weather_routing::kQuickGribTimelineCacheDefaultMiB};
   int SelectedGribTimelineCacheMiB() const {
-    return IsQuick() ? QuickGribTimelineCacheMiB : MainGribTimelineCacheMiB;
+    return IsOriginal() ? EngineSettings.originalGribTimelineCacheMiB :
+        IsQuick() ? QuickGribTimelineCacheMiB : MainGribTimelineCacheMiB;
   }
+  int& FastGribTimelineCacheMiB() {
+    return IsOriginal() ? EngineSettings.originalGribTimelineCacheMiB : QuickGribTimelineCacheMiB;
+  }
+  int& FastShorelineResolution() {
+    return IsOriginal() ? EngineSettings.originalShorelineResolution : QuickShorelineResolution;
+  }
+  bool IsOriginal() const { return EngineSettings.engine == weather_routing::RoutingEngine::Original; }
+  bool IsFastEngine() const { return IsOriginal() || IsQuick(); }
   int SelectedShorelineResolution() const {
-    return IsQuick() ? QuickShorelineResolution : ShorelineResolution;
+    return IsOriginal() ? EngineSettings.originalShorelineResolution :
+        IsQuick() ? QuickShorelineResolution : ShorelineResolution;
   }
   int EffectiveShorelineResolution() const {
     return chart_safety_scout_preview ||

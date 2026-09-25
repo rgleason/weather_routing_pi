@@ -288,6 +288,9 @@ bool GshhsSegmentSafetyHitsLand(RouteMapConfiguration* configuration,
       if (!configuration || !configuration->shoreline_dataset)
         throw std::runtime_error(
             "Required plugin shoreline data was not prepared");
+      if (configuration->IsOriginal())
+        return configuration->shoreline_dataset->WithinLandMargin(
+            a, b, c, d, safety_margin_nm);
       return configuration->shoreline_dataset->CrossesLand(a, b, c, d);
     } catch (const std::bad_alloc&) {
       throw;
@@ -300,6 +303,7 @@ bool GshhsSegmentSafetyHitsLand(RouteMapConfiguration* configuration,
     }
   };
   if (crosses(lat1, lon1, lat2, lon2)) return true;
+  if (configuration && configuration->IsOriginal()) return false;
 
   if (safety_margin_nm <= 0.0) return false;
 
@@ -596,15 +600,9 @@ bool SegmentSafetyRejectsLand(RouteMapConfiguration* configuration,
     s_loggedExperimentalForcedFallback = true;
   }
 
-  bool chart_rejects =
-      result.status == PI_SEGMENT_SAFETY_CROSSES_LAND ||
-      result.status == PI_SEGMENT_SAFETY_WITHIN_LAND_MARGIN ||
-      result.status == PI_SEGMENT_SAFETY_UNSAFE_AREA ||
-      result.status == PI_SEGMENT_SAFETY_DRYING_AREA ||
-      result.status == PI_SEGMENT_SAFETY_TOO_SHALLOW ||
-      result.status == PI_SEGMENT_SAFETY_UNKNOWN_DEPTH ||
-                 result.status == PI_SEGMENT_SAFETY_NO_DATA ||
-                 result.status == PI_SEGMENT_SAFETY_ERROR;
+  // Pending chart data is not evidence of safe water.  Treat every status
+  // other than an explicit SAFE as unavailable or unsafe until it is resolved.
+  bool chart_rejects = weather_routing::ChartSafetyRejects(result.status);
 
   if (allow_endpoint_margin_relaxation && chart_rejects &&
       result.status == PI_SEGMENT_SAFETY_WITHIN_LAND_MARGIN &&
@@ -697,14 +695,7 @@ bool FinalRouteSegmentSafetyRejectsLand(RouteMapConfiguration* configuration,
     return true;
   }
 
-  bool rejects = result.status == PI_SEGMENT_SAFETY_CROSSES_LAND ||
-                 result.status == PI_SEGMENT_SAFETY_WITHIN_LAND_MARGIN ||
-                 result.status == PI_SEGMENT_SAFETY_UNSAFE_AREA ||
-                 result.status == PI_SEGMENT_SAFETY_DRYING_AREA ||
-                 result.status == PI_SEGMENT_SAFETY_TOO_SHALLOW ||
-                 result.status == PI_SEGMENT_SAFETY_UNKNOWN_DEPTH ||
-                 result.status == PI_SEGMENT_SAFETY_NO_DATA ||
-                 result.status == PI_SEGMENT_SAFETY_ERROR;
+  bool rejects = weather_routing::ChartSafetyRejects(result.status);
   if (rejects &&
       result.status == PI_SEGMENT_SAFETY_WITHIN_LAND_MARGIN &&
       EndpointMarginOnlyHitIsZeroMarginSafe(configuration, lat1, lon1, lat2,
@@ -716,7 +707,8 @@ bool FinalRouteSegmentSafetyRejectsLand(RouteMapConfiguration* configuration,
 
   if (failure_reason) {
     if (result.status == PI_SEGMENT_SAFETY_NO_DATA ||
-        result.status == PI_SEGMENT_SAFETY_ERROR) {
+        result.status == PI_SEGMENT_SAFETY_ERROR ||
+        result.status == PI_SEGMENT_SAFETY_PENDING_DATA) {
       *failure_reason = _("Chart safety data unavailable in final route");
     } else if (!result.used_fallback &&
         result.source != PI_SEGMENT_SAFETY_SOURCE_GSHHS_FALLBACK)

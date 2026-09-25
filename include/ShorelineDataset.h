@@ -23,6 +23,9 @@ public:
   ShorelineDataset(const ShorelineDataset&) = delete;
   ShorelineDataset& operator=(const ShorelineDataset&) = delete;
   bool CrossesLand(double lat1, double lon1, double lat2, double lon2);
+  // Complete buffered-segment query, including islands between offset lines.
+  bool WithinLandMargin(double lat1, double lon1, double lat2, double lon2,
+                        double margin);
   std::size_t CacheBytes() const;
   int Version() const;
   // A failed read invalidates this snapshot until the manager prepares it

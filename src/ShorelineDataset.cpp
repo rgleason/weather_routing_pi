@@ -408,6 +408,99 @@ bool ShorelineDataset::CrossesLand(double lat1, double lon1, double lat2,
     throw ShorelineQueryError(impl_->error);
   }
 }
+bool ShorelineDataset::WithinLandMargin(double lat1, double lon1, double lat2,
+                                        double lon2, double margin) {
+  if (!std::isfinite(margin) || margin < 0 || margin > 100)
+    throw std::invalid_argument(
+        "shoreline margin must be between 0 and 100 NM");
+  if (CrossesLand(lat1, lon1, lat2, lon2)) return true;
+  if (margin == 0) return false;
+  std::lock_guard<std::mutex> lock(impl_->mutex);
+  if (!impl_->error.empty()) throw ShorelineQueryError(impl_->error);
+  // Inspect the entire buffer, including islands wholly between the centre
+  // line and offset lines. Indexed coastline-edge distance replaces the old
+  // five-line approximation. Short pieces bound projection distortion; the
+  // smallest longitudinal scale in each tile intentionally errs toward land.
+  auto pointDistance = [](Point p, Edge s) {
+    double x = s.b.x - s.a.x, y = s.b.y - s.a.y, d = x * x + y * y;
+    double t =
+        d > 0 ? std::clamp(((p.x - s.a.x) * x + (p.y - s.a.y) * y) / d, 0., 1.)
+              : 0.;
+    return std::hypot(p.x - s.a.x - t * x, p.y - s.a.y - t * y);
+  };
+  auto distance = [&](Edge a, Edge b) {
+    if (Intersects(a, b)) return 0.;
+    return std::min({pointDistance(a.a, b), pointDistance(a.b, b),
+                     pointDistance(b.a, a), pointDistance(b.b, a)});
+  };
+  lon1 = std::fmod(std::fmod(lon1, 360.) + 360., 360.);
+  lon2 = lon1 + std::remainder(lon2 - lon1, 360.);
+  const int pieces = std::max(
+      1, int(std::ceil(std::max(std::abs(lon2 - lon1), std::abs(lat2 - lat1)) /
+                       .25)));
+  try {
+    for (int k = 0; k < pieces; ++k) {
+      auto point = [&](double f) {
+        return Point{lon1 + (lon2 - lon1) * f, lat1 + (lat2 - lat1) * f};
+      };
+      Edge query{point(double(k) / pieces), point(double(k + 1) / pieces)};
+      const double dy = margin / 59.9;
+      const double pole = std::min(
+          90., std::max(std::abs(query.a.y), std::abs(query.b.y)) + dy + 1.);
+      const double scale = std::max(
+          1e-12, 59.9 * std::cos(pole * 3.14159265358979323846 / 180.));
+      const double dx = std::min(180., margin / scale);
+      int x0 = int(std::floor((std::min(query.a.x, query.b.x) - dx) * 16)),
+          x1 = int(std::floor((std::max(query.a.x, query.b.x) + dx) * 16));
+      int y0 = std::max(
+              0,
+              int(std::floor((std::min(query.a.y, query.b.y) - dy + 90) * 16))),
+          y1 = std::min(
+              2879,
+              int(std::floor((std::max(query.a.y, query.b.y) + dy + 90) * 16)));
+      for (int by = y0; by <= y1; ++by)
+        for (int bx = x0; bx <= x1; ++bx) {
+          int wrapped = (bx % 5760 + 5760) % 5760;
+          const int x = wrapped / 16, y = by / 16,
+                    index = by % 16 * 16 + wrapped % 16;
+          auto tile = impl_->Get(x, y);
+          if (tile->edges[index].empty() && !tile->land[index]) continue;
+          const double shift =
+              360 * std::round(((query.a.x + query.b.x) * .5 - (x + .5)) / 360);
+          auto project = [&](Point p) {
+            return Point{(p.x - query.a.x) * scale, (p.y - query.a.y) * 59.9};
+          };
+          Edge projected{project(query.a), project(query.b)};
+          for (auto edge : tile->edges[index]) {
+            edge.a.x += shift;
+            edge.b.x += shift;
+            if (distance(projected, {project(edge.a), project(edge.b)}) <=
+                margin + 1e-8)
+              return true;
+          }
+          if (tile->edges[index].empty() && tile->land[index]) {
+            const double left = bx / 16., bottom = by / 16. - 90;
+            std::array<Point, 4> rectangle{{{left, bottom},
+                                            {left + 1. / 16, bottom},
+                                            {left + 1. / 16, bottom + 1. / 16},
+                                            {left, bottom + 1. / 16}}};
+            for (int n = 0; n < 4; ++n)
+              if (distance(projected, {project(rectangle[n]),
+                                       project(rectangle[(n + 1) % 4])}) <=
+                  margin + 1e-8)
+                return true;
+          }
+        }
+    }
+    return false;
+  } catch (const std::bad_alloc&) {
+    throw;
+  } catch (const std::exception& e) {
+    impl_->error = std::string("Shoreline margin data error: ") + e.what();
+    throw ShorelineQueryError(impl_->error);
+  }
+}
+
 std::string ShorelineSha256(const std::filesystem::path& path) {
   std::ifstream in(path, std::ios::binary);
   if (!in) throw std::runtime_error("Cannot read shoreline file");

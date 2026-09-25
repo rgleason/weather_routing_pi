@@ -181,8 +181,8 @@ bool RouteMapOverlay::Start(wxString& error) {
         wxString::FromUTF8(configuration.EngineSettings.EngineId());
     return false;
   }
-  if (configuration.IsQuick() && !ModernNativeRouteEnabled(configuration)) {
-    error = _("Quick Route cannot analyse an existing route or use cumulative climatology/legacy routing. Select the main engine for this configuration.");
+  if (configuration.IsFastEngine() && !ModernNativeRouteEnabled(configuration)) {
+    error = _("Quick and Standard cannot analyse an existing route or use cumulative climatology/legacy routing. Select Professional for this configuration.");
     return false;
   }
   /* test for cyclone data if needed */

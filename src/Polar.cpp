@@ -37,6 +37,11 @@
 #include "Utilities.h"
 #include "Boat.h"
 
+#ifdef _MSC_VER
+#define strncasecmp _strnicmp
+#define strcasecmp _stricmp
+#endif
+
 PolarMeasurement::PolarMeasurement(double windSpeed, double windAngle,
                                    double boatSpeed, bool apparent) {
   stw = boatSpeed;

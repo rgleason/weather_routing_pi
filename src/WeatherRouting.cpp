@@ -583,14 +583,35 @@ static bool EndpointMeetsMinimumDepth(
           _("%s does not satisfy the configured minimum depth %.1f m"),
           endpoint_name, configuration.MinimumDepthMeters);
     }
+    if (queried && result.status == PI_SEGMENT_SAFETY_TOO_SHALLOW) {
+      const wxString source =
+          result.source == PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART
+              ? _("ENC/vector chart")
+          : result.source == PI_SEGMENT_SAFETY_SOURCE_PLUGIN_VECTOR
+              ? _("plugin vector chart")
+          : result.source == PI_SEGMENT_SAFETY_SOURCE_CM93
+              ? _("CM93 chart")
+              : _("unknown chart source");
+      *failure_reason += wxString::Format(
+          _("\nChart source: %s; checked sample: %.6f, %.6f."), source,
+          result.hit_sample_lat, result.hit_sample_lon);
+      if (result.chart_path[0])
+        *failure_reason += wxString::Format(
+            _("\nChart file: %s."), wxString::FromUTF8(result.chart_path));
+    }
   }
   wxLogMessage(
       "WR_MINIMUM_DEPTH_ENDPOINT_REJECTED route=\"%s -> %s\" "
       "endpoint=\"%s\" lat=%.8f lon=%.8f minimum_depth_m=%.3f "
-      "queried=%d status=%d has_depth=%d hit_depth_m=%.3f message=\"%s\"",
+      "queried=%d status=%d source=%d chart_path=\"%s\" "
+      "sample=(%.8f,%.8f) has_depth=%d hit_depth_m=%.3f message=\"%s\"",
       configuration.Start, configuration.End, endpoint_name, latitude,
       longitude, configuration.MinimumDepthMeters, queried ? 1 : 0,
       queried ? result.status : PI_SEGMENT_SAFETY_ERROR,
+      queried ? result.source : PI_SEGMENT_SAFETY_SOURCE_NONE,
+      queried ? wxString::FromUTF8(result.chart_path) : wxString(),
+      queried ? result.hit_sample_lat : std::numeric_limits<double>::quiet_NaN(),
+      queried ? result.hit_sample_lon : std::numeric_limits<double>::quiet_NaN(),
       queried ? result.has_depth : 0,
       queried ? result.hit_depth_m : std::numeric_limits<double>::quiet_NaN(),
       queried ? wxString::FromUTF8(result.message) : wxString("unavailable"));
@@ -4508,12 +4529,12 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
           }
           if (scenario.route.hasQuickRoute) configuration.EngineSettings.engine = scenario.route.quickRoute
               ? weather_routing::RoutingEngine::Quick : weather_routing::RoutingEngine::Main;
-          if (scenario.route.hasQuickMemoryBudgetMiB) configuration.EngineSettings.quick.memoryBudgetMiB = scenario.route.quickMemoryBudgetMiB;
           if (scenario.route.hasRoutingEngine)
             configuration.EngineSettings.SetEngineId(scenario.route.routingEngine.ToStdString());
+          if (scenario.route.hasQuickMemoryBudgetMiB) configuration.EngineSettings.FastSettings().memoryBudgetMiB = scenario.route.quickMemoryBudgetMiB;
           if (scenario.route.hasGribTimelineCacheMiB) {
-            if (configuration.IsQuick())
-              configuration.QuickGribTimelineCacheMiB =
+            if (configuration.IsFastEngine())
+              configuration.FastGribTimelineCacheMiB() =
                   scenario.route.gribTimelineCacheMiB;
             else
               configuration.MainGribTimelineCacheMiB =
@@ -4521,17 +4542,17 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
           }
           if (scenario.route.hasChartShorelineResolution) configuration.ChartShorelineResolution = scenario.route.chartShorelineResolution;
           if (scenario.route.hasShorelineResolution) {
-            if (configuration.IsQuick()) configuration.QuickShorelineResolution = scenario.route.shorelineResolution;
+            if (configuration.IsFastEngine()) configuration.FastShorelineResolution() = scenario.route.shorelineResolution;
             else configuration.ShorelineResolution = scenario.route.shorelineResolution;
           }
           if (scenario.route.hasQuickOffshoreStepMinutes)
-            configuration.EngineSettings.quick.offshoreStepMinutes = scenario.route.quickOffshoreStepMinutes;
+            configuration.EngineSettings.FastSettings().offshoreStepMinutes = scenario.route.quickOffshoreStepMinutes;
           if (scenario.route.hasQuickHeadingStepDegrees)
-            configuration.EngineSettings.quick.headingStepDegrees = scenario.route.quickHeadingStepDegrees;
+            configuration.EngineSettings.FastSettings().headingStepDegrees = scenario.route.quickHeadingStepDegrees;
           if (scenario.route.hasQuickMaximumSearchAngle)
-            configuration.EngineSettings.quick.maximumSearchAngle = scenario.route.quickMaximumSearchAngle;
+            configuration.EngineSettings.FastSettings().maximumSearchAngle = scenario.route.quickMaximumSearchAngle;
           if (scenario.route.hasQuickOffshoreStepMinutes || scenario.route.hasQuickHeadingStepDegrees || scenario.route.hasQuickMaximumSearchAngle)
-            configuration.EngineSettings.quick.preset = {};
+            configuration.EngineSettings.FastSettings().preset = {};
           if (scenario.route.hasTimeStepSeconds || scenario.route.hasHeadingStepDegrees || scenario.route.hasRoutingEffortPercent)
             configuration.EngineSettings.mainPreset = {};
           if (scenario.route.hasRoutingEffortPercent)
@@ -4563,6 +4584,8 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
                 scenario.route.maxApparentWindKnots;
           if (scenario.route.hasOptimizeTacking)
             configuration.OptimizeTacking = scenario.route.optimizeTacking;
+          if (scenario.route.hasMaxSwellMeters)
+            configuration.MaxSwellMeters = scenario.route.maxSwellMeters;
           if (scenario.route.hasUpwindEfficiency)
             configuration.UpwindEfficiency = scenario.route.upwindEfficiency;
           if (scenario.route.hasDownwindEfficiency)
@@ -8212,7 +8235,7 @@ bool WeatherRouting::OpenXML(wxString filename, bool reportfailure) {
                        e, "DepartureTimeOptimizationConcurrentRoutes", 0)));
         configuration.EngineSettings = weather_routing::ReadRoutingEngineSettings(*e);
         configuration.ShorelineResolution = weather_routing::ReadShorelineResolution(*e, weather_routing::ShorelineManager::DefaultResolution());
-        configuration.QuickShorelineResolution = weather_routing::ReadShorelineResolution(*e, 0, "QuickShorelineResolution");
+        configuration.QuickShorelineResolution = weather_routing::ReadShorelineResolution(*e, weather_routing::kDefaultQuickShorelineResolution, "QuickShorelineResolution");
         configuration.ChartShorelineResolution = weather_routing::ReadShorelineResolution(*e, 0, "ChartShorelineResolution");
         configuration.MainGribTimelineCacheMiB =
             weather_routing::NormalizeGribTimelineCacheMiB(
@@ -9023,8 +9046,9 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
     if (routemapoverlay->Finished()) {
       if (routemapoverlay->ReachedDestination()) {
         const auto engine = routemapoverlay->GetComputedSearchSettings().engine;
-        State = engine == "quick" ? _("Complete — Quick")
-            : engine == "main" ? _("Complete — Main") : _("Complete");
+        State = engine == "original" ? _("Complete — Quick")
+            : engine == "quick" ? _("Complete — Standard")
+            : engine == "main" ? _("Complete — Professional") : _("Complete");
       } else
         State = BuildRouteFailureState(routemapoverlay);
     } else {
@@ -9036,9 +9060,11 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
           return;
         }
       const auto computed = routemapoverlay->GetComputedSearchSettings();
+      weather_routing::RoutingEngineSettings computedEngine;
+      computedEngine.SetEngineId(computed.engine);
       State = computed.valid
           ? _("Settings changed — recompute (previous engine: ") +
-                wxString::FromUTF8(computed.engine) + ")"
+                wxGetTranslation(weather_routing::EngineTitle(computedEngine.engine)) + ")"
           : _("Not Computed");
     }
   }
@@ -9783,7 +9809,7 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
        route != eligible_routes.end(); ++route) {
     if (!*route) continue;
     const RouteMapConfiguration configuration = (*route)->GetConfiguration();
-    if (!configuration.DetectLand || configuration.IsQuick() ||
+    if (!configuration.DetectLand || configuration.IsFastEngine() ||
         configuration.chart_safety_missing_tile_retry_count > 0)
       continue;
     const wxString scope = ChartSafetySharedPrewarmScopeKey(configuration);
@@ -9798,7 +9824,7 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
        route != eligible_routes.end(); ++route) {
     if (!*route) continue;
     RouteMapConfiguration configuration = (*route)->GetConfiguration();
-    if (!configuration.DetectLand || configuration.IsQuick() ||
+    if (!configuration.DetectLand || configuration.IsFastEngine() ||
         configuration.chart_safety_missing_tile_retry_count > 0)
       continue;
     wxString scope = ChartSafetySharedPrewarmScopeKey(configuration);
@@ -11574,7 +11600,7 @@ void WeatherRouting::StartAll() {
           weatherroute->routemapoverlay->GetConfiguration();
       const auto admission =
           weather_routing::EvaluateGribTimelineCacheAdmission(
-              candidate.SelectedGribTimelineCacheMiB(), candidate.IsQuick(),
+              candidate.SelectedGribTimelineCacheMiB(), candidate.IsFastEngine(),
               availableMiB);
       if (admission.effective_mib > largestEffectiveMiB) {
         largestValue = candidate;
@@ -11604,14 +11630,14 @@ void WeatherRouting::BeginGribTimelineCacheBatch(
       weather_routing::AvailablePhysicalMemoryBytes();
   const std::uint64_t availableMiB = availableBytes / (1024ULL * 1024ULL);
   const auto admission = m_GribTimelineFrameCache->Configure(
-      configuration.SelectedGribTimelineCacheMiB(), configuration.IsQuick(),
+      configuration.SelectedGribTimelineCacheMiB(), configuration.IsFastEngine(),
       availableMiB);
   m_GribTimelineCacheBatchActive = true;
   wxLogMessage(
       "WR_GRIB_TIMELINE_CACHE_BEGIN engine=%s requested_mib=%d "
       "effective_mib=%d available_mib=%llu required_before_mib=%llu "
       "required_reserve_mib=%llu approved=%d shared_batch=1",
-      configuration.IsQuick() ? "quick" : "main", admission.requested_mib,
+      configuration.EngineSettings.EngineId().c_str(), admission.requested_mib,
       admission.effective_mib,
       static_cast<unsigned long long>(admission.available_mib),
       static_cast<unsigned long long>(admission.required_before_mib),
@@ -12088,7 +12114,7 @@ void WeatherRouting::ApplyLastUsedConfigurationDefaults(
   const bool hasSavedDefaults = pConf->GetNumberOfEntries() > 0;
   configuration.EngineSettings = weather_routing::ReadRoutingEngineSettings(*pConf);
   configuration.ShorelineResolution = weather_routing::ReadShorelineResolution(*pConf, weather_routing::ShorelineManager::DefaultResolution());
-  configuration.QuickShorelineResolution = weather_routing::ReadShorelineResolution(*pConf, 0, "QuickShorelineResolution");
+  configuration.QuickShorelineResolution = weather_routing::ReadShorelineResolution(*pConf, weather_routing::kDefaultQuickShorelineResolution, "QuickShorelineResolution");
   configuration.ChartShorelineResolution = weather_routing::ReadShorelineResolution(*pConf, 0, "ChartShorelineResolution");
   long main_grib_cache = configuration.MainGribTimelineCacheMiB;
   long quick_grib_cache = configuration.QuickGribTimelineCacheMiB;
@@ -12102,8 +12128,7 @@ void WeatherRouting::ApplyLastUsedConfigurationDefaults(
   configuration.QuickGribTimelineCacheMiB =
       weather_routing::NormalizeGribTimelineCacheMiB(
           static_cast<int>(quick_grib_cache), true);
-  if (!hasSavedDefaults)
-    configuration.EngineSettings.mainPreset = {"balanced", 1};
+  weather_routing::ApplyFirstUseEngineDefaults(configuration.EngineSettings, hasSavedDefaults);
   long routing_effort_percent = configuration.RoutingEffortPercent;
   pConf->Read(_T("RoutingEffortPercent"), &routing_effort_percent,
               routing_effort_percent);
@@ -12140,7 +12165,7 @@ RouteMapConfiguration WeatherRouting::DefaultConfiguration() {
 
   configuration.Integrator = RouteMapConfiguration::NEWTON;
 
-  configuration.MaxDivertedCourse = 90;
+  configuration.MaxDivertedCourse = weather_routing::kDefaultMaxDivertedCourse;
   configuration.MaxCourseAngle = 180;
   configuration.MaxSearchAngle = 120;
   configuration.MaxTrueWindKnots = 50;      // Safety margin for wind speed
@@ -12171,10 +12196,10 @@ RouteMapConfiguration WeatherRouting::DefaultConfiguration() {
   configuration.UseReverseReachabilityRecovery = false;
   configuration.Anchoring = false;
 
-  configuration.FromDegree = 0;
-  configuration.ToDegree = 180;
+  configuration.FromDegree = weather_routing::kDefaultFromDegree;
+  configuration.ToDegree = weather_routing::kDefaultToDegree;
   configuration.UseOptimalAngles = false;
-  configuration.ByDegrees = 5;
+  configuration.ByDegrees = weather_routing::kDefaultHeadingStepDegrees;
   configuration.UseMotor = false;
   configuration.MotorSpeedThreshold = 2.0;
   configuration.MotorSpeed = 5.0;

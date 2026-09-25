@@ -15,20 +15,35 @@
 
 namespace weather_routing {
 
-constexpr int kMainGribTimelineCacheDefault64BitMiB = 512;
+constexpr int kMainGribTimelineCacheDefault64BitMiB = 2048;
+constexpr int kQuickGribTimelineCacheDefault64BitMiB = 2048;
+constexpr int kMainGribTimelineCacheFallback64BitMiB = 512;
+constexpr int kQuickGribTimelineCacheFallbackMiB = 64;
 constexpr int kGribTimelineCacheMaximum32BitMiB = 192;
 constexpr int kMainGribTimelineCacheDefaultMiB =
     sizeof(void*) <= 4 ? kGribTimelineCacheMaximum32BitMiB
                        : kMainGribTimelineCacheDefault64BitMiB;
-constexpr int kQuickGribTimelineCacheDefaultMiB = 64;
+constexpr int kQuickGribTimelineCacheDefaultMiB =
+    sizeof(void*) <= 4 ? kQuickGribTimelineCacheFallbackMiB
+                       : kQuickGribTimelineCacheDefault64BitMiB;
 constexpr int kGribTimelineCacheMaximum64BitMiB = 8192;
 constexpr std::uint64_t kGribTimelineCacheBaseReserveMiB = 2048;
+
+// Separate the preferred first-use limit from the historical low-memory floor.
+// Raising a default must never implicitly exempt it from memory admission.
+inline int GribTimelineCacheFallbackMiB(
+    bool quick, unsigned process_bits = sizeof(void*) * 8U) {
+  return quick ? kQuickGribTimelineCacheFallbackMiB
+               : (process_bits <= 32 ? kGribTimelineCacheMaximum32BitMiB
+                                     : kMainGribTimelineCacheFallback64BitMiB);
+}
 
 inline int NormalizeGribTimelineCacheMiB(int requested, bool quick,
                                          unsigned process_bits =
                                              sizeof(void*) * 8U) {
   const int fallback =
-      quick ? kQuickGribTimelineCacheDefaultMiB
+      quick ? (process_bits <= 32 ? kQuickGribTimelineCacheFallbackMiB
+                                  : kQuickGribTimelineCacheDefault64BitMiB)
             : (process_bits <= 32 ? kGribTimelineCacheMaximum32BitMiB
                                   : kMainGribTimelineCacheDefault64BitMiB);
   if (requested <= 0) requested = fallback;
@@ -50,10 +65,10 @@ struct GribTimelineCacheAdmission {
 };
 
 /**
- * Admit an explicitly enlarged timeline cache only when physical RAM can
+ * Admit a larger timeline cache only when physical RAM can
  * contain the complete cache and still leave 2 GiB plus twice its size free.
- * Standard historical limits remain available on machines where memory
- * reporting is unavailable or smaller, preserving existing routing support.
+ * Step down to a smaller power-of-two allowance when necessary. Historical
+ * floors remain available when memory reporting is unavailable or smaller.
  */
 inline GribTimelineCacheAdmission EvaluateGribTimelineCacheAdmission(
     int requested_mib, bool quick, std::uint64_t available_mib,
@@ -61,10 +76,7 @@ inline GribTimelineCacheAdmission EvaluateGribTimelineCacheAdmission(
   GribTimelineCacheAdmission result;
   result.requested_mib = NormalizeGribTimelineCacheMiB(
       requested_mib, quick, process_bits);
-  const int standard =
-      quick ? kQuickGribTimelineCacheDefaultMiB
-            : (process_bits <= 32 ? kGribTimelineCacheMaximum32BitMiB
-                                  : kMainGribTimelineCacheDefault64BitMiB);
+  const int standard = GribTimelineCacheFallbackMiB(quick, process_bits);
   result.effective_mib = result.requested_mib;
   result.available_mib = available_mib;
   result.memory_known = available_mib != 0;
@@ -88,6 +100,12 @@ inline GribTimelineCacheAdmission EvaluateGribTimelineCacheAdmission(
   }
   if (!result.memory_known || available_mib < result.required_before_mib) {
     result.effective_mib = standard;
+    for (int candidate = standard * 2; candidate < result.requested_mib;
+         candidate *= 2) {
+      if (available_mib < kGribTimelineCacheBaseReserveMiB + 3ULL * candidate)
+        break;
+      result.effective_mib = candidate;
+    }
     result.approved = false;
     return result;
   }
