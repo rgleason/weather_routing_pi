@@ -91,7 +91,7 @@ set(LONG_DESCRIPTION
 
 set(VERSION_MAJOR "1")
 set(VERSION_MINOR "18")
-set(VERSION_PATCH "6")
+set(VERSION_PATCH "7")
 set(VERSION_TWEAK "0")
 # Keep all five approved source archives for verification and regression tests.
 # Packages ship only Crude, Low and Intermediate; High and Full are optional
@@ -134,12 +134,14 @@ set(ALPHA "alpha") #Standard Repos
 # Set if  Cloudsmith Base Repository name does not match your Git Repository name.
 #set (CLOUDSMITH_BASE_REPOSITORY "${GIT_REPOSITORY_NAME}")
 #set (CLOUDSMITH_BASE_REPOSITORY "opencpn-plugins")
+#set(CLOUDSMITH_BASE_REPOSITORY "weather_routing")
+#set(CLOUDSMITH_USER "opencpn")
 
 if(WEATHER_ROUTING_XWEATHER_IDENTITY)
   set(PLUGIN_GIT_REPOSITORY "pob220/xweather_routing_pi")
 else()
   set(CLOUDSMITH_USER "opencpn")
-  set(CLOUDSMITH_BASE_REPOSITORY "weather-routing")
+  set(CLOUDSMITH_BASE_REPOSITORY "weather_routing")
     # Keep validation independent of the OpenCPN publishing repositories.  Alpha
     # publication remains a separate, explicitly approved later step.
     # Ricks's customization
