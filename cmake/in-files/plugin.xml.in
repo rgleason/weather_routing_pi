@@ -2,7 +2,7 @@
 <plugin version="1">
   <name> ${COMMON_NAME} </name>
   <version> ${PACKAGE_VERSION} </version>
-  <release> ${PROJECT_VERSION_TWEAK} </release>
+  <release> ${VERSION_TWEAK} </release>
   <summary> ${XML_SUMMARY} </summary>
 
   <api-version> ${OCPN_API_VERSION_MAJOR}.${OCPN_API_VERSION_MINOR} </api-version>

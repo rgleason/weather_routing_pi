@@ -139,7 +139,7 @@ set(CLOUDSMITH_BASE_REPOSITORY "weather-routing")
 if(WEATHER_ROUTING_XWEATHER_IDENTITY)
   set(PLUGIN_GIT_REPOSITORY "pob220/xweather_routing_pi")
 else()
-  set(PLUGIN_GIT_REPOSITORY "pob220/weather_routing_pi")
+  set(PLUGIN_GIT_REPOSITORY "rgleason/weather_routing_pi")
 endif()
 
 # Keep validation independent of the OpenCPN publishing repositories.  Alpha
@@ -203,18 +203,6 @@ if(MSVC)
 endif()
 
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
-
-# For MacOS Universal - so the script will run
-if(GENERATE_CLOUDSMITH_SCRIPTS)
-    configure_file(${CMAKE_SOURCE_DIR}/ci/cloudsmith-upload.sh.in
-                   ${CMAKE_BINARY_DIR}/cloudsmith-upload.sh @ONLY)
-endif()
-
-if(GENERATE_PKG_VERSION_SCRIPT)
-    configure_file(${CMAKE_SOURCE_DIR}/ci/pkg_version.sh.in
-                   ${CMAKE_BINARY_DIR}/pkg_version.sh @ONLY)
-endif()
-
 
 ##========================================================
 
