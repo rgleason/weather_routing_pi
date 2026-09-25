@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "ShorelineManager.h"
 #include "ShorelineSpec.h"
+#include "WeatherRoutingWxCompat.h"
 #include <map>
 #include "ocpn_plugin.h"
 #include "version.h"
@@ -144,7 +145,7 @@ void InstallOptional(const Spec& s, wxWindow* parent) {
         outputPath = "file://" + outputPath;
 #endif
         const auto result = OCPN_downloadFile(
-            wxString::FromUTF8(source), outputPath,
+            wxString::FromUTF8(source.c_str()), outputPath,
             _("Downloading shoreline data"),
             wxString::Format(_("GSHHG 2.3.7 — %s"), wxGetTranslation(s.quality)),
             wxNullBitmap, parent,
@@ -220,7 +221,7 @@ void ShorelineManager::Show(wxWindow* parent) {
                          "Choose each route's resolution in Configuration / Advanced. "
                          "This default is used when importing older routes; "
                          "existing route selections are preserved."));
-  text->Wrap(dialog.FromDIP(560));
+  text->Wrap(WR_FromDIP(&dialog, 560));
   main->Add(text, 0, wxALL, 12);
   auto choice = new wxChoice(&dialog, wxID_ANY);
   for (int q = 0; q < 5; ++q)
@@ -233,13 +234,13 @@ void ShorelineManager::Show(wxWindow* parent) {
             wxLEFT | wxRIGHT, 12);
   auto installedFile = new wxTextCtrl(&dialog, wxID_ANY, "", wxDefaultPosition,
                                       wxDefaultSize, wxTE_READONLY);
-  installedFile->SetMinSize(dialog.FromDIP(wxSize(300, -1)));
+  installedFile->SetMinSize(WR_FromDIP(&dialog, wxSize(300, -1)));
   main->Add(installedFile, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 12);
   auto cacheLabel =
       new wxStaticText(&dialog, wxID_ANY,
                        _("Shoreline tile cache limit (MiB; resolution is never "
                          "reduced automatically):"));
-  cacheLabel->Wrap(dialog.FromDIP(560));
+  cacheLabel->Wrap(WR_FromDIP(&dialog, 560));
   main->Add(cacheLabel, 0, wxLEFT | wxRIGHT | wxTOP, 12);
   auto cache = new wxSpinCtrl(&dialog, wxID_ANY);
   cache->SetRange(16, 256);
@@ -283,7 +284,7 @@ void ShorelineManager::Show(wxWindow* parent) {
                                  : _("Install / update selected data"));
     installedFile->ChangeValue(Wx(p));
     installedFile->SetToolTip(Wx(p));
-    status->Wrap(dialog.FromDIP(560));
+    status->Wrap(WR_FromDIP(&dialog, 560));
     dialog.Layout();
   };
   auto action = [&](const std::function<void()>& work) {

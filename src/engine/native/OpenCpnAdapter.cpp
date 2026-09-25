@@ -1175,7 +1175,7 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
         "margin_seconds=%lld evaluated=%u complete=%u feasible=%u "
         "reverse_projections=%u bracket_refinements=%u budget_exhausted=%d",
         configuration.Start, configuration.End,
-        wxString::FromUTF8(wr::toString(arrivalPlan->status)),
+        wxString::FromUTF8(wr::toString(arrivalPlan->status).c_str()),
         configuration.PlannedArrivalTime.FormatISOCombined(),
         ToWx(arrivalPlan->diagnostics.effectiveDeadline).FormatISOCombined(),
         arrivalPlan->departure
@@ -1210,8 +1210,8 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
       std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::steady_clock::now() - started)
           .count();
-  const wxString status = wxString::FromUTF8(wr::toString(result.status));
-  const wxString solver = wxString::FromUTF8(wr::toString(result.solverPath));
+  const wxString status = wxString::FromUTF8(wr::toString(result.status).c_str());
+  const wxString solver = wxString::FromUTF8(wr::toString(result.solverPath).c_str());
   wxLogMessage(
       "WR_MODERN_NATIVE_SUMMARY route=\"%s -> %s\" status=%s solver=%s "
       "candidate_offset=%d departure=\"%s\" "
@@ -1329,13 +1329,13 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
   for (const auto& reason : result.diagnostics.stageStopReasons)
     wxLogMessage("WR_MODERN_NATIVE_STAGE route=\"%s -> %s\" %s",
                  configuration.Start, configuration.End,
-                 wxString::FromUTF8(reason));
+                 wxString::FromUTF8(reason.c_str()));
   if (configuration.DetectLand)
     ConstraintChecker::LogSegmentSafetyDiagnostics(
         wxString::Format("native candidate offset=%d",
                          configuration.DepartureTimeOptimizationOffsetMinutes));
   if (!Complete(result.status)) {
-    error = wxString::FromUTF8(result.message);
+    error = wxString::FromUTF8(result.message.c_str());
     if (configuration.IsOriginal()) {
       if (result.status == wr::RoutingStatus::WaveDataRequired)
         error = _("Quick requires wave coverage to enforce Max Swell. Supply wave data, or deliberately set Max Swell to 0 to disable this limit.");

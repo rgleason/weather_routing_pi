@@ -8,6 +8,7 @@
 #include "WeatherRoutingUI.h"
 #include "GribTimelineCachePolicy.h"
 #include "RoutingEngineSettings.h"
+#include "WeatherRoutingWxCompat.h"
 #include <vector>
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1798,11 +1799,11 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
     if (paneWidth <= 0)
       return;
     m_pBasic->Layout();
-    const int fallbackWidth = paneWidth / 2 - FromDIP(35);
+    const int fallbackWidth = paneWidth / 2 - WR_FromDIP(this, 35);
     const auto boxTextWidth = [=, this](wxStaticBoxSizer* box) {
       const int boxWidth = box->GetStaticBox()->GetClientSize().x;
-      return wxMax(FromDIP(180),
-                   boxWidth > 0 ? boxWidth - FromDIP(20) : fallbackWidth);
+      return wxMax(WR_FromDIP(this, 180),
+                   boxWidth > 0 ? boxWidth - WR_FromDIP(this, 20) : fallbackWidth);
     };
     wxString engineDescription = m_tRoutingEngineDescription->GetLabel();
     engineDescription.Replace("\n", " ");
@@ -2484,7 +2485,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
     m_cShorelineResolution->Append(label);
   m_cShorelineResolution->SetSelection(2);
   m_cShorelineResolution->SetMinSize(wxSize(
-      wxMax(FromDIP(190), m_cShorelineResolution->GetBestSize().x), -1));
+      wxMax(WR_FromDIP(this, 190), m_cShorelineResolution->GetBestSize().x), -1));
   m_cShorelineResolution->SetToolTip(_("GSHHG shoreline detail for the selected engine; Quick, Standard and Professional remember independent choices. "
                                        "High and Full can be installed with the button below. "
                                        "Chart geometry and minimum-depth checks are separate."));
@@ -2562,7 +2563,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
       _("Lower shoreline resolutions omit smaller coastal features and may allow "
         "routes through land shown at higher resolutions. Chart and depth checks are separate."));
   const wxString shorelineNoteText = shorelineNote->GetLabel();
-  shorelineNote->Wrap(FromDIP(440));
+  shorelineNote->Wrap(WR_FromDIP(this, 440));
   shorelineRow->Add(shorelineNote, 0, wxALL, 5);
   fgSizer113->Insert(2, shorelineRow, 0, wxEXPAND, 0);
 
@@ -2743,11 +2744,11 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   const auto reflowAdvancedHelp = [=, this](int paneWidth) {
     if (paneWidth <= 0)
       return;
-    const int leftWidth = wxMax(FromDIP(180), paneWidth / 2 - FromDIP(50));
-    const int rightWidth = wxMax(FromDIP(180), paneWidth / 2 - FromDIP(35));
+    const int leftWidth = wxMax(WR_FromDIP(this, 180), paneWidth / 2 - WR_FromDIP(this, 50));
+    const int rightWidth = wxMax(WR_FromDIP(this, 180), paneWidth / 2 - WR_FromDIP(this, 35));
     const int besideButton =
-        rightWidth - m_bShorelineData->GetBestSize().x - FromDIP(20);
-    const bool showBesideButton = besideButton >= FromDIP(300);
+        rightWidth - m_bShorelineData->GetBestSize().x - WR_FromDIP(this, 20);
+    const bool showBesideButton = besideButton >= WR_FromDIP(this, 300);
     shorelineRow->SetOrientation(showBesideButton ? wxHORIZONTAL : wxVERTICAL);
 
     mainGribCacheHelp->SetLabel(mainGribCacheHelpText);

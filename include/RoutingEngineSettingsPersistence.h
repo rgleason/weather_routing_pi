@@ -74,16 +74,16 @@ RoutingEngineSettings ReadRoutingEngineSettingsWith(Reader read) {
 
 template <typename Writer>
 void WriteRoutingEngineSettingsWith(const RoutingEngineSettings& settings, Writer write) {
-  write("RoutingEngine", wxString::FromUTF8(settings.EngineId()));
-  write("MainSearchPreset", wxString::FromUTF8(settings.mainPreset.id));
+  write("RoutingEngine", wxString::FromUTF8(settings.EngineId().c_str()));
+  write("MainSearchPreset", wxString::FromUTF8(settings.mainPreset.id.c_str()));
   write("MainSearchPresetRevision", wxString::Format("%d", settings.mainPreset.revision));
-  write("QuickSearchPreset", wxString::FromUTF8(settings.quick.preset.id));
+  write("QuickSearchPreset", wxString::FromUTF8(settings.quick.preset.id.c_str()));
   write("QuickSearchPresetRevision", wxString::Format("%d", settings.quick.preset.revision));
   write("QuickMemoryBudgetMiB", wxString::Format("%d", settings.quick.memoryBudgetMiB));
   write("QuickMaximumSearchAngle", wxString::Format("%d", settings.quick.maximumSearchAngle));
   write("QuickOffshoreStepMinutes", wxString::Format("%d", settings.quick.offshoreStepMinutes));
   write("QuickHeadingStepDegrees", wxString::FromCDouble(settings.quick.headingStepDegrees, 10));
-  write("OriginalSearchPreset", wxString::FromUTF8(settings.original.preset.id));
+  write("OriginalSearchPreset", wxString::FromUTF8(settings.original.preset.id.c_str()));
   write("OriginalSearchPresetRevision", wxString::Format("%d", settings.original.preset.revision));
   write("OriginalMemoryBudgetMiB", wxString::Format("%d", settings.original.memoryBudgetMiB));
   write("OriginalMaximumSearchAngle", wxString::Format("%d", settings.original.maximumSearchAngle));

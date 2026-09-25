@@ -329,7 +329,8 @@ std::vector<wxString> TzifZoneNames() {
   }
   std::vector<wxString> result;
   result.reserve(names.size());
-  for (const auto& name : names) result.push_back(wxString::FromUTF8(name));
+  for (const auto& name : names)
+    result.push_back(wxString::FromUTF8(name.c_str()));
   return result;
 }
 
@@ -394,13 +395,13 @@ wxString SystemTimeZone() {
   const std::size_t markerAt = local.find(marker);
   if (!error && markerAt != std::string::npos) {
     const wxString name =
-        wxString::FromUTF8(local.substr(markerAt + marker.size()));
+        wxString::FromUTF8(local.substr(markerAt + marker.size()).c_str());
     if (LoadTzif(name)) return name;
   }
   std::ifstream timezone("/etc/timezone");
   std::string name;
   if (std::getline(timezone, name)) {
-    const wxString candidate = wxString::FromUTF8(name);
+    const wxString candidate = wxString::FromUTF8(name.c_str());
     if (LoadTzif(candidate)) return candidate;
   }
 #endif
@@ -514,7 +515,7 @@ wxString TimeZoneAbbreviation(const wxDateTime& utc,
             TypeAt(*zone, static_cast<std::int64_t>(utc.GetTicks())))
       return CanonicalAbbreviation(
           zoneName, std::chrono::seconds{type->utcOffset},
-          wxString::FromUTF8(type->abbreviation));
+          wxString::FromUTF8(type->abbreviation.c_str()));
   }
   return wxEmptyString;
 }

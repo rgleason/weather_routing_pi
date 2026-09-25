@@ -522,7 +522,10 @@ endif ()
 
 if (DEFINED _wx_selected_config)
   if (_wx_selected_config MATCHES "androideabi-qt")
-    add_definitions(-DocpnUSE_GLES -DocpnUSE_GL -DARMHF)
+    add_definitions(-DocpnUSE_GLES -DocpnUSE_GL)
+    if (_wx_selected_config MATCHES "androideabi-qt-armhf")
+      add_definitions(-DARMHF)
+    endif ()
     set(OPENGLES_FOUND "YES")
     set(OPENGL_FOUND "YES")
     add_definitions(-DUSE_GLU_TESS -DUSE_ANDROID_GLES2 -DUSE_GLSL)
@@ -531,7 +534,9 @@ endif ()
 
 if (QT_ANDROID)
   add_definitions(-D__WXQT__ -D__OCPN__ANDROID__ -DOCPN_USE_WRAPPER -DANDROID)
-  set(CMAKE_SHARED_LINKER_FLAGS "-Wl,-soname,libgorp.so ")
+  # The bundled Qt 5 headers still use std::result_of.  Keep that C++17
+  # trait available when the weather routing engine is built as C++20.
+  add_definitions(-D_LIBCPP_ENABLE_CXX20_REMOVED_TYPE_TRAITS)
   set(CMAKE_CXX_FLAGS "-pthread -fPIC ")
   add_compile_options(
     "-Wno-inconsistent-missing-override"
@@ -675,26 +680,43 @@ endif ()  # NOT QT_ANDROID
 # Android-specific wx/Qt wiring
 # -----------------------------------------------------------------------------
 if (QT_ANDROID)
+  get_filename_component(OCPN_ANDROID_COMMON_ROOT "${OCPN_Android_Common}"
+                         ABSOLUTE BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
   if (_wx_selected_config MATCHES "androideabi-qt-arm64")
+    if (NOT OCPN_ANDROID_CORE_LIBRARY)
+      message(FATAL_ERROR "Set OCPN_ANDROID_CORE_LIBRARY to the arm64 libgorp.so from the target OpenCPN build")
+    endif ()
+    if (NOT EXISTS "${OCPN_ANDROID_CORE_LIBRARY}")
+      message(FATAL_ERROR "Android core library does not exist: ${OCPN_ANDROID_CORE_LIBRARY}")
+    endif ()
+    set(OCPN_ANDROID_WX_SETUP
+        "${OCPN_ANDROID_COMMON_ROOT}/wxWidgets/libarm64/wx/include/arm-linux-androideabi-qt-unicode-static-3.1")
+    if (NOT EXISTS "${OCPN_ANDROID_WX_SETUP}/wx/setup.h")
+      set(OCPN_ANDROID_WX_SETUP
+          "${OCPN_ANDROID_COMMON_ROOT}/wxWidgets/libs/arm64/lib/wx/include/arm-linux-androideabi-qt-unicode-static-3.1")
+    endif ()
+    if (NOT EXISTS "${OCPN_ANDROID_WX_SETUP}/wx/setup.h")
+      message(FATAL_ERROR "Android wxWidgets setup.h not found under ${OCPN_ANDROID_COMMON_ROOT}")
+    endif ()
     set(qt_android_include
         ${qt_android_include}
-        "${OCPN_Android_Common}/qt5/build_arm64_O3/qtbase/include"
-        "${OCPN_Android_Common}/qt5/build_arm64_O3/qtbase/include/QtCore"
-        "${OCPN_Android_Common}/qt5/build_arm64_O3/qtbase/include/QtWidgets"
-        "${OCPN_Android_Common}/qt5/build_arm64_O3/qtbase/include/QtGui"
-        "${OCPN_Android_Common}/qt5/build_arm64_O3/qtbase/include/QtOpenGL"
-        "${OCPN_Android_Common}/qt5/build_arm64_O3/qtbase/include/QtTest"
-        "${OCPN_Android_Common}/wxWidgets/libarm64/wx/include/arm-linux-androideabi-qt-unicode-static-3.1"
-        "${OCPN_Android_Common}/wxWidgets/include"
+        "${OCPN_ANDROID_COMMON_ROOT}/qt5/build_arm64_O3/qtbase/include"
+        "${OCPN_ANDROID_COMMON_ROOT}/qt5/build_arm64_O3/qtbase/include/QtCore"
+        "${OCPN_ANDROID_COMMON_ROOT}/qt5/build_arm64_O3/qtbase/include/QtWidgets"
+        "${OCPN_ANDROID_COMMON_ROOT}/qt5/build_arm64_O3/qtbase/include/QtGui"
+        "${OCPN_ANDROID_COMMON_ROOT}/qt5/build_arm64_O3/qtbase/include/QtOpenGL"
+        "${OCPN_ANDROID_COMMON_ROOT}/qt5/build_arm64_O3/qtbase/include/QtTest"
+        "${OCPN_ANDROID_WX_SETUP}"
+        "${OCPN_ANDROID_COMMON_ROOT}/wxWidgets/include"
     )
 
     set(wxWidgets_LIBRARIES
-        ${CMAKE_CURRENT_SOURCE_DIR}/${OCPN_Android_Common}/qt5/build_arm64_O3/qtbase/lib/libQt5Core.so
-        ${CMAKE_CURRENT_SOURCE_DIR}/${OCPN_Android_Common}/qt5/build_arm64_O3/qtbase/lib/libQt5OpenGL.so
-        ${CMAKE_CURRENT_SOURCE_DIR}/${OCPN_Android_Common}/qt5/build_arm64_O3/qtbase/lib/libQt5Widgets.so
-        ${CMAKE_CURRENT_SOURCE_DIR}/${OCPN_Android_Common}/qt5/build_arm64_O3/qtbase/lib/libQt5Gui.so
-        ${CMAKE_CURRENT_SOURCE_DIR}/${OCPN_Android_Common}/qt5/build_arm64_O3/qtbase/lib/libQt5AndroidExtras.so
-        ${CMAKE_CURRENT_SOURCE_DIR}/${OCPN_Android_Common}/opencpn/API-117/libarm64/libgorp.so
+        ${OCPN_ANDROID_COMMON_ROOT}/qt5/build_arm64_O3/qtbase/lib/libQt5Core.so
+        ${OCPN_ANDROID_COMMON_ROOT}/qt5/build_arm64_O3/qtbase/lib/libQt5OpenGL.so
+        ${OCPN_ANDROID_COMMON_ROOT}/qt5/build_arm64_O3/qtbase/lib/libQt5Widgets.so
+        ${OCPN_ANDROID_COMMON_ROOT}/qt5/build_arm64_O3/qtbase/lib/libQt5Gui.so
+        ${OCPN_ANDROID_COMMON_ROOT}/qt5/build_arm64_O3/qtbase/lib/libQt5AndroidExtras.so
+        ${OCPN_ANDROID_CORE_LIBRARY}
         -lc++_shared
         -lz
         libGLESv2.so

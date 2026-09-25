@@ -178,7 +178,7 @@ bool RouteMapOverlay::Start(wxString& error) {
   RouteMapConfiguration configuration = GetConfiguration();
   if (configuration.EngineSettings.engine == weather_routing::RoutingEngine::Unsupported) {
     error = _("Unsupported routing engine: ") +
-        wxString::FromUTF8(configuration.EngineSettings.EngineId());
+        wxString::FromUTF8(configuration.EngineSettings.EngineId().c_str());
     return false;
   }
   if (configuration.IsFastEngine() && !ModernNativeRouteEnabled(configuration)) {
@@ -372,7 +372,7 @@ void RouteMapOverlay::InstallModernNativeResult(
   const bool complete = resultComplete && !resourceExhausted;
   if (!resourceExhausted)
     SetFailureReason(complete ? wxString()
-                              : wxString::FromUTF8(result.message));
+                              : wxString::FromUTF8(result.message.c_str()));
 
   RouteMapConfiguration configuration = GetConfiguration();
   configuration.ReverseRecoveryUsed =

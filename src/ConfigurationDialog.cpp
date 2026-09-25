@@ -25,6 +25,7 @@
  */
 
 #include "ModernNativeRoute.h"
+#include "WeatherRoutingWxCompat.h"
 #include <wx/wx.h>
 
 #include <stdlib.h>
@@ -58,9 +59,9 @@ constexpr int kConfigurationScreenMarginDip = 40;
 
 wxSize DefaultConfigurationDialogSize(wxWindow* window) {
   const wxSize best = window->GetBestSize();
-  const wxSize preferred = window->FromDIP(
+  const wxSize preferred = WR_FromDIP(window,
       wxSize(kDefaultConfigurationWidthDip, kDefaultConfigurationHeightDip));
-  const int margin = window->FromDIP(kConfigurationScreenMarginDip);
+  const int margin = WR_FromDIP(window, kConfigurationScreenMarginDip);
   const wxSize display = wxGetClientDisplayRect().GetSize();
   const wxSize available(std::max(1, display.x - margin),
                          std::max(1, display.y - margin));

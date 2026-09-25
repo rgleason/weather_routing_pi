@@ -19,6 +19,7 @@
 
 #include "RoutingEngineSettingsPersistence.h"
 #include "ShorelineSettings.h"
+#include "WeatherRoutingWxCompat.h"
 
 #include <wx/wx.h>
 #include <wx/aui/aui.h>
@@ -98,9 +99,9 @@ constexpr int kWeatherRoutingScreenMarginDip = 40;
 
 wxSize DefaultWeatherRoutingDialogSize(wxWindow* window) {
   const wxSize best = window->GetBestSize();
-  const wxSize preferred = window->FromDIP(
+  const wxSize preferred = WR_FromDIP(window,
       wxSize(kDefaultWeatherRoutingWidthDip, kDefaultWeatherRoutingHeightDip));
-  const int margin = window->FromDIP(kWeatherRoutingScreenMarginDip);
+  const int margin = WR_FromDIP(window, kWeatherRoutingScreenMarginDip);
   const wxSize display = wxGetClientDisplayRect().GetSize();
   const wxSize available(std::max(1, display.x - margin),
                          std::max(1, display.y - margin));
@@ -1419,10 +1420,10 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
   pConf->Read(_T("DialogHeight"), &m_size.y, m_size.y);
 #ifdef __OCPN__ANDROID__
   wxSize sz = ::wxGetDisplaySize();
-  m_size.x = sz.x * 3 / 5;
-  m_size.y = sz.y * 2 / 5;
-  int y = 2 * sz.y / 3 - 40;
-  if (m_size.y > y) m_size.y = y;
+  m_size.x = sz.x * 9 / 10;
+  m_size.y = sz.y * 4 / 5;
+  p.x = (sz.x - m_size.x) / 2;
+  p.y = (sz.y - m_size.y) / 2;
 #endif
   SetSize(p.x, p.y, m_size.x, m_size.y);
 

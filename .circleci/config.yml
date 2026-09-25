@@ -194,6 +194,27 @@ validation-filters: &validation-filters
   tags:
     ignore: /.*/
 
+  android-arm64:
+    machine:
+      image: ubuntu-2404:current
+    resource_class: large
+    environment:
+      CMAKE_BUILD_PARALLEL_LEVEL: "4"
+      WEATHER_ROUTING_CI_XWEATHER: << pipeline.parameters.build_xweather_identity >>
+    steps:
+      - checkout
+      - run:
+          name: Install Android cross-build tools
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y git cmake curl unzip gettext python3 openjdk-17-jdk-headless
+      - run:
+          name: Build OpenCPN 5.14 core and xWeatherRouting for Android arm64
+          command: bash ci/build-android-arm64.sh
+          no_output_timeout: 60m
+      - store_artifacts:
+          path: artifacts/android-arm64
+
 workflows:
   validate:
     when:
@@ -242,6 +263,8 @@ workflows:
           filters: *validation-filters
       - macos-universal:
           filters: *validation-filters
+      - android-arm64:
+          filters: *validation-filters
 
   validate_windows_only:
     when:
@@ -269,6 +292,8 @@ workflows:
           filters: *validation-filters
       - macos-universal:
           filters: *validation-filters
+      - android-arm64:
+          filters: *validation-filters
       - hold-for-alpha-approval:
           type: approval
           requires:
@@ -281,6 +306,7 @@ workflows:
             - flatpak25.08-aarch64
             - windows-x86
             - macos-universal
+            - android-arm64
       - deploy-alpha:
           context: xgrib-deployment
           requires: [hold-for-alpha-approval]

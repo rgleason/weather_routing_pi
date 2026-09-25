@@ -203,7 +203,7 @@ int ExternalPlanningProvider::RunRequest(
   if (!polar.empty()) {
     const wxString boat = weather_routing_pi::StandardPath() + "boats" +
                           wxFileName::GetPathSeparator() +
-                          wxString::FromUTF8(polar);
+                          wxString::FromUTF8(polar.c_str());
     if (!wxFileExists(boat))
       return Fail("polar_not_found", "Requested polar is not installed",
                   error_code, error_message);
