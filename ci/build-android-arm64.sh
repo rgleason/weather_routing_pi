@@ -105,6 +105,13 @@ cmake --build "$core_build" --target gorp \
   --parallel "${CMAKE_BUILD_PARALLEL_LEVEL:-3}"
 
 support_root="$support_cache/OCPNAndroidCoreBuildSupport"
+# The pinned support archive has Qt 5.12.2 forwarding headers but omits the
+# public math3d source headers. Restore the matching, unmodified upstream
+# headers explicitly; a developer's populated cache must not be required.
+(cd "$source_dir/ci/android-qt-headers" && sha256sum --check SHA256SUMS)
+mkdir -p "$support_root/qt5/qtbase/src/gui/math3d"
+cp "$source_dir/ci/android-qt-headers/"qvector*.h \
+  "$support_root/qt5/qtbase/src/gui/math3d/"
 test -f "$support_root/wxWidgets/libs/arm64/lib/wx/include/arm-linux-androideabi-qt-unicode-static-3.1/wx/setup.h"
 git -C "$source_dir" submodule update --init opencpn-libs
 

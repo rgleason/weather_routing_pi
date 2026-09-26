@@ -636,3 +636,29 @@ width changes. Check full checkbox captions below the fold; labels which were
 never reachable before can expose a second sizing defect.
 
 Reference implementation: wxWidgets [Qt ScrollWindow](https://github.com/wxWidgets/wxWidgets/blob/v3.2.2/src/qt/window.cpp) and [ScrollLayout](https://github.com/wxWidgets/wxWidgets/blob/v3.2.2/src/generic/scrlwing.cpp). The actual tablet test remains necessary because the pinned host carries its own wxQt build.
+
+## Fresh CI must reproduce every cache repair
+
+The first 1.19.0 remote Android builds exposed a missing dependency masked by
+the local support cache: OpenCPN Android support v1.2 includes Qt 5.12.2
+forwarding headers, but omits the public math3d source headers. QKeyEvent
+indirectly includes qvector2d.h. xGRIB had already restored these files in the
+shared developer cache, allowing local xWeatherRouting builds to pass without
+the restoration being present in its own CI script.
+
+Each plugin must restore every required dependency in its own fresh build.
+The xWeatherRouting build now installs checksum-verified, unmodified upstream
+Qt 5.12.2 vector headers; provenance is in ci/android-qt-headers. Test the actual
+support archive extracted to a new directory, not only a new plugin build
+directory using an existing support tree.
+
+Always retain full configure/compiler logs as CI artifacts. The old wx/Qt
+headers generate enough warnings to exceed CircleCI's 400,000-character step
+output limit, hiding the first compiler error. The retained log revealed the
+missing forwarding-header target immediately. Avoid inferring an error from
+the final make exit status or a truncated console tail.
+
+The macOS matrix also exposed GoogleTest's chrono time-point printer requiring
+floating-point std::to_chars unavailable at the macOS 11 deployment target.
+Compare exact epoch tick counts for these time assertions, preserving their
+semantics while avoiding a newer formatting-only runtime requirement.
