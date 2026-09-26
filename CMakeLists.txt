@@ -91,7 +91,7 @@ set(LONG_DESCRIPTION
 
 set(VERSION_MAJOR "1")
 set(VERSION_MINOR "18")
-set(VERSION_PATCH "9")
+set(VERSION_PATCH "11")
 set(VERSION_TWEAK "0")
 
 # Paul this stuff shouldn't be here really, gets too confusing. Make a cmake/shoreline.cmake and then link that.
@@ -115,7 +115,7 @@ foreach(_archive IN LISTS _shoreline_archives)
   endif()
 endforeach()
 unset(_shoreline_archives)
-set(VERSION_DATE  "25/09/2026") # DD/MM/YYYY format
+set(VERSION_DATE  "26/09/2026") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov511")
 
 set(OCPN_API_VERSION_MAJOR "1")
