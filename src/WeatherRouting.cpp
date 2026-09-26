@@ -2057,6 +2057,11 @@ void WeatherRouting::Render(piDC& dc, PlugIn_ViewPort& vp) {
   }
 
   std::list<RouteMapOverlay*> currentroutemaps = CurrentRouteMaps();
+#ifdef __OCPN__ANDROID__
+  // Closing the workspace preserves explicitly visible completed courses,
+  // while transient selection/isochrone previews belong to Chart mode.
+  if (!IsShown() && !m_androidChartVisible) currentroutemaps.clear();
+#endif
   for (std::list<RouteMapOverlay*>::iterator it = currentroutemaps.begin();
        it != currentroutemaps.end(); it++) {
     (*it)->Render(time, m_SettingsDialog, dc, vp, false, m_positionOnRoute);
@@ -5971,6 +5976,24 @@ public:
 #ifdef __OCPN__ANDROID__
     topSizer->Detach(buttonSizer);
     auto* actions = new wxGridSizer(0, 2, 8, 8);
+    auto* showChart = new wxButton(this, wxID_ANY, _("Show on chart"));
+    actions->Add(showChart, 1, wxEXPAND);
+    showChart->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+      auto* selected = SelectedRoute();
+      if (!selected || !FindWeatherRoute(selected) ||
+          !selected->Finished() || !selected->ReachedDestination()) {
+        WR_MessageBox(_("Select a completed departure candidate first."),
+                      _("Weather Routing"), wxOK | wxICON_INFORMATION, this);
+        return;
+      }
+      StopAutoRefresh();
+      CloseCorridor("results_chart");
+      auto* routing = m_WeatherRouting;
+      EndModal(wxID_OK);
+      routing->CallAfter([routing, selected]() {
+        routing->ShowAndroidRouteOnChart(selected);
+      });
+    });
     for (auto* item : buttonSizer->GetChildren())
       if (auto* window = item->GetWindow())
         if (window != close) actions->Add(window, 1, wxEXPAND);
@@ -8544,6 +8567,11 @@ void WeatherRouting::OnComputationTimer(wxTimerEvent&) {
       m_panel->m_gProgress->SetValue(m_RoutesToRun - m_WaitingRouteMaps.size() -
                                      m_RunningRouteMaps.size());
       sectionTimer.Start();
+#ifdef __OCPN__ANDROID__
+      if (routemapoverlay->Finished() && routemapoverlay->ReachedDestination() &&
+          !completedConfiguration.DepartureTimeOptimizationCandidate)
+        routemapoverlay->m_bEndRouteVisible = true;
+#endif
       UpdateRouteMap(routemapoverlay);
       updateRouteMs += sectionTimer.Time();
       // Completed routes retain their compact route/weather results. The

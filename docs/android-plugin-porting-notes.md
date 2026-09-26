@@ -9,8 +9,10 @@ xWeatherRouting port. Recheck each point on the intended release APK.
 - ADB access to the USB-attached tablet works when invoked outside the
   workspace command sandbox. `adb devices -l` identifies it as `SM_X210`.
 - The development app is `org.opencpn.opencpn.dev`; the Play Store app is
-  `org.opencpn.opencpn`. Both exist on this tablet, so always specify the
-  package. The development app has `run-as` access to its private plugin
+  `org.opencpn.opencpn`. Both were initially installed with the same launcher
+  name and icon; the stock 5.10.2 app was removed at the user's request. Always
+  specify the package and test the actual home-screen shortcut. The development
+  app has `run-as` access to its private plugin
   library directory, `manPlug/`.
 - Android 15 denies ordinary `adb pull` for app-specific external storage.
   `adb exec-out run-as org.opencpn.opencpn.dev cat <path>` can back up a file,
@@ -42,7 +44,8 @@ xWeatherRouting port. Recheck each point on the intended release APK.
 
 - Match the installed APK to the OpenCPN Android core library, API and Qt/wx
   support archive. The development app here is OpenCPN 5.14.0 arm64 and uses
-  plugin API 1.21. The older installed Weather Routing plugin is 1.17.12.
+  plugin API 1.21. Record the installed plugin version rather than assuming the
+  partially ported 1.17.12 baseline is still active.
 - The local Android NDK is 26.1.10909125. Set `NDK_HOME` explicitly; the
   inherited Android toolchain otherwise searches `/opt/android/ndk`.
 - Build the OpenCPN `lunasvg` target before `gorp` in a fresh core build.
@@ -98,8 +101,10 @@ before claiming broad Android support.
   some setters. Bulk editing must retain unedited endpoint types, times and
   engine-specific settings independently for every selected route.
 - Generic date pickers lost month/day information with locale formatting, and
-  wx time conversion applied daylight saving twice. Use unambiguous editable
-  ISO values and the host's Qt time-zone database for Android conversions.
+  wx time conversion applied daylight saving twice. Use explicit calendar and
+  time selectors and the host's Qt time-zone database for Android conversions.
+  Serialize unambiguous ISO/epoch values internally; requiring users to type an
+  exact ISO timestamp caused avoidable generation failures.
   Test UTC, local time, DST ambiguity and a nonexistent local time separately.
 - Font changes do not reliably recalculate existing QLabel heights. Polish
   the native widget and measure wrapped text using its actual QFontMetrics.
@@ -123,7 +128,8 @@ before claiming broad Android support.
   automatic fitting. Give newly created modal sheets their initial geometry
   before ShowModal, then continue to handle rotation with weak references.
 - Android Back needs a Qt event filter, including the matching key release.
-  Ignore active popups and other windows. Apply/Save and Back/Cancel must have
+  Dismiss an owned popup before cancelling its sheet; ignore other windows.
+  Apply/Save and Back/Cancel must have
   deliberate semantics; do not accidentally save a palette selection on Back.
 - Defer rebuilding cards until a clicked native button's callback returns.
   Check model ownership before dereferencing row pointers during refresh.
@@ -509,9 +515,10 @@ cleanup, cancel semantics and checksum/format verification. Account for
 DownloadManager removing a completed target during callback cleanup. Test both
 real completion and active cancellation, and read files back independently.
 
-The tablet also has production OpenCPN 5.10.2. This build targets 5.14/API1.21;
-the presence of an older production APK does not establish ABI compatibility.
-Keep host version/API explicit in packages and acceptance records.
+This build targets 5.14/API1.21; the presence of an older production APK does
+not establish ABI compatibility. Keep host version/API explicit in packages
+and acceptance records. Identical launcher labels can send users to another
+package with a separate plugin installation and navigation database.
 
 Touch dropdowns need the same drag/tap distinction as buttons. A swipe over a
 wxQt plot selector changed its selected quantity instead of scrolling. Forward
@@ -528,3 +535,82 @@ archives in a reused build directory can look current. Select only the archive
 reported by the current CPack run, validate its embedded metadata and assets,
 and compare the packaged library hash with the tablet-tested library. Here the
 full local CI script passed and produced identical library bytes.
+
+## Chart results and forecast coverage
+
+- Keep chart-overlay visibility independent of whether a plugin sheet is open.
+  On Android, Close and Back are normal ways to return to the chart. A visible
+  completed route should remain drawn; transient selection/isochrone previews
+  can have a separate lifetime. Exercise Close, Back and the visibility toggle.
+- A comparison sheet's selection may belong to a separate hidden wxListCtrl.
+  Provide a direct Show on chart action, map its selected result to an owned
+  route, select that route in the main workspace, and frame it on the chart.
+  Handle filtered candidates and stale pointers. Avoid drawing every generated
+  departure candidate automatically.
+- Show Departure or Arrival deadline explicitly on route cards and summaries.
+  A stored departure time alone is misleading for an arrival-planning route.
+  Short dynamic headings also avoid wxQt labels retaining an old narrow width.
+- Check wind fields' actual geographic and time coverage, not just a merged
+  GRIB's overall duration. A file can include 96-hour wave/current data while
+  wind ends at 54 hours, or a bounding box can end just short of the destination.
+  Inspect each field's GRIB metadata and allow space around the search area.
+- Retain user settings and navigation data before changing installations.
+  `pm uninstall -k` removes an explicitly unwanted host app while preserving
+  its data for recovery. Back up the APK and readable navigation files as well;
+  a production app usually has no `run-as` access.
+- Staging public Downloads with `cp` under `run-as` can fail because the source
+  is inaccessible. Streaming the local package through `adb exec-in run-as ...
+  sh -c 'cat > <app-owned-path>'` worked; verify the installed library against
+  the stripped library inside the package, not an unstripped build output.
+- Do not type into the tablet while the user is editing it. A screenshot can
+  become stale between a read and the next input, and tab changes can redirect
+  a coordinate edit into an unrelated field. Resume input after the user finishes.
+
+## Date/time, credentials and modal Back (xGRIB 0.3.2 follow-up)
+
+- Replace exact-format timestamp typing with a calendar and touch hour/minute
+  controls. Keep UTC explicit, serialize the request internally, and test both
+  acceptance and cancellation under a summer timezone. A Current UTC action
+  should set a useful forecast hour, not accidentally use local time.
+- A dropdown's stylesheet or model size hint may be ignored by the pinned Qt
+  style. An item delegate with an explicit minimum row height worked. Exercise
+  tap selection, swipe scrolling, Back dismissal and both rotations on-device.
+- Remember passwords only as an explicit option. xGRIB uses an installation's
+  nonexportable Android Keystore AES key, AES-GCM with a fresh IV, and the
+  username as authenticated additional data. Only ciphertext/IV and the account
+  identifier are written to preferences. Forget deletes both the key and record;
+  changing accounts clears an automatically restored password. Do not log Java
+  exceptions or plaintext credentials. Run Keystore IPC on a worker and test
+  cold restart, opt-out, account changes and significant password whitespace.
+  A copied configuration cannot transfer its key to a new installation.
+- Reference Android's [Keystore guidance](https://developer.android.com/privacy-and-security/keystore)
+  and [KeyGenParameterSpec API](https://developer.android.com/reference/android/security/keystore/KeyGenParameterSpec).
+  Fail closed when secure storage is unavailable; do not introduce a plaintext fallback.
+- OpenCPN's Android activity checks its wx top-level window list before it
+  forwards Back key-up to Qt. xGRIB's private static wx library has a separate
+  list because `--exclude-libs,ALL` is needed to isolate TLS. Resolve the already
+  loaded `libgorp.so` explicitly (its local linker scope is not necessarily in
+  `RTLD_DEFAULT`) and register only owned sheets with the host's matching wx ABI.
+  Unregister on destruction; preserve the TLS symbol-isolation gate.
+- This pinned wxQt ShowModal path displays QDialog without updating wx's shown
+  bit. Synchronize owned Qt Show/Hide events with wxWindowBase visibility so
+  the host counts the open sheet. Consume both halves of Back, then dismiss
+  the keyboard, owned popup or current sheet in that order. A nested popup
+  must not close the generator or start the host's double-Back exit sequence.
+  Test host PID continuity and actual window counts, not just screenshots.
+- Treat these bridge helpers as pinned-host adaptations. Review the next
+  plugin's linkage and host ABI before copying them, especially for future
+  Android versions using predictive Back dispatch instead of legacy key events.
+- Scope a Back filter before its wxDialog is destroyed. Parenting it only to
+  QDialog is too late: wx destruction can invalidate its vtable while Qt still
+  delivers events. Stack filters around ShowModal and an Impl-owned filter for
+  a persistent dialog passed nested Back, explicit Close and re-opening.
+- This Qt Android combo popup receives synthesized mouse events. QScroller's
+  TouchGesture let a swipe select the released row; LeftMouseButtonGesture with
+  pixel scrolling kept the popup open and scrolled correctly. Verify the input
+  stream on the actual control rather than assuming all Qt widgets use Touch.
+- Recheck repository HEAD before the final build and commit. A user can commit
+  a shared-engine fix while tablet UI work is underway. The final 1.18.5 build
+  was rebuilt on f0a2546, its five new polar-range tests passed, and the coastal
+  routes were rerun. Keep earlier fingerprints as historical evidence when an
+  intentional engine policy change legitimately changes the new results.

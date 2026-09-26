@@ -701,7 +701,11 @@ void ConfigurationDialog::OnRoutingTimeMode(wxCommandEvent& event) {
 void ConfigurationDialog::UpdateRoutingTimeModeControls() {
   const bool arrival = m_rbRouteByArrivalTime->GetValue();
   m_staticTextPlannedTime->SetLabel(
+#ifdef __OCPN__ANDROID__
+      arrival ? _("Arrival deadline") : _("Departure"));
+#else
       arrival ? _("Planned Arrival Time") : _("Planned Departure Time"));
+#endif
   m_dpStartDate->SetToolTip(
       arrival ? _("Select the required destination arrival date.")
               : _("Select the departure date for weather routing."));

@@ -11,6 +11,7 @@
 
 #include <QWidget>
 #include <QLineEdit>
+#include <algorithm>
 #include <cmath>
 #include <array>
 #include <numeric>
@@ -114,6 +115,16 @@ wxString TabletRouteState(const wxString& state) {
   return state;
 }
 
+wxString TabletRouteTiming(const RouteMapConfiguration& configuration,
+                          const SettingsDialog& settings) {
+  const bool arrival = configuration.TimeMode ==
+                       RouteMapConfiguration::ROUTE_BY_ARRIVAL_TIME;
+  return (arrival ? _("Arrival deadline: ") : _("Departure: ")) +
+      settings.FormatTime(arrival ? configuration.PlannedArrivalTime
+                                  : configuration.StartTime,
+                          "%Y-%m-%d %H:%M");
+}
+
 wxString ChooseTabletOpenCPNRoute(wxWindow* parent) {
   wxArrayString guids, names;
   for (const auto& guid : GetRouteGUIDArray()) {
@@ -164,6 +175,48 @@ wxString ChooseTabletOpenCPNRoute(wxWindow* parent) {
 
 }  // namespace
 
+bool WeatherRouting::AndroidChartVisible() const {
+  if (m_androidChartVisible) return true;
+  for (auto* route : m_WeatherRoutes)
+    if (route->routemapoverlay->m_bEndRouteVisible) return true;
+  return false;
+}
+
+void WeatherRouting::ShowAndroidRouteOnChart(RouteMapOverlay* route) {
+  if (route) {
+    const auto owned = std::find_if(m_WeatherRoutes.begin(), m_WeatherRoutes.end(),
+        [route](WeatherRoute* item) { return item->routemapoverlay == route; });
+    if (owned == m_WeatherRoutes.end()) return;
+    // A comparison candidate can be hidden by the main route-list filter.
+    // Make the chosen result selectable before using the shared chart action.
+    if ((*owned)->Filtered) {
+      (*owned)->Filtered = false;
+      RebuildList();
+    }
+    for (long i = 0; i < m_panel->m_lWeatherRoutes->GetItemCount(); ++i) {
+      auto* item = reinterpret_cast<WeatherRoute*>(
+          wxUIntToPtr(m_panel->m_lWeatherRoutes->GetItemData(i)));
+      m_panel->m_lWeatherRoutes->SetItemState(i,
+          item == *owned ? wxLIST_STATE_SELECTED : 0, wxLIST_STATE_SELECTED);
+    }
+    OnWeatherRouteSelected();
+  }
+  const auto selected = CurrentRouteMaps();
+  for (auto* map : selected)
+    if (map->Finished() && map->ReachedDestination())
+      map->m_bEndRouteVisible = true;
+  if (!selected.empty()) {
+    wxCommandEvent event;
+    OnGoTo(event);
+  }
+  m_androidChartVisible = true;
+  // A departure comparison can be opened over the nonmodal batch progress
+  // sheet. Showing a completed candidate must reveal the chart immediately.
+  if (m_RoutingProgressDialog) m_RoutingProgressDialog->Hide();
+  Hide();
+  GetParent()->Refresh();
+}
+
 wxWindow* WeatherRouting::BuildAndroidWorkspace(wxBoxSizer* root) {
   WR_InstallAndroidBack(this, [this]() {
     if (m_androidBook && m_androidBook->GetSelection() != 0) {
@@ -184,13 +237,7 @@ wxWindow* WeatherRouting::BuildAndroidWorkspace(wxBoxSizer* root) {
   title->GetHandle()->setStyleSheet("QLabel { color: white; }");
   headerSizer->Add(title, 1, wxALIGN_CENTER_VERTICAL | wxLEFT, 18);
   auto showChart = [this]() {
-    if (!CurrentRouteMaps().empty()) {
-      wxCommandEvent event;
-      OnGoTo(event);
-    }
-    m_androidChartVisible = true;
-    Hide();
-    GetParent()->Refresh();
+    ShowAndroidRouteOnChart();
   };
   auto* chart = new wxButton(header, wxID_ANY, _("Chart"));
   StyleTabletButton(chart);
@@ -542,7 +589,9 @@ void WeatherRouting::RefreshAndroidWorkspace() {
                       == m_WeatherRoutes.end()) continue;
     routeSignature += wxString::Format("%p", route) + route->Start + route->End +
                       route->StartTime + route->State + route->Time +
-                      route->Distance +
+                      route->Distance + TabletRouteTiming(
+                          route->routemapoverlay->GetConfiguration(), m_SettingsDialog) +
+                      wxString::Format("%d", route->routemapoverlay->m_bEndRouteVisible) +
                       wxString::Format("%d", (m_panel->m_lWeatherRoutes->GetItemState(
                           i, wxLIST_STATE_SELECTED) & wxLIST_STATE_SELECTED) != 0);
   }
@@ -620,12 +669,13 @@ void WeatherRouting::RefreshAndroidWorkspace() {
             configuration.MultiLegLegIndex, configuration.MultiLegLegCount);
       cardDetail += _("\nEngine: ") + wxString::FromUTF8(
           weather_routing::EngineTitle(configuration.EngineSettings.engine));
+      cardDetail += "\n" + TabletRouteTiming(configuration, m_SettingsDialog);
       if (std::abs(configuration.WindStrength - 1.0) > 0.0001)
         cardDetail += wxString::Format(_("\nWind strength: %.0f%%"),
                                       configuration.WindStrength * 100.0);
       const auto values = TabletRouteValues(*route);
       for (int field = 1; field < NUM_COLS; ++field) {
-        if (field == START || field == END || field == STATE ||
+        if (field == START || field == END || field == STATE || field == STARTTIME ||
             !m_SettingsDialog.m_cblFields->IsChecked(field) ||
             values[field].IsEmpty() || values[field] == _("N/A")) continue;
         const wxString value = field == BOAT ? wxFileName(values[field]).GetFullName() : values[field];
@@ -775,9 +825,12 @@ void WeatherRouting::RefreshAndroidWorkspace() {
   if (!route || std::find(m_WeatherRoutes.begin(), m_WeatherRoutes.end(), route)
                     == m_WeatherRoutes.end()) return;
   const wxString endpoints = route->Start + _("  to  ") + route->End;
-  WR_WrapAndroidText(m_androidPlanStatus, endpoints + _("\n") + route->StartTime,
+  const wxString timing = TabletRouteTiming(
+      route->routemapoverlay->GetConfiguration(), m_SettingsDialog);
+  WR_WrapAndroidText(m_androidPlanStatus, endpoints + _("\n") + timing,
       wxMax(300, m_androidPlanStatus->GetParent()->GetClientSize().x - 80));
-  wxString result = endpoints + _("\n") + TabletRouteState(route->State) + _("\n") +
+  wxString result = endpoints + _("\n") + timing + _("\n") +
+      TabletRouteState(route->State) + _("\n") +
       _("Duration: ") + (hasResult ? TabletDuration(selectedMap->StartTime(), selectedMap->EndTime()) : route->Time) +
       _("   Distance: ") + route->Distance +
       _("   Weather: ") + route->WeatherSource;

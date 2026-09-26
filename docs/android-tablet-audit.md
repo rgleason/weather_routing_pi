@@ -116,3 +116,60 @@ The complete Android CircleCI build script also passed locally using the pinned
 core/support/NDK cache. It validated AArch64, SONAME/core dependency, bundled
 shoreline data and import metadata. Its packaged library is byte-for-byte
 identical to the final tablet-tested library. Remote CircleCI is still unrun.
+
+## 1.18.5 chart follow-up, including polar fix f0a2546
+
+26 September 2026, same SM-X210 / Android 15 / OpenCPN 5.14.0/API1.21.
+The final build includes `f0a2546457b93d778b7a9bfc02b3c73db0fec3b8` (polar
+wind-range extrapolation fix). The UI commit follows that commit; it does not
+replace or omit it. This changes routing performance policy, so earlier route
+fingerprints above are historical results, not expected fingerprints for this
+new build. All 29 focused polar and deterministic Irish Sea engine tests passed,
+including the five new polar wind-range cases.
+
+Final installed library SHA-256:
+`1907ec949ef044f0a43651603a8c4c4907829d1f16b65c9b01c6daf17c6cbd7d`.
+Imported through the host Plugin Manager; the stripped archive library matched
+the installed library. The common 1.18.5 version and existing Android CircleCI
+cohort are retained. No remote xWeatherRouting publication was performed.
+
+- The user's accidental arrival deadline was changed to their intended fixed
+  departure, 27 September 14:00 UTC. Cards, Plan and Results now explicitly
+  distinguish Departure from Arrival deadline; the time editor headings fit.
+- A real 96-hour Irish Sea/North Channel GRIB was generated on the tablet,
+  bounds 50.5–56.5 N / 8.5–2.5 W, UKV wind hourly through f54 and every three
+  hours through f96, with GFS waves and Copernicus NWS currents. Individual
+  wind coverage and bounds were independently verified with ecCodes.
+- Before f0a2546, Foyle completed at 172.6 NM / 31h16m and was demonstrated
+  on the chart, retained after Close, and saved once as an OpenCPN track.
+  That saved track survived cold starts. It remains preserved and can appear
+  alongside a newly calculated overlay; it is not the new route's fingerprint.
+- After f0a2546 and the final xGRIB 0.3.2 import, Foyle completed in 12.34 s:
+  **158.3 NM / 30h09m**, 21 legs, 832 validation samples, fingerprint
+  `ce0fbe263dceb934`. Eight requested workers were capped to one at 677 MiB
+  available memory. The configuration used GRIB weather; currents remained
+  disabled in the routing configuration despite being present in the forecast.
+- Results → Show on chart framed the complete Foyle course. Reopening and
+  closing the workspace retained its visible course. No duplicate track was
+  saved for the new calculation.
+- The 13-candidate Dun Laoghaire comparison finished processing all candidates:
+  11 completed, two returned `search_incomplete` at the early departures.
+  These are recorded as incomplete, not misreported as successful routes.
+  The base candidate showed ETA 28 September 06:55 UTC. Show on chart selected
+  the completed candidate in the main workspace, framed it, and immediately
+  hid both comparison and progress sheets while other candidates kept running.
+  Only the chosen candidate was made visible, not all 13 alternatives.
+- Only OpenCPN 5.14 remains installed. Stock 5.10.2 was removed at the user's
+  request using `pm uninstall -k`, retaining its data and backed-up APK/navigation
+  XML. The development package's home shortcut was verified.
+- xGRIB 0.3.2.0 adds the UTC calendar/time selector and optional encrypted
+  Copernicus password remembrance. Real encrypted Close/cold restore followed
+  by a second successful 761-message, 48.95 MiB generation passed. xGRIB's
+  detailed device evidence and Back fixes are in its 0.3.2 usability notes.
+
+Final packages, logs, screenshots, forecast read-back and hashes are in
+`artifacts/xweather-chart-fix-20260926/` and
+`artifacts/xgrib-0.3.2-android-20260926/` in the parent workspace. The earlier
+xGRIB 0.3.1 alpha publication succeeded for all 11 targets; these new local
+versions have not been published. The host Plugin Manager chooser ANR after
+Qt text editing remains a host limitation, avoided with cold-start imports.

@@ -952,7 +952,8 @@ private:
   wxSize m_size;
 #ifdef __OCPN__ANDROID__
 public:
-  bool AndroidChartVisible() const { return m_androidChartVisible; }
+  bool AndroidChartVisible() const;
+  void ShowAndroidRouteOnChart(RouteMapOverlay* route = nullptr);
   bool AndroidChartPickPending() const { return m_androidChartPickTarget != -2; }
   void BeginAndroidChartPick(int target);
   void CancelAndroidChartPick();
