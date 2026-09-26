@@ -173,3 +173,30 @@ Final packages, logs, screenshots, forecast read-back and hashes are in
 xGRIB 0.3.1 alpha publication succeeded for all 11 targets; these new local
 versions have not been published. The host Plugin Manager chooser ANR after
 Qt text editing remains a host limitation, avoided with cold-start imports.
+
+
+## Route setup scrolling correction — 1.18.6, 26 September 2026
+
+The user reported that Safety stopped at Optimise Tacking. Reproduced on the
+SM-X210: the scrollbar moved while reparented static-box controls remained in
+place. Recalculating virtual size alone was insufficient. The Android scroll
+bridge now lays out controls at the updated wx scroll offset, with deferred
+layout after native scroll events. Setup sections refresh geometry after
+styling, on opening and when selected.
+
+Built and packaged against the same pinned OpenCPN 5.14/Qt/wxQt host. Imported
+1.18.6 through Plugin Manager, then installed the exact final archive library
+after a normal shutdown for the final help-height/caption-width corrections.
+The final installed library SHA256 is
+`5d2f2e6018b9a818e6e60729836ad9ee71ae88b1cc76425c2177c03275033011`.
+
+Content swipes reach Sail Plan Change Time, the final Safety setting, with a
+visible bottom margin in landscape and portrait. Optimise Tacking was fully
+visible and enabled on a Standard route, toggled off, then restored to its
+original enabled value. The chart-depth help is completely readable in both
+orientations. The Plan workspace and Routes cards also continued to scroll.
+
+This is an Android UI change; routing mathematics are unchanged. The source
+remains descended from the user's `f0a2546` polar correction. No additional
+routing computation was required for this UI-only correction. It remains
+local pending a separate xWeatherRouting publication request.

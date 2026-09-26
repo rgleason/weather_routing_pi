@@ -71,6 +71,21 @@
 namespace {
 
 #ifdef __OCPN__ANDROID__
+void FitTabletConfigurationPage(wxScrolledWindow* page) {
+  // wxQt caches the best size of static-box parents before the tablet style
+  // enlarges their controls. Invalidate the whole moved control tree before
+  // calculating the virtual size, including pages hidden during construction.
+  // Reflow the section's help paragraphs at its current visible width.
+  page->SendSizeEvent();
+  const auto invalidate = [](auto&& self, wxWindow* window) -> void {
+    for (auto* child : window->GetChildren()) self(self, child);
+    window->InvalidateBestSize();
+  };
+  invalidate(invalidate, page);
+  page->Layout();
+  page->FitInside();
+}
+
 wxDateTime TabletWallPicker(const wxDateTime& wall) {
   const auto value = QDateTime::fromSecsSinceEpoch(wall.GetTicks(), Qt::UTC);
   return wxDateTime(value.date().day(),
@@ -378,6 +393,10 @@ ConfigurationDialog::ConfigurationDialog(WeatherRouting& weatherrouting)
       [this, sectionPicker](wxBookCtrlEvent& event) {
         sectionPicker->SetSelection(event.GetSelection());
         if (event.GetSelection() == 5) UpdateAndroidMemoryStatus();
+        CallAfter([this]() {
+          FitTabletConfigurationPage(static_cast<wxScrolledWindow*>(
+              m_notebook7->GetCurrentPage()));
+        });
         event.Skip();
       });
   if (auto* tabs = qobject_cast<QTabWidget*>(m_notebook7->GetHandle()))
@@ -412,9 +431,9 @@ ConfigurationDialog::ConfigurationDialog(WeatherRouting& weatherrouting)
   m_cbDepartureTimeOptimizationEnabled->SetMinSize(
       WR_FromDIP(this, wxSize(370, 46)));
   m_cbUseExperimentalChartSafety->SetMinSize(
-      WR_FromDIP(this, wxSize(470, 40)));
+      WR_FromDIP(this, wxSize(750, 40)));
   m_cbEnforceExperimentalChartSafety->SetMinSize(
-      WR_FromDIP(this, wxSize(430, 40)));
+      WR_FromDIP(this, wxSize(700, 40)));
   m_cbUseGrib->SetMinSize(WR_FromDIP(this, wxSize(110, 40)));
   m_cbAllowDataDeficient->SetMinSize(WR_FromDIP(this, wxSize(440, 40)));
   m_cbUseReverseReachabilityRecovery->SetLabel(_("Recover final approach"));
@@ -423,8 +442,8 @@ ConfigurationDialog::ConfigurationDialog(WeatherRouting& weatherrouting)
   m_cbAvoidCycloneTracks->SetMinSize(WR_FromDIP(this, wxSize(430, 40)));
   m_cbUseMotor->SetMinSize(WR_FromDIP(this, wxSize(340, 40)));
   m_cbUseOptimalAngles->SetMinSize(WR_FromDIP(this, wxSize(310, 40)));
-  m_cbInvertedRegions->SetMinSize(WR_FromDIP(this, wxSize(210, 40)));
-  m_cbAnchoring->SetMinSize(WR_FromDIP(this, wxSize(150, 40)));
+  m_cbInvertedRegions->SetMinSize(WR_FromDIP(this, wxSize(300, 40)));
+  m_cbAnchoring->SetMinSize(WR_FromDIP(this, wxSize(240, 40)));
   m_cRoutingEffortPercent->Clear();
   for (const wxString& label : {_("100% / Standard"), _("150% / Extended"),
                                 _("200% / Thorough"), _("400% / Exhaustive")})
@@ -490,10 +509,16 @@ ConfigurationDialog::ConfigurationDialog(WeatherRouting& weatherrouting)
         "QCalendarWidget QAbstractItemView { font-size: 16pt; }");
   }
   m_pBasic->SetMinSize(wxSize(0, 0));
-  m_pBasic->Layout();
-  static_cast<wxScrolledWindow*>(m_pBasic)->FitInside();
-  m_pAdvanced->Layout();
-  m_pAdvanced->FitInside();
+  for (size_t i = 0; i < m_notebook7->GetPageCount(); ++i)
+    FitTabletConfigurationPage(static_cast<wxScrolledWindow*>(
+        m_notebook7->GetPage(i)));
+  Bind(wxEVT_SHOW, [this](wxShowEvent& event) {
+    if (event.IsShown()) CallAfter([this]() {
+      FitTabletConfigurationPage(static_cast<wxScrolledWindow*>(
+          m_notebook7->GetCurrentPage()));
+    });
+    event.Skip();
+  });
 
   wxSize sz = ::wxGetDisplaySize();
   SetSize(0, 0, sz.x, sz.y - 40);

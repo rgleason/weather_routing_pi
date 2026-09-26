@@ -123,6 +123,9 @@ protected:
       const QPointF position = static_cast<QScrollEvent*>(event)->contentPos();
       m_window->Scroll(xUnit ? qRound(position.x() / xUnit) : -1,
                        yUnit ? qRound(position.y() / yUnit) : -1);
+      // wxQt can scroll the viewport pixels without moving reparented static
+      // boxes. Lay out their controls at the actual wx scroll offset as well.
+      m_window->Layout();
       event->accept();
       return true;
     }
@@ -139,6 +142,18 @@ inline void WR_EnableAndroidScrolling(wxScrolledWindow* window) {
   target->setAttribute(Qt::WA_AcceptTouchEvents);
   new WR_AndroidScrollFilter(window, target);
   QScroller::grabGesture(target, QScroller::TouchGesture);
+  wxWeakRef<wxScrolledWindow> weakWindow(window);
+  const auto afterScroll = [weakWindow](wxScrollWinEvent& event) {
+    if (weakWindow) weakWindow->CallAfter([weakWindow]() {
+      if (weakWindow) weakWindow->Layout();
+    });
+    event.Skip();
+  };
+  for (const auto& type : {wxEVT_SCROLLWIN_TOP, wxEVT_SCROLLWIN_BOTTOM,
+                          wxEVT_SCROLLWIN_LINEUP, wxEVT_SCROLLWIN_LINEDOWN,
+                          wxEVT_SCROLLWIN_PAGEUP, wxEVT_SCROLLWIN_PAGEDOWN,
+                          wxEVT_SCROLLWIN_THUMBTRACK, wxEVT_SCROLLWIN_THUMBRELEASE})
+    window->Bind(type, afterScroll);
 }
 
 // A swipe beginning over a wxQt button otherwise releases as a click. Forward

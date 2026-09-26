@@ -614,3 +614,25 @@ full local CI script passed and produced identical library bytes.
   was rebuilt on f0a2546, its five new polar-range tests passed, and the coastal
   routes were rerun. Keep earlier fingerprints as historical evidence when an
   intentional engine policy change legitimately changes the new results.
+
+
+### Scrolling reparented wxQt configuration sections (26 September 2026)
+
+A scrollbar which reaches its limit does not prove the last control is reachable.
+The Safety section appeared to stop at Optimise Tacking. Further testing showed
+that swiping changed the scrollbar while reparented static-box controls stayed
+in place. Refreshing the virtual range alone did not fix the problem.
+
+After applying QScroller positions through wxScrolledWindow::Scroll, call Layout
+so the sizer uses the actual scroll offset for child geometry. Retain deferred
+layout after native scroll events as well. Recalculate every configuration
+section after tablet styling, on opening and after selection, rather than only
+the original desktop Basic/Advanced pages. Test the last control by content
+swipes in both orientations, and exercise the formerly clipped control.
+
+Desktop Wrap() measurements also precede the larger Android font. Give moved
+help paragraphs sufficient height and recalculate their size when the page
+width changes. Check full checkbox captions below the fold; labels which were
+never reachable before can expose a second sizing defect.
+
+Reference implementation: wxWidgets [Qt ScrollWindow](https://github.com/wxWidgets/wxWidgets/blob/v3.2.2/src/qt/window.cpp) and [ScrollLayout](https://github.com/wxWidgets/wxWidgets/blob/v3.2.2/src/generic/scrlwing.cpp). The actual tablet test remains necessary because the pinned host carries its own wxQt build.

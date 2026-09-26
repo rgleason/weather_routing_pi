@@ -2881,6 +2881,9 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   moveBox(advancedLeft, engineSettingsBox, enginePage);
   moveBox(advancedLeft, cycloneBox, safetyPage);
   moveBox(advancedRight, sbOptions1, safetyPage);
+  // Keep the complete depth explanation visible with the larger tablet font.
+  // The desktop Wrap() above measured it before Android styling was applied.
+  depthExplanation->SetMinSize(wxSize(0, 110));
   fgSizer23->SetCols(1);
   fgSizer1121->SetCols(1);
   fgSizer59->SetCols(1);
@@ -2890,6 +2893,8 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
     const int width = wxMax(200, event.GetSize().x - 90);
     WR_WrapAndroidText(safetyExplanation, safetyExplanationText, width);
     WR_WrapAndroidText(depthExplanation, depthExplanationText, width);
+    depthExplanation->SetMinSize(wxSize(0,
+        wxMax(110, depthExplanation->GetMinSize().y)));
     shorelineRow->SetOrientation(wxVERTICAL);
     WR_WrapAndroidText(shorelineNote, shorelineNoteText, width);
     safetyPage->Layout();
