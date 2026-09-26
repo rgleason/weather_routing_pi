@@ -498,17 +498,24 @@ double Polar::Speed(double twa, double tws, PolarSpeedStatus* status,
     }
   }
 
-  if (bound) {
-    if (tws < wind_speeds[0].tws) {
+  double windSpeedFactor = 1.0;
+  if (tws < wind_speeds.front().tws) {
+    if (bound) {
       if (status) *status = POLAR_SPEED_WIND_TOO_LIGHT;
       return NAN;
-    } else if (tws > wind_speeds[wind_speeds.size() - 1].tws) {
-      if (status) *status = POLAR_SPEED_WIND_TOO_STRONG;
-      if (bound)
-        return NAN;  // When bound is true (default), maintain original behavior
-      // When bound is false, use the max wind speed in the polar
-      tws = wind_speeds[wind_speeds.size() - 1].tws;
     }
+    // A caller allowing fallback must not extrapolate an arbitrary intercept
+    // at zero wind. Taper the lowest measured speed to zero instead.
+    windSpeedFactor = tws / wind_speeds.front().tws;
+    tws = wind_speeds.front().tws;
+  } else if (tws > wind_speeds.back().tws) {
+    if (bound) {
+      if (status) *status = POLAR_SPEED_WIND_TOO_STRONG;
+      return NAN;
+    }
+    // Preserve the last measured speed for explicit fallback. Extending the
+    // last slope can turn a light-wind sail into the fastest heavy-wind sail.
+    tws = wind_speeds.back().tws;
   }
 
   unsigned int W1i = degree_step_index[(int)floor(twa)];
@@ -527,8 +534,8 @@ double Polar::Speed(double twa, double tws, PolarSpeedStatus* status,
     if (VMGAngle(ws1, ws2, tws, vmgW)) {
       // Recursively call Speed with optimized angle and project the result
       // onto the original course.
-      return Speed(vmgW, tws, status, bound, false) * cos(deg2rad(vmgW)) /
-             cos(deg2rad(twa));
+      return windSpeedFactor * Speed(vmgW, tws, status, bound, false) *
+             cos(deg2rad(vmgW)) / cos(deg2rad(twa));
     }
   }
 
@@ -540,7 +547,7 @@ double Polar::Speed(double twa, double tws, PolarSpeedStatus* status,
   double VB1 = interp_value(tws, VW1, VW2, VB11, VB21);
   double VB2 = interp_value(tws, VW1, VW2, VB12, VB22);
 
-  double stw = interp_value(twa, W1, W2, VB1, VB2);
+  double stw = windSpeedFactor * interp_value(twa, W1, W2, VB1, VB2);
 
   if (stw < 0) {
     // with faulty polars, extrapolation, sometimes results in
