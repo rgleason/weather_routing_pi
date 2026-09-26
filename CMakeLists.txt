@@ -120,7 +120,7 @@ set(OCPN_MIN_VERSION "ov511")
 
 set(OCPN_API_VERSION_MAJOR "1")
 set(OCPN_API_VERSION_MINOR "21")
-set(TP_COMMENT "  * Release using CI")
+set(TP_COMMENT "  * RelWithDebInfo using CI")
 
 set(PARENT "opencpn")
 
@@ -191,7 +191,7 @@ message(STATUS "${CMLOC}USE_GL: ${USE_GL}")
 
 if ("${CMAKE_BUILD_TYPE}" STREQUAL "")
   set(CMAKE_BUILD_TYPE
-      "Release"
+      "RelWithDebInfo"
       CACHE STRING "Choose the type of build" FORCE
   )
 endif ("${CMAKE_BUILD_TYPE}" STREQUAL "")

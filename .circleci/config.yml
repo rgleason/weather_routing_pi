@@ -1,46 +1,63 @@
-version: 2.1
+# WeatherRouting native build + Beta publishing, prepared 26 September 2026.
+# Based on Rick's validated fixed-master/integration build setup.
+# Windows uses RelWithDebInfo; native WeatherRouting identity on every target.
+# Untagged master builds publish automatically only after all nine jobs pass.
+# Destination: opencpn/weather-routing-beta. Other branches validate only.
+# Required: CLOUDSMITH_API_KEY in project settings (or add a context to publish-beta).
+# Set pipeline parameter publish_beta=false for a validation-only master run.
+# Android and production/tag publishing are intentionally outside this workflow.
+# macos-universal is the existing script/job name; its current artifact is arm64.
 
-# Native WeatherRouting validation only. Publication remains on Rick's
-# maintained release process after this candidate is reviewed.
+version: 2.1
 parameters:
   run_windows_only:
     type: boolean
     default: false
-
+  publish_beta:
+    type: boolean
+    default: true
 orbs:
   win: circleci/windows@5.1.0
-
 commands:
   retain-artifacts:
     parameters:
-      target: {type: string}
-      build_dir: {type: string, default: build}
+      target:
+        type: string
+      build_dir:
+        type: string
+        default: build
     steps:
-      - run:
-          name: Retain artifacts for << parameters.target >>
-          when: always
-          command: |
-            mkdir -p artifacts/<< parameters.target >>/package test-results
-            find << parameters.build_dir >> -maxdepth 3 -type f \
-              \( -name '*.tar.gz' -o -name '*.xml' -o -name '*.log' -o -name 'SHA256SUMS' \) \
-              -exec cp -f '{}' artifacts/<< parameters.target >>/package/ \; || true
-            find artifacts -type f -name '*ctest.xml' \
-              -exec cp -f '{}' test-results/ \; || true
-      - store_test_results:
-          path: test-results
-      - store_artifacts:
-          path: artifacts/<< parameters.target >>
-      - persist_to_workspace:
-          root: .
-          paths: [artifacts/<< parameters.target >>]
-
+    - run:
+        name: Retain artifacts for << parameters.target >>
+        when: always
+        command: |
+          mkdir -p artifacts/<< parameters.target >>/package test-results
+          find << parameters.build_dir >> -maxdepth 3 -type f \
+            \( -name '*.tar.gz' -o -name '*.xml' -o -name '*.log' -o -name 'SHA256SUMS' \) \
+            -exec cp -f '{}' artifacts/<< parameters.target >>/package/ \; || true
+          find artifacts -type f -name '*ctest.xml' \
+            -exec cp -f '{}' test-results/ \; || true
+    - store_test_results:
+        path: test-results
+    - store_artifacts:
+        path: artifacts/<< parameters.target >>
+    - persist_to_workspace:
+        root: .
+        paths:
+        - artifacts/<< parameters.target >>
 jobs:
   linux-catalogue:
     parameters:
-      target: {type: string}
-      image: {type: string}
-      dockerfile: {type: string, default: ci/Dockerfile.linux}
-      resource_class: {type: string, default: medium}
+      target:
+        type: string
+      image:
+        type: string
+      dockerfile:
+        type: string
+        default: ci/Dockerfile.linux
+      resource_class:
+        type: string
+        default: medium
     machine:
       image: ubuntu-2404:current
     resource_class: << parameters.resource_class >>
@@ -48,24 +65,26 @@ jobs:
       OCPN_TARGET: << parameters.target >>
       DOCKER_IMAGE: << parameters.image >>
       DOCKERFILE: << parameters.dockerfile >>
-      BUILD_GTK3: "true"
-      WX_VER: "32"
-      CMAKE_BUILD_PARALLEL_LEVEL: "3"
-      WEATHER_ROUTING_CI_XWEATHER: "false"
+      BUILD_GTK3: 'true'
+      WX_VER: '32'
+      CMAKE_BUILD_PARALLEL_LEVEL: '3'
+      WEATHER_ROUTING_CI_XWEATHER: 'false'
     steps:
-      - checkout
-      - run: chmod a+x ci/*.sh
-      - run:
-          name: Stock-API tests, clean package and archive validation
-          command: ci/circleci-build-ubuntu-docker.sh
-          no_output_timeout: 45m
-      - retain-artifacts:
-          target: << parameters.target >>
-
+    - checkout
+    - run: chmod a+x ci/*.sh
+    - run:
+        name: Stock-API tests, clean package and archive validation
+        command: ci/circleci-build-ubuntu-docker.sh
+        no_output_timeout: 45m
+    - retain-artifacts:
+        target: << parameters.target >>
   flatpak:
     parameters:
-      arch: {type: string}
-      resource_class: {type: string, default: medium}
+      arch:
+        type: string
+      resource_class:
+        type: string
+        default: medium
     machine:
       image: ubuntu-2404:current
     resource_class: << parameters.resource_class >>
@@ -73,117 +92,330 @@ jobs:
       OCPN_TARGET: flatpak
       BUILD_ARCH: << parameters.arch >>
       FLATPAK_BRANCH: stable
-      SDK_VER: "25.08"
-      WX_VER: "32"
-      WEATHER_ROUTING_CI_XWEATHER: "false"
+      SDK_VER: '25.08'
+      WX_VER: '32'
+      WEATHER_ROUTING_CI_XWEATHER: 'false'
     steps:
-      - checkout
-      - run: chmod a+x ci/*.sh
-      - run:
-          name: Flatpak build and package
-          command: ci/circleci-build-flatpak.sh
-          no_output_timeout: 45m
-      - retain-artifacts:
-          target: flatpak-<< parameters.arch >>
-
+    - checkout
+    - run: chmod a+x ci/*.sh
+    - run:
+        name: Flatpak build and package
+        command: ci/circleci-build-flatpak.sh
+        no_output_timeout: 45m
+    - retain-artifacts:
+        target: flatpak-<< parameters.arch >>
   macos-universal:
     macos:
-      xcode: "16.4.0"
+      xcode: 16.4.0
     resource_class: m4pro.medium
     environment:
       OCPN_TARGET: macos
-      CMAKE_BUILD_PARALLEL_LEVEL: "3"
-      HOMEBREW_NO_AUTO_UPDATE: "1"
-      WX_VER: "32"
-      WEATHER_ROUTING_CI_XWEATHER: "false"
+      CMAKE_BUILD_PARALLEL_LEVEL: '3'
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      WX_VER: '32'
+      WEATHER_ROUTING_CI_XWEATHER: 'false'
     steps:
-      - checkout
-      - run: chmod a+x ci/*.sh cmake/*.sh
-      - run:
-          name: Native Apple-Silicon stock-API build, tests and package
-          command: ci/circleci-build-macos-universal.sh
-          no_output_timeout: 45m
-      - retain-artifacts:
-          target: macos-arm64
-
+    - checkout
+    - run: chmod a+x ci/*.sh cmake/*.sh
+    - run:
+        name: Native Apple-Silicon stock-API build, tests and package
+        command: ci/circleci-build-macos-universal.sh
+        no_output_timeout: 45m
+    - retain-artifacts:
+        target: macos-arm64
   windows-x86:
     executor:
       name: win/server-2022
       shell: bash.exe
     environment:
       OCPN_TARGET: MSVC
-      MSVC_VERSION: "2022"
-      WX_VER: "32"
-      WEATHER_ROUTING_CI_XWEATHER: "false"
+      MSVC_VERSION: '2022'
+      WX_VER: '32'
+      WEATHER_ROUTING_CI_XWEATHER: 'false'
+      CONFIGURATION: RelWithDebInfo
     steps:
-      - checkout
-      - run:
-          shell: cmd.exe
-          name: Native Windows build, tests and package
-          command: ci\circleci-build-msvc.bat
-          no_output_timeout: 45m
-      - store_test_results:
-          path: artifacts/windows-x86/tests
-      - store_artifacts:
-          path: artifacts/windows-x86
-      - persist_to_workspace:
-          root: .
-          paths: [artifacts/windows-x86]
+    - checkout
+    - run:
+        shell: cmd.exe
+        name: Native Windows build, tests and package
+        command: ci\circleci-build-msvc.bat
+        no_output_timeout: 45m
+    - store_test_results:
+        path: artifacts/windows-x86/tests
+    - store_artifacts:
+        path: artifacts/windows-x86
+    - persist_to_workspace:
+        root: .
+        paths:
+        - artifacts/windows-x86
+  publish-beta:
+    docker:
+    - image: cimg/python:3.13
+    resource_class: small
+    steps:
+    - run:
+        name: Check publication selection
+        command: |
+          set -euo pipefail
+          if [[ "<< pipeline.parameters.publish_beta >>" != "true" ]]; then
+            circleci-agent step halt
+            exit 0
+          fi
+          test "${CIRCLE_BRANCH:-}" = master
+          test -z "${CIRCLE_TAG:-}"
+          test "${CIRCLE_PROJECT_USERNAME:-}" = rgleason
+          test "${CIRCLE_PROJECT_REPONAME:-}" = weather_routing_pi
+    - checkout
+    - attach_workspace:
+        at: .
+    - run:
+        name: Validate all native packages and resolve publication metadata
+        command: |
+          set -euo pipefail
+          python3 - \<<'PY'
+          """Stage the complete native WeatherRouting matrix for Cloudsmith Beta."""
 
-validation-filters: &validation-filters
-  branches:
-    ignore: [devel, tmp]
-  tags:
-    ignore: /.*/
+          import hashlib
+          import importlib.util
+          import json
+          import os
+          from pathlib import Path, PurePosixPath
+          import re
+          import tarfile
+          import xml.etree.ElementTree as ET
 
+          EXPECTED = {
+              "trixie": ("debian-x86_64", "x86_64"),
+              "bookworm": ("debian-x86_64", "x86_64"),
+              "jammy": ("ubuntu-x86_64", "x86_64"),
+              "noble": ("ubuntu-x86_64", "x86_64"),
+              "bookworm-arm64": ("debian-arm64", "arm64"),
+              "flatpak-x86_64": ("flatpak-32-x86_64", "x86_64"),
+              "flatpak-aarch64": ("flatpak-32-aarch64", "aarch64"),
+              "windows-x86": ("msvc-wx32", "x86"),
+              "macos-arm64": ("darwin-wx32", "arm64"),
+          }
+          TARGET_VERSIONS = {
+              "trixie": "13", "bookworm": "12", "jammy": "22.04",
+              "noble": "24.04", "bookworm-arm64": "12",
+              "flatpak-x86_64": "25.08", "flatpak-aarch64": "25.08",
+          }
+          PACKAGE = "weather_routing_pi"
+          REPOSITORY = "opencpn/weather-routing-beta"
+          SOURCE = "https://github.com/rgleason/weather_routing_pi"
+
+
+          def value(root, field):
+              text = (root.findtext(field) or "").strip()
+              if not text:
+                  raise ValueError(f"Missing metadata field: {field}")
+              return text
+
+
+          def inspect_pair(directory):
+              archives = list(directory.glob("*.tar.gz"))
+              if len(archives) != 1:
+                  raise ValueError(f"Expected one archive in {directory}")
+              archive = archives[0]
+              if not archive.name.startswith(PACKAGE + "-"):
+                  raise ValueError(f"Wrong package identity: {archive.name}")
+              metadata_files = list(directory.glob(PACKAGE + "-*.xml"))
+              if len(metadata_files) != 1:
+                  raise ValueError(f"Expected one WeatherRouting XML in {directory}")
+              metadata = metadata_files[0]
+              root = ET.parse(metadata).getroot()
+              if root.tag != "plugin" or value(root, "name") != "WeatherRouting":
+                  raise ValueError(f"Wrong plugin name: {metadata}")
+              if value(root, "source").rstrip("/") != SOURCE:
+                  raise ValueError(f"Wrong source repository: {metadata}")
+              if value(root, "api-version") != "1.21":
+                  raise ValueError(f"Unexpected plugin API: {metadata}")
+              if len(value(root, "summary")) > 72:
+                  raise ValueError(f"Catalogue summary exceeds 72 characters: {metadata}")
+              version = value(root, "version")
+              if not re.fullmatch(r"\d+\.\d+\.\d+(?:\.\d+)?", version):
+                  raise ValueError(f"Invalid plugin version: {version}")
+              if not archive.name.startswith(f"{PACKAGE}-{version}-"):
+                  raise ValueError(f"Archive/XML version mismatch: {archive}")
+              target = tuple(value(root, key) for key in ("target", "target-version", "target-arch"))
+              if any(not re.fullmatch(r"[\w.+-]+", item) for item in target):
+                  raise ValueError(f"Invalid target: {target}")
+              matrix_name = directory.parent.name
+              if (target[0], target[2]) != EXPECTED[matrix_name]:
+                  raise ValueError(f"Wrong platform metadata for {matrix_name}: {target}")
+              if matrix_name in TARGET_VERSIONS and target[1] != TARGET_VERSIONS[matrix_name]:
+                  raise ValueError(f"Wrong target version for {matrix_name}: {target[1]}")
+              # The macOS and Windows OS patch versions follow their hosted executor.
+              library = (f"{PACKAGE}.dll" if matrix_name == "windows-x86" else
+                         f"lib{PACKAGE}.dylib" if matrix_name == "macos-arm64" else
+                         f"lib{PACKAGE}.so")
+              with tarfile.open(archive, "r:gz") as package:
+                  members = package.getmembers()
+                  if any(PurePosixPath(m.name).is_absolute() or ".." in PurePosixPath(m.name).parts
+                         for m in members):
+                      raise ValueError(f"Unsafe archive path: {archive}")
+                  if sum(m.isfile() and PurePosixPath(m.name).name == library for m in members) != 1:
+                      raise ValueError(f"Missing/duplicate native library: {archive}")
+                  if any(re.fullmatch(r"(?:lib)?xweather_routing_pi\.(?:so|dylib|dll)",
+                                      PurePosixPath(m.name).name)
+                         or re.match(r"(?:lib)?g(?:test|mock)", PurePosixPath(m.name).name)
+                         for m in members):
+                      raise ValueError(f"Preview or test library included: {archive}")
+                  embedded = [m for m in members if m.name == "metadata.xml" and m.isfile()]
+                  if len(embedded) != 1:
+                      raise ValueError(f"Missing/duplicate embedded metadata: {archive}")
+                  embedded_root = ET.fromstring(package.extractfile(embedded[0]).read())
+                  for field in ("name", "version", "api-version", "source", "target",
+                                "target-version", "target-arch"):
+                      if value(embedded_root, field) != value(root, field):
+                          raise ValueError(f"Embedded metadata differs in {field}: {archive}")
+              return archive, root, version, target, metadata.name
+
+
+          def prepare(artifact_root, output, revision, build_number):
+              if not re.fullmatch(r"[0-9a-f]{40}", revision) or not re.fullmatch(r"\d+", build_number):
+                  raise ValueError("Expected full commit SHA and numeric CircleCI build number")
+              directories = {p.parent.name: p for p in artifact_root.glob("*/package")}
+              if set(directories) != set(EXPECTED):
+                  raise ValueError(f"Incomplete/unexpected platform matrix: {sorted(directories)}")
+              pairs = [inspect_pair(directories[name]) for name in sorted(EXPECTED)]
+              if len({p[2] for p in pairs}) != 1 or len({p[3] for p in pairs}) != len(EXPECTED):
+                  raise ValueError("Mixed plugin versions or duplicate platform metadata")
+              if len({p[0].name for p in pairs}) != len(EXPECTED) or len({p[4] for p in pairs}) != len(EXPECTED):
+                  raise ValueError("Duplicate archive or metadata filenames across platforms")
+              output.mkdir(parents=True, exist_ok=False)
+              spec = importlib.util.spec_from_file_location("embed", "ci/embed-package-metadata.py")
+              embed = importlib.util.module_from_spec(spec)
+              spec.loader.exec_module(embed)
+              uploads = []
+              for archive, root, version, target, metadata_name in pairs:
+                  cloud_version = f"{version}+{build_number}.{revision[:7]}"
+                  base = f"{PACKAGE}-{version}-{'-'.join(target)}"
+                  url = (f"https://dl.cloudsmith.io/public/{REPOSITORY}/raw/names/"
+                         f"{base}-tarball/versions/{cloud_version}/{archive.name}")
+                  root.find("tarball-url").text = "\n    " + url + "\n  "
+                  staged_metadata = output / metadata_name
+                  ET.ElementTree(root).write(staged_metadata, encoding="utf-8", xml_declaration=True)
+                  staged_archive = output / archive.name
+                  embed.embed(archive, staged_metadata, staged_archive)
+                  with tarfile.open(staged_archive, "r:gz") as package:
+                      embedded = ET.fromstring(package.extractfile("metadata.xml").read())
+                  if ET.tostring(embedded) != ET.tostring(ET.parse(staged_metadata).getroot()):
+                      raise ValueError(f"Embedded publication metadata differs: {staged_archive}")
+                  # Upload the payload before its catalogue metadata.
+                  for name, file in ((base + "-tarball", staged_archive),
+                                     (base + "-metadata", staged_metadata)):
+                      with file.open("rb") as stream:
+                          digest = hashlib.file_digest(stream, "sha256").hexdigest()
+                      uploads.append({"name": name, "version": cloud_version,
+                                      "file": str(file.resolve()), "sha256": digest})
+              (output / "uploads.json").write_text(json.dumps(uploads, indent=2) + "\n")
+              (output / "SHA256SUMS").write_text("".join(
+                  f"{item['sha256']}  {Path(item['file']).name}\n" for item in uploads))
+              print(f"Staged {len(pairs)} native WeatherRouting platform pairs for {REPOSITORY}")
+
+
+          if __name__ == "__main__":
+              prepare(Path("artifacts"), Path("beta-publication"),
+                      os.environ["CIRCLE_SHA1"], os.environ["CIRCLE_BUILD_NUM"])
+          PY
+    - store_artifacts:
+        path: beta-publication
+    - run:
+        name: Publish verified native WeatherRouting packages to Beta
+        command: |
+          set -euo pipefail
+          set +x
+          if [[ -z "${CLOUDSMITH_API_KEY:-}" ]]; then
+            echo 'Missing CLOUDSMITH_API_KEY: set it in CircleCI project settings or a deployment context.' >&2
+            exit 1
+          fi
+          python -m pip install --upgrade cloudsmith-cli
+          cloudsmith --version
+          python3 - \<<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+          import subprocess
+
+          for item in json.loads(Path("beta-publication/uploads.json").read_text()):
+              with Path(item["file"]).open("rb") as stream:
+                  if hashlib.file_digest(stream, "sha256").hexdigest() != item["sha256"]:
+                      raise RuntimeError(f"Staged file checksum changed: {item['file']}")
+              subprocess.run([
+                  "cloudsmith", "push", "raw", "--republish",
+                  "--name", item["name"], "--version", item["version"],
+                  "--summary", "WeatherRouting OpenCPN plugin Beta build",
+                  "opencpn/weather-routing-beta", item["file"],
+              ], check=True)
+          PY
+        no_output_timeout: 20m
 workflows:
   validate:
     when:
       not: << pipeline.parameters.run_windows_only >>
     jobs:
-      - linux-catalogue: &trixie
-          name: debian13-x86_64
-          target: trixie
-          image: debian:trixie
-          filters: *validation-filters
-      - linux-catalogue: &bookworm
-          name: debian12-x86_64
-          target: bookworm
-          image: debian:bookworm
-          filters: *validation-filters
-      - linux-catalogue: &jammy
-          name: ubuntu22.04-x86_64
-          target: jammy
-          image: ubuntu:22.04
-          dockerfile: ci/Dockerfile.jammy
-          filters: *validation-filters
-      - linux-catalogue: &noble
-          name: ubuntu24.04-x86_64
-          target: noble
-          image: ubuntu:24.04
-          filters: *validation-filters
-      - linux-catalogue: &bookworm-arm64
-          name: debian12-arm64
-          target: bookworm-arm64
-          image: arm64v8/debian:bookworm
-          resource_class: arm.medium
-          filters: *validation-filters
-      - flatpak: &flatpak-x86
-          name: flatpak25.08-x86_64
-          arch: x86_64
-          filters: *validation-filters
-      - flatpak: &flatpak-arm
-          name: flatpak25.08-aarch64
-          arch: aarch64
-          resource_class: arm.medium
-          filters: *validation-filters
-      - windows-x86:
-          filters: *validation-filters
-      - macos-universal:
-          filters: *validation-filters
-
+    - linux-catalogue:
+        name: debian13-x86_64
+        target: trixie
+        image: debian:trixie
+        filters: &id001
+          tags:
+            ignore: /.*/
+    - linux-catalogue:
+        name: debian12-x86_64
+        target: bookworm
+        image: debian:bookworm
+        filters: *id001
+    - linux-catalogue:
+        name: ubuntu22.04-x86_64
+        target: jammy
+        image: ubuntu:22.04
+        dockerfile: ci/Dockerfile.jammy
+        filters: *id001
+    - linux-catalogue:
+        name: ubuntu24.04-x86_64
+        target: noble
+        image: ubuntu:24.04
+        filters: *id001
+    - linux-catalogue:
+        name: debian12-arm64
+        target: bookworm-arm64
+        image: arm64v8/debian:bookworm
+        resource_class: arm.medium
+        filters: *id001
+    - flatpak:
+        name: flatpak25.08-x86_64
+        arch: x86_64
+        filters: *id001
+    - flatpak:
+        name: flatpak25.08-aarch64
+        arch: aarch64
+        resource_class: arm.medium
+        filters: *id001
+    - windows-x86:
+        filters: *id001
+    - macos-universal:
+        filters: *id001
+        name: macos-arm64
+    - publish-beta:
+        requires:
+        - debian13-x86_64
+        - debian12-x86_64
+        - ubuntu22.04-x86_64
+        - ubuntu24.04-x86_64
+        - debian12-arm64
+        - flatpak25.08-x86_64
+        - flatpak25.08-aarch64
+        - windows-x86
+        - macos-arm64
+        filters:
+          branches:
+            only: master
+          tags:
+            ignore: /.*/
   validate_windows_only:
     when: << pipeline.parameters.run_windows_only >>
     jobs:
-      - windows-x86:
-          filters: *validation-filters
+    - windows-x86:
+        filters: *id001

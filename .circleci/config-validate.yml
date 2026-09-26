@@ -1,0 +1,189 @@
+version: 2.1
+
+# Native WeatherRouting validation only. Publication remains on Rick's
+# maintained release process after this candidate is reviewed.
+parameters:
+  run_windows_only:
+    type: boolean
+    default: false
+
+orbs:
+  win: circleci/windows@5.1.0
+
+commands:
+  retain-artifacts:
+    parameters:
+      target: {type: string}
+      build_dir: {type: string, default: build}
+    steps:
+      - run:
+          name: Retain artifacts for << parameters.target >>
+          when: always
+          command: |
+            mkdir -p artifacts/<< parameters.target >>/package test-results
+            find << parameters.build_dir >> -maxdepth 3 -type f \
+              \( -name '*.tar.gz' -o -name '*.xml' -o -name '*.log' -o -name 'SHA256SUMS' \) \
+              -exec cp -f '{}' artifacts/<< parameters.target >>/package/ \; || true
+            find artifacts -type f -name '*ctest.xml' \
+              -exec cp -f '{}' test-results/ \; || true
+      - store_test_results:
+          path: test-results
+      - store_artifacts:
+          path: artifacts/<< parameters.target >>
+      - persist_to_workspace:
+          root: .
+          paths: [artifacts/<< parameters.target >>]
+
+jobs:
+  linux-catalogue:
+    parameters:
+      target: {type: string}
+      image: {type: string}
+      dockerfile: {type: string, default: ci/Dockerfile.linux}
+      resource_class: {type: string, default: medium}
+    machine:
+      image: ubuntu-2404:current
+    resource_class: << parameters.resource_class >>
+    environment:
+      OCPN_TARGET: << parameters.target >>
+      DOCKER_IMAGE: << parameters.image >>
+      DOCKERFILE: << parameters.dockerfile >>
+      BUILD_GTK3: "true"
+      WX_VER: "32"
+      CMAKE_BUILD_PARALLEL_LEVEL: "3"
+      WEATHER_ROUTING_CI_XWEATHER: "false"
+    steps:
+      - checkout
+      - run: chmod a+x ci/*.sh
+      - run:
+          name: Stock-API tests, clean package and archive validation
+          command: ci/circleci-build-ubuntu-docker.sh
+          no_output_timeout: 45m
+      - retain-artifacts:
+          target: << parameters.target >>
+
+  flatpak:
+    parameters:
+      arch: {type: string}
+      resource_class: {type: string, default: medium}
+    machine:
+      image: ubuntu-2404:current
+    resource_class: << parameters.resource_class >>
+    environment:
+      OCPN_TARGET: flatpak
+      BUILD_ARCH: << parameters.arch >>
+      FLATPAK_BRANCH: stable
+      SDK_VER: "25.08"
+      WX_VER: "32"
+      WEATHER_ROUTING_CI_XWEATHER: "false"
+    steps:
+      - checkout
+      - run: chmod a+x ci/*.sh
+      - run:
+          name: Flatpak build and package
+          command: ci/circleci-build-flatpak.sh
+          no_output_timeout: 45m
+      - retain-artifacts:
+          target: flatpak-<< parameters.arch >>
+
+  macos-universal:
+    macos:
+      xcode: "16.4.0"
+    resource_class: m4pro.medium
+    environment:
+      OCPN_TARGET: macos
+      CMAKE_BUILD_PARALLEL_LEVEL: "3"
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      WX_VER: "32"
+      WEATHER_ROUTING_CI_XWEATHER: "false"
+    steps:
+      - checkout
+      - run: chmod a+x ci/*.sh cmake/*.sh
+      - run:
+          name: Native Apple-Silicon stock-API build, tests and package
+          command: ci/circleci-build-macos-universal.sh
+          no_output_timeout: 45m
+      - retain-artifacts:
+          target: macos-arm64
+
+  windows-x86:
+    executor:
+      name: win/server-2022
+      shell: bash.exe
+    environment:
+      OCPN_TARGET: MSVC
+      MSVC_VERSION: "2022"
+      WX_VER: "32"
+      WEATHER_ROUTING_CI_XWEATHER: "false"
+    steps:
+      - checkout
+      - run:
+          shell: cmd.exe
+          name: Native Windows build, tests and package
+          command: ci\circleci-build-msvc.bat
+          no_output_timeout: 45m
+      - store_test_results:
+          path: artifacts/windows-x86/tests
+      - store_artifacts:
+          path: artifacts/windows-x86
+      - persist_to_workspace:
+          root: .
+          paths: [artifacts/windows-x86]
+
+validation-filters: &validation-filters
+  branches:
+    ignore: [devel, tmp]
+  tags:
+    ignore: /.*/
+
+workflows:
+  validate:
+    when:
+      not: << pipeline.parameters.run_windows_only >>
+    jobs:
+      - linux-catalogue: &trixie
+          name: debian13-x86_64
+          target: trixie
+          image: debian:trixie
+          filters: *validation-filters
+      - linux-catalogue: &bookworm
+          name: debian12-x86_64
+          target: bookworm
+          image: debian:bookworm
+          filters: *validation-filters
+      - linux-catalogue: &jammy
+          name: ubuntu22.04-x86_64
+          target: jammy
+          image: ubuntu:22.04
+          dockerfile: ci/Dockerfile.jammy
+          filters: *validation-filters
+      - linux-catalogue: &noble
+          name: ubuntu24.04-x86_64
+          target: noble
+          image: ubuntu:24.04
+          filters: *validation-filters
+      - linux-catalogue: &bookworm-arm64
+          name: debian12-arm64
+          target: bookworm-arm64
+          image: arm64v8/debian:bookworm
+          resource_class: arm.medium
+          filters: *validation-filters
+      - flatpak: &flatpak-x86
+          name: flatpak25.08-x86_64
+          arch: x86_64
+          filters: *validation-filters
+      - flatpak: &flatpak-arm
+          name: flatpak25.08-aarch64
+          arch: aarch64
+          resource_class: arm.medium
+          filters: *validation-filters
+      - windows-x86:
+          filters: *validation-filters
+      - macos-universal:
+          filters: *validation-filters
+
+  validate_windows_only:
+    when: << pipeline.parameters.run_windows_only >>
+    jobs:
+      - windows-x86:
+          filters: *validation-filters

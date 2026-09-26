@@ -1,0 +1,85 @@
+WeatherRouting CircleCI build and Beta publishing
+Prepared for Rick Gleason, 26 September 2026
+
+INSTALL
+
+Copy weather-routing-circleci-config-2026-09-26.yml into Rick's
+rgleason/weather_routing_pi repository as .circleci/config.yml.
+Commit and push it through the normal branch workflow.
+
+The YAML is self-contained: the new publication logic is embedded in it.
+It uses the existing build scripts, Dockerfiles, native metadata embed helper
+and packaging checks already present in Rick's 1.18.8 master at adf42d9.
+No changes to routing code or CMakeLists.txt are needed for this configuration.
+
+In CircleCI Project Settings > Environment Variables, ensure CLOUDSMITH_API_KEY
+contains your current key with permission to upload raw packages to
+opencpn/weather-routing-beta. Do not put the key in the YAML or repository.
+If the key lives in a CircleCI context instead, add:
+
+        context: YOUR_EXISTING_CONTEXT_NAME
+
+under the publish-beta job invocation in workflows.validate.jobs, beside its
+requires and filters entries. Use the actual context name that holds the key.
+
+BEHAVIOUR
+
+Every branch push runs the nine native build/package jobs:
+- Debian 13 x86_64
+- Debian 12 x86_64 and arm64
+- Ubuntu 22.04 and 24.04 x86_64
+- Flatpak SDK 25.08 x86_64 and aarch64
+- Windows x86 / MSVC 2022, explicitly RelWithDebInfo
+- macOS Apple Silicon / arm64 using the existing macos-universal script
+
+The macOS script's historical name contains "universal", but the validated
+artifact is arm64. This file does not add a macOS Intel build.
+Linux, Flatpak and macOS retain the build choices in their existing scripts.
+Windows CI uses the repository's dependency setup, rather than your personal
+C:\Users\fcgle\source\ocpn_wxWidgets path.
+All builds use native weather_routing_pi / WeatherRouting identity.
+Android and tag/production publication are not included.
+
+An untagged master build automatically publishes to opencpn/weather-routing-beta
+after all nine CircleCI jobs succeed. Other branches validate and retain their
+artifacts without publishing. The separate GitHub Actions Win32 workflow remains
+separate; it is not a dependency of this CircleCI workflow.
+
+Before any upload, the publication job checks the complete matrix, native plugin
+identity, repository/API metadata, consistent versions, platform metadata,
+archive contents and embedded metadata. It resolves each tarball URL for Beta
+and embeds the resolved metadata back into that tarball. It uploads each tarball
+before its matching XML, using the current Cloudsmith CLI.
+
+The plugin version is retained. Cloudsmith package versions add the publishing
+job number and commit SHA, for example 1.18.8+123.abcdef0. Eighteen raw packages
+are uploaded: nine tarballs and nine metadata XML files. Staged packages, upload
+manifest and SHA256SUMS are also retained as CircleCI artifacts.
+The old generated cloudsmith-upload.sh is not called by this configuration.
+
+OPTIONAL PIPELINE PARAMETERS
+
+publish_beta=false: run the full matrix on master without uploading.
+run_windows_only=true: run Windows alone; no publication occurs.
+
+VALIDATION PERFORMED
+
+The official CircleCI CLI validated and processed this configuration successfully.
+The expanded publisher commands passed shell and Python syntax checks.
+Seven local tests checked full-matrix staging, resolved embedded metadata,
+three- and four-part version handling, and rejection of missing platforms,
+mixed versions, preview identity, wrong platforms and inconsistent metadata.
+
+This new publishing workflow has not been run on your hosted project or used
+to upload packages. Its build jobs reuse the previously green native baseline.
+The runtime crash, first-opening delay and OpenCPN 5.14 initialization report
+require separate investigation; passing build tests does not resolve those.
+
+REFERENCE
+
+Your existing upload policy routes untagged master builds to Beta:
+https://github.com/rgleason/weather_routing_pi/blob/adf42d92a3b349a4576a0b910d15085ba00b6a46/cmake/in-files/cloudsmith-upload.sh.in
+CircleCI workflow dependencies:
+https://circleci.com/docs/guides/orchestrate/workflows/
+CircleCI contexts:
+https://circleci.com/docs/guides/security/contexts/
