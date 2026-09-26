@@ -57,6 +57,7 @@ set(TEST_SRC
     HeadlessRouteMonitor_tests.cpp
     KeyedRequestCache_tests.cpp
     GribTimelineCachePolicy_tests.cpp
+    DeviceMemoryPolicy_tests.cpp
     OceanPrewarmPolicy_tests.cpp
     ReachabilityPrewarmPolicy_tests.cpp
     RouteDisplayPolicy_tests.cpp
@@ -65,6 +66,7 @@ set(TEST_SRC
     Utilities_tests.cpp
     MultiLegRouteOutput_tests.cpp
     RouteSimplifier_tests.cpp
+    DirectLegCourseSolver_tests.cpp
     StabilityCorridor_tests.cpp
     StabilityCorridorLifecycle_tests.cpp
     RoutingEngineSettings_tests.cpp
@@ -77,6 +79,8 @@ set(TEST_SRC
     ConstraintTime_tests.cpp
     SunCalculator_tests.cpp
     TimeZoneDisplay_tests.cpp
+    GpxRouteTime_tests.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/src/navobj_util.cpp
     ModernNativeEngine_tests.cpp
     OriginalEngine_tests.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/vendor/original-routing-engine/src/Engine.cpp
@@ -84,6 +88,7 @@ set(TEST_SRC
     ArrivalPlanner_tests.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/AppendOnlyCache.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/ChartSafetyCache.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/src/SystemMemory.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/ChartSafetyHost.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/ChartSafetyAtlas.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/ChartHazardEvaluator.cpp
@@ -160,6 +165,7 @@ set(TEST_SRC
            ocpn::api
            ocpn::libtess2
            ocpn::tinyxml
+           ocpn::pugixml
            # ocpn::dc-utils
            # ocpn::jsonlib
            # ocpn::api_wx32

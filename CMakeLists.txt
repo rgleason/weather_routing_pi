@@ -304,6 +304,10 @@ SET(SRCS
             src/engine/native/OpenCpnAdapter.cpp
 )
 
+if(QT_ANDROID)
+  list(APPEND SRCS src/AndroidWeatherRouting.cpp)
+endif()
+
 SET (HDRS
             include/AppendOnlyCache.h
             include/ChartSafetyCache.h
@@ -317,6 +321,13 @@ SET (HDRS
             include/ProcessAddressSpace.h
             include/GribTimelineCachePolicy.h
             include/SystemMemory.h
+            include/DeviceMemoryPolicy.h
+            include/DirectLegCourseSolver.h
+            include/RoutingTimePersistence.h
+            include/WeatherRoutingBrowser.h
+            include/WeatherRoutingFileDialog.h
+            include/WeatherRoutingMessageDialog.h
+            include/WeatherRoutingProgressDialog.h
             include/GribTimelineFrameCache.h
             include/AddressSpaceMonitor.h
             include/ChartSafetyDefaults.h

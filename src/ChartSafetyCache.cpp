@@ -8,8 +8,11 @@
  ***************************************************************************/
 
 #include "ChartSafetyCache.h"
+#include "DeviceMemoryPolicy.h"
+#include "SystemMemory.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
@@ -122,14 +125,15 @@ std::uint64_t ChartSafetyCache::PhysicalMemoryBytes() {
 }
 
 int ChartSafetyCache::ResolveEffectiveRamMiB(int requested_ram_mib) {
-  if (requested_ram_mib > 0)
-    return std::clamp(requested_ram_mib, kMinimumRamMiB, kMaximumRamMiB);
   const std::uint64_t physical_mib =
       PhysicalMemoryBytes() / (1024ULL * 1024ULL);
   int automatic = static_cast<int>(physical_mib / 32ULL);
   automatic = (automatic / 256) * 256;
-  return std::clamp(automatic, kMinimumRamMiB,
-                    kMaximumAutomaticRamMiB);
+  const int requested = requested_ram_mib > 0
+      ? std::clamp(requested_ram_mib, kMinimumRamMiB, kMaximumRamMiB)
+      : std::clamp(automatic, kMinimumRamMiB, kMaximumAutomaticRamMiB);
+  const auto available_mib = AvailablePhysicalMemoryMiB();
+  return PressureCacheLimitMiB(requested, available_mib, 16);
 }
 
 void ChartSafetyCache::Configure(const std::string& path,
@@ -547,6 +551,17 @@ void ChartSafetyCache::TouchLocked(
 
 void ChartSafetyCache::InsertRamLocked(const std::string& key,
                                        TileData tile) {
+  const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now().time_since_epoch()).count();
+  if (now >= next_memory_check_milliseconds_) {
+    next_memory_check_milliseconds_ = now + 1000;
+    // Shrink during this cache lifetime; increasing headroom must not make a
+    // fill/evict loop. An explicit setting/reconfiguration can grow it again.
+    effective_ram_mib_ = std::min(effective_ram_mib_,
+        ResolveEffectiveRamMiB(requested_ram_mib_));
+    stats_.ram_budget_bytes =
+        static_cast<std::uint64_t>(effective_ram_mib_) * 1024ULL * 1024ULL;
+  }
   auto existing = ram_.find(key);
   if (existing != ram_.end()) {
     stats_.ram_bytes -= existing->second.bytes;

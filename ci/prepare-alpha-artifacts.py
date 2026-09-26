@@ -21,6 +21,7 @@ EXPECTED_TARGETS = {
     "flatpak-aarch64": ("flatpak-32-aarch64", "25.08", "aarch64"),
     "windows-x86": ("msvc-wx32", "10.0.20348", "x86"),
     "macos-arm64": ("darwin-wx32", "15.3.2", "arm64"),
+    "android-arm64": ("android-arm64", "16", "arm64"),
 }
 TARGETS = set(EXPECTED_TARGETS)
 PACKAGE = "xweather_routing_pi"

@@ -19,6 +19,8 @@
 
 #include <gtest/gtest.h>
 #include <Polar.h>
+#include <wx/filename.h>
+#include <fstream>
 
 class PolarTest: public ::testing::Test {
 protected:
@@ -55,6 +57,34 @@ TEST_F(PolarTest, OpenFailed) {
   wxString filename = "invalid.xml", message = "";
   bool success = polar.Open(filename, message);
   EXPECT_EQ(success, false);
+}
+
+TEST_F(PolarTest, EmptyDimensionsCannotTruncateAnExistingPolar) {
+  const wxString file = wxFileName::CreateTempFileName("wr-polar-save-");
+  ASSERT_FALSE(file.IsEmpty());
+  {
+    std::ofstream out(file.ToStdString());
+    out << "existing polar must survive";
+  }
+  for (bool noWind : {false, true}) {
+    Polar empty;
+    empty.AddDegreeStep(45);
+    empty.AddWindSpeed(10);
+    if (noWind) empty.RemoveWindSpeed(0);
+    else empty.RemoveDegreeStep(0);
+    EXPECT_FALSE(empty.Save(file));
+    PolarSpeedStatus status;
+    EXPECT_TRUE(std::isnan(empty.Speed(45, 10, &status, false)));
+    EXPECT_EQ(status, POLAR_SPEED_NO_POLAR_DATA);
+    for (float value : empty.GetVMGTrueWind(10).values)
+      EXPECT_TRUE(std::isnan(value));
+    for (float value : empty.GetVMGApparentWind(10).values)
+      EXPECT_TRUE(std::isnan(value));
+    std::ifstream in(file.ToStdString());
+    EXPECT_EQ(std::string(std::istreambuf_iterator<char>(in), {}),
+              "existing polar must survive");
+  }
+  wxRemoveFile(file);
 }
 
 TEST_F(PolarTest, ClosestVWiBasic) {

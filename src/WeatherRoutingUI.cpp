@@ -10,6 +10,7 @@
 #include "RoutingEngineSettings.h"
 #include "WeatherRoutingWxCompat.h"
 #include <vector>
+#include "AndroidDialogHeader.h"
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -18,6 +19,12 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
                                        const wxPoint& pos, const wxSize& size,
                                        long style)
     : wxFrame(parent, id, title, pos, size, style) {
+#ifdef __OCPN__ANDROID__
+  // Set the surface type before any child dialog creates its Qt window.
+  // Changing it after constructing native report viewers can leave the
+  // Android compositor showing the chart while this frame reports visible.
+  GetHandle()->setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
+#endif
   this->SetSizeHints(wxSize(400, 300), wxDefaultSize);
 
   m_menubar3 = new wxMenuBar(0);
@@ -1027,7 +1034,7 @@ SettingsDialogBase::SettingsDialogBase(wxWindow* parent, wxWindowID id,
   fgSizer93->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
 
   m_staticText115 = new wxStaticText(sbSizer26->GetStaticBox(), wxID_ANY,
-                                     _("Number of Concurrent threads"),
+                                     _("Maximum concurrent routes"),
                                      wxDefaultPosition, wxDefaultSize, 0);
   m_staticText115->Wrap(-1);
   fgSizer93->Add(m_staticText115, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
@@ -1038,6 +1045,7 @@ SettingsDialogBase::SettingsDialogBase(wxWindow* parent, wxWindowID id,
   m_sConcurrentThreads->SetMaxSize(wxSize(140, -1));
 
   fgSizer93->Add(m_sConcurrentThreads, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
+  m_sConcurrentThreads->SetToolTip(_("Upper limit for simultaneous routes. Available physical RAM may reduce concurrency. Existing searches continue; forecast resolution and routing effort are preserved."));
 
   sbSizer26->Add(fgSizer93, 1, wxEXPAND | wxTOP | wxBOTTOM | wxLEFT, 5);
 
@@ -1186,8 +1194,15 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
 
   m_notebook7 =
       new wxNotebook(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, 0);
+#ifdef __OCPN__ANDROID__
+  m_pBasic = new wxScrolledWindow(m_notebook7, wxID_ANY, wxDefaultPosition,
+                                  wxDefaultSize,
+                                  wxVSCROLL | wxTAB_TRAVERSAL);
+  static_cast<wxScrolledWindow*>(m_pBasic)->SetScrollRate(0, 20);
+#else
   m_pBasic = new wxPanel(m_notebook7, wxID_ANY, wxDefaultPosition,
                          wxDefaultSize, wxTAB_TRAVERSAL);
+#endif
   wxFlexGridSizer* fgSizer106;
   fgSizer106 = new wxFlexGridSizer(0, 2, 0, 0);
   fgSizer106->AddGrowableCol(0);
@@ -1816,6 +1831,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
     safetyExplanation->Wrap(boxTextWidth(sbOptions));
     m_pBasic->Layout();
   };
+#ifndef __OCPN__ANDROID__
   m_pBasic->Bind(wxEVT_SIZE, [=](wxSizeEvent& event) {
     reflowBasicHelp(event.GetSize().x);
     event.Skip();
@@ -1823,6 +1839,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   m_pBasic->Layout();
   fgSizer106->Fit(m_pBasic);
   reflowBasicHelp(m_pBasic->GetClientSize().x);
+#endif
   m_notebook7->AddPage(m_pBasic, _("Basic"), true);
   m_pAdvanced = new wxScrolledWindow(
       m_notebook7, wxID_ANY, wxDefaultPosition, wxDefaultSize,
@@ -1983,7 +2000,11 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   mainEngineSizer->Add(mainSearchAngle, 0, wxEXPAND, 0);
   m_cbUseReverseReachabilityRecovery = new wxCheckBox(
       m_pMainEngine, wxID_ANY,
+#ifdef __OCPN__ANDROID__
+      _("Recover final approach"),
+#else
       _("Use reverse reachability for final approach recovery"),
+#endif
       wxDefaultPosition, wxDefaultSize, wxCHK_3STATE);
   m_cbUseReverseReachabilityRecovery->SetToolTip(_(
       "When enabled, failed final approaches may run a bounded destination "
@@ -2014,7 +2035,8 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
       _("Maximum RAM used to retain interpolated GRIB timeline frames. "
         "Increasing this can greatly accelerate routes using large or "
         "high-resolution GRIBs. Memory is allocated only as required. "
-        "Larger limits are applied only when enough physical RAM remains."));
+        "The effective limit is reduced when physical RAM is low, including "
+        "while routing. Original forecast resolution is preserved."));
   const wxString mainGribCacheHelpText = mainGribCacheHelp->GetLabel();
   mainGribCacheHelp->Wrap(430);
   mainResources->Add(mainGribCacheHelp, 0,
@@ -2077,7 +2099,8 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
       _("Maximum RAM used to retain interpolated GRIB timeline frames. "
         "Increasing this can greatly accelerate routes using large or "
         "high-resolution GRIBs. Memory is allocated only as required. "
-        "Larger limits are applied only when enough physical RAM remains."));
+        "The effective limit is reduced when physical RAM is low, including "
+        "while routing. Original forecast resolution is preserved."));
   const wxString quickGribCacheHelpText = quickGribCacheHelp->GetLabel();
   quickGribCacheHelp->Wrap(430);
   quickResources->Add(quickGribCacheHelp, 0,
@@ -2770,6 +2793,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
     m_pAdvanced->Layout();
     m_pAdvanced->FitInside();
   };
+#ifndef __OCPN__ANDROID__
   m_pAdvanced->Bind(wxEVT_SIZE, [=, lastWidth = 0](wxSizeEvent& event) mutable {
     const int paneWidth = event.GetSize().x;
     if (paneWidth != lastWidth) {
@@ -2781,7 +2805,123 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   m_pAdvanced->Layout();
   reflowAdvancedHelp(m_pAdvanced->GetClientSize().x);
   m_pAdvanced->FitInside();
+#endif
   m_notebook7->AddPage(m_pAdvanced, _("Advanced"), false);
+
+#ifdef __OCPN__ANDROID__
+  // Reuse the complete shared configuration controls in focused tablet pages.
+  // Moving a static box preserves its controls and all model event bindings.
+  m_notebook7->RemovePage(1);
+  m_notebook7->SetPageText(0, _("Endpoints"));
+  const auto section = [this](const wxString& name) {
+    auto* page = new wxScrolledWindow(m_notebook7, wxID_ANY);
+    page->SetScrollRate(0, 20);
+    page->SetSizer(new wxBoxSizer(wxVERTICAL));
+    m_notebook7->AddPage(page, name);
+    return page;
+  };
+  auto* timePage = section(_("Time"));
+  auto* boatPage = section(_("Boat"));
+  auto* weatherPage = section(_("Weather"));
+  auto* safetyPage = section(_("Safety"));
+  auto* enginePage = section(_("Engine"));
+  m_notebook7->AddPage(m_pAdvanced, _("Sailing"));
+
+  const auto moveBox = [](wxSizer* source, wxStaticBoxSizer* box,
+                          wxWindow* page) {
+    source->Detach(box);
+    box->GetStaticBox()->Reparent(page);
+    page->GetSizer()->Add(box, 0, wxEXPAND | wxALL, 12);
+  };
+  fgSizer83->Detach(sbStart);
+  fgSizer112->Detach(sbEnd);
+  m_bOK->Hide();
+  m_pBasic->SetSizer(new wxBoxSizer(wxVERTICAL), false);
+  sbStart->GetStaticBox()->SetLabel(_("From"));
+  sbEnd->GetStaticBox()->SetLabel(_("To"));
+  m_pBasic->GetSizer()->Add(sbStart, 0, wxEXPAND | wxALL, 12);
+  m_pBasic->GetSizer()->Add(sbEnd, 0, wxEXPAND | wxALL, 12);
+
+  auto* whenBox = new wxStaticBoxSizer(wxVERTICAL, timePage,
+                                      _("Departure and arrival"));
+  timePage->GetSizer()->Add(whenBox, 0, wxEXPAND | wxALL, 12);
+  // From contains its source radios and picker; all remaining items are time.
+  const auto reparentSizer = [](auto&& self, wxSizer* sizer,
+                                wxWindow* parent) -> void {
+    for (auto* item : sizer->GetChildren()) {
+      if (item->IsWindow()) item->GetWindow()->Reparent(parent);
+      else if (item->IsSizer()) self(self, item->GetSizer(), parent);
+    }
+  };
+  while (fgSizer60->GetItemCount() > 2) {
+    wxSizerItem* item = fgSizer60->GetItem(static_cast<size_t>(2));
+    const int flags = item->GetFlag();
+    const int border = item->GetBorder();
+    if (item->IsWindow()) {
+      wxWindow* window = item->GetWindow();
+      fgSizer60->Detach(window);
+      window->Reparent(whenBox->GetStaticBox());
+      whenBox->Add(window, 0, flags, border);
+    } else if (item->IsSizer()) {
+      wxSizer* sizer = item->GetSizer();
+      fgSizer60->Detach(sizer);
+      reparentSizer(reparentSizer, sizer, whenBox->GetStaticBox());
+      whenBox->Add(sizer, 0, flags, border);
+    } else {
+      const wxSize spacer = item->GetSpacer();
+      fgSizer60->Remove(static_cast<size_t>(2));
+      whenBox->Add(spacer.x, spacer.y, 0, flags, border);
+    }
+  }
+  moveBox(fgSizer83, sbBoat, boatPage);
+  moveBox(fgSizer83, sbConstraints, safetyPage);
+  moveBox(fgSizer112, sbData_Source, weatherPage);
+  moveBox(fgSizer112, sbOptions, safetyPage);
+  moveBox(fgSizer112, engineBox, enginePage);
+  moveBox(advancedLeft, engineSettingsBox, enginePage);
+  moveBox(advancedLeft, cycloneBox, safetyPage);
+  moveBox(advancedRight, sbOptions1, safetyPage);
+  fgSizer23->SetCols(1);
+  fgSizer1121->SetCols(1);
+  fgSizer59->SetCols(1);
+  fgSizer961->SetCols(1);
+  m_cShorelineResolution->SetMinSize(wxSize(430, 62));
+  safetyPage->Bind(wxEVT_SIZE, [=](wxSizeEvent& event) {
+    const int width = wxMax(200, event.GetSize().x - 90);
+    WR_WrapAndroidText(safetyExplanation, safetyExplanationText, width);
+    WR_WrapAndroidText(depthExplanation, depthExplanationText, width);
+    shorelineRow->SetOrientation(wxVERTICAL);
+    WR_WrapAndroidText(shorelineNote, shorelineNoteText, width);
+    safetyPage->Layout();
+    safetyPage->FitInside();
+    event.Skip();
+  });
+  delete fgSizer106;
+  bSizer8->SetOrientation(wxVERTICAL);
+  for (size_t i = 0; i < m_notebook7->GetPageCount(); ++i) {
+    auto* page = static_cast<wxScrolledWindow*>(m_notebook7->GetPage(i));
+    auto* contents = page->GetSizer();
+    page->SetSizer(nullptr, false);
+    auto* inset = new wxBoxSizer(wxHORIZONTAL);
+    inset->Add(contents, 1, wxEXPAND);
+    inset->AddSpacer(42);
+    page->SetSizer(inset);
+    page->SetMinSize(wxSize(0, 0));
+    page->Bind(wxEVT_SIZE, [page](wxSizeEvent& event) {
+      page->Layout();
+      page->FitInside();
+      event.Skip();
+    });
+  }
+  enginePage->Bind(wxEVT_SIZE, [this](wxSizeEvent& event) {
+    wxString text = m_tRoutingEngineDescription->GetLabel();
+    text.Replace("\n", " ");
+    m_tRoutingEngineDescription->SetLabel(text);
+    m_tRoutingEngineDescription->Wrap(wxMax(200, event.GetSize().x - 65));
+    event.Skip();
+  });
+  m_notebook7->SetSelection(0);
+#endif
 
   fgSizer95->Add(m_notebook7, 1, wxEXPAND | wxALL, 5);
 
@@ -4292,7 +4432,7 @@ PlotDialogBase::PlotDialogBase(wxWindow* parent, wxWindowID id,
                                        wxDefaultPosition, wxDefaultSize, 0);
   fgSizer16->Add(m_rbCurrentRoute, 1, wxALL | wxEXPAND, 5);
 
-  m_rbCursorRoute = new wxRadioButton(this, wxID_ANY, _("Cursor Route"),
+  m_rbCursorRoute = new wxRadioButton(this, wxID_ANY, _("Cursor preview (not validated)"),
                                       wxDefaultPosition, wxDefaultSize, 0);
   fgSizer16->Add(m_rbCursorRoute, 1, wxALL | wxEXPAND, 5);
 
@@ -6117,7 +6257,11 @@ CursorPositionDialog::CursorPositionDialog(wxWindow* parent, wxWindowID id,
   this->Layout();
   fgSizer90->Fit(this);
 
+#ifdef __OCPN__ANDROID__
+  WR_BuildAndroidDetailSheet(this, fgSizer91, _("Cursor preview (not validated)"));
+#else
   this->Centre(wxBOTH);
+#endif
 }
 
 CursorPositionDialog::~CursorPositionDialog() {}
@@ -6314,7 +6458,11 @@ RoutePositionDialog::RoutePositionDialog(wxWindow* parent, wxWindowID id,
   this->Layout();
   fgSizer90->Fit(this);
 
+#ifdef __OCPN__ANDROID__
+  WR_BuildAndroidDetailSheet(this, fgSizer91, _("Route position"));
+#else
   this->Centre(wxBOTH);
+#endif
 }
 
 RoutePositionDialog::~RoutePositionDialog() {}

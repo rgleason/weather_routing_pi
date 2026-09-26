@@ -1129,7 +1129,6 @@ public:
   wxStaticText* m_stSailChanges;
   wxStaticText* m_stTacks;
   wxStaticText* m_stJibes;
-  wxStaticText* m_stSailPlanChanges;
   wxStaticText* m_stWeatherData;
 
   RoutePositionDialog(wxWindow* parent, wxWindowID id = wxID_ANY,

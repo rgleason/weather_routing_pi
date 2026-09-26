@@ -23,9 +23,11 @@
  ***************************************************************************
  */
 
+#include "WeatherRoutingMessageDialog.h"
 #include <cstdint>
 
 #include <wx/wx.h>
+#include "WeatherRoutingFileDialog.h"
 #include <wx/dcgraph.h>
 
 #include <stdlib.h>
@@ -39,6 +41,7 @@
 #include "RouteMapOverlay.h"
 #include "WeatherRouting.h"
 #include "WeatherRoutingWxCompat.h"
+#include "AndroidDialogHeader.h"
 
 wxString dummy_polar =
     _T("\
@@ -83,37 +86,93 @@ BoatDialog::BoatDialog(WeatherRouting& weatherrouting)
   pConf->SetPath(_T( "/PlugIns/WeatherRouting/BoatDialog" ));
 
 #ifdef __OCPN__ANDROID__
-  // The desktop side-by-side splitter leaves the polar list and all actions
-  // in a narrow strip on a portrait tablet. Stack the plot and polar editor.
+  // Give each boat task its own full-width page, with the page selector
+  // directly below the header. The desktop splitter cannot fit touch inputs.
   m_splitter2->Disconnect(wxEVT_IDLE,
                           wxIdleEventHandler(BoatDialogBase::m_splitter2OnIdle),
                           NULL, this);
   m_splitter2->Unsplit(m_panel21);
-  m_splitter2->SetSashGravity(0.5);
-  m_splitter2->SplitHorizontally(m_panel20, m_panel21);
   GetSizer()->Detach(m_splitter2);
+  m_nNotebook->GetContainingSizer()->Detach(m_nNotebook);
+  m_nNotebook->Reparent(this);
+  m_panel21->Reparent(m_nNotebook);
+  m_nNotebook->AddPage(m_panel21, _("Polars"), true);
+  m_splitter2->Hide();
   SetSizer(nullptr, false);
-  wxBoxSizer* androidLayout = new wxBoxSizer(wxVERTICAL);
-  wxBoxSizer* androidHeader = new wxBoxSizer(wxHORIZONTAL);
-  androidHeader->Add(new wxStaticText(this, wxID_ANY, _("Boat polars")),
-                     0, wxALIGN_CENTER_VERTICAL | wxALL, 8);
-  wxButton* close = new wxButton(this, wxID_ANY, _("Close"));
-  close->SetMinSize(wxSize(WR_FromDIP(this, 88), WR_FromDIP(this, 44)));
-  close->Bind(wxEVT_BUTTON, [this](wxCommandEvent& event) { OnClose(event); });
-  androidHeader->Add(close, 0, wxALL, 5);
-  wxButton* save = new wxButton(this, wxID_ANY, _("Save Boat"));
-  save->SetMinSize(wxSize(WR_FromDIP(this, 88), WR_FromDIP(this, 44)));
-  save->Bind(wxEVT_BUTTON,
-             [this](wxCommandEvent& event) { OnSaveBoat(event); });
-  androidHeader->Add(save, 0, wxALL, 5);
-  androidLayout->Add(androidHeader, 0, wxEXPAND);
-  androidLayout->Add(m_splitter2, 1, wxEXPAND);
+  auto* androidLayout = new wxBoxSizer(wxVERTICAL);
+  auto* actions = new wxPanel(this, wxID_ANY);
+  auto* actionRow = new wxBoxSizer(wxHORIZONTAL);
+  for (auto* button : {m_bOpenBoat, m_bSaveBoat, m_bSaveAsBoat}) {
+    button->GetContainingSizer()->Detach(button);
+    button->Reparent(actions);
+    actionRow->Add(button, 1, wxEXPAND | wxALL, 6);
+  }
+  actions->SetSizer(actionRow);
+  androidLayout->Add(actions, 0, wxEXPAND);
+  androidLayout->Add(m_nNotebook, 1, wxEXPAND | wxALL, 8);
   SetSizer(androidLayout, true);
-  wxSize sz = ::wxGetDisplaySize();
-  SetSize(0, 0, sz.x, sz.y - 40);
-  CallAfter([this]() {
-    m_splitter2->SetSashPosition(m_splitter2->GetClientSize().y * 55 / 100);
+
+  // Plot choices belong to the plot page and stack vertically in portrait.
+  auto* plotControls = new wxBoxSizer(wxVERTICAL);
+  for (wxWindow* control : {static_cast<wxWindow*>(m_cPlotType),
+                            static_cast<wxWindow*>(m_cPlotVariable),
+                            static_cast<wxWindow*>(m_cbFullPlot)}) {
+    control->GetContainingSizer()->Detach(control);
+    control->Reparent(m_plot);
+    plotControls->Add(control, 0, wxEXPAND | wxALL, 6);
+  }
+  m_plot->GetSizer()->Add(plotControls, 0, wxEXPAND);
+
+  // Remove the narrow desktop action strip and static-box constraints.
+  auto* polarsLayout = new wxBoxSizer(wxVERTICAL);
+  m_lPolars->GetContainingSizer()->Detach(m_lPolars);
+  m_lPolars->Reparent(m_panel21);
+  m_lPolars->SetMaxSize(wxSize(-1, -1));
+  m_lPolars->Hide();
+  m_staticline1->Hide();
+  m_androidPolarPicker = new wxChoice(m_panel21, wxID_ANY);
+  polarsLayout->Add(m_androidPolarPicker, 0, wxEXPAND | wxALL, 12);
+  auto* polarNote = new wxStaticText(m_panel21, wxID_ANY,
+      _("Choose a polar to edit or reorder. Use Plot, Cross Over Chart and Stats to review boat performance."));
+  polarsLayout->Add(polarNote, 0, wxEXPAND | wxALL, 12);
+  polarsLayout->AddStretchSpacer();
+  m_androidPolarPicker->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) {
+    SelectPolar(m_androidPolarPicker->GetSelection());
   });
+  auto* polarActions = new wxGridSizer(0, 3, 8, 8);
+  for (auto* button : {m_bAddPolar, m_bEditPolar, m_bRemovePolar,
+                       m_bUp, m_bDown}) {
+    button->GetContainingSizer()->Detach(button);
+    button->Reparent(m_panel21);
+    polarActions->Add(button, 1, wxEXPAND);
+  }
+  m_bEditPolar->SetLabel(_("Edit polar"));
+  polarsLayout->Add(polarActions, 0, wxEXPAND | wxALL, 8);
+  for (auto* child : m_panel21->GetChildren())
+    if (wxDynamicCast(child, wxStaticBox)) child->Hide();
+  m_panel21->SetSizer(polarsLayout, true);
+  m_lPolars->Bind(wxEVT_SIZE, [this](wxSizeEvent& event) {
+    m_lPolars->SetColumnWidth(0, wxMax(200, event.GetSize().x - 24));
+    event.Skip();
+  });
+  if (auto* stats = dynamic_cast<wxFlexGridSizer*>(m_panel24->GetSizer())) {
+    stats->AddGrowableCol(0);
+    stats->AddGrowableCol(1);
+  }
+  for (auto* value : {m_stBestCourseUpWindPortTack,
+                       m_stBestCourseUpWindStarboardTack,
+                       m_stBestCourseDownWindPortTack,
+                       m_stBestCourseDownWindStarboardTack})
+    value->SetMinSize(wxSize(180, 52));
+  m_sVMGWindSpeed->SetMaxSize(wxSize(-1, -1));
+  m_sVMGWindSpeed->SetMinSize(wxSize(180, 72));
+  WR_StyleAndroidControls(this);
+  WR_AddAndroidDoneHeader(this, _("Boat and polars"), [this]() {
+    wxCommandEvent event;
+    OnClose(event);
+  });
+  WR_AddAndroidBookPicker(this, m_nNotebook, 1);
+  WR_WrapAndroidText(polarNote, polarNote->GetLabel(), wxGetDisplaySize().x - 90);
 #else
   // hack to adjust items
   SetSize(wxSize(w, h));
@@ -139,11 +198,10 @@ void BoatDialog::LoadPolar(const wxString& filename) {
   RepopulatePolars();
 
   /* select first polar if it exists */
-  if (m_lPolars->GetItemCount())
-    m_lPolars->SetItemState(0, wxLIST_STATE_SELECTED, wxLIST_STATE_SELECTED);
+  if (m_lPolars->GetItemCount()) SelectPolar(0);
 
   if (error.size()) {
-    wxMessageDialog md(this, error, _("OpenCPN Weather Routing Plugin"),
+    WR_MessageDialog md(this, error, _("OpenCPN Weather Routing Plugin"),
                        wxICON_ERROR | wxOK);
     md.ShowModal();
   }
@@ -260,6 +318,11 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
   dc.SetBackground(*wxWHITE_BRUSH);
   dc.Clear();
   dc.SetBackgroundMode(wxTRANSPARENT);
+#ifdef __OCPN__ANDROID__
+  wxFont labelFont = window->GetFont();
+  labelFont.SetPointSize(14);
+  dc.SetFont(labelFont);
+#endif
 
   long index = SelectedPolar();
   if (index < 0) {
@@ -580,6 +643,11 @@ void BoatDialog::OnPaintCrossOverChart(wxPaintEvent& event) {
   dc.SetBackground(*wxWHITE_BRUSH);
   dc.Clear();
   dc.SetBackgroundMode(wxTRANSPARENT);
+#ifdef __OCPN__ANDROID__
+  wxFont labelFont = window->GetFont();
+  labelFont.SetPointSize(14);
+  dc.SetFont(labelFont);
+#endif
 
   long index = SelectedPolar();
   bool polar = !m_cPlotType->GetSelection();
@@ -610,8 +678,14 @@ void BoatDialog::OnPaintCrossOverChart(wxPaintEvent& event) {
 
   for (double H = 0; H < 180; H += 10) {
     if (polar) {
+#ifdef __OCPN__ANDROID__
+      // Meridians and labels belong at the outer wind-speed circle.
+      double x = 35 * scale * sin(deg2rad(H));
+      double y = 35 * scale * cos(deg2rad(H));
+#else
       double x = scale * sin(deg2rad(H));
       double y = scale * cos(deg2rad(H));
+#endif
       if (H < 180) dc.DrawLine(xc - x, h / 2 + y, xc + x, h / 2 - y);
 
       wxString str = wxString::Format(_T("%.0f"), H);
@@ -744,7 +818,7 @@ void BoatDialog::OnOpenBoat(wxCommandEvent& event) {
   pConf->Read(_T ( "BoatPath" ), &path,
               weather_routing_pi::StandardPath() + _T("boats"));
 
-  wxFileDialog openDialog(
+  WR_FileDialog openDialog(
       this, _("Select Boat"), path, wxT(""),
       wxT("Boat polar (*.xml)|*.XML;*.xml|All files (*.*)|*.*"), wxFD_OPEN);
 
@@ -755,9 +829,11 @@ void BoatDialog::OnOpenBoat(wxCommandEvent& event) {
     wxString filename = openDialog.GetPath();
     wxString error = m_Boat.OpenXML(filename);
     if (error.empty()) {
+      m_boatpath = filename;
+      SetTitle(m_boatpath);
       RepopulatePolars();
     } else {
-      wxMessageDialog md(this, error, _("OpenCPN Weather Routing Plugin"),
+      WR_MessageDialog md(this, error, _("OpenCPN Weather Routing Plugin"),
                          wxICON_ERROR | wxOK);
       md.ShowModal();
       return;
@@ -783,8 +859,8 @@ void BoatDialog::SaveBoat() {
     pConf->Read(_T ( "BoatPath" ), &path,
                 weather_routing_pi::StandardPath() + _T("boats"));
 
-    wxFileDialog saveDialog(
-        this, _("Select Boat"), path, wxT(""),
+    WR_FileDialog saveDialog(
+        this, _("Select Boat"), path, wxT("boat.xml"),
         wxT("Boat files (*.xml)|*.XML;*.xml|All files (*.*)|*.*"),
         wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
 
@@ -809,23 +885,46 @@ void BoatDialog::SaveBoat() {
 
     Hide();
   } else {
-    wxMessageDialog md(this, error, _("OpenCPN Weather Routing Plugin"),
+    WR_MessageDialog md(this, error, _("OpenCPN Weather Routing Plugin"),
                        wxICON_ERROR | wxOK);
     md.ShowModal();
   }
 }
 
 void BoatDialog::OnSaveAsBoat(wxCommandEvent& event) {
+  const wxString previousPath = m_boatpath;
   m_boatpath.clear();
   SaveBoat();
+  if (m_boatpath.empty()) m_boatpath = previousPath;
 }
 
-void BoatDialog::OnClose(wxCommandEvent& event) { EndModal(wxID_CANCEL); }
+void BoatDialog::OnClose(wxCommandEvent& event) {
+#ifdef __OCPN__ANDROID__
+  if (!IsModal()) { Hide(); return; }
+#endif
+  EndModal(wxID_CANCEL);
+}
+
+void BoatDialog::SelectPolar(long index) {
+  if (index < 0 || index >= m_lPolars->GetItemCount()) index = -1;
+#ifdef __OCPN__ANDROID__
+  if (m_androidPolarPicker) m_androidPolarPicker->SetSelection(index);
+#endif
+  for (long row = 0; row < m_lPolars->GetItemCount(); ++row)
+    m_lPolars->SetItemState(row, row == index ? wxLIST_STATE_SELECTED : 0,
+                          wxLIST_STATE_SELECTED);
+  OnPolarSelected();
+}
 
 void BoatDialog::OnPolarSelected() {
   int i = SelectedPolar();
+#ifdef __OCPN__ANDROID__
+  if (m_androidPolarPicker) m_androidPolarPicker->SetSelection(i);
+#endif
   m_bEditPolar->Enable(i != -1);
   m_bRemovePolar->Enable(i != -1);
+  m_bUp->Enable(i > 0);
+  m_bDown->Enable(i >= 0 && i + 1 < (long)m_Boat.Polars.size());
 
   // not needed if modal    m_EditPolarDialog.SetPolarIndex(i);
 
@@ -847,30 +946,24 @@ void BoatDialog::OnUpPolar(wxCommandEvent& event) {
   long index = SelectedPolar();
   if (index < 1) return;
 
-#ifndef __OCPN__ANDROID__
   m_Boat.Polars.insert(m_Boat.Polars.begin() + index - 1,
                        m_Boat.Polars.at(index));
   m_Boat.Polars.erase(m_Boat.Polars.begin() + index + 1);
-#endif
   RepopulatePolars();
 
-  m_lPolars->SetItemState(index - 1, wxLIST_STATE_SELECTED,
-                          wxLIST_STATE_SELECTED);
+  SelectPolar(index - 1);
 }
 
 void BoatDialog::OnDownPolar(wxCommandEvent& event) {
   long index = SelectedPolar();
   if (index < 0 || index + 1 >= (long)m_Boat.Polars.size()) return;
 
-#ifndef __OCPN__ANDROID__
   m_Boat.Polars.insert(m_Boat.Polars.begin() + index + 2,
                        m_Boat.Polars.at(index));
   m_Boat.Polars.erase(m_Boat.Polars.begin() + index);
-#endif
   RepopulatePolars();
 
-  m_lPolars->SetItemState(index + 1, wxLIST_STATE_SELECTED,
-                          wxLIST_STATE_SELECTED);
+  SelectPolar(index + 1);
 }
 
 void BoatDialog::OnEditPolar(wxCommandEvent& event) {
@@ -883,14 +976,19 @@ void BoatDialog::OnEditPolar(wxCommandEvent& event) {
 
   dlg.SetPolarIndex(i);
   wxString filename = m_Boat.Polars[i].FileName;
-  if (dlg.ShowModal() == wxID_SAVE) {
+  const int result = dlg.ShowModal();
+#ifdef __OCPN__ANDROID__
+  if (dlg.Saved()) {
+#else
+  if (result == wxID_SAVE) {
+#endif
     if (!m_Boat.Polars[i].Save(filename))
-      wxMessageBox(_("Failed to save") + _T(": ") + filename,
+      WR_MessageBox(_("Failed to save") + _T(": ") + filename,
                    _("OpenCPN Weather Routing Plugin"), wxICON_ERROR | wxOK);
   } else {
     wxString message;
     if (!m_Boat.Polars[i].Open(filename, message))
-      wxMessageBox(
+      WR_MessageBox(
           _("Failed to revert") + _T(": ") + filename + _T("\n") + message,
           _("OpenCPN Weather Routing Plugin"), wxICON_ERROR | wxOK);
   }
@@ -907,7 +1005,7 @@ void BoatDialog::OnAddPolar(wxCommandEvent& event) {
   pConf->Read(_T ( "PolarPath" ), &path,
               weather_routing_pi::StandardPath() + _T("polars"));
 
-  wxFileDialog openDialog(
+  WR_FileDialog openDialog(
       this, _("Select Polar File"), path, wxT(""),
       wxT("CSV, POL, TXT (*.csv, *.pol, "
           "*.txt)|*.CSV;*.csv;*.csv.gz;*.csv.bz2;*.POL;*.pol;*.pol.gz;*.pol."
@@ -942,13 +1040,12 @@ void BoatDialog::OnAddPolar(wxCommandEvent& event) {
     if (success) {
       m_Boat.Polars.push_back(polar);
       RepopulatePolars();
-      m_lPolars->SetItemState(m_Boat.Polars.size() - 1, wxLIST_STATE_SELECTED,
-                              wxLIST_STATE_SELECTED);
+      SelectPolar(m_Boat.Polars.size() - 1);
       generate = true;
     }
 
     if (!message.IsEmpty()) {
-      wxMessageDialog md(this, message, _("OpenCPN Weather Routing Plugin"),
+      WR_MessageDialog md(this, message, _("OpenCPN Weather Routing Plugin"),
                          success ? wxICON_WARNING : wxICON_ERROR | wxOK);
       md.ShowModal();
     }
@@ -961,13 +1058,21 @@ void BoatDialog::OnAddPolar(wxCommandEvent& event) {
 }
 
 void BoatDialog::OnRemovePolar(wxCommandEvent& event) {
+#ifdef __OCPN__ANDROID__
+  const long selected = SelectedPolar();
+  if (selected < 0 || selected >= (long)m_Boat.Polars.size()) return;
+  m_Boat.Polars.erase(m_Boat.Polars.begin() + selected);
+  RepopulatePolars();
+  SelectPolar(m_Boat.Polars.empty() ? -1
+      : std::min(selected, (long)m_Boat.Polars.size() - 1));
+  GenerateCrossOverChart();
+  return;
+#endif
   long index = -1, lastindex = -1, count = 0;
 
   while ((index = m_lPolars->GetNextItem(index, wxLIST_NEXT_ALL,
                                          wxLIST_STATE_SELECTED)) != -1) {
-#ifndef __OCPN__ANDROID__
     m_Boat.Polars.erase(m_Boat.Polars.begin() + index - count++);
-#endif
     lastindex = index;
   }
 
@@ -978,8 +1083,7 @@ void BoatDialog::OnRemovePolar(wxCommandEvent& event) {
   lastindex -= count;
   if (lastindex == (int)m_Boat.Polars.size()) lastindex--;
 
-  m_lPolars->SetItemState(lastindex, wxLIST_STATE_SELECTED,
-                          wxLIST_STATE_SELECTED);
+  SelectPolar(lastindex);
   GenerateCrossOverChart();
   m_bRemovePolar->Enable(lastindex != -1);
 }
@@ -1032,7 +1136,9 @@ void BoatDialog::OnEvtThread(wxThreadEvent& event) {
   Boat& tboat = m_CrossOverGenerationThread->m_Boat;
   for (unsigned int i = 0; i < m_Boat.Polars.size() && i < tboat.Polars.size();
        i++)
-    m_Boat.Polars[i].CrossOverRegion = tboat.Polars[i].CrossOverRegion;
+    if (m_Boat.Polars[i].FileName == tboat.Polars[i].FileName &&
+        m_Boat.Polars[i].m_crossoverpercentage == tboat.Polars[i].m_crossoverpercentage)
+      m_Boat.Polars[i].CrossOverRegion = tboat.Polars[i].CrossOverRegion;
   delete m_CrossOverGenerationThread;
   m_CrossOverGenerationThread = NULL;
   RefreshPlots();
@@ -1044,6 +1150,7 @@ void BoatDialog::OnEvtThread(wxThreadEvent& event) {
 }
 
 void BoatDialog::RepopulatePolars() {
+  const long previousSelection = SelectedPolar();
   m_lPolars->DeleteAllItems();
 #if 0
     if(m_Boat.Polars.size() == 0) {
@@ -1074,6 +1181,15 @@ void BoatDialog::RepopulatePolars() {
 
   int enable = m_Boat.Polars.size();
   m_bRemovePolar->Enable(enable);
+#ifdef __OCPN__ANDROID__
+  if (m_androidPolarPicker) {
+    m_androidPolarPicker->Clear();
+    for (const auto& polar : m_Boat.Polars)
+      m_androidPolarPicker->Append(wxFileName(polar.FileName).GetFullName());
+  }
+  SelectPolar(m_Boat.Polars.empty() ? -1
+      : std::max(0L, std::min(previousSelection, (long)m_Boat.Polars.size() - 1)));
+#endif
 }
 
 wxString BoatDialog::FormatVMG(double W, double VW) {

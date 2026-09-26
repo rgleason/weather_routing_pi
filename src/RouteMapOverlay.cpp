@@ -320,14 +320,14 @@ void RouteMapOverlay::SetModernNativeProgress(
       stage = _("Time-dependent graph fallback");
       break;
     case RoutingProgressStage::Validation:
-      stage = _("Independent dense route validation");
+      stage = _("Checking route candidate");
       break;
     case RoutingProgressStage::Complete:
       stage = _("Route complete");
       break;
   }
   wxString detail = wxString::Format(
-      _("Effort %u%% — %llu states generated, %llu retained, %llu land checks"),
+      _("Effort %u%%: %llu states generated, %llu retained, %llu land checks"),
       progress.effortPercent,
       static_cast<unsigned long long>(progress.generatedStates),
       static_cast<unsigned long long>(progress.retainedStates),
@@ -370,9 +370,30 @@ void RouteMapOverlay::InstallModernNativeResult(
       result.status == wr::RoutingStatus::CompleteUsingGraphFallback;
   const bool resourceExhausted = ResourceExhausted();
   const bool complete = resultComplete && !resourceExhausted;
-  if (!resourceExhausted)
-    SetFailureReason(complete ? wxString()
-                              : wxString::FromUTF8(result.message.c_str()));
+  if (!resourceExhausted) {
+    wxString reason = complete ? wxString()
+                              : wxString::FromUTF8(result.message.c_str());
+#ifdef __OCPN__ANDROID__
+    if (!complete) {
+      switch (result.status) {
+        case wr::RoutingStatus::WindForecastRequired:
+          reason = _("Wind forecast does not cover this route and time. Load suitable weather in xGRIB or enable climatology wind fallback.");
+          break;
+        case wr::RoutingStatus::CurrentDataRequired:
+          reason = _("Current data are required. Load a forecast with currents or turn off currents in Weather settings.");
+          break;
+        case wr::RoutingStatus::WaveDataRequired:
+          reason = _("Wave data are required. Load a wave forecast or remove the wave limit in Weather settings.");
+          break;
+        case wr::RoutingStatus::InvalidPolar:
+          reason = _("Select a valid sailing polar in Boat settings before computing this route.");
+          break;
+        default: break;
+      }
+    }
+#endif
+    SetFailureReason(reason);
+  }
 
   RouteMapConfiguration configuration = GetConfiguration();
   configuration.ReverseRecoveryUsed =
@@ -428,6 +449,8 @@ void RouteMapOverlay::InstallModernNativeResult(
       trace.route.reserve(sourceTrace.route.size());
       for (const wr::GeoPoint& point : sourceTrace.route)
         trace.route.emplace_back(point.latitude, point.longitude);
+      for (const wr::TimePoint& time : sourceTrace.times)
+        trace.times.emplace_back(static_cast<time_t>(time.time_since_epoch().count()));
       if (!trace.route.empty()) layer.traces.push_back(std::move(trace));
     }
     m_ModernIsochrones.push_back(std::move(layer));
@@ -2296,43 +2319,54 @@ void RouteMapOverlay::UpdateCursorPosition() {
       m_ModernCursorRoutePositions.clear();
       last_cursor_plotdata.clear();
       const ModernIsochroneLayer& layer = m_ModernIsochrones[closestLayer];
-      const auto& route = layer.traces[closestTrace].route;
+      const auto& trace = layer.traces[closestTrace];
+      const auto& route = trace.route;
       Position* parent = nullptr;
-      const double seconds = route.size() > 1 && layer.time.IsValid()
-                                 ? (layer.time - GetConfiguration().StartTime)
-                                           .GetSeconds()
-                                           .ToDouble() /
-                                       static_cast<double>(route.size() - 1)
-                                 : 0.0;
+      RouteMapConfiguration configuration = GetConfiguration();
+      // This is inspection on the GUI thread, after worker cache release.
+      configuration.output_grib_point_queries = true;
+      configuration.grib = nullptr;
       for (std::size_t index = 0; index < route.size(); ++index) {
         Position* position =
             new Position(route[index].first, route[index].second, parent);
         m_ModernCursorRoutePositions.push_back(position);
-        if (index + 1 < route.size()) {
+        if (index + 1 < route.size() && trace.times.size() == route.size()) {
           PlotData data{};
           data.lat = route[index].first;
           data.lon = route[index].second;
-          data.time = GetConfiguration().StartTime +
-                      wxTimeSpan::Seconds(wxRound(index * seconds));
+          data.time = trace.times[index];
+          const double seconds = (trace.times[index + 1] - data.time)
+                                     .GetSeconds().ToDouble();
+          if (seconds <= 0.0) { parent = position; continue; }
           data.delta = seconds;
-          ll_gc_ll_reverse(route[index].first, route[index].second,
-                           route[index + 1].first, route[index + 1].second,
-                           &data.cog, &data.sog);
-          data.sog = seconds > 0.0 ? data.sog * 3600.0 / seconds : 0.0;
-          data.stw = data.sog;
-          data.ctw = data.cog;
-          data.polar = -1;
+          Position next(route[index + 1].first, route[index + 1].second, position);
+          configuration.time = data.time;
+          if (!position->GetPlotData(&next, seconds, configuration, data)) {
+            // Missing weather is unavailable, never a fabricated calm/zero.
+            data.twsOverGround = data.twdOverGround = NAN;
+            data.twsOverWater = data.twdOverWater = NAN;
+            data.currentDir = data.currentSpeed = NAN;
+            data.ctw = data.stw = NAN;
+            ll_gc_ll_reverse(position->lat, position->lon, next.lat, next.lon,
+                             &data.cog, &data.sog);
+            data.sog *= 3600.0 / seconds;
+          }
+          position->data_mask = data.data_mask;
           last_cursor_plotdata.push_back(data);
         }
         parent = position;
       }
       last_cursor_position = parent;
-      m_cursor_time = layer.time;
+      if (parent && !last_cursor_plotdata.empty())
+        parent->data_mask = last_cursor_plotdata.back().data_mask;
+      m_cursor_time = trace.times.empty() ? layer.time : trace.times.back();
       m_ModernCursorLayer = closestLayer;
       m_ModernCursorTrace = closestTrace;
     } else if (!m_ModernCursorRoutePositions.empty()) {
       last_cursor_position = m_ModernCursorRoutePositions.back();
-      m_cursor_time = m_ModernIsochrones[closestLayer].time;
+      const auto& trace = m_ModernIsochrones[closestLayer].traces[closestTrace];
+      m_cursor_time = trace.times.empty() ? m_ModernIsochrones[closestLayer].time
+                                         : trace.times.back();
     }
   } else {
     last_cursor_position =

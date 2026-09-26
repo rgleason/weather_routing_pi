@@ -201,7 +201,9 @@ bool WeatherDataProvider::GetGribWind(RouteMapConfiguration& configuration,
                                       double& twsOverGround) {
   WR_GribRecordSet* grib = configuration.grib;
 
-  if (!grib && !configuration.RouteGUID.IsEmpty() && configuration.UseGrib) {
+  if (!grib && configuration.UseGrib &&
+      (!configuration.RouteGUID.IsEmpty() ||
+       (configuration.output_grib_point_queries && wxIsMainThread()))) {
     Json::Value r = RequestGRIB(configuration.time, "WIND SPEED", lat, lon);
     if (!r.isMember("WIND SPEED")) return false;
     twsOverGround = r["WIND SPEED"].asDouble();
@@ -230,7 +232,9 @@ static bool GribCurrent(RouteMapConfiguration& configuration, double lat,
                         double lon, double& currentDir, double& currentSpeed) {
   WR_GribRecordSet* grib = configuration.grib;
 
-  if (!grib && !configuration.RouteGUID.IsEmpty() && configuration.UseGrib) {
+  if (!grib && configuration.UseGrib &&
+      (!configuration.RouteGUID.IsEmpty() ||
+       (configuration.output_grib_point_queries && wxIsMainThread()))) {
     Json::Value r = RequestGRIB(configuration.time, "CURRENT SPEED", lat, lon);
     if (!r.isMember("CURRENT SPEED")) return false;
     currentSpeed = r["CURRENT SPEED"].asDouble();
@@ -542,7 +546,9 @@ double WeatherDataProvider::GetWeatherParameter(
   WR_GribRecordSet* grib = configuration.grib;
 
   // Try to get data from remote GRIB if local one is not available
-  if (!grib && !configuration.RouteGUID.IsEmpty() && configuration.UseGrib) {
+  if (!grib && configuration.UseGrib &&
+      (!configuration.RouteGUID.IsEmpty() ||
+       (configuration.output_grib_point_queries && wxIsMainThread()))) {
     Json::Value r = RequestGRIB(configuration.time, requestKey, lat, lon);
     if (!r.isMember(requestKey)) return returnOnEmpty;
     double value = r[requestKey].asDouble();

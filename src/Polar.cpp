@@ -329,6 +329,8 @@ failed:
 }
 
 bool Polar::Save(const wxString& filename) {
+  // Reject empty dimensions before opening/truncating an existing file.
+  if (wind_speeds.empty() || degree_steps.empty()) return false;
   FILE* f = fopen(filename, "w");
   if (!f) return false;
 
@@ -624,6 +626,11 @@ double Polar::SpeedAtApparentWind(double A, double aws, double* pW) {
 }
 
 SailingVMG Polar::GetVMGTrueWind(double VW) {
+  if (wind_speeds.empty() || degree_steps.empty()) {
+    SailingVMG unavailable;
+    for (float& value : unavailable.values) value = NAN;
+    return unavailable;
+  }
   int VW1i, VW2i;
   ClosestVWi(VW, VW1i, VW2i);
 
@@ -807,7 +814,7 @@ void Polar::UpdateSpeeds() {
 void Polar::UpdateDegreeStepLookup() {
   unsigned int Wi = 0;
   for (int d = 0; d < DEGREES; d++) {
-    while (Wi < degree_steps.size() - 1) {
+    while (Wi + 1 < degree_steps.size()) {
       if (d <= degree_steps[Wi + 1]) break;
       Wi++;
     }
@@ -1035,6 +1042,10 @@ void Polar::Generate(const std::list<PolarMeasurement>& measurements) {
 
 void Polar::CalculateVMG(int VWi) {
   SailingWindSpeed& ws = wind_speeds[VWi];
+  if (degree_steps.empty()) {
+    for (float& value : ws.VMG.values) value = NAN;
+    return;
+  }
   // limits for port/starboard upwind/downwind
   const double limits[4][2] = {{0, 90}, {270, 360}, {90, 180}, {180, 270}};
   for (int i = 0; i < 4; i++) {

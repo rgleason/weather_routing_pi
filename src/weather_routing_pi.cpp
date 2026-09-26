@@ -23,6 +23,7 @@
  ***************************************************************************
  */
 
+#include "WeatherRoutingMessageDialog.h"
 #include <wx/wx.h>
 #include <wx/stdpaths.h>
 #include <wx/timer.h>
@@ -276,7 +277,11 @@ int weather_routing_pi::Init() {
 
   return (WANTS_OVERLAY_CALLBACK | WANTS_OPENGL_OVERLAY_CALLBACK |
           WANTS_TOOLBAR_CALLBACK | WANTS_CONFIG | WANTS_CURSOR_LATLON |
-          WANTS_NMEA_EVENTS | WANTS_PLUGIN_MESSAGING | USES_AUI_MANAGER);
+          WANTS_NMEA_EVENTS | WANTS_PLUGIN_MESSAGING | USES_AUI_MANAGER
+#ifdef __OCPN__ANDROID__
+          | WANTS_MOUSE_EVENTS
+#endif
+          );
 }
 
 bool weather_routing_pi::DeInit() {
@@ -443,7 +448,7 @@ void weather_routing_pi::SetPluginMessage(wxString& message_id,
 
       if (grib_version < grib_min || grib_version > grib_max) {
         wxString ver = _("Use versions");
-        wxMessageDialog mdlg(
+        WR_MessageDialog mdlg(
             m_parent_window,
             _("Grib plugin version not supported.") + _T("\n\n") +
                 wxString::Format("%s %d.%d to %d.%d", ver, GRIB_MIN_MAJOR,
@@ -494,7 +499,7 @@ void weather_routing_pi::SetPluginMessage(wxString& message_id,
       if (climatology_version < climatology_min ||
           climatology_version > climatology_max) {
         wxString ver = _("Use versions");
-        wxMessageDialog mdlg(
+        WR_MessageDialog mdlg(
             m_parent_window,
             _("Climatology plugin version not supported, no climatology "
               "data.") +
@@ -692,7 +697,12 @@ void weather_routing_pi::NewWR() {
 
 void weather_routing_pi::OnToolbarToolCallback(int id) {
   if (!m_pWeather_Routing) NewWR();
-
+#ifdef __OCPN__ANDROID__
+  if (m_pWeather_Routing->AndroidChartPickPending()) {
+    m_pWeather_Routing->CancelAndroidChartPick();
+    return;
+  }
+#endif
   m_pWeather_Routing->Show(!m_pWeather_Routing->IsShown());
 }
 
@@ -748,7 +758,15 @@ void weather_routing_pi::OnContextMenuItemCallback(int id) {
 }
 
 bool weather_routing_pi::RenderOverlay(wxDC& wxdc, PlugIn_ViewPort* vp) {
-  if (m_pWeather_Routing && m_pWeather_Routing->IsShown()) {
+#ifdef __OCPN__ANDROID__
+  m_androidViewport = *vp;
+  m_androidViewportValid = true;
+#endif
+  if (m_pWeather_Routing && (m_pWeather_Routing->IsShown()
+#ifdef __OCPN__ANDROID__
+                            || m_pWeather_Routing->AndroidChartVisible()
+#endif
+                            )) {
     piDC dc(wxdc);
     m_pWeather_Routing->Render(dc, *vp);
     return true;
@@ -758,7 +776,15 @@ bool weather_routing_pi::RenderOverlay(wxDC& wxdc, PlugIn_ViewPort* vp) {
 
 bool weather_routing_pi::RenderGLOverlay(wxGLContext* pcontext,
                                          PlugIn_ViewPort* vp) {
-  if (m_pWeather_Routing && m_pWeather_Routing->IsShown()) {
+#ifdef __OCPN__ANDROID__
+  m_androidViewport = *vp;
+  m_androidViewportValid = true;
+#endif
+  if (m_pWeather_Routing && (m_pWeather_Routing->IsShown()
+#ifdef __OCPN__ANDROID__
+                            || m_pWeather_Routing->AndroidChartVisible()
+#endif
+                            )) {
     piDC dc;
     dc.SetVP(vp);
     m_pWeather_Routing->Render(dc, *vp);
@@ -766,6 +792,13 @@ bool weather_routing_pi::RenderGLOverlay(wxGLContext* pcontext,
   }
   return false;
 }
+
+#ifdef __OCPN__ANDROID__
+bool weather_routing_pi::MouseEventHook(wxMouseEvent& event) {
+  return m_pWeather_Routing && m_androidViewportValid &&
+      m_pWeather_Routing->HandleAndroidChartPick(event, &m_androidViewport);
+}
+#endif
 
 void weather_routing_pi::OnCursorLatLonTimer(wxTimerEvent&) {
   if (m_pWeather_Routing == 0) return;

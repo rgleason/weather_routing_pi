@@ -24,6 +24,7 @@
  *
  */
 
+#include "WeatherRoutingMessageDialog.h"
 #include <wx/wx.h>
 
 #include <stdlib.h>
@@ -34,6 +35,12 @@
 #include "RouteMapOverlay.h"
 #include "weather_routing_pi.h"
 #include "WeatherRouting.h"
+#include "AndroidDialogHeader.h"
+#include "DeviceMemoryPolicy.h"
+#include "SystemMemory.h"
+#ifdef __OCPN__ANDROID__
+#include <QAbstractSpinBox>
+#endif
 
 #ifdef __WXMSW__
 #include "AddressSpaceMonitor.h"
@@ -463,6 +470,11 @@ void SettingsDialog::LoadSettings() {
   m_cbDisplayCurrent->SetValue(DisplayCurrent);
 
   int ConcurrentThreads = wxThread::GetCPUCount();
+#ifdef __OCPN__ANDROID__
+  ConcurrentThreads = std::min(2, std::max(1, ConcurrentThreads - 2));
+#endif
+  ConcurrentThreads = weather_routing::MemoryAwareRouteWorkerLimit(
+      ConcurrentThreads, 0, weather_routing::AvailablePhysicalMemoryMiB());
   pConf->Read(_T("ConcurrentThreads"), &ConcurrentThreads, ConcurrentThreads);
   m_sConcurrentThreads->SetValue(ConcurrentThreads);
 
@@ -509,40 +521,146 @@ void SettingsDialog::LoadSettings() {
   pConf->Read(_T ( "SettingsDialogY" ), &p.y, p.y);
   SetPosition(p);
 #ifdef __OCPN__ANDROID__
-  // The footer is below the viewport when wxQt lays out the desktop form.
-  // Keep its two actions at the top of the Android dialog instead.
   wxSize sz = ::wxGetDisplaySize();
-  for (wxCheckBox* check : {m_cbDisplayCursorRoute, m_cbAlternatesForAll,
-                            m_cbMarkAtPolarChange, m_cbDisplayCurrent,
-                            m_cbDisplayWindBarbs,
-                            m_cbDisplayApparentWindBarbs, m_cbDisplayComfort}) {
-    check->SetMinSize(wxSize(wxMax(1, sz.x - 80), -1));
+  const auto oldChildren = GetChildren();
+  SetSizer(nullptr, false);
+  for (auto* child : oldChildren) child->Hide();
+  auto* book = new wxNotebook(this, wxID_ANY);
+  auto* display = new wxPanel(book, wxID_ANY);
+  auto* displayLayout = new wxBoxSizer(wxVERTICAL);
+  m_scrolledWindow4->GetContainingSizer()->Detach(m_scrolledWindow4);
+  m_scrolledWindow4->Reparent(display);
+  m_scrolledWindow4->SetMinSize(wxSize(0, 0));
+  m_scrolledWindow4->Show();
+  displayLayout->Add(m_scrolledWindow4, 1, wxEXPAND | wxALL, 8);
+  display->SetSizer(displayLayout);
+  book->AddPage(display, _("Chart display"), true);
+  auto* computation = new wxPanel(book, wxID_ANY);
+  auto* computationLayout = new wxBoxSizer(wxVERTICAL);
+  for (wxWindow* control : {static_cast<wxWindow*>(m_staticText115),
+                            static_cast<wxWindow*>(m_sConcurrentThreads)}) {
+    control->GetContainingSizer()->Detach(control);
+    control->Reparent(computation);
+    control->Show();
+    computationLayout->Add(control, 0, wxEXPAND | wxALL, 12);
   }
-  wxFlexGridSizer* androidRoot =
-      static_cast<wxFlexGridSizer*>(GetSizer());
-  wxFlexGridSizer* androidColumns = static_cast<wxFlexGridSizer*>(
-      androidRoot->GetItem(static_cast<size_t>(0))->GetSizer());
-  androidColumns->RemoveGrowableCol(1);
-  androidColumns->SetCols(1);
-  androidColumns->AddGrowableRow(1);
-  m_scrolledWindow4->SetMinSize(wxSize(-1, WR_FromDIP(this, 380)));
-  m_cblFields->SetMinSize(wxSize(-1, WR_FromDIP(this, 380)));
-  androidRoot->RemoveGrowableRow(0);
-  wxBoxSizer* androidHeader = new wxBoxSizer(wxHORIZONTAL);
-  androidHeader->Add(new wxStaticText(this, wxID_ANY, _("Routing settings")),
-                     0, wxALIGN_CENTER_VERTICAL | wxALL, 8);
-  wxButton* androidDone = new wxButton(this, wxID_ANY, _("Done"));
-  androidDone->SetMinSize(wxSize(WR_FromDIP(this, 88), WR_FromDIP(this, 44)));
-  androidDone->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { Hide(); });
-  androidHeader->Add(androidDone, 0, wxALL, 5);
-  wxButton* androidHelp = new wxButton(this, wxID_ANY, _("Help"));
-  androidHelp->SetMinSize(wxSize(WR_FromDIP(this, 88), WR_FromDIP(this, 44)));
+  m_sConcurrentThreads->SetMaxSize(wxSize(-1, -1));
+  auto* threadsNote = new wxStaticText(computation, wxID_ANY,
+      _("This is the requested maximum. Available RAM can automatically reduce simultaneous calculations. Each route needs its own search memory."));
+  computationLayout->Add(threadsNote, 0, wxEXPAND | wxALL, 12);
+  computation->SetSizer(computationLayout);
+  book->AddPage(computation, _("Computation"));
+  auto* routeFields = new wxPanel(book, wxID_ANY);
+  auto* routeFieldsLayout = new wxBoxSizer(wxVERTICAL);
+  m_cblFields->GetContainingSizer()->Detach(m_cblFields);
+  m_cblFields->Reparent(routeFields);
+  m_cblFields->Hide();
+  auto* fieldsScroll = new wxScrolledWindow(routeFields, wxID_ANY);
+  fieldsScroll->SetScrollRate(0, 16);
+  auto* fieldsChoices = new wxBoxSizer(wxVERTICAL);
+  for (unsigned i = 0; i < m_cblFields->GetCount(); ++i) {
+    auto* check = new wxCheckBox(fieldsScroll, wxID_ANY, m_cblFields->GetString(i));
+    check->SetValue(m_cblFields->IsChecked(i));
+    check->Bind(wxEVT_CHECKBOX, [this, check, i](wxCommandEvent& event) {
+      m_cblFields->Check(i, check->GetValue());
+      OnUpdateColumns(event);
+    });
+    fieldsChoices->Add(check, 0, wxEXPAND | wxALL, 8);
+  }
+  fieldsScroll->SetSizer(fieldsChoices);
+  routeFieldsLayout->Add(fieldsScroll, 1, wxEXPAND | wxALL, 12);
+  routeFields->SetSizer(routeFieldsLayout);
+  book->AddPage(routeFields, _("Route fields"));
+  auto* androidRoot = new wxBoxSizer(wxVERTICAL);
+  androidRoot->Add(book, 1, wxEXPAND);
+  SetSizer(androidRoot, true);
+
+  // wxQt's generic colour picker is invisible in the host build. Use a
+  // touch palette with an editable RGB value, retaining the same colour model.
+  for (auto* picker : {m_cpCursorRoute, m_cpDestinationRoute}) {
+    auto* button = new wxButton(picker->GetParent(), wxID_ANY,
+        picker->GetColour().GetAsString(wxC2S_HTML_SYNTAX));
+    picker->GetContainingSizer()->Replace(picker, button);
+    picker->Hide();
+    button->SetMinSize(wxSize(220, 72));
+    button->Bind(wxEVT_BUTTON, [this, picker, button](wxCommandEvent&) {
+      wxDialog palette(this, wxID_ANY, _("Route colour"));
+      auto* root = new wxBoxSizer(wxVERTICAL);
+      auto* input = new wxTextCtrl(&palette, wxID_ANY,
+          picker->GetColour().GetAsString(wxC2S_HTML_SYNTAX));
+      auto* instructions = new wxStaticText(&palette, wxID_ANY,
+          _("Choose a colour or enter #RRGGBB."));
+      root->Add(instructions, 0, wxEXPAND | wxALL, 16);
+      root->Add(input, 0, wxEXPAND | wxALL, 16);
+      auto* swatches = new wxGridSizer(0, 3, 12, 12);
+      for (const char* colour : {"#ffff00", "#ff00ff", "#00ffff", "#ff4040",
+                                  "#40d060", "#4080ff", "#ffffff", "#222222", "#ff9800"}) {
+        auto* swatch = new wxButton(&palette, wxID_ANY, colour);
+        swatch->SetName(colour);
+        swatch->Bind(wxEVT_BUTTON, [input, colour](wxCommandEvent&) { input->SetValue(colour); });
+        swatches->Add(swatch, 1, wxEXPAND);
+      }
+      root->Add(swatches, 0, wxEXPAND | wxALL, 16);
+      palette.SetSizer(root);
+      WR_StyleAndroidControls(&palette);
+      bool accepted = false;
+      auto* header = WR_AddAndroidDoneHeader(&palette, _("Route colour"),
+          [&palette]() { palette.EndModal(wxID_CANCEL); }, _("Cancel"));
+      auto* apply = new wxButton(header, wxID_ANY, _("Apply"));
+      apply->SetMinSize(wxSize(170, 72));
+      header->GetSizer()->Insert(1, apply, 0, wxALL, 8);
+      WR_StyleAndroidControls(header);
+      apply->Bind(wxEVT_BUTTON, [&](wxCommandEvent&) {
+        const wxString value = input->GetValue();
+        if (value.size() != 7 || value[0] != '#' || !wxColour(value).IsOk()) {
+          instructions->SetLabel(_("Enter a valid colour, for example #4080FF."));
+          return;
+        }
+        picker->SetColour(wxColour(value));
+        accepted = true;
+        palette.EndModal(wxID_OK);
+      });
+      // wxQt button GetLabel() does not reliably return its displayed text.
+      // Retain the colour identity independently of the native caption.
+      for (auto* item : swatches->GetChildren()) {
+        auto* swatch = item->GetWindow();
+        const wxColour colour(swatch->GetName());
+        const bool dark = (colour.Red() * 299 + colour.Green() * 587 +
+                           colour.Blue() * 114) < 140000;
+        swatch->GetHandle()->setStyleSheet(QString(
+            "QPushButton { background-color: %1; color: %2; border: 2px solid #627784; "
+            "border-radius: 8px; min-height: 72px; font-size: 16pt; }")
+            .arg(QString::fromUtf8(swatch->GetName().utf8_str()))
+            .arg(dark ? "white" : "black"));
+      }
+      palette.SetSize(GetCanvasByIndex(0)->GetClientSize() - wxSize(24, 24));
+      palette.CentreOnParent();
+      palette.ShowModal();
+      if (accepted) {
+        button->SetLabel(picker->GetColour().GetAsString(wxC2S_HTML_SYNTAX));
+        SaveSettings();
+        OnUpdate();
+      }
+    });
+  }
+  WR_StyleAndroidControls(this);
+  auto* header = WR_AddAndroidDoneHeader(this, _("Routing settings"), [this]() {
+    for (auto* spin : GetHandle()->findChildren<QAbstractSpinBox*>())
+      spin->interpretText();
+    SaveSettings();
+    OnUpdate();
+    Hide();
+  });
+  wxButton* androidHelp = new wxButton(header, wxID_ANY, _("Help"));
+  androidHelp->SetMinSize(wxSize(120, 72));
   androidHelp->Bind(wxEVT_BUTTON, [this](wxCommandEvent& event) {
     OnHelp(event);
   });
-  androidHeader->Add(androidHelp, 0, wxALL, 5);
-  androidRoot->Prepend(androidHeader, 0, wxEXPAND);
-  androidRoot->AddGrowableRow(1);
+  androidHelp->GetHandle()->setStyleSheet(
+      "QPushButton { font-size: 16pt; min-height: 62px; color: #173849; background: white; }");
+  header->GetSizer()->Insert(1, androidHelp, 0, wxALL, 8);
+  WR_AddAndroidBookPicker(this, book, 1);
+  WR_WrapAndroidText(threadsNote, threadsNote->GetLabel(), sz.x - 90);
   SetSize(0, 0, sz.x, sz.y - 40);
 #endif
 }
@@ -743,7 +861,12 @@ wxString SettingsDialog::FormatTime(const wxDateTime& utc,
                                     bool appendAbbreviation) const {
   const wxString zone =
       m_useLocalTimeZone ? m_displayTimeZone : wxString("UTC");
-  return marine_time::FormatInTimeZone(utc, format, zone,
+  wxString displayFormat = format;
+#ifdef __OCPN__ANDROID__
+  // Android's locale expands %x to a date plus time on this wxQt build.
+  displayFormat.Replace("%x", "%Y-%m-%d");
+#endif
+  return marine_time::FormatInTimeZone(utc, displayFormat, zone,
                                        appendAbbreviation);
 }
 
@@ -787,7 +910,7 @@ Number of Concurrent Threads -- if there are multiple configurations, \
 they can be computed in separate threads which allows a speedup \
 if there are multiple processors\n");
 
-  wxMessageDialog mdlg(this, mes, _("Weather Routing"),
+  WR_MessageDialog mdlg(this, mes, _("Weather Routing"),
                        wxOK | wxICON_INFORMATION);
   mdlg.ShowModal();
 }

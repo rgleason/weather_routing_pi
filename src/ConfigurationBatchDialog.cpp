@@ -24,6 +24,7 @@
  *
  */
 
+#include "WeatherRoutingMessageDialog.h"
 #include <wx/wx.h>
 #include <wx/stdpaths.h>
 
@@ -37,6 +38,10 @@
 #include "WeatherRouting.h"
 #include "ConfigurationBatchDialog.h"
 #include "AndroidDialogHeader.h"
+#include "WeatherRoutingFileDialog.h"
+#ifdef __OCPN__ANDROID__
+#include <QSpinBox>
+#endif
 
 ConfigurationBatchDialog::ConfigurationBatchDialog(WeatherRouting* parent)
 #ifndef __WXOSX__
@@ -50,14 +55,101 @@ ConfigurationBatchDialog::ConfigurationBatchDialog(WeatherRouting* parent)
       m_WeatherRouting(*parent) {
   Reset();
 #ifdef __OCPN__ANDROID__
-  WR_AddAndroidDoneHeader(this, _("Routing batch"));
-  wxSizer* androidHeader = GetSizer()->GetItem(static_cast<size_t>(0))->GetSizer();
+  // Preserve the existing controls and handlers, rebuilding their layout for
+  // touch. Reparent every retained control before deleting static-box sizers.
+  auto page = [](wxPanel* panel) {
+    auto* scroll = new wxScrolledWindow(panel, wxID_ANY);
+    scroll->SetScrollRate(0, 16);
+    scroll->SetSizer(new wxBoxSizer(wxVERTICAL));
+    return scroll;
+  };
+  auto move = [](wxWindow* control, wxScrolledWindow* scroll, int proportion = 0) {
+    if (control->GetContainingSizer()) control->GetContainingSizer()->Detach(control);
+    control->Reparent(scroll);
+    control->SetMaxSize(wxSize(-1, -1));
+    scroll->GetSizer()->Add(control, proportion, wxEXPAND | wxALL, 12);
+  };
+  auto label = [](wxScrolledWindow* scroll, const wxString& text) {
+    scroll->GetSizer()->Add(new wxStaticText(scroll, wxID_ANY, text),
+                           0, wxEXPAND | wxALL, 12);
+  };
+  auto field = [&](wxScrolledWindow* scroll, const wxString& title, wxWindow* input) {
+    label(scroll, title);
+    input->SetMinSize(wxSize(0, 72));
+    move(input, scroll);
+  };
+  auto buttons = [](wxScrolledWindow* scroll, std::initializer_list<wxButton*> controls) {
+    auto* row = new wxGridSizer(0, 2, 8, 8);
+    for (auto* control : controls) {
+      control->GetContainingSizer()->Detach(control);
+      control->Reparent(scroll);
+      row->Add(control, 1, wxEXPAND | wxALL, 8);
+    }
+    scroll->GetSizer()->Add(row, 0, wxEXPAND | wxALL, 4);
+  };
+  auto finish = [](wxPanel* panel, wxScrolledWindow* scroll) {
+    for (auto* child : panel->GetChildren()) if (child != scroll) child->Hide();
+    auto* root = new wxBoxSizer(wxVERTICAL);
+    root->Add(scroll, 1, wxEXPAND | wxRIGHT, 42);
+    panel->SetSizer(root, true);
+  };
+  auto* time = page(m_panel8);
+  label(time, _("Departure of the selected route"));
+  move(m_stStartDateTime, time);
+  buttons(time, {m_button41, m_button38, m_button39, m_button40});
+  field(time, _("Repeat departures for: days"), m_tStartDays);
+  field(time, _("Additional hours"), m_tStartHours);
+  field(time, _("Spacing between departures: days"), m_tStartSpacingDays);
+  field(time, _("Additional spacing: hours"), m_tStartSpacingHours);
+  finish(m_panel8, time);
+  auto* routes = page(m_pRoutes);
+  label(routes, _("Choose a departure position, then select its destinations."));
+  label(routes, _("Departure position"));
+  m_lSources->SetMinSize(wxSize(0, 300));
+  move(m_lSources, routes);
+  label(routes, _("Destinations (tap to select or deselect)"));
+  m_lDestinations->SetMinSize(wxSize(0, 300));
+  move(m_lDestinations, routes);
+  field(routes, _("Automatically connect positions within this distance (NM)"), m_tMiles);
+  buttons(routes, {m_bConnect, m_bDisconnectAll});
+  m_staticText1241->Hide();
+  m_staticText1251->Hide();
+  finish(m_pRoutes, routes);
+  auto* boats = page(m_panel9);
+  label(boats, _("Boat files used for each route pair and departure"));
+  m_lBoats->SetMinSize(wxSize(0, 300));
+  move(m_lBoats, boats);
+  buttons(boats, {m_bAddBoat, m_bRemoveBoat});
+  finish(m_panel9, boats);
+  auto* wind = page(m_panel17);
+  label(wind, _("Generate variations of forecast wind strength."));
+  buttons(wind, {m_button46, m_button47});
+  field(wind, _("Minimum wind strength (%)"), m_sWindStrengthMin);
+  field(wind, _("Maximum wind strength (%)"), m_sWindStrengthMax);
+  field(wind, _("Step between variations (%)"), m_sWindStrengthStep);
+  finish(m_panel17, wind);
+  GetSizer()->Detach(m_notebookConfigurations);
+  auto* actions = new wxPanel(this, wxID_ANY);
+  auto* actionSizer = new wxBoxSizer(wxHORIZONTAL);
   for (wxButton* action : {m_bInformation, m_bReset, m_bGenerate}) {
     action->GetContainingSizer()->Detach(action);
-    androidHeader->Add(action, 0, wxALL, 5);
+    action->Reparent(actions);
+    actionSizer->Add(action, 1, wxALL | wxEXPAND, 5);
   }
-  wxSize sz = ::wxGetDisplaySize();
-  SetSize(0, 0, sz.x, sz.y - 40);
+  actions->SetSizer(actionSizer);
+  m_bOK->Hide();
+  auto* root = new wxBoxSizer(wxVERTICAL);
+  root->Add(actions, 0, wxEXPAND);
+  root->Add(m_notebookConfigurations, 1, wxEXPAND);
+  SetSizer(root, true);
+  WR_StyleAndroidControls(this);
+  WR_StyleAndroidFileList(m_lBoats);
+  WR_AddAndroidDoneHeader(this, _("Routing batch"));
+  WR_AddAndroidBookPicker(this, m_notebookConfigurations, 1);
+  const wxSize canvas = GetCanvasByIndex(0)->GetClientSize();
+  SetSize(canvas.x - 24, canvas.y - 24);
+  CentreOnParent();
+
 #endif
 }
 
@@ -229,8 +321,12 @@ void ConfigurationBatchDialog::OnClearSources(wxCommandEvent& event) {
 }
 
 void ConfigurationBatchDialog::OnConnect(wxCommandEvent& event) {
-  double nm;
-  m_tMiles->GetValue().ToDouble(&nm);
+  double nm = 0;
+  if (!m_tMiles->GetValue().ToDouble(&nm) || !std::isfinite(nm) || nm < 0) {
+    WR_MessageBox(_("Enter a non-negative connection distance in nautical miles."),
+                 _("Routing batch"), wxOK | wxICON_INFORMATION, this);
+    return;
+  }
 
   for (std::vector<BatchSource*>::iterator it = sources.begin();
        it != sources.end(); it++) {
@@ -251,22 +347,26 @@ void ConfigurationBatchDialog::OnConnect(wxCommandEvent& event) {
   }
 
   m_lSources->SetSelection(-1);
+  m_lDestinations->DeselectAll();
 }
 
 void ConfigurationBatchDialog::OnDisconnectAll(wxCommandEvent& event) {
   for (std::vector<BatchSource*>::iterator it = sources.begin();
        it != sources.end(); it++)
     (*it)->destinations.clear();
+  m_lDestinations->DeselectAll();
 }
 
 void ConfigurationBatchDialog::OnAddBoat(wxCommandEvent& event) {
-  wxFileDialog openDialog(
+  WR_FileDialog openDialog(
       this, _("Select Polar"), weather_routing_pi::StandardPath() + "boats",
       wxT(""),
       wxT("XML Weather Routing files (*.xml)|*.XML;*.xml|All files (*.*)|*.*"),
       wxFD_OPEN);
 
-  if (openDialog.ShowModal() == wxID_OK) m_lBoats->Append(openDialog.GetPath());
+  if (openDialog.ShowModal() == wxID_OK &&
+      m_lBoats->FindString(openDialog.GetPath(), true) == wxNOT_FOUND)
+    m_lBoats->Append(openDialog.GetPath());
 }
 
 void ConfigurationBatchDialog::OnRemoveBoat(wxCommandEvent& event) {
@@ -288,7 +388,7 @@ void ConfigurationBatchDialog::On80to120(wxCommandEvent& event) {
 void ConfigurationBatchDialog::OnReset(wxCommandEvent& event) { Reset(); }
 
 void ConfigurationBatchDialog::OnInformation(wxCommandEvent& event) {
-  wxMessageDialog mdlg(
+  WR_MessageDialog mdlg(
       this, _("Batch mode generates multiple configurations based on \
 the selected configuration."),
       _("Weather Routing"), wxOK);
@@ -298,6 +398,53 @@ the selected configuration."),
 void ConfigurationBatchDialog::OnClose(wxCommandEvent& event) { Hide(); }
 
 void ConfigurationBatchDialog::OnGenerate(wxCommandEvent& event) {
+#ifdef __OCPN__ANDROID__
+  double days, hours, spacingDays, spacingHours;
+  if (!m_tStartDays->GetValue().ToDouble(&days) || !std::isfinite(days) || days < 0 ||
+      !m_tStartHours->GetValue().ToDouble(&hours) || !std::isfinite(hours) || hours < 0 ||
+      !m_tStartSpacingDays->GetValue().ToDouble(&spacingDays) || !std::isfinite(spacingDays) || spacingDays < 0 ||
+      !m_tStartSpacingHours->GetValue().ToDouble(&spacingHours) || !std::isfinite(spacingHours) || spacingHours < 0 ||
+      spacingDays * 24 + spacingHours <= 0) {
+    WR_MessageBox(_("Enter non-negative durations and a spacing greater than zero."),
+                 _("Routing batch"), wxOK | wxICON_INFORMATION, this);
+    return;
+  }
+  const double durationSeconds = std::floor(days * 86400 + hours * 3600);
+  const double spacingSeconds = std::floor(spacingDays * 86400 + spacingHours * 3600);
+  if (!std::isfinite(durationSeconds) || !std::isfinite(spacingSeconds) ||
+      durationSeconds > 2147483647 || spacingSeconds > 2147483647 || spacingSeconds < 1) {
+    WR_MessageBox(_("Use durations up to 68 years and a spacing of at least one second."),
+                 _("Routing batch"), wxOK | wxICON_INFORMATION, this);
+    return;
+  }
+  for (auto* input : {m_sWindStrengthMin, m_sWindStrengthMax, m_sWindStrengthStep}) {
+    auto* spin = qobject_cast<QSpinBox*>(input->GetHandle());
+    if (!spin) spin = input->GetHandle()->findChild<QSpinBox*>();
+    if (spin) spin->interpretText();
+  }
+  if (m_sWindStrengthMin->GetValue() > m_sWindStrengthMax->GetValue()) {
+    WR_MessageBox(_("The maximum wind strength must be at least the minimum."),
+                 _("Routing batch"), wxOK | wxICON_INFORMATION, this);
+    return;
+  }
+  size_t pairs = 0;
+  for (const auto* source : sources) pairs += source->destinations.size();
+  const size_t templates = m_WeatherRouting.CurrentRouteMaps(true).size();
+  const double departures = std::floor(durationSeconds / spacingSeconds) + 1;
+  const int variations = (m_sWindStrengthMax->GetValue() - m_sWindStrengthMin->GetValue()) /
+                         m_sWindStrengthStep->GetValue() + 1;
+  const double count = double(templates) * pairs * m_lBoats->GetCount() * departures * variations;
+  if (!std::isfinite(departures) || !std::isfinite(count) || count <= 0 || count > 2147483647) {
+    WR_MessageBox(_("Select a route template, connect a route pair and add a boat before generating."),
+                 _("Routing batch"), wxOK | wxICON_INFORMATION, this);
+    return;
+  }
+  const wxString preview = wxString::Format(
+      _("Create %.0f route configurations?\n\n%lu templates x %lu route pairs x %u boats x %.0f departures x %d wind strengths.\nThe selected templates will be replaced by these routes. Calculations will not start."),
+      count, static_cast<unsigned long>(templates), static_cast<unsigned long>(pairs),
+      static_cast<unsigned int>(m_lBoats->GetCount()), departures, variations);
+  if (WR_MessageBox(preview, _("Generate batch"), wxYES_NO | wxNO_DEFAULT, this) != wxYES) return;
+#endif
   m_WeatherRouting.GenerateBatch();
 }
 
@@ -313,6 +460,14 @@ void ConfigurationBatchDialog::Reset() {
 
   std::list<RouteMapOverlay*> currentroutemaps =
       m_WeatherRouting.CurrentRouteMaps();
+  m_lBoats->Clear();
+#ifdef __OCPN__ANDROID__
+  m_stStartDateTime->SetLabel(currentroutemaps.empty()
+      ? _("Select a route on Routes first.")
+      : currentroutemaps.front()->GetConfiguration().UseCurrentTime
+          ? _("Current time when you generate")
+          : m_WeatherRouting.m_SettingsDialog.FormatTime(currentroutemaps.front()->StartTime(), "%Y-%m-%d %H:%M"));
+#endif
   for (std::list<RouteMapOverlay*>::iterator it = currentroutemaps.begin();
        it != currentroutemaps.end(); it++) {
     RouteMapConfiguration configuration = (*it)->GetConfiguration();
@@ -332,8 +487,8 @@ void ConfigurationBatchDialog::Reset() {
           }
     }
 
-    m_lBoats->Clear();
-    m_lBoats->Append(configuration.boatFileName);
+    if (m_lBoats->FindString(configuration.boatFileName, true) == wxNOT_FOUND)
+      m_lBoats->Append(configuration.boatFileName);
   }
 
   m_sWindStrengthMin->SetValue(100);

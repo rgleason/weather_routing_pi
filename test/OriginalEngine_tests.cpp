@@ -81,6 +81,18 @@ TEST(OriginalEngine, DisplayIsBoundedAndDoesNotChangeAcceptedRoute) {
   EXPECT_FALSE(a.visualization.isochrones.empty());
   EXPECT_LE(a.visualization.isochrones.size(), 128U);
   EXPECT_TRUE(b.visualization.isochrones.empty());
+  std::size_t inspected = 0;
+  for (const auto& layer : a.visualization.isochrones)
+    for (const auto& trace : layer.traces) {
+      ASSERT_EQ(trace.times.size(), trace.route.size());
+      ASSERT_FALSE(trace.times.empty());
+      EXPECT_EQ(trace.times.front(), request().departure);
+      EXPECT_LE(trace.times.back(), layer.time);
+      for (std::size_t i = 1; i < trace.times.size(); ++i)
+        EXPECT_GT(trace.times[i], trace.times[i - 1]);
+      ++inspected;
+    }
+  EXPECT_GT(inspected, 0U);
 }
 TEST(OriginalEngine, VisualizationSamplesTheEntireVoyageWithinBound) {
   original_routing::VisualizationSampler sampler;

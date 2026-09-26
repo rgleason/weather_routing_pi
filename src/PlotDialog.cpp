@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <cmath>  // For std::isnan
+#include <limits>
 #include <time.h>
 
 #include "Utilities.h"
@@ -45,8 +46,92 @@ PlotDialog::PlotDialog(WeatherRouting& weatherrouting)
                      wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER | wxSTAY_ON_TOP),
 #endif
       m_WeatherRouting(weatherrouting) {
+  // wxQt does not reliably honour the initial slider position at creation.
+  m_sScale->SetRange(1, 100);
+  m_sScale->SetValue(100);
+  m_rbCurrentRoute->SetValue(true);
 #ifdef __OCPN__ANDROID__
+  wxSizer* original = GetSizer();
+  original->Detach(m_PlotWindow);
+  auto* root = new wxBoxSizer(wxVERTICAL);
+  root->Add(m_PlotWindow, 1, wxEXPAND | wxALL, 8);
+  auto* controls = new wxScrolledWindow(this, wxID_ANY);
+  controls->SetScrollRate(0, 24);
+  controls->SetMinSize(wxSize(0, 450));
+  WR_EnableAndroidScrolling(controls);
+  auto* controlPanel = new wxPanel(controls, wxID_ANY);
+  auto* fields = new wxFlexGridSizer(0, 1, 8, 8);
+  fields->AddGrowableCol(0);
+  auto move = [controlPanel](wxWindow* control) {
+    if (auto* sizer = control->GetContainingSizer()) sizer->Detach(control);
+    control->Reparent(controlPanel);
+    control->SetMinSize(wxSize(0, 62));
+    wxFont font = control->GetFont();
+    font.SetPointSize(16);
+    control->SetFont(font);
+  };
+  for (auto* control : std::vector<wxWindow*>{m_staticText138, m_sPosition,
+         m_staticText139, m_sScale, m_cVariable1, m_cVariable2, m_cVariable3,
+         m_stMousePosition1, m_stMousePosition2, m_stMousePosition3,
+         m_rbCurrentRoute, m_rbCursorRoute}) move(control);
+  auto* sliders = new wxFlexGridSizer(0, 2, 8, 8);
+  sliders->AddGrowableCol(1);
+  m_staticText138->SetMinSize(wxSize(180, 72));
+  m_staticText139->SetMinSize(wxSize(180, 72));
+  m_staticText138->SetLabel(_("Position"));
+  m_staticText139->SetLabel(_("Zoom"));
+  for (auto* slider : {m_sPosition, m_sScale}) {
+    WR_EnableAndroidSlider(slider, [this]() { m_PlotWindow->Refresh(); });
+    slider->GetHandle()->setStyleSheet(
+        "QSlider::groove:horizontal { height: 8px; background: #d5e1e7; } "
+        "QSlider::handle:horizontal { width: 32px; margin: -14px 0; "
+        "background: #215d79; border-radius: 16px; }");
+  }
+  sliders->Add(m_staticText138, 0, wxALIGN_CENTER_VERTICAL);
+  sliders->Add(m_sPosition, 1, wxEXPAND);
+  sliders->Add(m_staticText139, 0, wxALIGN_CENTER_VERTICAL);
+  sliders->Add(m_sScale, 1, wxEXPAND);
+  const std::pair<wxChoice*, wxStaticText*> variables[] = {
+      {m_cVariable1, m_stMousePosition1}, {m_cVariable2, m_stMousePosition2},
+      {m_cVariable3, m_stMousePosition3}};
+  for (const auto& variable : variables) {
+    WR_StyleAndroidCombo(variable.first);
+    variable.first->GetHandle()->setStyleSheet(
+        "QComboBox { font-size: 16pt; min-height: 62px; }");
+    variable.second->GetHandle()->setStyleSheet("QLabel { font-size: 16pt; }");
+    variable.second->SetMinSize(wxSize(100, 62));
+    fields->Add(variable.first, 1, wxEXPAND);
+    fields->Add(variable.second, 0, wxEXPAND);
+  }
+  auto* selection = new wxBoxSizer(wxHORIZONTAL);
+  for (auto* radio : {m_rbCurrentRoute, m_rbCursorRoute}) {
+    radio->GetHandle()->setStyleSheet(
+        "QRadioButton { font-size: 16pt; min-height: 62px; } "
+        "QRadioButton::indicator { width: 26px; height: 26px; }");
+    selection->Add(radio, 1, wxEXPAND);
+  }
+  auto* layout = new wxBoxSizer(wxVERTICAL);
+  m_androidSampleTime = new wxStaticText(controlPanel, wxID_ANY,
+      _("Tap the plot to inspect a route sample."));
+  m_androidSampleTime->GetHandle()->setStyleSheet("QLabel { font-size: 16pt; }");
+  m_androidSampleTime->SetMinSize(wxSize(0, 62));
+  layout->Add(m_androidSampleTime, 0, wxEXPAND | wxALL, 8);
+  layout->Add(fields, 0, wxEXPAND | wxALL, 8);
+  layout->Add(selection, 0, wxEXPAND | wxALL, 8);
+  layout->Add(sliders, 0, wxEXPAND | wxALL, 8);
+  controlPanel->SetSizer(layout);
+  auto* controlsWidth = new wxBoxSizer(wxHORIZONTAL);
+  controlsWidth->Add(controlPanel, 1, wxEXPAND);
+  controlsWidth->AddSpacer(42);
+  controls->SetSizer(controlsWidth);
+  root->Add(controls, 0, wxEXPAND);
+  m_sdbSizer4->Detach(m_sdbSizer4OK);
+  m_sdbSizer4OK->Destroy();
+  SetSizer(root, false);
+  delete original;
   WR_AddAndroidDoneHeader(this, _("Route plot"));
+  m_rbCursorRoute->Bind(wxEVT_RADIOBUTTON,
+      &PlotDialog::OnUpdateRoute, this);
   wxSize sz = ::wxGetDisplaySize();
   SetSize(0, 0, sz.x, sz.y * 88 / 100);
 #endif
@@ -54,18 +139,72 @@ PlotDialog::PlotDialog(WeatherRouting& weatherrouting)
 
 PlotDialog::~PlotDialog() {}
 
+#ifdef __OCPN__ANDROID__
+void PlotDialog::ResetAndroidReadout() {
+  for (auto* label : {m_stMousePosition1, m_stMousePosition2, m_stMousePosition3})
+    label->SetLabel(_("N/A"));
+  if (m_androidSampleTime)
+    m_androidSampleTime->SetLabel(_("Tap the plot to inspect a route sample."));
+}
+#endif
+
 void PlotDialog::OnMouseEventsPlot(wxMouseEvent& event) {
   wxStaticText* stMousePosition[3] = {m_stMousePosition1, m_stMousePosition2,
                                       m_stMousePosition3};
   if (event.Leaving()) {
+#ifndef __OCPN__ANDROID__
     for (int i = 0; i < 3; i++) stMousePosition[i]->SetLabel(_("N/A"));
+#endif
     return;
   }
 
   int w, h;
   m_PlotWindow->GetSize(&w, &h);
+#ifdef __OCPN__ANDROID__
+  // Keep all three scales outside the data area and reserve a time-axis row.
+  w = wxMax(1, w - 190);
+  h = wxMax(1, h - 56);
+#endif
 
   wxPoint p = event.GetPosition();
+#ifdef __OCPN__ANDROID__
+  p.x -= 190;
+  p.y = wxMax(0, p.y - 36);
+  if (m_PlotData.empty() || !m_StartTime.IsValid() || w <= 0) {
+    ResetAndroidReadout();
+    return;
+  }
+  const double position = m_sPosition->GetValue() / 100.0;
+  const double scale = 100.0 / wxMax(1, m_sScale->GetValue());
+  const double fraction = wxMax(0.0, wxMin(1.0,
+      ((static_cast<double>(p.x) / w - position) / scale) + position));
+  const double sampleTime = fraction * (m_maxtime - m_mintime) + m_mintime;
+  PlotData* nearest = nullptr;
+  double nearestDistance = std::numeric_limits<double>::infinity();
+  for (auto& sample : m_PlotData) {
+    if (!sample.time.IsValid()) continue;
+    const double distance = std::abs(
+        (sample.time - m_StartTime).GetSeconds().ToDouble() - sampleTime);
+    if (distance < nearestDistance) {
+      nearest = &sample;
+      nearestDistance = distance;
+    }
+  }
+  if (!nearest) {
+    ResetAndroidReadout();
+    return;
+  }
+  m_androidSampleTime->SetLabel(m_WeatherRouting.m_SettingsDialog.FormatTime(
+      nearest->time, _("%Y-%m-%d %H:%M")));
+  wxChoice* variables[] = {m_cVariable1, m_cVariable2, m_cVariable3};
+  for (int i = 0; i < 3; ++i) {
+    const double value = GetValue(*nearest,
+        GetVariableEnumFromIndex(variables[i]->GetSelection()));
+    stMousePosition[i]->SetLabel(std::isfinite(value)
+        ? wxString::Format("%.1f", value) : _("Unavailable"));
+  }
+  return;
+#endif
 
 #if 0
     double position = m_sPosition->GetValue() / 100.0;
@@ -78,7 +217,8 @@ void PlotDialog::OnMouseEventsPlot(wxMouseEvent& event) {
   for (int i = 0; i < 3; i++) {
     double value = (1.0 - (double)p.y / h) * (m_maxvalue[i] - m_minvalue[i]) +
                    m_minvalue[i];
-    stMousePosition[i]->SetLabel(wxString::Format(_T(" %.1f"), value));
+    stMousePosition[i]->SetLabel(std::isfinite(value)
+        ? wxString::Format(_T(" %.1f"), value) : _("Unavailable"));
   }
 }
 
@@ -288,6 +428,13 @@ void PlotDialog::GetScale() {
 }
 
 static wxString ReadableTime(int seconds) {
+#ifdef __OCPN__ANDROID__
+  if (seconds >= 86400)
+    return wxString::Format(_T("%dd %dh"), seconds / 86400,
+                            (seconds / 3600) % 24);
+  return wxString::Format(_T("%dh %02dm"), seconds / 3600,
+                          (seconds / 60) % 60);
+#endif
   if (seconds < 60) return wxString::Format(_T("%02ds"), seconds);
 
   if (seconds < 3600)
@@ -304,13 +451,20 @@ void PlotDialog::OnPaintPlot(wxPaintEvent& event) {
   wxWindow* window = m_PlotWindow;
 
   double position = m_sPosition->GetValue() / 100.0;
-  double scale = 100.0 / m_sScale->GetValue();
+  double scale = 100.0 / wxMax(1, m_sScale->GetValue());
 
   wxPaintDC dc(window);
+#ifdef __OCPN__ANDROID__
+  wxFont axisFont = window->GetFont();
+  axisFont.SetPointSize(13);
+  dc.SetFont(axisFont);
+#endif
   dc.Clear();
 #ifdef __OCPN__ANDROID__
   if (m_PlotData.empty()) {
-    dc.DrawText(_("Select a computed routing to display a plot."), 20, 20);
+    dc.DrawText(m_rbCursorRoute->GetValue()
+        ? _("Choose a point on the chart route to display its cursor plot.")
+        : _("Select a computed routing to display a plot."), 20, 20);
     return;
   }
 #endif
@@ -318,12 +472,21 @@ void PlotDialog::OnPaintPlot(wxPaintEvent& event) {
 
   int w, h;
   m_PlotWindow->GetSize(&w, &h);
+#ifdef __OCPN__ANDROID__
+  // Keep all three scales outside the data area and reserve a time-axis row.
+  dc.SetDeviceOrigin(190, 36);
+  w = wxMax(1, w - 190);
+  h = wxMax(1, h - 56);
+#endif
 
   dc.SetBrush(*wxTRANSPARENT_BRUSH);
 
   wxChoice* cVariable[3] = {m_cVariable1, m_cVariable2, m_cVariable3};
   wxColour colors[3] = {wxColour(200, 0, 0), wxColour(0, 200, 0),
                         wxColour(0, 0, 200)};
+#ifdef __OCPN__ANDROID__
+  dc.SetClippingRegion(0, 0, w, h);
+#endif
   for (int i = 0; i < 3; i++) {
     dc.SetPen(wxPen(colors[i], 3));
 
@@ -342,8 +505,9 @@ void PlotDialog::OnPaintPlot(wxPaintEvent& event) {
       double value = GetValue(*it, variable);
 
       // Verify calculated values are valid (not NaN)
-      if (std::isnan(time) || std::isnan(value) || m_maxtime == m_mintime ||
+      if (!std::isfinite(time) || !std::isfinite(value) || m_maxtime == m_mintime ||
           m_maxvalue[i] == m_minvalue[i]) {
+        first = true;
         continue;  // Skip invalid points
       }
 
@@ -386,10 +550,17 @@ void PlotDialog::OnPaintPlot(wxPaintEvent& event) {
   }
   // ----------------------------------------------------------------
 
+#ifdef __OCPN__ANDROID__
+  dc.DestroyClippingRegion();
+#endif
   dc.SetTextForeground(*wxBLACK);
   dc.SetPen(wxPen(*wxBLACK, 1, wxPENSTYLE_DOT));
 
+#ifdef __OCPN__ANDROID__
+  const double steps = 6;
+#else
   const double steps = 10;
+#endif
   bool grid = true;
   for (double i = 1 / steps; i < 1 - 1 / steps; i += 1 / steps) {
     int x = i * w, y = i * h;
@@ -402,10 +573,21 @@ void PlotDialog::OnPaintPlot(wxPaintEvent& event) {
                                      (m_maxtime - m_mintime) +
                                  m_mintime);
     wxSize s = dc.GetTextExtent(time);
-    dc.DrawText(time, x - s.x / 2, 0);
+    dc.DrawText(time, x - s.x / 2,
+#ifdef __OCPN__ANDROID__
+                -32
+#else
+                0
+#endif
+    );
   }
 
-  int x = 0;
+  int x =
+#ifdef __OCPN__ANDROID__
+      -185;
+#else
+      0;
+#endif
   for (int ci = 0; ci < 3; ci++) {
     wxColour c = colors[ci];
     dc.SetTextForeground(
@@ -415,6 +597,9 @@ void PlotDialog::OnPaintPlot(wxPaintEvent& event) {
       wxString value = wxString::Format(
           _T("%.1f"),
           (1 - i) * (m_maxvalue[ci] - m_minvalue[ci]) + m_minvalue[ci]);
+#ifdef __OCPN__ANDROID__
+      if (!std::isfinite(m_minvalue[ci]) || !std::isfinite(m_maxvalue[ci])) value = "-";
+#endif
       wxSize s = dc.GetTextExtent(value);
       int y = i * h;
       dc.DrawText(value, x, y - s.y / 2);
@@ -422,20 +607,45 @@ void PlotDialog::OnPaintPlot(wxPaintEvent& event) {
       if (s.x > maxx) maxx = s.x;
     }
 
-    x += maxx + 5;
+    x +=
+#ifdef __OCPN__ANDROID__
+        60;
+#else
+        maxx + 5;
+#endif
   }
 }
 
 void PlotDialog::OnUpdateRoute(wxCommandEvent& event) {
+#ifdef __OCPN__ANDROID__
+  ResetAndroidReadout();
+#endif
   SetRouteMapOverlay(m_WeatherRouting.FirstCurrentRouteMap());
 }
 
 void PlotDialog::SetRouteMapOverlay(RouteMapOverlay* routemapoverlay) {
+#ifdef __OCPN__ANDROID__
+  if (m_androidPlotRoute != routemapoverlay ||
+      m_androidCursorRoute != m_rbCursorRoute->GetValue())
+    ResetAndroidReadout();
+  m_androidPlotRoute = routemapoverlay;
+  m_androidCursorRoute = m_rbCursorRoute->GetValue();
+#endif
   if (!routemapoverlay)
     m_PlotData.clear();
   else
     m_PlotData = routemapoverlay->GetPlotData(m_rbCursorRoute->GetValue());
   GetScale();
+#ifdef __OCPN__ANDROID__
+  if (m_PlotData.empty()) ResetAndroidReadout();
+  if (routemapoverlay && !m_PlotData.empty() && m_StartTime.IsValid()) {
+    const wxDateTime end = m_rbCursorRoute->GetValue()
+        ? routemapoverlay->GetLastCursorTime() : routemapoverlay->EndTime();
+    if (end.IsValid())
+      m_maxtime = wxMax(m_maxtime,
+          (end - m_StartTime).GetSeconds().ToDouble());
+  }
+#endif
   m_PlotWindow->Refresh();
 }
 

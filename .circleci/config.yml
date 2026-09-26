@@ -188,12 +188,6 @@ jobs:
       - store_artifacts:
           path: alpha-publication
 
-validation-filters: &validation-filters
-  branches:
-    ignore: [devel, tmp]
-  tags:
-    ignore: /.*/
-
   android-arm64:
     machine:
       image: ubuntu-2404:current
@@ -214,6 +208,16 @@ validation-filters: &validation-filters
           no_output_timeout: 60m
       - store_artifacts:
           path: artifacts/android-arm64
+      - persist_to_workspace:
+          root: .
+          paths: [artifacts/android-arm64]
+
+
+validation-filters: &validation-filters
+  branches:
+    ignore: [devel, tmp]
+  tags:
+    ignore: /.*/
 
 workflows:
   validate:

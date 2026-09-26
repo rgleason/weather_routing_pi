@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "WeatherRoutingMessageDialog.h"
 #include "ShorelineManager.h"
 #include "ShorelineSpec.h"
 #include "WeatherRoutingWxCompat.h"
+#include "AndroidDialogHeader.h"
 #include <map>
 #include "ocpn_plugin.h"
 #include "version.h"
@@ -16,6 +18,12 @@
 #include <chrono>
 #include <atomic>
 #include <functional>
+#ifdef __OCPN__ANDROID__
+#include <QProgressBar>
+#include <QElapsedTimer>
+#include <QtAndroidExtras/QAndroidJniObject>
+#include <QtAndroidExtras/QAndroidJniEnvironment>
+#endif
 
 namespace weather_routing {
 namespace {
@@ -104,13 +112,13 @@ std::shared_ptr<ShorelineDataset> Verify(const Spec& s,
   if (p.empty() || !std::filesystem::exists(p) ||
       std::filesystem::file_size(p) != s.bytes || ShorelineSha256(p) != s.hash)
     throw std::runtime_error(
-        "Shoreline data is missing or failed checksum verification. Open View "
-        "/ Shoreline data to install or repair it.");
+        "Shoreline data is missing or failed checksum verification. Open "
+        "Shoreline data to install or repair it.");
   return std::make_shared<ShorelineDataset>(p, Budget());
 }
 void InstallBundled(const Spec& s) {
   if (!Bundled(s))
-    throw std::runtime_error("This resolution is optional; install it from Shoreline data on Advanced.");
+    throw std::runtime_error("This resolution is optional; install it from Shoreline data.");
   auto p = Destination(s);
   InstallShorelineGzip(Archive(s), p, s.hash, s.bytes);
   Record(s, p);
@@ -122,6 +130,127 @@ std::vector<std::string> Sources(const Spec& s) {
       "https://www.singe.media/weather-routing/gshhg-2.3.7/" + name,
   };
 }
+#ifdef __OCPN__ANDROID__
+_OCPN_DLStatus DownloadAndroidShoreline(const wxString& url,
+    const wxString& output, const Spec& spec, wxWindow* parent) {
+  WR_MessageSheet sheet(parent->GetHandle(), wxID_CANCEL);
+  sheet.setWindowModality(Qt::ApplicationModal);
+  auto* layout = new QVBoxLayout(&sheet);
+  auto* heading = new QLabel(QString::fromUtf8(
+      wxString::Format(_("Downloading %s shoreline data"),
+                       wxGetTranslation(spec.quality)).ToUTF8().data()));
+  heading->setWordWrap(true);
+  heading->setStyleSheet("font-size: 20pt; color: white; background: #193b4c; padding: 16px;");
+  layout->addWidget(heading);
+  auto* status = new QLabel;
+  status->setWordWrap(true);
+  status->setStyleSheet("font-size: 17pt; padding: 16px;");
+  layout->addWidget(status);
+  auto* progress = new QProgressBar;
+  progress->setRange(0, 1000);
+  progress->setMinimumHeight(48);
+  layout->addWidget(progress);
+  auto* cancel = new QPushButton(QString::fromUtf8(_("Cancel download").ToUTF8().data()));
+  bool cancelled = false;
+  cancel->setStyleSheet("font-size: 17pt; min-height: 72px; padding: 8px;");
+  // wxQt's Android parent can consume the synthesized mouse sequence. Use
+  // the same explicit stationary-touch handling as the workspace buttons.
+  new WR_AndroidButtonDragFilter(cancel);
+  layout->addWidget(cancel);
+  QObject::connect(cancel, &QPushButton::clicked, &sheet, [&]() {
+    cancelled = true;
+    wxLogMessage("WR_SHORELINE_DOWNLOAD_CANCEL quality=%s", spec.quality);
+    sheet.reject();
+  });
+  auto fit = [&]() {
+    const QRect bounds = QApplication::primaryScreen()->availableGeometry();
+    sheet.resize(qMin(800, bounds.width() - 32), qMin(400, bounds.height() - 32));
+    sheet.move(bounds.center() - QPoint(sheet.width() / 2, sheet.height() / 2));
+  };
+  QObject::connect(QApplication::primaryScreen(), &QScreen::availableGeometryChanged,
+                   &sheet, [&](const QRect&) { QTimer::singleShot(150, &sheet, fit); });
+  fit();
+  cancel->setFocus();
+  QTimer::singleShot(100, &sheet, []() { QApplication::inputMethod()->hide(); });
+
+  wxEvtHandler handler;
+  _OCPN_DLStatus result = OCPN_DL_ABORTED;
+  bool complete = false;
+  long transferred = 0;
+  QElapsedTimer elapsed;
+  elapsed.start();
+  QTimer timer(&sheet);
+  auto refresh = [&]() {
+    const wxString message = wxString::Format(
+        _("%.1f of %.1f MiB\nElapsed: %ld seconds"),
+        transferred / 1048576.0, spec.archive_bytes / 1048576.0,
+        long(elapsed.elapsed() / 1000));
+    status->setText(QString::fromUtf8(message.ToUTF8().data()));
+  };
+  QObject::connect(&timer, &QTimer::timeout, &sheet, [&]() {
+    refresh();
+    if (elapsed.elapsed() > 1800000) {
+      result = OCPN_DL_USER_TIMEOUT;
+      sheet.reject();
+    }
+  });
+  handler.Bind(wxEventTypeTag<OCPN_downloadEvent>(wxEVT_DOWNLOAD_EVENT),
+               [&](OCPN_downloadEvent& event) {
+    if (cancelled) return;
+    transferred = std::max(0L, event.getTransferred());
+    progress->setValue(qMin(1000, int(1000ULL * transferred / spec.archive_bytes)));
+    refresh();
+    if (event.getDLEventCondition() == OCPN_DL_EVENT_TYPE_END) {
+      complete = true;
+      result = event.getDLEventStatus();
+      sheet.done(wxID_OK);
+    }
+  });
+  refresh();
+  long handle = -1;
+  const auto started = OCPN_downloadFileBackground(url, output, &handler, &handle);
+  if (started != OCPN_DL_STARTED) return started;
+  // The host's background API also opens a Java ProgressDialog. Even when
+  // hidden behind this Qt sheet it owns touch input. Dismiss that spinner;
+  // our progress sheet owns this transfer and the API cleanup still runs.
+  QAndroidJniEnvironment env;
+  auto activity = QAndroidJniObject::callStaticObjectMethod(
+      "org/qtproject/qt5/android/QtNative", "activity",
+      "()Landroid/app/Activity;");
+  if (activity.isValid())
+    activity.callObjectMethod("hideBusyCircle", "()Ljava/lang/String;");
+  if (env->ExceptionCheck()) env->ExceptionClear();
+  timer.start(250);
+  const int answer = complete ? wxID_OK : sheet.exec();
+  if ((answer != wxID_OK || cancelled) && result != OCPN_DL_USER_TIMEOUT)
+    result = OCPN_DL_ABORTED;
+  timer.stop();
+
+  // Clear the host's retained callback before this handler is destroyed.
+  // Android DownloadManager cancellation can remove a completed target too;
+  // move our unique temporary archive aside until that cleanup has returned.
+  const auto target = Path(output.Mid(7));  // The caller supplies file://.
+  auto preserved = target;
+  preserved += ".complete";
+  std::error_code error;
+  const bool success = answer == wxID_OK && !cancelled && complete && result == OCPN_DL_NO_ERROR;
+  if (success) {
+    std::filesystem::rename(target, preserved, error);
+    if (error) result = OCPN_DL_FAILED;
+  }
+  OCPN_cancelDownloadFileBackground(handle);
+  if (success && !error) {
+    std::filesystem::rename(preserved, target, error);
+    if (error) {
+      std::filesystem::remove(preserved, error);
+      result = OCPN_DL_FAILED;
+    }
+  }
+  wxLogMessage("WR_SHORELINE_DOWNLOAD_RESULT quality=%s status=%d answer=%d cancelled=%d bytes=%ld",
+               spec.quality, int(result), answer, cancelled ? 1 : 0, transferred);
+  return result;
+}
+#endif
 void InstallOptional(const Spec& s, wxWindow* parent) {
   if (Bundled(s)) throw std::logic_error("Bundled data is not an optional download");
   // The approved release is pinned in ShorelineSpec. A newer upstream release
@@ -144,6 +273,10 @@ void InstallOptional(const Spec& s, wxWindow* parent) {
 #ifdef __ANDROID__
         outputPath = "file://" + outputPath;
 #endif
+#ifdef __OCPN__ANDROID__
+        const auto result = DownloadAndroidShoreline(
+            wxString::FromUTF8(source.c_str()), outputPath, s, parent);
+#else
         const auto result = OCPN_downloadFile(
             wxString::FromUTF8(source.c_str()), outputPath,
             _("Downloading shoreline data"),
@@ -153,6 +286,7 @@ void InstallOptional(const Spec& s, wxWindow* parent) {
                 OCPN_DLDS_REMAINING_TIME | OCPN_DLDS_SPEED | OCPN_DLDS_SIZE |
                 OCPN_DLDS_CAN_ABORT | OCPN_DLDS_AUTO_CLOSE,
             1800);
+#endif
         if (result == OCPN_DL_ABORTED) return ShorelineDownloadResult::Cancelled;
         if (result != OCPN_DL_NO_ERROR) return ShorelineDownloadResult::Failed;
         if (std::filesystem::file_size(output) != s.archive_bytes ||
@@ -212,23 +346,29 @@ void ShorelineManager::Show(wxWindow* parent) {
   } unlock;
   wxDialog dialog(parent, wxID_ANY, _("Shoreline data"), wxDefaultPosition,
                   wxDefaultSize, wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
+  wxWindow* body = &dialog;
+#ifdef __OCPN__ANDROID__
+  auto* scroll = new wxScrolledWindow(&dialog, wxID_ANY);
+  scroll->SetMinSize(wxSize(0, 0));
+  scroll->SetScrollRate(0, 16);
+  body = new wxPanel(scroll, wxID_ANY);
+#endif
   auto main = new wxBoxSizer(wxVERTICAL);
   auto text =
-      new wxStaticText(&dialog, wxID_ANY,
+      new wxStaticText(body, wxID_ANY,
                        _("GSHHG Crude, Low and Intermediate are included for offline use. "
                          "High and Full are optional verified downloads; install High "
                          "before coastal routing where finer land detail is needed. "
-                         "Choose each route's resolution in Configuration / Advanced. "
+                         "Choose each route's shoreline resolution in its setup. "
                          "This default is used when importing older routes; "
                          "existing route selections are preserved."));
-  text->Wrap(WR_FromDIP(&dialog, 560));
 #ifdef __OCPN__ANDROID__
-  // wxQt reports a one-line best size after Wrap(); reserve room for the
-  // complete explanation so it is readable on the tablet.
-  text->SetMinSize(WR_FromDIP(&dialog, wxSize(560, 100)));
+  text->SetMinSize(wxSize(0, 100));
+#else
+  text->Wrap(WR_FromDIP(&dialog, 560));
 #endif
-  main->Add(text, 0, wxALL, 12);
-  auto choice = new wxChoice(&dialog, wxID_ANY);
+  main->Add(text, 0, wxEXPAND | wxALL, 12);
+  auto choice = new wxChoice(body, wxID_ANY);
   for (int q = 0; q < 5; ++q)
 #ifdef __OCPN__ANDROID__
     choice->Append(wxString::Format("%d - %s", q,
@@ -238,50 +378,92 @@ void ShorelineManager::Show(wxWindow* parent) {
 #endif
   choice->SetSelection(DefaultResolution());
   main->Add(choice, 0, wxEXPAND | wxLEFT | wxRIGHT, 12);
-  auto status = new wxStaticText(&dialog, wxID_ANY, "");
+  auto status = new wxStaticText(body, wxID_ANY, "");
 #ifdef __OCPN__ANDROID__
-  status->SetMinSize(WR_FromDIP(&dialog, wxSize(560, 65)));
+  status->SetMinSize(wxSize(0, 65));
 #endif
-  main->Add(status, 0, wxALL, 12);
-  main->Add(new wxStaticText(&dialog, wxID_ANY, _("Installed file:")), 0,
+  main->Add(status, 0, wxEXPAND | wxALL, 12);
+  main->Add(new wxStaticText(body, wxID_ANY, _("Installed file:")), 0,
             wxLEFT | wxRIGHT, 12);
-  auto installedFile = new wxTextCtrl(&dialog, wxID_ANY, "", wxDefaultPosition,
+  auto installedFile = new wxTextCtrl(body, wxID_ANY, "", wxDefaultPosition,
                                       wxDefaultSize, wxTE_READONLY);
   installedFile->SetMinSize(WR_FromDIP(&dialog, wxSize(300, -1)));
   main->Add(installedFile, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 12);
   auto cacheLabel =
-      new wxStaticText(&dialog, wxID_ANY,
+      new wxStaticText(body, wxID_ANY,
                        _("Shoreline tile cache limit (MiB; resolution is never "
                          "reduced automatically):"));
-  cacheLabel->Wrap(WR_FromDIP(&dialog, 560));
 #ifdef __OCPN__ANDROID__
-  cacheLabel->SetMinSize(WR_FromDIP(&dialog, wxSize(560, 50)));
+  cacheLabel->SetMinSize(wxSize(0, 50));
+#else
+  cacheLabel->Wrap(WR_FromDIP(&dialog, 560));
 #endif
-  main->Add(cacheLabel, 0, wxLEFT | wxRIGHT | wxTOP, 12);
-  auto cache = new wxSpinCtrl(&dialog, wxID_ANY);
+  main->Add(cacheLabel, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 12);
+  auto cache = new wxSpinCtrl(body, wxID_ANY);
   cache->SetRange(16, 256);
   cache->SetValue(int(Budget() / 1024 / 1024));
-  main->Add(cache, 0, wxALL, 12);
+  main->Add(cache, 0, wxEXPAND | wxALL, 12);
+#ifdef __OCPN__ANDROID__
+  auto actions = new wxBoxSizer(wxVERTICAL);
+  auto verify = new wxButton(body, wxID_ANY, _("Verify installed data"));
+  auto restore = new wxButton(body, wxID_ANY, _("Install / update selected data"));
+  actions->Add(verify, 0, wxEXPAND | wxBOTTOM, 12);
+  actions->Add(restore, 0, wxEXPAND);
+#else
   auto actions = new wxBoxSizer(wxHORIZONTAL);
-  auto verify = new wxButton(&dialog, wxID_ANY, _("Verify installed data"));
-  auto restore = new wxButton(&dialog, wxID_ANY, _("Install / update selected data"));
+  auto verify = new wxButton(body, wxID_ANY, _("Verify installed data"));
+  auto restore = new wxButton(body, wxID_ANY, _("Install / update selected data"));
   actions->Add(verify, 0, wxRIGHT, 6);
   actions->Add(restore);
-  main->Add(actions, 0, wxALL, 12);
+#endif
+  main->Add(actions, 0, wxEXPAND | wxALL, 12);
   auto installHighRes = new wxButton(
-      &dialog, wxID_ANY, _("Install / update High and Full (3–4)..."));
+      body, wxID_ANY,
 #ifdef __OCPN__ANDROID__
-  installHighRes->SetLabel(_("Install High + Full..."));
+      _("Install High + Full..."));
+#else
+      _("Install / update High and Full (3–4)..."));
 #endif
   installHighRes->SetToolTip(_(
       "Download and verify both optional GSHHG resolutions. "
       "Afterwards all five shoreline resolutions are available offline."));
-  main->Add(installHighRes, 0, wxLEFT | wxRIGHT | wxBOTTOM, 12);
+  main->Add(installHighRes, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 12);
   auto updates =
-      new wxButton(&dialog, wxID_ANY, _("GSHHG release information..."));
-  main->Add(updates, 0, wxLEFT | wxRIGHT | wxBOTTOM, 12);
+      new wxButton(body, wxID_ANY, _("GSHHG release information..."));
+  main->Add(updates, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 12);
+#ifndef __OCPN__ANDROID__
   auto footer = dialog.CreateSeparatedButtonSizer(wxOK | wxCANCEL);
   main->Add(footer, 0, wxEXPAND | wxALL, 12);
+#else
+  body->SetSizer(main);
+  auto* viewport = new wxBoxSizer(wxVERTICAL);
+  viewport->Add(body, 1, wxEXPAND);
+  scroll->SetSizer(viewport);
+  auto* layout = new wxBoxSizer(wxVERTICAL);
+  layout->Add(scroll, 1, wxEXPAND | wxALL, 8);
+  dialog.SetSizer(layout);
+  WR_StyleAndroidControls(&dialog);
+  auto* header = WR_AddAndroidDoneHeader(&dialog, _("Shoreline data"), [&]() {
+    dialog.EndModal(wxID_CANCEL);
+  }, _("Cancel"));
+  auto* apply = new wxButton(header, wxID_ANY, _("Apply"));
+  apply->SetMinSize(wxSize(110, 72));
+  apply->Bind(wxEVT_BUTTON, [&](wxCommandEvent&) {
+    wxCommandEvent event(wxEVT_BUTTON, wxID_OK);
+    dialog.GetEventHandler()->ProcessEvent(event);
+  });
+  WR_StyleAndroidControls(header);
+  header->GetSizer()->Insert(1, apply, 0, wxALL, 8);
+  scroll->Bind(wxEVT_SIZE, [=](wxSizeEvent& event) {
+    const int width = scroll->GetClientSize().x - 48;
+    for (auto* label : {text, status, cacheLabel})
+      WR_WrapAndroidText(label, label->GetLabel(), width);
+    body->Layout();
+    scroll->Layout();
+    scroll->FitInside();
+    event.Skip();
+  });
+#endif
   auto selected = [&]() -> const Spec& {
     return ShorelineSpecFor(choice->GetSelection());
   };
@@ -309,7 +491,14 @@ void ShorelineManager::Show(wxWindow* parent) {
                                  : _("Install / update selected data"));
     installedFile->ChangeValue(Wx(p));
     installedFile->SetToolTip(Wx(p));
+#ifdef __OCPN__ANDROID__
+    WR_WrapAndroidText(status, status->GetLabel(), scroll->GetClientSize().x - 48);
+    body->Layout();
+    scroll->Layout();
+    scroll->FitInside();
+#else
     status->Wrap(WR_FromDIP(&dialog, 560));
+#endif
     dialog.Layout();
   };
   auto action = [&](const std::function<void()>& work) {
@@ -318,10 +507,10 @@ void ShorelineManager::Show(wxWindow* parent) {
       work();
       verifiedPath = Installed(selected());
       refresh();
-      wxMessageBox(_("Approved shoreline data is ready and verified."),
+      WR_MessageBox(_("Approved shoreline data is ready and verified."),
                    _("Shoreline data"), wxOK | wxICON_INFORMATION, &dialog);
     } catch (const std::exception& e) {
-      wxMessageBox(wxString::FromUTF8(e.what()), _("Shoreline data"),
+      WR_MessageBox(wxString::FromUTF8(e.what()), _("Shoreline data"),
                    wxOK | wxICON_ERROR, &dialog);
     }
   };
@@ -331,7 +520,7 @@ void ShorelineManager::Show(wxWindow* parent) {
   });
   restore->Bind(wxEVT_BUTTON, [&](wxCommandEvent&) {
     if (selected().code[0] == 'f' && !ShorelineManager::Available(4) &&
-        wxMessageBox(
+        WR_MessageBox(
             _("Full shoreline data needs about 55 MiB to download and 164 MiB "
               "when installed, plus temporary space. Continue?"),
             _("Install Full shoreline data"),
@@ -345,7 +534,7 @@ void ShorelineManager::Show(wxWindow* parent) {
   });
   installHighRes->Bind(wxEVT_BUTTON, [&](wxCommandEvent&) {
     if ((!ShorelineManager::Available(3) || !ShorelineManager::Available(4)) &&
-        wxMessageBox(
+        WR_MessageBox(
             _("High and Full shoreline data need about 68 MiB to download "
               "and 196 MiB when installed, plus temporary space. Continue?"),
             _("Install high-resolution shoreline data"),
@@ -361,8 +550,14 @@ void ShorelineManager::Show(wxWindow* parent) {
         "https://github.com/chartcatalogs/gshhg/releases");
   });
   refresh();
+#ifdef __OCPN__ANDROID__
+  const wxSize canvas = GetCanvasByIndex(0)->GetClientSize();
+  dialog.SetSize(wxSize(canvas.x - 24, canvas.y - 24));
+  dialog.CentreOnParent();
+#else
   dialog.SetSizerAndFit(main);
   dialog.CentreOnScreen();
+#endif
   // Validate before closing; a missing optional dataset cannot be selected.
   dialog.Bind(
       wxEVT_BUTTON,
@@ -385,7 +580,7 @@ void ShorelineManager::Show(wxWindow* parent) {
           descriptions.fill(wxString());
           dialog.EndModal(wxID_OK);
         } catch (const std::exception& e) {
-          wxMessageBox(wxString::FromUTF8(e.what()), _("Shoreline data"),
+          WR_MessageBox(wxString::FromUTF8(e.what()), _("Shoreline data"),
                        wxOK | wxICON_ERROR, &dialog);
         }
       },

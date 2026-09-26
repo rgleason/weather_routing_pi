@@ -168,3 +168,32 @@ must preserve current route XML; tests use a copy and restore saved user data.
 The development APK supports realistic testing here. A production APK and a
 second form factor remain separate release gates because their plugin manager,
 file chooser and available memory can differ.
+
+## Implemented layout and acceptance status (26 September 2026)
+
+The sections above describe the original design. The implemented Android
+workspace uses Plan/Routes/Results/Tools, explicit card Select/Edit controls and
+a persistent top Chart/Close bar. Settings and inspectors use full-canvas
+scrolling sheets with a section picker and in-content Done/Save/Cancel actions.
+Route settings retain immediate-save semantics; Done commits typed spin values.
+The current layout uses the same scrollable pages in both orientations rather
+than the proposed landscape split pane. Result inspectors are separate sheets.
+Forecast selection/generation remains in xGRIB on the OpenCPN toolbar.
+
+Weather Routing's boat/polar/XML/CSV browser stays inside Qt because a native
+Android picker could become invisible behind a wxQt plugin surface while owning
+input. It supports current folder, OpenCPN files, Downloads, folder navigation,
+new folders and overwrite refusal. Polar Add includes multiple file selection
+and explicit new-polar creation. xGRIB's separately tested JNI chooser retains
+Android SAF access.
+
+Android first-use timeline budgets are 128 MiB; low physical headroom reduces
+effective timeline/chart retention and simultaneous routing without changing
+forecast resolution, search settings or stored requests. The Engine page shows
+a current available-RAM/cache estimate. These budgets do not cover the complete
+host process or replace Android's own memory-pressure handling.
+
+Use `android-tablet-audit.md` and the chronological session evidence for actual
+accepted behaviour. The audit records the exercised tablet flows and separately lists untested
+hosts, form factors and remote release gates. Design text and a successful
+build do not establish acceptance on those targets.

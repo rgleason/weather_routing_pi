@@ -516,6 +516,8 @@ struct IsochroneContour {
 struct IsochroneTrace {
   GeoPoint endpoint;
   std::vector<GeoPoint> route;
+  // Keep each predecessor's instant: adaptive steps need not be equal.
+  std::vector<TimePoint> times;
 };
 
 struct IsochroneLayer {

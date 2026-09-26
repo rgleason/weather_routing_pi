@@ -17,6 +17,7 @@
  *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,  USA.         *
  ***************************************************************************/
 
+#include "WeatherRoutingMessageDialog.h"
 #include <wx/wx.h>
 #include <wx/choicdlg.h>
 #include <wx/ffile.h>
@@ -30,6 +31,13 @@
 #include "WeatherRouting.h"
 #include "RoutingTablePanel.h"
 #include "SunCalculator.h"
+#include "WeatherRoutingFileDialog.h"
+
+#ifdef __OCPN__ANDROID__
+#include <QWidget>
+#include "AndroidDialogHeader.h"
+#include "weather_routing_pi.h"
+#endif
 
 BEGIN_EVENT_TABLE(RoutingTablePanel, wxPanel)
 EVT_SIZE(RoutingTablePanel::OnSize)
@@ -499,17 +507,39 @@ RoutingTablePanel::RoutingTablePanel(wxWindow* parent,
 #ifdef __OCPN__ANDROID__
   // wxQt hides the AUI floating pane caption, including its close button.
   auto closeButton = new wxButton(this, wxID_ANY, _("Close"));
+  wxFont summaryFont = m_summaryText->GetFont();
+  summaryFont.SetPointSize(16);
+  m_summaryText->SetFont(summaryFont);
+  const char* buttonStyle =
+      "QPushButton { font-size: 16pt; color: #173849; "
+      "background-color: white; border: 1px solid #9fb9c6; "
+      "border-radius: 8px; padding: 6px; } "
+      "QPushButton:pressed { background-color: #d5e9f0; }";
+  for (auto* button : {m_columnsButton, m_exportCsvButton, closeButton}) {
+    button->SetMinSize(wxSize(170, 65));
+    button->GetHandle()->setStyleSheet(buttonStyle);
+  }
   wxBoxSizer* actions = new wxBoxSizer(wxHORIZONTAL);
   actions->Add(m_columnsButton, 0, wxALL, 5);
   actions->Add(m_exportCsvButton, 0, wxALL, 5);
   actions->Add(closeButton, 0, wxALL, 5);
   m_mainSizer->Add(m_summaryText, 0, wxEXPAND | wxALL, 5);
   m_mainSizer->Add(actions, 0, wxEXPAND);
-  closeButton->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+  Bind(wxEVT_SIZE, [this](wxSizeEvent& event) {
+    WR_WrapAndroidText(m_summaryText, m_summaryText->GetLabel(),
+        wxMax(200, GetClientSize().x - 32));
+    Layout();
+    event.Skip();
+  });
+  auto closeTable = [this]() {
     wxAuiManager* manager = GetFrameAuiManager();
     manager->GetPane(this).Show(false);
     manager->Update();
+  };
+  closeButton->Bind(wxEVT_BUTTON, [closeTable](wxCommandEvent&) {
+    closeTable();
   });
+  WR_InstallAndroidBack(this, closeTable);
 #else
   wxBoxSizer* summarySizer = new wxBoxSizer(wxHORIZONTAL);
   summarySizer->Add(m_summaryText, 1, wxALIGN_CENTER_VERTICAL | wxALL, 5);
@@ -527,6 +557,17 @@ RoutingTablePanel::RoutingTablePanel(wxWindow* parent,
   m_gridWeatherTable->CreateGrid(0, COL_COUNT);
   m_gridWeatherTable->EnableEditing(false);
   m_gridWeatherTable->EnableDragColSize(true);
+#ifdef __OCPN__ANDROID__
+  wxFont cellFont = m_gridWeatherTable->GetDefaultCellFont();
+  cellFont.SetPointSize(15);
+  m_gridWeatherTable->SetDefaultCellFont(cellFont);
+  wxFont headingFont = m_gridWeatherTable->GetLabelFont();
+  headingFont.SetPointSize(15);
+  headingFont.SetWeight(wxFONTWEIGHT_BOLD);
+  m_gridWeatherTable->SetLabelFont(headingFont);
+  m_gridWeatherTable->SetDefaultRowSize(56, true);
+  m_gridWeatherTable->SetColLabelSize(56);
+#endif
 
   // Set column labels
   m_gridWeatherTable->SetColLabelValue(COL_LEG_NUMBER, _("Leg #"));
@@ -568,11 +609,48 @@ RoutingTablePanel::RoutingTablePanel(wxWindow* parent,
   LoadColumnVisibility();
 
   // Add components to sizer
+#ifdef __OCPN__ANDROID__
+  // Keep the existing formatted data model for CSV and weather colours.
+  // Browse one leg at a time without a wide desktop spreadsheet.
+  m_gridWeatherTable->Hide();
+  auto* navigation = new wxBoxSizer(wxHORIZONTAL);
+  auto* previous = new wxButton(this, wxID_ANY, _("Previous"));
+  m_androidLegPicker = new wxChoice(this, wxID_ANY);
+  auto* next = new wxButton(this, wxID_ANY, _("Next"));
+  navigation->Add(previous, 0, wxEXPAND | wxALL, 8);
+  navigation->Add(m_androidLegPicker, 1, wxEXPAND | wxALL, 8);
+  navigation->Add(next, 0, wxEXPAND | wxALL, 8);
+  m_mainSizer->Add(navigation, 0, wxEXPAND);
+  m_androidLegDetails = new wxScrolledWindow(this, wxID_ANY);
+  m_androidLegDetails->SetScrollRate(0, 16);
+  m_androidLegFields = new wxBoxSizer(wxVERTICAL);
+  m_androidLegDetails->SetSizer(m_androidLegFields);
+  m_mainSizer->Add(m_androidLegDetails, 1, wxEXPAND | wxALL, 8);
+  m_androidLegPicker->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) {
+    ShowAndroidLeg(m_androidLegPicker->GetSelection());
+  });
+  previous->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+    ShowAndroidLeg(wxMax(0, m_androidLegPicker->GetSelection() - 1));
+  });
+  next->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+    ShowAndroidLeg(wxMin(static_cast<int>(m_androidLegPicker->GetCount()) - 1,
+                        m_androidLegPicker->GetSelection() + 1));
+  });
+  WR_StyleAndroidControls(this);
+  WR_InstallAndroidBack(this, [this]() {
+    wxCommandEvent event;
+    OnClose(event);
+  });
+#else
   m_mainSizer->Add(m_gridWeatherTable, 1, wxEXPAND | wxALL, 5);
+#endif
 
   SetSizer(m_mainSizer);
   m_mainSizer->SetSizeHints(this);
   m_mainSizer->Fit(this);
+#ifdef __OCPN__ANDROID__
+  SetMinSize(wxSize(0, 0));
+#endif
 
   // Populate the table with data from the route
   PopulateTable();
@@ -591,7 +669,13 @@ void RoutingTablePanel::SetRouteMap(RouteMapOverlay* routemap) {
 
 void RoutingTablePanel::OnClose(wxCommandEvent& event) {
   // Hide parent Aui pane rather than destroying the dialog
+#ifdef __OCPN__ANDROID__
+  auto* manager = GetFrameAuiManager();
+  manager->GetPane(this).Show(false);
+  manager->Update();
+#else
   GetParent()->Hide();
+#endif
 }
 
 void RoutingTablePanel::OnSize(wxSizeEvent& event) {
@@ -633,6 +717,9 @@ void RoutingTablePanel::ApplyColumnVisibility() {
     }
   }
   m_gridWeatherTable->ForceRefresh();
+#ifdef __OCPN__ANDROID__
+  if (m_androidLegPicker) ShowAndroidLeg(m_androidLegPicker->GetSelection());
+#endif
 }
 
 void RoutingTablePanel::OnChooseColumns(wxCommandEvent& event) {
@@ -643,6 +730,45 @@ void RoutingTablePanel::OnChooseColumns(wxCommandEvent& event) {
     if (m_columnVisible[static_cast<std::size_t>(col)]) selections.Add(col);
   }
 
+#ifdef __OCPN__ANDROID__
+  wxDialog dialog(this, wxID_ANY, _("Leg details"));
+  auto* root = new wxBoxSizer(wxVERTICAL);
+  auto* scroll = new wxScrolledWindow(&dialog, wxID_ANY);
+  scroll->SetScrollRate(0, 16);
+  auto* fields = new wxBoxSizer(wxVERTICAL);
+  std::vector<wxCheckBox*> checks;
+  for (int col = 0; col < COL_COUNT; ++col) {
+    auto* check = new wxCheckBox(scroll, wxID_ANY, choices[col]);
+    check->SetValue(m_columnVisible[col]);
+    fields->Add(check, 0, wxEXPAND | wxALL, 8);
+    checks.push_back(check);
+  }
+  scroll->SetSizer(fields);
+  root->Add(scroll, 1, wxEXPAND);
+  dialog.SetSizer(root);
+  WR_StyleAndroidControls(&dialog);
+  bool accepted = false;
+  auto* header = WR_AddAndroidDoneHeader(&dialog, _("Leg details"), [&]() {
+    dialog.EndModal(wxID_CANCEL);
+  }, _("Cancel"));
+  auto* save = new wxButton(header, wxID_ANY, _("Save"));
+  save->SetMinSize(wxSize(150, 72));
+  header->GetSizer()->Insert(1, save, 0, wxALL, 8);
+  WR_StyleAndroidControls(save);
+  save->GetHandle()->setStyleSheet(
+      "QPushButton { font-size: 17pt; min-height: 62px; color: #173849; "
+      "background: white; border: 1px solid #9fb9c6; border-radius: 8px; padding: 5px; }");
+  save->Bind(wxEVT_BUTTON, [&](wxCommandEvent&) {
+    accepted = true;
+    dialog.EndModal(wxID_OK);
+  });
+  dialog.SetSize(GetCanvasByIndex(0)->GetClientSize() - wxSize(24, 24));
+  dialog.CentreOnParent();
+  dialog.ShowModal();
+  if (!accepted) return;
+  for (int col = 0; col < COL_COUNT; ++col)
+    m_columnVisible[col] = checks[col]->GetValue();
+#else
   wxMultiChoiceDialog dialog(
       this, _("Select the columns to show in the Weather Table."),
       _("Weather Table Columns"), choices);
@@ -656,6 +782,7 @@ void RoutingTablePanel::OnChooseColumns(wxCommandEvent& event) {
     if (col >= 0 && col < COL_COUNT)
       m_columnVisible[static_cast<std::size_t>(col)] = true;
   }
+#endif
   SaveColumnVisibility();
   ApplyColumnVisibility();
 }
@@ -670,6 +797,7 @@ void RoutingTablePanel::UpdateSummary(const std::list<PlotData>& plotData) {
   double motorSeconds = 0.0;
   double maxWind = 0.0;
   double maxWave = 0.0;
+  bool hasWave = false;
   const PlotData* previous = nullptr;
   for (const PlotData& data : plotData) {
     if (previous)
@@ -677,26 +805,48 @@ void RoutingTablePanel::UpdateSummary(const std::list<PlotData>& plotData) {
                                          data.lat, data.lon);
     if (data.data_mask & Position::MOTOR_USED) motorSeconds += data.delta;
     if (std::isfinite(data.twsOverWater)) maxWind = std::max(maxWind, data.twsOverWater);
-    if (std::isfinite(data.WVHT)) maxWave = std::max(maxWave, data.WVHT);
+    if (std::isfinite(data.WVHT)) {
+      maxWave = std::max(maxWave, data.WVHT);
+      hasWave = true;
+    }
     previous = &data;
   }
 
   const PlotData& first = plotData.front();
   const PlotData& last = plotData.back();
-  const wxTimeSpan duration = last.time.Subtract(first.time);
+  wxDateTime arrival = last.time;
+#ifdef __OCPN__ANDROID__
+  if (m_RouteMap->ReachedDestination() && m_RouteMap->GetDestination()) {
+    const auto* destination = m_RouteMap->GetDestination();
+    distance += DistGreatCircle_Plugin(last.lat, last.lon,
+                                      destination->lat, destination->lon);
+    arrival = m_RouteMap->EndTime();
+  }
+#endif
+  const wxTimeSpan duration = arrival.Subtract(first.time);
+#ifdef __OCPN__ANDROID__
+  const long totalMinutes = wxRound(duration.GetSeconds().ToDouble() / 60.0);
+#else
   const long totalMinutes = duration.GetMinutes();
+#endif
   const long motorMinutes = static_cast<long>(motorSeconds / 60.0 + 0.5);
   m_summaryText->SetLabel(wxString::Format(
       _("Depart %s   Arrive %s   Duration %ldd %02ld:%02ld   Distance %s   "
-        "Motor %ld:%02ld   Max wind %s   Max wave %.1f m"),
+        "Motor %ld:%02ld   Max wind %s   Max wave %s"),
       m_WeatherRouting.m_SettingsDialog.FormatTime(
           first.time, _T("%Y-%m-%d %H:%M")),
       m_WeatherRouting.m_SettingsDialog.FormatTime(
-          last.time, _T("%Y-%m-%d %H:%M")),
+          arrival, _T("%Y-%m-%d %H:%M")),
       totalMinutes / (24 * 60),
       (totalMinutes / 60) % 24, totalMinutes % 60, FormatDistance(distance),
-      motorMinutes / 60, motorMinutes % 60, FormatSpeed(maxWind), maxWave));
+      motorMinutes / 60, motorMinutes % 60, FormatSpeed(maxWind),
+      hasWave ? wxString::Format("%.1f m", maxWave) : _("Unavailable")));
+#ifdef __OCPN__ANDROID__
+  WR_WrapAndroidText(m_summaryText, m_summaryText->GetLabel(),
+                    wxMax(200, GetClientSize().x - 32));
+#else
   m_summaryText->Wrap(1100);
+#endif
 }
 
 static wxString CsvField(wxString value) {
@@ -705,7 +855,12 @@ static wxString CsvField(wxString value) {
 }
 
 void RoutingTablePanel::OnExportCsv(wxCommandEvent& event) {
-  wxFileDialog dialog(this, _("Export weather route table"), wxEmptyString,
+  WR_FileDialog dialog(this, _("Export weather route table"),
+#ifdef __OCPN__ANDROID__
+                      weather_routing_pi::StandardPath(),
+#else
+                      wxEmptyString,
+#endif
                       _("weather-route.csv"), _("CSV files (*.csv)|*.csv"),
                       wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
   if (dialog.ShowModal() != wxID_OK) return;
@@ -732,7 +887,7 @@ void RoutingTablePanel::OnExportCsv(wxCommandEvent& event) {
 
   wxFFile file(dialog.GetPath(), "wb");
   if (!file.IsOpened() || !file.Write(csv, wxConvUTF8))
-    wxMessageBox(_("Could not write the CSV file."), _("Weather Routing"),
+    WR_MessageBox(_("Could not write the CSV file."), _("Weather Routing"),
                  wxOK | wxICON_ERROR, this);
 }
 
@@ -816,6 +971,9 @@ void RoutingTablePanel::PopulateTable() {
   if (!m_RouteMap || !m_WeatherRouting.RouteMapIsManaged(m_RouteMap)) {
     m_RouteMap = nullptr;
     UpdateSummary(std::list<PlotData>());
+#ifdef __OCPN__ANDROID__
+    RefreshAndroidLegs();
+#endif
     return;
   }
 
@@ -851,7 +1009,7 @@ void RoutingTablePanel::PopulateTable() {
                        GetSunElevationColor(sunElevation));
       m_gridWeatherTable->SetCellValue(
           row, COL_SUN_ELEVATION,
-          wxString::Format("%+.1f\u00B0", sunElevation));
+          wxString::Format(_T("%+.1f\u00B0"), sunElevation));
     } else {
       m_gridWeatherTable->SetCellValue(row, COL_ETA, timeString);
     }
@@ -898,7 +1056,7 @@ void RoutingTablePanel::PopulateTable() {
 
     if (!std::isnan(data.cog)) {
       m_gridWeatherTable->SetCellValue(
-          row, COL_COG, wxString::Format("%.0f\u00B0", positive_degrees(data.cog)));
+          row, COL_COG, wxString::Format(_T("%.0f\u00B0"), positive_degrees(data.cog)));
     }
 
     if (!std::isnan(data.stw)) {
@@ -913,7 +1071,7 @@ void RoutingTablePanel::PopulateTable() {
 
     if (!std::isnan(data.ctw)) {
       m_gridWeatherTable->SetCellValue(
-          row, COL_CTW, wxString::Format("%.0f\u00B0", positive_degrees(data.ctw)));
+          row, COL_CTW, wxString::Format(_T("%.0f\u00B0"), positive_degrees(data.ctw)));
     }
 
     m_gridWeatherTable->SetCellValue(row, COL_WIND_SOURCE,
@@ -943,7 +1101,7 @@ void RoutingTablePanel::PopulateTable() {
         wxColor awaColor =
             isStarboardTack ? wxColour(0, 255, 0) : wxColour(255, 0, 0);
         setCellWithColor(row, COL_AWA,
-                         wxString::Format("%.0f\u00B0", apparentWindAngle),
+                         wxString::Format(_T("%.0f\u00B0"), apparentWindAngle),
                          awaColor);
       }
     }
@@ -951,7 +1109,7 @@ void RoutingTablePanel::PopulateTable() {
     if (!std::isnan(data.twdOverWater)) {
       m_gridWeatherTable->SetCellValue(
           row, COL_TWD,
-          wxString::Format("%.0f\u00B0", positive_degrees(data.twdOverWater)));
+          wxString::Format(_T("%.0f\u00B0"), positive_degrees(data.twdOverWater)));
 
       // Calculate true wind angle relative to boat course
       if (!std::isnan(data.ctw)) {
@@ -962,7 +1120,7 @@ void RoutingTablePanel::PopulateTable() {
         // Color the TWA cell: green for starboard tack, red for port tack
         wxColor twaColor =
             isStarboardTack ? wxColour(0, 255, 0) : wxColour(255, 0, 0);
-        setCellWithColor(row, COL_TWA, wxString::Format("%.0f\u00B0", twa),
+        setCellWithColor(row, COL_TWA, wxString::Format(_T("%.0f\u00B0"), twa),
                          twaColor);
       }
     }
@@ -1042,7 +1200,7 @@ void RoutingTablePanel::PopulateTable() {
       if (!std::isnan(data.currentDir)) {
         m_gridWeatherTable->SetCellValue(
             row, COL_CURRENT_DIR,
-            wxString::Format("%.0f\u00B0", positive_degrees(data.currentDir)));
+            wxString::Format(_T("%.0f\u00B0"), positive_degrees(data.currentDir)));
 
         // Calculate current angle relative to COG if COG is available
         if (!std::isnan(data.cog)) {
@@ -1050,7 +1208,7 @@ void RoutingTablePanel::PopulateTable() {
               CalculateCurrentAngle(data.currentDir, data.cog);
 
           // Display current angle with color coding
-          wxString currentAngleStr = wxString::Format("%.0f\u00B0", currentAngle);
+          wxString currentAngleStr = wxString::Format(_T("%.0f\u00B0"), currentAngle);
           wxColor effectColor =
               GetCurrentEffectColor(currentAngle, data.currentSpeed);
           setCellWithColor(row, COL_CURRENT_ANGLE, currentAngleStr,
@@ -1068,12 +1226,12 @@ void RoutingTablePanel::PopulateTable() {
     if (std::isfinite(data.WVDIR)) {
       m_gridWeatherTable->SetCellValue(
           row, COL_WAVE_DIRECTION,
-          wxString::Format("%.0f\u00B0", positive_degrees(data.WVDIR)));
+          wxString::Format(_T("%.0f\u00B0"), positive_degrees(data.WVDIR)));
     }
     if (std::isfinite(data.WVREL)) {
       m_gridWeatherTable->SetCellValue(
           row, COL_WAVE_RELATIVE,
-          wxString::Format("%.0f\u00B0", positive_degrees(data.WVREL)));
+          wxString::Format(_T("%.0f\u00B0"), positive_degrees(data.WVREL)));
     }
     if (std::isfinite(data.WVPER) && data.WVPER > 0) {
       m_gridWeatherTable->SetCellValue(
@@ -1092,6 +1250,38 @@ void RoutingTablePanel::PopulateTable() {
     row++;
   }
 
+#ifdef __OCPN__ANDROID__
+  // The engine's sampled plot list excludes the final connection. Show its
+  // actual arrival and distance without inventing weather samples for it.
+  if (!plotData.empty() && m_RouteMap->ReachedDestination() &&
+      m_RouteMap->GetDestination() &&
+      m_RouteMap->EndTime() > plotData.back().time) {
+    const auto* destination = m_RouteMap->GetDestination();
+    const double finalDistance = DistGreatCircle_Plugin(
+        prevData.lat, prevData.lon, destination->lat, destination->lon);
+    const wxTimeSpan elapsed = m_RouteMap->EndTime() - startTime;
+    m_gridWeatherTable->AppendRows(1);
+    for (int column = 0; column < COL_COUNT; ++column)
+      m_gridWeatherTable->SetCellValue(row, column, _("Unavailable"));
+    m_gridWeatherTable->SetCellValue(row, COL_LEG_NUMBER, _("Arrival"));
+    m_gridWeatherTable->SetCellValue(row, COL_ETA,
+        m_WeatherRouting.m_SettingsDialog.FormatTime(
+            m_RouteMap->EndTime(), _T("%Y-%m-%d %H:%M")));
+    m_gridWeatherTable->SetCellValue(row, COL_ENROUTE,
+        wxString::Format(_T("%dd %02d:%02d"), elapsed.GetDays(),
+                        elapsed.GetHours() % 24, elapsed.GetMinutes() % 60));
+    m_gridWeatherTable->SetCellValue(row, COL_LEG_DISTANCE,
+        FormatDistance(cumulativeDistance + finalDistance));
+    const double seconds = (m_RouteMap->EndTime() - prevTime).GetSeconds().ToDouble();
+    if (seconds > 0)
+      m_gridWeatherTable->SetCellValue(row, COL_SOG,
+          FormatSpeed(finalDistance * 3600.0 / seconds));
+  }
+#endif
+
+#ifdef __OCPN__ANDROID__
+  RefreshAndroidLegs();
+#endif
   // Auto-size the selected columns for better display.
   for (int i = 0; i < COL_COUNT; i++) {
     if (m_columnVisible[static_cast<std::size_t>(i)])
@@ -1108,6 +1298,50 @@ void RoutingTablePanel::PopulateTable() {
     UpdateTimeHighlight(timelineTime);
   }
 }
+
+#ifdef __OCPN__ANDROID__
+void RoutingTablePanel::RefreshAndroidLegs() {
+  if (!m_androidLegPicker) return;
+  const int selected = wxMax(0, m_androidLegPicker->GetSelection());
+  m_androidLegPicker->Clear();
+  for (int row = 0; row < m_gridWeatherTable->GetNumberRows(); ++row)
+    m_androidLegPicker->Append(m_gridWeatherTable->GetCellValue(row, COL_LEG_NUMBER) +
+        " | " + m_gridWeatherTable->GetCellValue(row, COL_ETA));
+  ShowAndroidLeg(wxMin(selected, m_gridWeatherTable->GetNumberRows() - 1));
+}
+
+void RoutingTablePanel::ShowAndroidLeg(int row) {
+  if (!m_androidLegDetails) return;
+  m_androidLegFields->Clear(true);
+  if (row < 0 || row >= m_gridWeatherTable->GetNumberRows()) {
+    m_androidLegDetails->FitInside();
+    return;
+  }
+  m_androidLegPicker->SetSelection(row);
+  for (int col = 0; col < COL_COUNT; ++col) {
+    if (!m_columnVisible[col]) continue;
+    auto* card = new wxPanel(m_androidLegDetails, wxID_ANY);
+    card->SetBackgroundColour(col % 2 ? wxColour(237, 244, 247) : *wxWHITE);
+    const wxColour marker = m_gridWeatherTable->GetCellBackgroundColour(row, col);
+    card->GetHandle()->setStyleSheet(QString(
+        "QWidget { border-left: 4px solid %1; } QLabel { border: none; color: #173849; }")
+        .arg(QString::fromUtf8(marker.GetAsString(wxC2S_HTML_SYNTAX).utf8_str())));
+    auto* fields = new wxBoxSizer(wxVERTICAL);
+    auto* label = new wxStaticText(card, wxID_ANY, m_gridWeatherTable->GetColLabelValue(col));
+    const wxString cell = m_gridWeatherTable->GetCellValue(row, col);
+    auto* value = new wxStaticText(card, wxID_ANY, cell.IsEmpty() ? _("Unavailable") : cell);
+    fields->Add(label, 0, wxEXPAND | wxALL, 8);
+    fields->Add(value, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 8);
+    card->SetSizer(fields);
+    WR_StyleAndroidControls(card);
+    WR_WrapAndroidText(value, value->GetLabel(),
+        wxMax(250, m_androidLegDetails->GetClientSize().x - 64));
+    m_androidLegFields->Add(card, 0, wxEXPAND | wxBOTTOM, 8);
+  }
+  m_androidLegDetails->Layout();
+  m_androidLegDetails->FitInside();
+}
+#endif
 
 void RoutingTablePanel::UpdateTimeHighlight(wxDateTime timelineTime) {
   const bool routeIsManaged =

@@ -86,7 +86,7 @@ class AlphaArtifacts(unittest.TestCase):
         output = self.root / "release"
         prepare.prepare(self.root / "artifacts", output, "abcdef1", "23")
         uploads = json.loads((output / "uploads.json").read_text())
-        self.assertEqual(len(uploads), 18)
+        self.assertEqual(len(uploads), 20)
         self.assertTrue(all(item["version"] == "1.18.3+23.abcdef1" for item in uploads))
         for archive in output.glob("*.tar.gz"):
             with tarfile.open(archive, "r:gz") as package:

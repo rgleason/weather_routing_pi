@@ -52,9 +52,42 @@ FilterRoutesDialog::FilterRoutesDialog(WeatherRouting* weatherrouting)
   for (int i = 0; i < NUM_FILTERS; i++) m_cCategory->Append(FilterNames[i]);
   m_cCategory->SetSelection(0);
 #ifdef __OCPN__ANDROID__
-  WR_AddAndroidDoneHeader(this, _("Filter routings"));
-  wxSize sz = ::wxGetDisplaySize();
-  SetSize(0, 0, sz.x, sz.y - 40);
+  m_cCategory->SetString(BOATFILENAME, _("Boat"));
+  m_cCategory->GetContainingSizer()->Detach(m_cCategory);
+  m_tFilter->GetContainingSizer()->Detach(m_tFilter);
+  m_button48->GetContainingSizer()->Detach(m_button48);
+  for (auto* child : GetChildren()) child->Hide();
+  auto* scroll = new wxScrolledWindow(this, wxID_ANY);
+  scroll->SetScrollRate(0, 20);
+  for (wxWindow* control : {static_cast<wxWindow*>(m_cCategory),
+                            static_cast<wxWindow*>(m_tFilter),
+                            static_cast<wxWindow*>(m_button48)}) {
+    control->Reparent(scroll);
+    control->Show();
+  }
+  auto* contents = new wxBoxSizer(wxVERTICAL);
+  auto* guidance = new wxStaticText(scroll, wxID_ANY,
+      _("Choose a field and enter text to match. Filters for different fields apply together."));
+  contents->Add(guidance, 0, wxEXPAND | wxALL, 16);
+  contents->Add(new wxStaticText(scroll, wxID_ANY, _("Field")), 0, wxALL, 16);
+  contents->Add(m_cCategory, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 16);
+  contents->Add(new wxStaticText(scroll, wxID_ANY, _("Contains")), 0, wxALL, 16);
+  m_tFilter->SetHint(_("Text to match"));
+  contents->Add(m_tFilter, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 16);
+  m_button48->SetLabel(_("Clear all filters"));
+  contents->Add(m_button48, 0, wxEXPAND | wxALL, 16);
+  contents->AddSpacer(42);
+  scroll->SetSizer(contents);
+  auto* root = new wxBoxSizer(wxVERTICAL);
+  root->Add(scroll, 1, wxEXPAND);
+  SetSizer(root, true);
+  WR_StyleAndroidControls(this);
+  scroll->Bind(wxEVT_SIZE, [scroll, guidance](wxSizeEvent& event) {
+    WR_WrapAndroidText(guidance, guidance->GetLabel(),
+        wxMax(200, scroll->GetClientSize().x - 64));
+    scroll->Layout(); scroll->FitInside(); event.Skip();
+  });
+  WR_AddAndroidDoneHeader(this, _("Filter routes"));
 #endif
 }
 
@@ -69,6 +102,7 @@ void FilterRoutesDialog::OnFilterText(wxCommandEvent& event) {
 
 void FilterRoutesDialog::OnResetAll(wxCommandEvent& event) {
   for (int i = 0; i < NUM_FILTERS; i++) m_Filters[i] = _T("");
+  m_tFilter->ChangeValue(wxEmptyString);
   ApplyFilters();
 }
 
