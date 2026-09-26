@@ -518,3 +518,13 @@ wxQt plot selector changed its selected quantity instead of scrolling. Forward
 drags to the nearest touch viewport; open the dropdown only on a stationary
 tap. Test actual selection, dismissal and a swipe over the control after adding
 this adapter. Preserve editable combo text behavior separately.
+
+### Match the CI packaging environment
+
+Run the actual CI shell script locally with its pinned cached dependencies.
+`OCPN_TARGET=android-arm64` changes the inherited CPack filename; a manual
+configure without that environment produced a different archive name. Old
+archives in a reused build directory can look current. Select only the archive
+reported by the current CPack run, validate its embedded metadata and assets,
+and compare the packaged library hash with the tablet-tested library. Here the
+full local CI script passed and produced identical library bytes.

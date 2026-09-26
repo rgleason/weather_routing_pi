@@ -89,3 +89,30 @@ claim to fix the host Plugin Manager.
 
 Final package/import evidence and chronological details are recorded in the
 workspace artifacts `artifacts/xweather-android-20260926/session-progress.md`.
+
+## Final installation
+
+Final xWeatherRouting and xGRIB 0.3.1 archives were imported through the host
+Plugin Manager and both installed library hashes matched their archives. Cold
+startup retained six positions and five Nicholson configurations. xGRIB and
+xWeatherRouting are enabled; bundled GRIB is disabled. Both final packages are
+in public Downloads. Package/library hashes and source commits are recorded in
+`artifacts/xweather-android-20260926/final-packages.json`.
+
+The final installed coastal run reproduced Quick Conwy, Standard Dun Laoghaire,
+Standard Lough Foyle and Professional Conwy fingerprints. All completed, with
+eight requested workers capped to one at 431–494 MiB available RAM.
+
+Disposable editor, batch and collision files were archived before removal.
+Earlier host route/track test outputs remain preserved pending separate cleanup
+approval; automatic review rejected a host navigation-data cleanup operation.
+
+The final installed Atlantic Standard run also completed in 227.9 seconds:
+2,883.14 NM, 20d10h35m06s, 167 legs, fingerprint `e9811b87fb8eb6f7`.
+The result reports GRIB + Climatology with 408h25m of Climatology coverage;
+it matches the earlier independently checked CSV/GPX/host output run.
+
+The complete Android CircleCI build script also passed locally using the pinned
+core/support/NDK cache. It validated AArch64, SONAME/core dependency, bundled
+shoreline data and import metadata. Its packaged library is byte-for-byte
+identical to the final tablet-tested library. Remote CircleCI is still unrun.
