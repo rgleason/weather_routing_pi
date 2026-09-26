@@ -91,7 +91,7 @@ set(LONG_DESCRIPTION
 
 set(VERSION_MAJOR "1")
 set(VERSION_MINOR "18")
-set(VERSION_PATCH "8")
+set(VERSION_PATCH "9")
 set(VERSION_TWEAK "0")
 
 # Paul this stuff shouldn't be here really, gets too confusing. Make a cmake/shoreline.cmake and then link that.
