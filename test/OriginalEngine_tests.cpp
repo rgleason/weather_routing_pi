@@ -86,10 +86,15 @@ TEST(OriginalEngine, DisplayIsBoundedAndDoesNotChangeAcceptedRoute) {
     for (const auto& trace : layer.traces) {
       ASSERT_EQ(trace.times.size(), trace.route.size());
       ASSERT_FALSE(trace.times.empty());
-      EXPECT_EQ(trace.times.front(), request().departure);
-      EXPECT_LE(trace.times.back(), layer.time);
+      // Compare epoch ticks so GoogleTest does not instantiate the chrono
+      // std::format printer, which needs macOS 13.3 with recent Apple libc++.
+      EXPECT_EQ(trace.times.front().time_since_epoch().count(),
+                request().departure.time_since_epoch().count());
+      EXPECT_LE(trace.times.back().time_since_epoch().count(),
+                layer.time.time_since_epoch().count());
       for (std::size_t i = 1; i < trace.times.size(); ++i)
-        EXPECT_GT(trace.times[i], trace.times[i - 1]);
+        EXPECT_GT(trace.times[i].time_since_epoch().count(),
+                  trace.times[i - 1].time_since_epoch().count());
       ++inspected;
     }
   EXPECT_GT(inspected, 0U);

@@ -115,9 +115,11 @@ cmake -S "$source_dir" -B "$plugin_build" \
   -DOCPN_Android_Common="$support_root" \
   -DOCPN_ANDROID_CORE_LIBRARY="$core_build/libgorp.so" \
   -DWEATHER_ROUTING_XWEATHER_IDENTITY="$identity_arg" \
-  -DCMAKE_BUILD_TYPE=Release
+  -DCMAKE_BUILD_TYPE=Release \
+  2>&1 | tee "$artifacts/configure-plugin.log"
 cmake --build "$plugin_build" \
-  --parallel "${CMAKE_BUILD_PARALLEL_LEVEL:-3}"
+  --parallel "${CMAKE_BUILD_PARALLEL_LEVEL:-3}" \
+  2>&1 | tee "$artifacts/build-plugin.log"
 rm -f "$plugin_build"/"$package_name"-*-android-arm64.tar.gz \
       "$plugin_build"/"$package_name"-*-android-arm64.xml \
       "$artifacts/package"/"$package_name"-* "$artifacts/package/SHA256SUMS"
