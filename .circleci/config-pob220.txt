@@ -148,32 +148,6 @@ jobs:
         root: .
         paths:
         - artifacts/windows-x86
-  windows-x64:
-    executor:
-      name: win/server-2022
-      shell: bash.exe
-    environment:
-      OCPN_TARGET: MSVC
-      MSVC_VERSION: '2022'
-      WX_VER: '32'
-      WEATHER_ROUTING_CI_XWEATHER: 'false'
-      CONFIGURATION: RelWithDebInfo
-      TARGET_CPU: X64
-    steps:
-      - checkout
-      - run:
-          shell: cmd.exe
-          name: Native Windows x64 build, tests and package
-          command: ci\circleci-build-msvc-x64.bat
-          no_output_timeout: 45m
-      - store_test_results:
-          path: artifacts/windows-x64/tests
-      - store_artifacts:
-          path: artifacts/windows-x64
-      - persist_to_workspace:
-          root: .
-          paths:
-            - artifacts/windows-x64
   publish-beta:
     docker:
     - image: cimg/python:3.13
@@ -421,8 +395,6 @@ workflows:
         filters: *id001
     - windows-x86:
         filters: *id001
-    - windows-x64:
-        filters: *id001        
     - macos-universal:
         filters: *id001
         name: macos-arm64
@@ -436,8 +408,7 @@ workflows:
         - flatpak25.08-x86_64
         - flatpak25.08-aarch64
         - windows-x86
-        - windows-x64
-        - macos-universal
+        - macos-arm64
         filters:
           branches:
             only: master
