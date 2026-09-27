@@ -662,3 +662,79 @@ The macOS matrix also exposed GoogleTest's chrono time-point printer requiring
 floating-point std::to_chars unavailable at the macOS 11 deployment target.
 Compare exact epoch tick counts for these time assertions, preserving their
 semantics while avoiding a newer formatting-only runtime requirement.
+
+## Celestial Navigation findings, 27 September 2026
+
+The Celestial 2.8.13 tablet audit is still in progress. These are observed
+adapter and CI findings, not a claim of complete product acceptance. Detailed
+evidence and pending checks are in the Celestial branch's
+[Android porting findings](https://github.com/pob220/celestial_navigation_pi/blob/android/celnav-2.8.13/docs/android-porting-lessons.md).
+
+- Static wxQt linkage can leave plugin-local wxThread module mutexes
+  uninitialized. A real ephemeris-verification worker crashed in the wxThread
+  constructor although the host used threads successfully. Android now uses
+  owned std::thread/std::mutex workers with explicit joins; desktop retains its
+  wx implementation and runtime workaround. Verify actual import, cold-start
+  verification, cancellation and destruction on the installed library.
+- Custom nonzero modal action IDs can be collapsed to OK by wxQt ShowModal.
+  Read the explicit wx return code for action choosers. Test each visible action,
+  including native chooser Back, rather than infer it works from ordinary Save.
+- A native card view's highlighted row and a separate wx report-list selection
+  can disagree. Make the visible Android selection authoritative, bounds-check
+  it against the shared model, and verify the resulting body/event calculation.
+- Preserve precise editable coordinates across computation. Formatting result
+  labels into DMM is different from replacing the user's full decimal entry.
+- Scoped-storage imports need an owned asynchronous ACTION_OPEN_DOCUMENT result
+  receiver, worker descriptor copy, bounded chunks, progress/cancellation and
+  temporary-file ownership retained through checksum verification. Atomic
+  installation must preserve a previous pack on cancellation/error. Validate
+  installed hashes independently. A cancellation tap after copying finished
+  is not a copy-cancellation pass.
+- NDK 26's unified layout needs a compatible CMake. An otherwise successful
+  fresh ARMHF core build failed plugin configuration under Ubuntu CMake 3.16,
+  which expected platforms/android-21. Pin and checksum a compatible CMake
+  distribution in the plugin's own Android CI workflow.
+- CircleCI Windows can supply python.exe or py.exe without python3. Select and
+  verify Python 3 for shared artifact-retention scripts. A package compiled
+  successfully but lost at retention is a failed CI job, not a retained pass.
+- Inspect CPack's exact output name. Incremental packaging and OCPN_TARGET can
+  generate different filenames; an older wildcard match packaged stale code.
+  Independently compare the archive's library with the actual installed bytes
+  and retain matching unstripped binaries and exact source provenance.
+- Inspect host chart modes before automated taps. Route-creation mode may
+  consume taps intended for a plugin toolbar icon. Use disposable records,
+  identify only test-created GUIDs, back up actual storage and verify every
+  original host record before narrow cleanup. Do not replace the navigator's
+  profile as a shortcut.
+
+For CircleCI GitHub App projects, an existing run-ci PR-label trigger can be
+driven using authenticated GitHub CLI, avoiding repeated browser-only pipeline
+starts. Confirm actual config/checkout SHA and validation-only parameters;
+publication still requires the repository's separate approval gate.
+
+### Private wxQt unload and touch-driven plugin toggles
+
+Celestial's pinned wxQt defers native deletion after wx wrappers are released.
+Parentless wxQtShortcutHandler objects can retain plugin vtables after a tree
+walk reports no surviving widgets. Before dlclose, release only owned windows
+and menu wrappers/native roots, use QPointer guards, clear obsolete wx handler
+properties, remove their exact pointers from both private and host pending
+lists, and drain already-posted Qt DeferredDelete. Do not pump arbitrary input,
+timers or workers during unload. Retain the crashed and replacement binaries.
+
+Host Plugin Manager touch toggles have a separate issue: synchronous DeInit
+can unregister QScroller while Qt 5.12.2 is iterating its gesture recognizers.
+The physical crash resolved to QGestureManager::getState. The narrow host fix
+defers the toggle one Qt event turn using a native context plus wxWeakRef.
+Test native import after editor Save, result Close and clock Cancel, acknowledge
+its success modal and tap the reopened workspace. Also test live disable,
+re-enable and cold restart with PID/file evidence. These reveal different
+lifetime defects; one passing workflow does not establish the others.
+
+An unofficial tester APK needs an explicit version label and compatible
+signing identity. Preserve non-signature META-INF entries as well as Java DEX,
+assets and other libraries; reject a base hash, source SHA or manifest change
+outside the reviewed scope. A development-package in-place update does not
+establish production signing compatibility or stock profile migration. Test
+the version-upgrade behavior: the retained host regenerated its installation
+marker and reset two display settings, which were restored individually.
