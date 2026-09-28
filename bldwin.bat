@@ -26,6 +26,7 @@ REM 1. Define paths
 REM ------------------------------------------------------------
 set PLUGIN_ROOT=%cd%
 set BUILD_DIR=%PLUGIN_ROOT%\build
+set BUILD_DIR64==%PLUGIN_ROOT%\build64
 set PLUGIN_BUILD=%BUILD_DIR%\RelWithDebInfo
 
 set OCPN_ROOT=C:\Users\fcgle\source\opencpn
@@ -42,11 +43,15 @@ for %%D in ("%PLUGIN_ROOT%") do set PLUGIN_NAME=%%~nxD
 echo Plugin name detected: %PLUGIN_NAME%
 
 REM ------------------------------------------------------------
-REM 3. Remove build directory if it exists
+REM 3. Remove build directories if they exist
 REM ------------------------------------------------------------
 if exist "%BUILD_DIR%" (
     echo Removing existing build directory...
     rmdir /S /Q "%BUILD_DIR%"
+)
+if exist "%BUILD_DIR64%" (
+    echo Removing existing build directory...
+    rmdir /S /Q "%BUILD_DIR64%"	
 )
 
 echo Creating fresh build directory...

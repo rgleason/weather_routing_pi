@@ -40,12 +40,19 @@ echo Win64 destination: %OCPN_BUILD64%
 REM ============================================================
 REM                       X64 BUILD ONLY
 REM ============================================================
-
+echo Removing build directories
+set BUILD=%PLUGIN_ROOT%\build
 set BUILD64=%PLUGIN_ROOT%\build64
 if exist "%BUILD64%" (
     echo Removing existing x64 build directory...
     rmdir /S /Q "%BUILD64%"
+	rmdir /S /Q "%BUILD%"
 )
+if exist "%BUILD%" (
+    echo Removing existing x64 build directory...
+	rmdir /S /Q "%BUILD%"
+)
+
 mkdir "%BUILD64%"
 cd "%BUILD64%"
 

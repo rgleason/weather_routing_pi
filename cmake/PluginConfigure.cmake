@@ -665,40 +665,87 @@ endif ()
 # -----------------------------------------------------------------------------
 # Select correct OpenCPN libraries for Win32 vs x64
 # -----------------------------------------------------------------------------
-if (MSVC)
-    if (CMAKE_SIZEOF_VOID_P EQUAL 8)  # x64
-        message(STATUS "[PluginConfigure] Using x64 OpenCPN libs")
 
-        set(OCPN_API_LIB     "${PROJECT_SOURCE_DIR}/opencpn-libs/api-21/msvc-wx32-x64/opencpn.lib")
-        set(ZLIB_LIB         "${PROJECT_SOURCE_DIR}/opencpn-libs/zlib/win-x64/zlib1.lib")
-        set(BZIP2_LIB        "${PROJECT_SOURCE_DIR}/opencpn-libs/bzip2/x64/bz2.lib")
-        set(TESS_LIB         "${PROJECT_SOURCE_DIR}/opencpn-libs/libtess2/x64/tess2.lib")
-        set(PUGIXML_LIB      "${PROJECT_SOURCE_DIR}/opencpn-libs/pugixml/x64/pugixml.lib")
-        set(GSHHS_LIB        "${PROJECT_SOURCE_DIR}/opencpn-libs/gshhs/x64/gshhs.lib")
 
-    else()  # Win32
-        message(STATUS "[PluginConfigure] Using Win32 OpenCPN libs")
+#if (MSVC)
+#    if (CMAKE_SIZEOF_VOID_P EQUAL 8)  # x64
+#        message(STATUS "[PluginConfigure] Using x64 OpenCPN libs")
+#
+#        set(OCPN_API_LIB     "${PROJECT_SOURCE_DIR}/opencpn-libs/api-21/msvc-wx32-x64/opencpn.lib")
+#        set(ZLIB_LIB         "${PROJECT_SOURCE_DIR}/opencpn-libs/zlib/win-x64/zlib1.lib")
+#        set(BZIP2_LIB        "${PROJECT_SOURCE_DIR}/opencpn-libs/bzip2/x64/bz2.lib")
+#        set(TESS_LIB         "${PROJECT_SOURCE_DIR}/opencpn-libs/libtess2/x64/tess2.lib")
+#        set(PUGIXML_LIB      "${PROJECT_SOURCE_DIR}/opencpn-libs/pugixml/x64/pugixml.lib")
+#        set(GSHHS_LIB        "${PROJECT_SOURCE_DIR}/opencpn-libs/gshhs/x64/gshhs.lib")
 
-        set(OCPN_API_LIB     "${PROJECT_SOURCE_DIR}/opencpn-libs/api-21/msvc-wx32/opencpn.lib")
-        set(ZLIB_LIB         "${PROJECT_SOURCE_DIR}/opencpn-libs/zlib/win/zlib1.lib")
-        set(BZIP2_LIB        "${PROJECT_SOURCE_DIR}/opencpn-libs/bzip2/win/bz2.lib")
-        set(TESS_LIB         "${PROJECT_SOURCE_DIR}/opencpn-libs/libtess2/win/tess2.lib")
-        set(PUGIXML_LIB      "${PROJECT_SOURCE_DIR}/opencpn-libs/pugixml/win/pugixml.lib")
-        set(GSHHS_LIB        "${PROJECT_SOURCE_DIR}/opencpn-libs/gshhs/win/gshhs.lib")
-    endif()
-endif()
+#    else()  # Win32
+#        message(STATUS "[PluginConfigure] Using Win32 OpenCPN libs")
 
-# Link plugin against OpenCPN libraries
-target_link_libraries(${PACKAGE_NAME} PRIVATE
-    ${OCPN_API_LIB}
-    ${ZLIB_LIB}
-    ${BZIP2_LIB}
-    ${TESS_LIB}
-    ${PUGIXML_LIB}
-    ${GSHHS_LIB}
+#        set(OCPN_API_LIB     "${PROJECT_SOURCE_DIR}/opencpn-libs/api-21/msvc-wx32/opencpn.lib")
+#        set(ZLIB_LIB         "${PROJECT_SOURCE_DIR}/opencpn-libs/zlib/win/zlib1.lib")
+#        set(BZIP2_LIB        "${PROJECT_SOURCE_DIR}/opencpn-libs/bzip2/win/bz2.lib")
+#        set(TESS_LIB         "${PROJECT_SOURCE_DIR}/opencpn-libs/libtess2/win/tess2.lib")
+#        set(PUGIXML_LIB      "${PROJECT_SOURCE_DIR}/opencpn-libs/pugixml/win/pugixml.lib")
+#        set(GSHHS_LIB        "${PROJECT_SOURCE_DIR}/opencpn-libs/gshhs/win/gshhs.lib")
+#    endif()
+# endif()
+
+
+# OpenCPN internal libraries (built inside the build tree) -Trial accepts win32 or win64
+set(OCPN_JSONLIB
+    ${CMAKE_BINARY_DIR}/opencpn-libs/jsonlib/${CMAKE_BUILD_TYPE}/JSONLIB.lib
 )
 
+set(OCPN_TINYXML
+    ${CMAKE_BINARY_DIR}/opencpn-libs/tinyxml/${CMAKE_BUILD_TYPE}/TINYXML.lib
+)
+
+set(OCPN_PUGIXML
+    ${CMAKE_BINARY_DIR}/opencpn-libs/pugixml/${CMAKE_BUILD_TYPE}/OCPN_PUGIXML.lib
+)
+
+set(OCPN_DC_UTILS
+    ${CMAKE_BINARY_DIR}/opencpn-libs/plugin_dc/dc_utils/${CMAKE_BUILD_TYPE}/_DC_UTILS.lib
+)
+
+set(OCPN_TESS2
+    ${CMAKE_BINARY_DIR}/opencpn-libs/libtess2/${CMAKE_BUILD_TYPE}/weather_routing_pi_LIB_PLUGINTESS2.lib
+)
+
+# Only include this if your plugin actually uses bzip2 (WeatherRouting does not)
+set(OCPN_BZIP2
+    ${CMAKE_BINARY_DIR}/opencpn-libs/bzip2/${CMAKE_BUILD_TYPE}/LIB_BZIP_WR.lib
+)
+
+# Link them
+target_link_libraries(${PACKAGE_NAME} PRIVATE
+    ${OCPN_JSONLIB}
+    ${OCPN_TINYXML}
+    ${OCPN_PUGIXML}
+    ${OCPN_DC_UTILS}
+    ${OCPN_TESS2}
+    ${OCPN_BZIP2}   # ← remove for WeatherRouting
+)
+
+# Trial
+#find_library(BZIP2_LIB
+#    NAMES LIB_BZIP_WR
+#    PATHS ${CMAKE_BINARY_DIR}/opencpn-libs/bzip2
+#    PATH_SUFFIXES RelWithDebInfo Debug Release
+#)
   
+# Original
+# Link plugin against OpenCPN libraries
+#target_link_libraries(${PACKAGE_NAME} PRIVATE
+#    ${OCPN_API_LIB}
+#    ${ZLIB_LIB}
+#    ${BZIP2_LIB}
+#    ${TESS_LIB}
+#    ${PUGIXML_LIB}
+#    ${GSHHS_LIB}
+#)
+
+
 
   # ---------------------------------------------------------------------------
   # Link plugin against wxWidgets imported targets (CONFIG or synthesized)
