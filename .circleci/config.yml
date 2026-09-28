@@ -402,6 +402,16 @@ workflows:
     jobs:
       - windows-x86:
           filters: *validation-filters
+      - windows-x64:
+          filters: *validation-filters
+      - windows-x86:
+          name: windows-x86-api122
+          api_headers: "1.22"
+          filters: *validation-filters
+      - windows-x64:
+          name: windows-x64-api122
+          api_headers: "1.22"
+          filters: *validation-filters
 
   deploy_reviewed_alpha:
     when:

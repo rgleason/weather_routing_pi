@@ -19,6 +19,9 @@ def test(host, archive_path, output, source):
     output.mkdir(parents=True, exist_ok=True)
     package = 'xweather_routing_pi'
     with tarfile.open(archive_path) as archive:
+        metadata = ET.fromstring(archive.extractfile('metadata.xml').read())
+        major, minor, _ = metadata.findtext('version').strip().split('.')
+        config_version = int(major) * 100 + int(minor)
         for member in archive.getmembers():
             parts = Path(member.name).parts
             if 'plugins' not in parts or not member.isfile():
@@ -40,7 +43,13 @@ def test(host, archive_path, output, source):
         '[Settings]\nConfigVersionString=Version ' + full_version + ' Build 2026-09-24\n'
         'NavMessageShown=1\nOpenGL=0\nDisableOpenGL=1\nShowMenuBar=1\n'
         '[PlugIns/grib_pi.dll]\nbEnabled=1\n'
-        '[PlugIns/xweather_routing_pi.dll]\nbEnabled=1\n', encoding='ascii')
+        '[PlugIns/xweather_routing_pi.dll]\nbEnabled=1\n'
+        # A CI profile has no customised boat/polar data to migrate. Record
+        # the current data version so its interactive migration choice does
+        # not block the scenario inside WeatherRouting's constructor.
+        '[Plugins/WeatherRouting]\nConfigVersion=' + str(config_version) + '\n'
+        '[PlugIns/WeatherRouting]\nConfigVersion=' + str(config_version) + '\n',
+        encoding='ascii')
     # Absolute paths make the fixture independent of user polar directories.
     polar = host / 'plugins' / package / 'data/polars/Example/Test-TWS-0-20+60.pol'
     if not polar.is_file():
@@ -70,6 +79,12 @@ def test(host, archive_path, output, source):
                WR_HEADLESS_TIMEOUT_MS='90000',
                WR_HEADLESS_DATA_DIR=str((output / 'plugin-profile').resolve()))
     (output / 'plugin-profile').mkdir(exist_ok=True)
+    # The scenario supplies its own endpoints and boat; the bundled demo
+    # voyages are independent examples, not inputs to this acceptance test.
+    ET.ElementTree(ET.Element('OpenCPNWeatherRoutingConfiguration',
+                              version='1.10', creator='CircleCI')).write(
+        output / 'plugin-profile/WeatherRoutingConfiguration.xml',
+        encoding='utf-8', xml_declaration=True)
     log = host / 'opencpn.log'
     try:
         with (output / 'host-stdout.log').open('w') as stdout:
