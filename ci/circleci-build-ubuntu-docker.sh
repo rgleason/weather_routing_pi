@@ -13,6 +13,8 @@ docker build --build-arg "BASE_IMAGE=${DOCKER_IMAGE}" \
   -f "${DOCKERFILE:-ci/Dockerfile.linux}" \
   -t weather-routing-linux-build ci
 docker run --rm \
+  -e "CIRCLECI=${CIRCLECI:-}" \
+  -e "CIRCLE_PROJECT_USERNAME=${CIRCLE_PROJECT_USERNAME:-}" \
   -e "CIRCLE_PROJECT_REPONAME=${CIRCLE_PROJECT_REPONAME:-}" \
   -e "WEATHER_ROUTING_CI_XWEATHER=${WEATHER_ROUTING_CI_XWEATHER:-false}" \
   -e "OCPN_TARGET=${OCPN_TARGET}" \
