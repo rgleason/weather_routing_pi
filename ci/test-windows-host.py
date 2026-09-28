@@ -14,7 +14,7 @@ import tarfile
 import xml.etree.ElementTree as ET
 
 
-def test(host, archive_path, output, source):
+def test(host, archive_path, output, source, host_build_date):
     host = host.resolve()
     output.mkdir(parents=True, exist_ok=True)
     package = 'xweather_routing_pi'
@@ -39,8 +39,14 @@ def test(host, archive_path, output, source):
     if not version:
         raise ValueError('Unexpected host version string')
     full_version = version[0][:-1].decode()
+    # OpenCPN compares the full version AND commit date before displaying
+    # its welcome dialog. Keep the date with the checksum-pinned host, and
+    # reject a mismatched pin instead of hanging behind that dialog.
+    if not re.fullmatch(r'20\d{2}-\d{2}-\d{2}', host_build_date) or \
+            host_build_date.encode('ascii') + b'\x00' not in binary:
+        raise ValueError('Pinned host build date is absent from its executable')
     (host / 'opencpn.ini').write_text(
-        '[Settings]\nConfigVersionString=Version ' + full_version + ' Build 2026-09-24\n'
+        '[Settings]\nConfigVersionString=Version ' + full_version + ' Build ' + host_build_date + '\n'
         'NavMessageShown=1\nOpenGL=0\nDisableOpenGL=1\nShowMenuBar=1\n'
         '[PlugIns/grib_pi.dll]\nbEnabled=1\n'
         '[PlugIns/xweather_routing_pi.dll]\nbEnabled=1\n'
@@ -106,6 +112,7 @@ def test(host, archive_path, output, source):
             raise RuntimeError(f'Host route failed: exit={code}; result={result}')
         (output / 'acceptance.json').write_text(json.dumps({
             'host': full_version, 'isolated_portable_profile': True,
+            'host_build_date': host_build_date,
             'package': archive_path.name, 'result_status': result['status'],
             'minimum_api': '1.21', 'exit_code': code,
         }, indent=2) + '\n')
@@ -120,5 +127,7 @@ if __name__ == '__main__':
     parser.add_argument('host', type=Path)
     parser.add_argument('archive', type=Path)
     parser.add_argument('output', type=Path)
+    parser.add_argument('--host-build-date', required=True)
     args = parser.parse_args()
-    test(args.host, args.archive, args.output, Path(__file__).resolve().parents[1])
+    test(args.host, args.archive, args.output, Path(__file__).resolve().parents[1],
+         args.host_build_date)

@@ -1,6 +1,7 @@
 {
   "host_version": "5.14.2",
   "core_revision": "bd6986a08",
+  "host_build_date": "2026-09-24",
   "host_url": "https://dl.cloudsmith.io/public/david-register/opencpn-unstable/raw/files/opencpn_5.14.2-0+16.bd6986a_setup_x64.exe",
   "host_sha256": "8913ab09d1cceac55ac9e402887e9e79650164b9db57a14d0709aac1fb891650",
   "wx_version": "3.2.9",

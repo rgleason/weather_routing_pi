@@ -199,7 +199,8 @@ def main():
         digest(path) + '  ' + path.name for path in sorted(destination.iterdir()) if path.name != 'SHA256SUMS') + '\n')
     shutil.copy2(work / 'CMakeCache.txt', ARTIFACTS)
     run(sys.executable, ROOT / 'ci/test-windows-host.py', WORK / 'host',
-        archives[0], ARTIFACTS / 'runtime')
+        archives[0], ARTIFACTS / 'runtime', '--host-build-date',
+        json.loads((ROOT / 'ci/windows64-sdk.json').read_text())['host_build_date'])
 
 
 if __name__ == '__main__':
