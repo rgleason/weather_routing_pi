@@ -391,8 +391,6 @@ workflows:
         target: trixie
         image: debian:trixie
         filters: *common_filters
-          tags:
-            ignore: /.*/
     - linux-catalogue:
         name: debian12-x86_64
         target: bookworm
