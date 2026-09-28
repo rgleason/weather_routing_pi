@@ -23,6 +23,13 @@ utility libraries, runs regression tests, packages the plugin, embeds root
 The genuine host then runs a short routing scenario in an isolated portable
 profile. Windows x86 has a matching test using the official 5.14.2 installer.
 
+The official Win32 installer bundles MSVC runtime 14.12.25810. New MSVC
+headers' constexpr mutex initialization can crash with this old runtime even
+when tests pass against the executor's newer runtime. MSVC builds therefore
+use Microsoft's `_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR` compatibility option;
+the genuine-host route test checks the installed host's runtime as supplied.
+See https://github.com/microsoft/STL/releases/tag/vs-2022-17.10.
+
 Do not reuse the x86 `opencpn.lib` or `zlib1.lib` for an x64 build. A direct
 CMake x64 build fails unless its matching import-library paths are supplied.
 
