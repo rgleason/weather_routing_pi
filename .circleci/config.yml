@@ -440,7 +440,7 @@ workflows:
         - flatpak25.08-aarch64
         - windows-x86
         - windows-x64
-        - macos-universal
+        - macos-arm64
         filters:
           branches:
             only: master
