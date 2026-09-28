@@ -347,11 +347,14 @@ TEST_F(ChartSafetyCacheTest, AutoBudgetIsBoundedAndExplicitValueIsRemembered) {
   weather_routing::ChartSafetyCache cache;
   cache.Configure(path_.string(), 0, false);
   EXPECT_EQ(cache.RequestedRamMiB(), 0);
-  EXPECT_GE(cache.EffectiveRamMiB(), 256);
+  EXPECT_GE(cache.EffectiveRamMiB(), 16);
   EXPECT_LE(cache.EffectiveRamMiB(), 2048);
   cache.SetRequestedRamMiB(4096);
   EXPECT_EQ(cache.RequestedRamMiB(), 4096);
-  EXPECT_EQ(cache.EffectiveRamMiB(), 4096);
+  EXPECT_GE(cache.EffectiveRamMiB(), 16);
+  EXPECT_LE(cache.EffectiveRamMiB(), 4096);
+  EXPECT_EQ(cache.Stats().ram_budget_bytes,
+            static_cast<std::uint64_t>(cache.EffectiveRamMiB()) * 1024 * 1024);
 }
 
 TEST_F(ChartSafetyCacheTest, ClearRemovesDiskCacheWhilePersistenceDisabled) {

@@ -225,6 +225,9 @@ struct RouteMapPosition {
  * position, timestamp, error flags, and intermediate calculation results.
  */
 struct RouteMapConfiguration {
+  // GUI output validation after the calculation has released its frames.
+  // Never enable host point requests for ordinary routing workers.
+  bool output_grib_point_queries{false};
   // Pinned per calculation; chart geometry retains its separate host path.
   std::shared_ptr<weather_routing::ShorelineDataset> shoreline_dataset;
   wxString shoreline_description;

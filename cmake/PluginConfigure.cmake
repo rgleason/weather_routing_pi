@@ -472,6 +472,11 @@ endif ()
 
 if (MSVC)
   add_definitions(-D__MSVC__)
+  # Upstream OpenCPN's Win32 installer carries MSVC 14.12 runtime DLLs.
+  # Newer MSVC headers' constexpr mutex initialization is incompatible with
+  # those DLLs. Use Microsoft's supported legacy initialization escape hatch
+  # for every plugin/test translation unit sharing mutexes.
+  add_compile_definitions(_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
   add_definitions(-D_CRT_NONSTDC_NO_DEPRECATE -D_CRT_SECURE_NO_DEPRECATE)
   add_definitions(-DHAVE_SNPRINTF)
 else ()
@@ -522,7 +527,10 @@ endif ()
 
 if (DEFINED _wx_selected_config)
   if (_wx_selected_config MATCHES "androideabi-qt")
-    add_definitions(-DocpnUSE_GLES -DocpnUSE_GL -DARMHF)
+    add_definitions(-DocpnUSE_GLES -DocpnUSE_GL)
+    if (_wx_selected_config MATCHES "androideabi-qt-armhf")
+      add_definitions(-DARMHF)
+    endif ()
     set(OPENGLES_FOUND "YES")
     set(OPENGL_FOUND "YES")
     add_definitions(-DUSE_GLU_TESS -DUSE_ANDROID_GLES2 -DUSE_GLSL)
@@ -531,7 +539,9 @@ endif ()
 
 if (QT_ANDROID)
   add_definitions(-D__WXQT__ -D__OCPN__ANDROID__ -DOCPN_USE_WRAPPER -DANDROID)
-  set(CMAKE_SHARED_LINKER_FLAGS "-Wl,-soname,libgorp.so ")
+  # The bundled Qt 5 headers still use std::result_of.  Keep that C++17
+  # trait available when the weather routing engine is built as C++20.
+  add_definitions(-D_LIBCPP_ENABLE_CXX20_REMOVED_TYPE_TRAITS)
   set(CMAKE_CXX_FLAGS "-pthread -fPIC ")
   add_compile_options(
     "-Wno-inconsistent-missing-override"
@@ -618,23 +628,12 @@ if (NOT QT_ANDROID)
   # ---------------------------------------------------------------------------
   if (NOT USE_WX_CONFIG_MODE)
     message(STATUS "${CMLOC}Using legacy FindwxWidgets")
-	
-  # ---------------------------------------------------------------------------
-  # X32 and X64 FindwxWidgets (Linux, MinGW, macOS, MSVC fallback)
-  # ---------------------------------------------------------------------------
-	
 
-if (MSVC AND wxWidgets_ROOT_DIR)
-    if (CMAKE_GENERATOR_PLATFORM STREQUAL "x64" OR CMAKE_VS_PLATFORM_NAME STREQUAL "x64")
-        set(wxWidgets_LIB_DIR "${wxWidgets_ROOT_DIR}/lib/vc_x64_dll")
-        set(wxWidgets_INCLUDE_DIRS "${wxWidgets_ROOT_DIR}/lib/vc_x64_dll/mswud")
-    else ()
-        set(wxWidgets_LIB_DIR "${wxWidgets_ROOT_DIR}/lib/vc_dll")
-        set(wxWidgets_INCLUDE_DIRS "${wxWidgets_ROOT_DIR}/lib/vc_dll/mswud")
-    endif ()
-    set(wxWidgets_EXCLUDE_COMMON_LIBRARIES TRUE)
-endif ()
-
+	if (MSVC AND wxWidgets_ROOT_DIR)
+		set(wxWidgets_LIB_DIR "${wxWidgets_ROOT_DIR}/lib/vc_dll")
+		set(wxWidgets_INCLUDE_DIRS "${wxWidgets_ROOT_DIR}/lib/vc_dll/mswud")
+		set(wxWidgets_EXCLUDE_COMMON_LIBRARIES TRUE)
+	endif ()
 
     find_package(wxWidgets MODULE REQUIRED COMPONENTS ${wxWidgets_USE_LIBS})
     include(${wxWidgets_USE_FILE})
@@ -661,91 +660,6 @@ endif ()
       endif ()
     endforeach ()
   endif ()
-  
-# -----------------------------------------------------------------------------
-# Select correct OpenCPN libraries for Win32 vs x64
-# -----------------------------------------------------------------------------
-
-
-#if (MSVC)
-#    if (CMAKE_SIZEOF_VOID_P EQUAL 8)  # x64
-#        message(STATUS "[PluginConfigure] Using x64 OpenCPN libs")
-#
-#        set(OCPN_API_LIB     "${PROJECT_SOURCE_DIR}/opencpn-libs/api-21/msvc-wx32-x64/opencpn.lib")
-#        set(ZLIB_LIB         "${PROJECT_SOURCE_DIR}/opencpn-libs/zlib/win-x64/zlib1.lib")
-#        set(BZIP2_LIB        "${PROJECT_SOURCE_DIR}/opencpn-libs/bzip2/x64/bz2.lib")
-#        set(TESS_LIB         "${PROJECT_SOURCE_DIR}/opencpn-libs/libtess2/x64/tess2.lib")
-#        set(PUGIXML_LIB      "${PROJECT_SOURCE_DIR}/opencpn-libs/pugixml/x64/pugixml.lib")
-#        set(GSHHS_LIB        "${PROJECT_SOURCE_DIR}/opencpn-libs/gshhs/x64/gshhs.lib")
-
-#    else()  # Win32
-#        message(STATUS "[PluginConfigure] Using Win32 OpenCPN libs")
-
-#        set(OCPN_API_LIB     "${PROJECT_SOURCE_DIR}/opencpn-libs/api-21/msvc-wx32/opencpn.lib")
-#        set(ZLIB_LIB         "${PROJECT_SOURCE_DIR}/opencpn-libs/zlib/win/zlib1.lib")
-#        set(BZIP2_LIB        "${PROJECT_SOURCE_DIR}/opencpn-libs/bzip2/win/bz2.lib")
-#        set(TESS_LIB         "${PROJECT_SOURCE_DIR}/opencpn-libs/libtess2/win/tess2.lib")
-#        set(PUGIXML_LIB      "${PROJECT_SOURCE_DIR}/opencpn-libs/pugixml/win/pugixml.lib")
-#        set(GSHHS_LIB        "${PROJECT_SOURCE_DIR}/opencpn-libs/gshhs/win/gshhs.lib")
-#    endif()
-# endif()
-
-
-# OpenCPN internal libraries (built inside the build tree) -Trial accepts win32 or win64
-set(OCPN_JSONLIB
-    ${CMAKE_BINARY_DIR}/opencpn-libs/jsonlib/${CMAKE_BUILD_TYPE}/JSONLIB.lib
-)
-
-set(OCPN_TINYXML
-    ${CMAKE_BINARY_DIR}/opencpn-libs/tinyxml/${CMAKE_BUILD_TYPE}/TINYXML.lib
-)
-
-set(OCPN_PUGIXML
-    ${CMAKE_BINARY_DIR}/opencpn-libs/pugixml/${CMAKE_BUILD_TYPE}/OCPN_PUGIXML.lib
-)
-
-set(OCPN_DC_UTILS
-    ${CMAKE_BINARY_DIR}/opencpn-libs/plugin_dc/dc_utils/${CMAKE_BUILD_TYPE}/_DC_UTILS.lib
-)
-
-set(OCPN_TESS2
-    ${CMAKE_BINARY_DIR}/opencpn-libs/libtess2/${CMAKE_BUILD_TYPE}/weather_routing_pi_LIB_PLUGINTESS2.lib
-)
-
-# Only include this if your plugin actually uses bzip2 (WeatherRouting does not)
-set(OCPN_BZIP2
-    ${CMAKE_BINARY_DIR}/opencpn-libs/bzip2/${CMAKE_BUILD_TYPE}/LIB_BZIP_WR.lib
-)
-
-# Link them
-target_link_libraries(${PACKAGE_NAME} PRIVATE
-    ${OCPN_JSONLIB}
-    ${OCPN_TINYXML}
-    ${OCPN_PUGIXML}
-    ${OCPN_DC_UTILS}
-    ${OCPN_TESS2}
-    ${OCPN_BZIP2}   # ← remove for WeatherRouting
-)
-
-# Trial
-#find_library(BZIP2_LIB
-#    NAMES LIB_BZIP_WR
-#    PATHS ${CMAKE_BINARY_DIR}/opencpn-libs/bzip2
-#    PATH_SUFFIXES RelWithDebInfo Debug Release
-#)
-  
-# Original
-# Link plugin against OpenCPN libraries
-#target_link_libraries(${PACKAGE_NAME} PRIVATE
-#    ${OCPN_API_LIB}
-#    ${ZLIB_LIB}
-#    ${BZIP2_LIB}
-#    ${TESS_LIB}
-#    ${PUGIXML_LIB}
-#    ${GSHHS_LIB}
-#)
-
-
 
   # ---------------------------------------------------------------------------
   # Link plugin against wxWidgets imported targets (CONFIG or synthesized)
@@ -771,26 +685,43 @@ endif ()  # NOT QT_ANDROID
 # Android-specific wx/Qt wiring
 # -----------------------------------------------------------------------------
 if (QT_ANDROID)
+  get_filename_component(OCPN_ANDROID_COMMON_ROOT "${OCPN_Android_Common}"
+                         ABSOLUTE BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
   if (_wx_selected_config MATCHES "androideabi-qt-arm64")
+    if (NOT OCPN_ANDROID_CORE_LIBRARY)
+      message(FATAL_ERROR "Set OCPN_ANDROID_CORE_LIBRARY to the arm64 libgorp.so from the target OpenCPN build")
+    endif ()
+    if (NOT EXISTS "${OCPN_ANDROID_CORE_LIBRARY}")
+      message(FATAL_ERROR "Android core library does not exist: ${OCPN_ANDROID_CORE_LIBRARY}")
+    endif ()
+    set(OCPN_ANDROID_WX_SETUP
+        "${OCPN_ANDROID_COMMON_ROOT}/wxWidgets/libarm64/wx/include/arm-linux-androideabi-qt-unicode-static-3.1")
+    if (NOT EXISTS "${OCPN_ANDROID_WX_SETUP}/wx/setup.h")
+      set(OCPN_ANDROID_WX_SETUP
+          "${OCPN_ANDROID_COMMON_ROOT}/wxWidgets/libs/arm64/lib/wx/include/arm-linux-androideabi-qt-unicode-static-3.1")
+    endif ()
+    if (NOT EXISTS "${OCPN_ANDROID_WX_SETUP}/wx/setup.h")
+      message(FATAL_ERROR "Android wxWidgets setup.h not found under ${OCPN_ANDROID_COMMON_ROOT}")
+    endif ()
     set(qt_android_include
         ${qt_android_include}
-        "${OCPN_Android_Common}/qt5/build_arm64_O3/qtbase/include"
-        "${OCPN_Android_Common}/qt5/build_arm64_O3/qtbase/include/QtCore"
-        "${OCPN_Android_Common}/qt5/build_arm64_O3/qtbase/include/QtWidgets"
-        "${OCPN_Android_Common}/qt5/build_arm64_O3/qtbase/include/QtGui"
-        "${OCPN_Android_Common}/qt5/build_arm64_O3/qtbase/include/QtOpenGL"
-        "${OCPN_Android_Common}/qt5/build_arm64_O3/qtbase/include/QtTest"
-        "${OCPN_Android_Common}/wxWidgets/libarm64/wx/include/arm-linux-androideabi-qt-unicode-static-3.1"
-        "${OCPN_Android_Common}/wxWidgets/include"
+        "${OCPN_ANDROID_COMMON_ROOT}/qt5/build_arm64_O3/qtbase/include"
+        "${OCPN_ANDROID_COMMON_ROOT}/qt5/build_arm64_O3/qtbase/include/QtCore"
+        "${OCPN_ANDROID_COMMON_ROOT}/qt5/build_arm64_O3/qtbase/include/QtWidgets"
+        "${OCPN_ANDROID_COMMON_ROOT}/qt5/build_arm64_O3/qtbase/include/QtGui"
+        "${OCPN_ANDROID_COMMON_ROOT}/qt5/build_arm64_O3/qtbase/include/QtOpenGL"
+        "${OCPN_ANDROID_COMMON_ROOT}/qt5/build_arm64_O3/qtbase/include/QtTest"
+        "${OCPN_ANDROID_WX_SETUP}"
+        "${OCPN_ANDROID_COMMON_ROOT}/wxWidgets/include"
     )
 
     set(wxWidgets_LIBRARIES
-        ${CMAKE_CURRENT_SOURCE_DIR}/${OCPN_Android_Common}/qt5/build_arm64_O3/qtbase/lib/libQt5Core.so
-        ${CMAKE_CURRENT_SOURCE_DIR}/${OCPN_Android_Common}/qt5/build_arm64_O3/qtbase/lib/libQt5OpenGL.so
-        ${CMAKE_CURRENT_SOURCE_DIR}/${OCPN_Android_Common}/qt5/build_arm64_O3/qtbase/lib/libQt5Widgets.so
-        ${CMAKE_CURRENT_SOURCE_DIR}/${OCPN_Android_Common}/qt5/build_arm64_O3/qtbase/lib/libQt5Gui.so
-        ${CMAKE_CURRENT_SOURCE_DIR}/${OCPN_Android_Common}/qt5/build_arm64_O3/qtbase/lib/libQt5AndroidExtras.so
-        ${CMAKE_CURRENT_SOURCE_DIR}/${OCPN_Android_Common}/opencpn/API-117/libarm64/libgorp.so
+        ${OCPN_ANDROID_COMMON_ROOT}/qt5/build_arm64_O3/qtbase/lib/libQt5Core.so
+        ${OCPN_ANDROID_COMMON_ROOT}/qt5/build_arm64_O3/qtbase/lib/libQt5OpenGL.so
+        ${OCPN_ANDROID_COMMON_ROOT}/qt5/build_arm64_O3/qtbase/lib/libQt5Widgets.so
+        ${OCPN_ANDROID_COMMON_ROOT}/qt5/build_arm64_O3/qtbase/lib/libQt5Gui.so
+        ${OCPN_ANDROID_COMMON_ROOT}/qt5/build_arm64_O3/qtbase/lib/libQt5AndroidExtras.so
+        ${OCPN_ANDROID_CORE_LIBRARY}
         -lc++_shared
         -lz
         libGLESv2.so

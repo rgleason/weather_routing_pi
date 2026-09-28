@@ -17,6 +17,9 @@ namespace weather_routing {
 /** Available physical RAM, excluding swap. Zero means unavailable. */
 std::uint64_t AvailablePhysicalMemoryBytes();
 
+/** Whole MiB of headroom, with 1 for known sub-MiB pressure, 0 for unknown. */
+std::uint64_t AvailablePhysicalMemoryMiB();
+
 }  // namespace weather_routing
 
 #endif

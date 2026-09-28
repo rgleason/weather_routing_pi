@@ -45,6 +45,7 @@ struct ModernIsochroneLayer {
   struct Trace {
     std::pair<double, double> endpoint;
     std::vector<std::pair<double, double>> route;
+    std::vector<wxDateTime> times;
   };
   wxDateTime time;
   bool reverse{};

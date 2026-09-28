@@ -2,17 +2,6 @@
 # Author:      Pavel Kalian (Based on the work of Sean D'Epagnier) Copyright:
 # 2014 License:     GPLv3+
 # ---------------------------------------------------------------------------
-# Flatpak packaging
-# NSIS packaging (Windows)
-# DEB packaging (Linux)
-# RPM packaging (Linux)
-# TGZ packaging (all platforms)
-# Setting CPACK variables
-# Including CPack
-# Code‑signing hooks
-# Packaging metadata (description, license, README)
-# Packaging file naming
-# Packaging architecture selection
 
 set(SAVE_CMLOC ${CMLOC})
 set(CMLOC "PluginPackage: ")

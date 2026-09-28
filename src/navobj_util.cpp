@@ -24,6 +24,7 @@
 // https://www.cruisersforum.com/forums/f134/weather-routing-100060-476.html#post3806197
 
 #include "navobj_util.h"
+#include "TimeZoneDisplay.h"
 
 // RFC4122 version 4 compliant random UUIDs generator.
 wxString GetUUID(void) {
@@ -80,6 +81,13 @@ static bool GPXCreateWpt(pugi::xml_node node, SimpleRoutePoint* pr) {
   s.Printf(_T("%.9f"), pr->m_lon);
   node.append_attribute("lon") = s.mb_str();
 
+  if (pr->m_CreateTime.IsValid()) {
+    child = node.append_child("time");
+    child.append_child(pugi::node_pcdata).set_value(
+        marine_time::FormatInTimeZone(pr->m_CreateTime,
+            "%Y-%m-%dT%H:%M:%SZ", "UTC", false).ToUTF8());
+  }
+
   if (!pr->m_MarkName.IsEmpty()) {
     wxCharBuffer buffer = pr->m_MarkName.ToUTF8();
     if (buffer.data()) {
@@ -108,7 +116,8 @@ static bool GPXCreateWpt(pugi::xml_node node, SimpleRoutePoint* pr) {
 
   if (pr->etd.IsValid()) {
     pugi::xml_attribute use = child.append_attribute("etd");
-    use.set_value(pr->etd.FormatISOCombined().mb_str());
+    use.set_value(marine_time::FormatInTimeZone(pr->etd,
+        "%Y-%m-%dT%H:%M:%SZ", "UTC", false).ToUTF8());
   }
 
   //<opencpn:rte_properties planned_speed="44.0" etd="2023-08-18T00:00:00" />
@@ -336,10 +345,8 @@ static bool GPXCreateRoute(pugi::xml_node node, const SimpleRoute& Route) {
 
   if (Route.m_PlannedDeparture.IsValid()) {
     child = child_ext.append_child("opencpn:planned_departure");
-    wxString t = Route.m_PlannedDeparture.FormatISODate()
-                     .Append(_T("T"))
-                     .Append(Route.m_PlannedDeparture.FormatISOTime())
-                     .Append(_T("Z"));
+    const wxString t = marine_time::FormatInTimeZone(Route.m_PlannedDeparture,
+        "%Y-%m-%dT%H:%M:%SZ", "UTC", false);
     child.append_child(pugi::node_pcdata).set_value(t.mb_str());
   }
 
@@ -393,6 +400,7 @@ SimpleRoutePoint::SimpleRoutePoint(double lat, double lon,
                                    const wxString& icon_ident,
                                    const wxString& name,
                                    const wxString& sGUID) {
+  m_seg_vmg = 0.0;
   m_lat = lat;
   m_lon = lon;
   m_MarkName = name;

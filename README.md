@@ -1,7 +1,10 @@
-# WeatherRouting 1.18.4 integration candidate
+# Weather Routing / xWeatherRouting 1.19.1
+
+See the [1.19.1 upstream handoff](docs/1.19.1-upstream-handoff.md) for the
+tested build recipes, Windows x64 host, release evidence and the split
+between Android/Windows x64 Alpha and the other platforms' master catalogue.
 
 See [1.18.4 changes](docs/release-1.18.4.md) and [Quick, Standard and Professional settings](docs/quick-routing.md).
-The branch scope and validation are recorded in [the integration notes](docs/integration-1.18.4.md).
 
 The optional hardened-OpenCPN planning-provider boundary is documented in
 [docs/external_control_provider_preview_b.md](docs/external_control_provider_preview_b.md).

@@ -26,6 +26,9 @@
 
 class RouteMapOverlay;
 class WeatherRouting;
+#ifdef __OCPN__ANDROID__
+class QTextBrowser;
+#endif
 
 class ReportDialog : public ReportDialogBase {
 public:
@@ -41,6 +44,12 @@ protected:
   void OnClose(wxCommandEvent& event) { Hide(); }
 
 private:
+  void SetConfigurationReportHTML(const wxString& html);
+  void SetRoutesReportHTML(const wxString& html);
+#ifdef __OCPN__ANDROID__
+  QTextBrowser* m_androidConfigurationReport = nullptr;
+  QTextBrowser* m_androidRoutesReport = nullptr;
+#endif
   wxString FormatTime(wxDateTime t);
   WeatherRouting& m_WeatherRouting;
 };

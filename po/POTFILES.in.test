@@ -66,6 +66,7 @@ vendor/original-routing-engine/src/Contour.cpp
 vendor/weather-routing-engine/src/Validator.cpp
 vendor/weather-routing-engine/src/Ensemble.cpp
 src/engine/native/OpenCpnAdapter.cpp
+src/AndroidWeatherRouting.cpp
 include/AppendOnlyCache.h
 include/ChartSafetyCache.h
 include/ChartHazardEvaluator.h
@@ -78,6 +79,13 @@ include/ExternalPlanningProvider.h
 include/ProcessAddressSpace.h
 include/GribTimelineCachePolicy.h
 include/SystemMemory.h
+include/DeviceMemoryPolicy.h
+include/DirectLegCourseSolver.h
+include/RoutingTimePersistence.h
+include/WeatherRoutingBrowser.h
+include/WeatherRoutingFileDialog.h
+include/WeatherRoutingMessageDialog.h
+include/WeatherRoutingProgressDialog.h
 include/GribTimelineFrameCache.h
 include/AddressSpaceMonitor.h
 include/ChartSafetyDefaults.h
