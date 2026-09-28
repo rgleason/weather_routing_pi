@@ -45,6 +45,11 @@ commands:
         root: .
         paths:
         - artifacts/<< parameters.target >>
+common_filters: &common_filters
+  branches:
+    only: master
+  tags:
+    ignore: /.*/        
 jobs:
   linux-catalogue:
     parameters:
@@ -385,46 +390,46 @@ workflows:
         name: debian13-x86_64
         target: trixie
         image: debian:trixie
-        filters: &id001
+        filters: *common_filters
           tags:
             ignore: /.*/
     - linux-catalogue:
         name: debian12-x86_64
         target: bookworm
         image: debian:bookworm
-        filters: *id001
+        filters: *common_filters
     - linux-catalogue:
         name: ubuntu22.04-x86_64
         target: jammy
         image: ubuntu:22.04
         dockerfile: ci/Dockerfile.jammy
-        filters: *id001
+        filters: *common_filters
     - linux-catalogue:
         name: ubuntu24.04-x86_64
         target: noble
         image: ubuntu:24.04
-        filters: *id001
+        filters: *common_filters
     - linux-catalogue:
         name: debian12-arm64
         target: bookworm-arm64
         image: arm64v8/debian:bookworm
         resource_class: arm.medium
-        filters: *id001
+        filters: *common_filters
     - flatpak:
         name: flatpak25.08-x86_64
         arch: x86_64
-        filters: *id001
+        filters: *common_filters
     - flatpak:
         name: flatpak25.08-aarch64
         arch: aarch64
         resource_class: arm.medium
-        filters: *id001
+        filters: *common_filters
     - windows-x86:
-        filters: *id001
+        filters: *common_filters
     - windows-x64:
-        filters: *id001        
+        filters: *common_filters     
     - macos-universal:
-        filters: *id001
+        filters: *common_filters
         name: macos-arm64
     - publish-beta:
         requires:
@@ -447,4 +452,4 @@ workflows:
     when: << pipeline.parameters.run_windows_only >>
     jobs:
     - windows-x86:
-        filters: *id001
+        filters: *common_filters
