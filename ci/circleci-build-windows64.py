@@ -161,6 +161,10 @@ def main():
         '-DwxWidgets_ROOT_DIR=' + str(wx), '-DwxWidgets_LIB_DIR=' + str(wxlib),
         '-DwxWidgets_CONFIGURATION=mswu', '-DCMAKE_CXX_FLAGS=/we4302 /we4311 /we4312')
     run('cmake', '--build', work, '--config', 'Release', '--parallel', '4')
+    test_executable = work / 'test/Release/weather_routing_pi_tests.exe'
+    pe_sections(test_executable)
+    (ARTIFACTS / 'test-dependencies.txt').write_text(subprocess.check_output(
+        ['dumpbin', '/dependents', str(test_executable)], text=True))
     tests = ARTIFACTS / 'tests'
     tests.mkdir(exist_ok=True)
     run('ctest', '--test-dir', work, '-C', 'Release', '--output-on-failure',

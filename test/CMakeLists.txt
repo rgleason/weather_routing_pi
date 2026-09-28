@@ -185,6 +185,13 @@ set(TEST_SRC
            COMMAND ${CMAKE_COMMAND} -E copy_if_different
                "${WEATHER_ROUTING_SOURCE_DIR}/opencpn-libs/zlib/win/zlib1.dll"
                "$<TARGET_FILE_DIR:weather_routing_pi_tests>"
+       )
+   endif()
+
+   if(WIN32)
+       # GoogleTest DLLs are built for the selected architecture. Both Win32
+       # and x64 discovery need them beside the test executable.
+       add_custom_command(TARGET weather_routing_pi_tests POST_BUILD
            COMMAND ${CMAKE_COMMAND} -E copy_if_different
                "$<TARGET_FILE:GTest::gtest>"
                "$<TARGET_FILE:GTest::gtest_main>"
