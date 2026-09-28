@@ -177,7 +177,7 @@ set(TEST_SRC
            ocpn::jsonlib
    )
 
-   if(WIN32)
+   if(WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 4)
        # zlib1.lib is an import library. Keep its matching x86 DLL beside the
        # x86 test executable so GoogleTest discovery cannot select an
        # unrelated zlib1.dll from the executor PATH.

@@ -122,6 +122,7 @@ cmake -S "$source_dir" -B "$plugin_build" \
   -DOCPN_Android_Common="$support_root" \
   -DOCPN_ANDROID_CORE_LIBRARY="$core_build/libgorp.so" \
   -DWEATHER_ROUTING_XWEATHER_IDENTITY="$identity_arg" \
+  -DWEATHER_ROUTING_STANDALONE_API=ON \
   -DCMAKE_BUILD_TYPE=Release \
   2>&1 | tee "$artifacts/configure-plugin.log"
 cmake --build "$plugin_build" \

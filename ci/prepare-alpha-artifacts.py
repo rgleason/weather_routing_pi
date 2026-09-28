@@ -20,6 +20,7 @@ EXPECTED_TARGETS = {
     "flatpak-x86_64": ("flatpak-32-x86_64", "25.08", "x86_64"),
     "flatpak-aarch64": ("flatpak-32-aarch64", "25.08", "aarch64"),
     "windows-x86": ("msvc-wx32", "10.0.20348", "x86"),
+    "windows-x64": ("msvc-64", "10", "x86_64"),
     "macos-arm64": ("darwin-wx32", "15.3.2", "arm64"),
     "android-arm64": ("android-arm64", "16", "arm64"),
 }

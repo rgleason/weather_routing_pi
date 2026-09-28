@@ -91,7 +91,7 @@ set(LONG_DESCRIPTION
 
 set(VERSION_MAJOR "1")
 set(VERSION_MINOR "19")
-set(VERSION_PATCH "0")
+set(VERSION_PATCH "1")
 set(VERSION_TWEAK "0")
 # Keep all five approved source archives for verification and regression tests.
 # Packages ship only Crude, Low and Intermediate; High and Full are optional
@@ -113,11 +113,26 @@ foreach(_archive IN LISTS _shoreline_archives)
   endif()
 endforeach()
 unset(_shoreline_archives)
-set(VERSION_DATE  "27/09/2026") # DD/MM/YYYY format
+set(VERSION_DATE  "28/09/2026") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov511")
 
 set(OCPN_API_VERSION_MAJOR "1")
 set(OCPN_API_VERSION_MINOR "21")
+# Header selection is independent of the minimum host API. Both builds retain
+# the opencpn_plugin_121 base class and advertise API 1.21 to older hosts.
+set(_wr_api_headers "1.21")
+if(DEFINED ENV{WEATHER_ROUTING_API_HEADER_VERSION})
+  set(_wr_api_headers "$ENV{WEATHER_ROUTING_API_HEADER_VERSION}")
+endif()
+set(WEATHER_ROUTING_API_HEADER_VERSION "${_wr_api_headers}" CACHE STRING
+    "Stock OpenCPN headers used for compatibility validation: 1.21 or 1.22")
+set_property(CACHE WEATHER_ROUTING_API_HEADER_VERSION PROPERTY STRINGS "1.21" "1.22")
+if(NOT WEATHER_ROUTING_API_HEADER_VERSION MATCHES "^1\\.(21|22)$")
+  message(FATAL_ERROR "WEATHER_ROUTING_API_HEADER_VERSION must be 1.21 or 1.22")
+endif()
+string(REGEX REPLACE "^1\\." "" WEATHER_ROUTING_API_HEADER_MINOR
+       "${WEATHER_ROUTING_API_HEADER_VERSION}")
+unset(_wr_api_headers)
 set(TP_COMMENT "  * Release using CI")
 
 set(PARENT "opencpn")
@@ -453,8 +468,21 @@ if (NOT OCPN_FLATPAK_CONFIG)
     add_library(ocpn::api ALIAS OCPN_API_LOCAL)
     target_include_directories(OCPN_API_LOCAL INTERFACE
       "${OCPN_IN_TREE_SOURCE_DIR}/include")
-  elseif (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/opencpn-libs/api-${OCPN_API_VERSION_MINOR}/CMakeLists.txt")
-    add_subdirectory(opencpn-libs/api-${OCPN_API_VERSION_MINOR})
+  elseif (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/opencpn-libs/api-${WEATHER_ROUTING_API_HEADER_MINOR}/CMakeLists.txt")
+    if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+      if(NOT EXISTS "${WEATHER_ROUTING_WINDOWS_IMPORT_LIBRARY}")
+        message(FATAL_ERROR "Windows x64 requires WEATHER_ROUTING_WINDOWS_IMPORT_LIBRARY from the matching AMD64 host")
+      endif()
+      add_library(OCPN_API_LOCAL INTERFACE)
+      add_library(ocpn::api ALIAS OCPN_API_LOCAL)
+      target_include_directories(OCPN_API_LOCAL INTERFACE
+        "${CMAKE_CURRENT_SOURCE_DIR}/opencpn-libs/api-${WEATHER_ROUTING_API_HEADER_MINOR}")
+      target_link_libraries(OCPN_API_LOCAL INTERFACE
+        "${WEATHER_ROUTING_WINDOWS_IMPORT_LIBRARY}")
+      target_compile_definitions(OCPN_API_LOCAL INTERFACE UNICODE)
+    else()
+      add_subdirectory(opencpn-libs/api-${WEATHER_ROUTING_API_HEADER_MINOR})
+    endif()
     # The enhanced chart-safety service is optional and resolved dynamically.
     # Stock API headers intentionally do not declare its ABI-only structures,
     # so make the plugin-local declarations available to every target in this
@@ -495,7 +523,18 @@ if (NOT OCPN_FLATPAK_CONFIG)
   add_subdirectory(opencpn-libs/bzip2)
   target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::bzip2)
 
-  add_subdirectory(opencpn-libs/zlib)
+  if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+    if(NOT EXISTS "${WEATHER_ROUTING_WINDOWS_ZLIB_LIBRARY}")
+      message(FATAL_ERROR "Windows x64 requires WEATHER_ROUTING_WINDOWS_ZLIB_LIBRARY from the matching AMD64 SDK")
+    endif()
+    add_library(WR_ZLIB INTERFACE)
+    add_library(ocpn::zlib ALIAS WR_ZLIB)
+    target_include_directories(WR_ZLIB INTERFACE
+      "${CMAKE_CURRENT_SOURCE_DIR}/opencpn-libs/zlib/include")
+    target_link_libraries(WR_ZLIB INTERFACE "${WEATHER_ROUTING_WINDOWS_ZLIB_LIBRARY}")
+  else()
+    add_subdirectory(opencpn-libs/zlib)
+  endif()
   target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::zlib)
 
   add_subdirectory(opencpn-libs/libtess2)

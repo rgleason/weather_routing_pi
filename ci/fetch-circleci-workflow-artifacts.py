@@ -18,6 +18,8 @@ TARGETS = {
     "flatpak25.08-x86_64": "flatpak-x86_64",
     "flatpak25.08-aarch64": "flatpak-aarch64",
     "windows-x86": "windows-x86",
+    "windows-x64": "windows-x64",
+    "android-arm64": "android-arm64",
     "macos-universal": "macos-arm64",
 }
 

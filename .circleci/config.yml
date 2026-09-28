@@ -26,6 +26,7 @@ commands:
   retain-artifacts:
     parameters:
       target: {type: string}
+      api_headers: {type: string, default: "1.21"}
       build_dir: {type: string, default: build}
     steps:
       - run:
@@ -42,13 +43,18 @@ commands:
           path: test-results
       - store_artifacts:
           path: artifacts/<< parameters.target >>
-      - persist_to_workspace:
-          root: .
-          paths: [artifacts/<< parameters.target >>]
+      - when:
+          condition:
+            equal: ["1.21", << parameters.api_headers >>]
+          steps:
+            - persist_to_workspace:
+                root: .
+                paths: [artifacts/<< parameters.target >>]
 
 jobs:
   linux-catalogue:
     parameters:
+      api_headers: {type: string, default: "1.21"}
       target: {type: string}
       image: {type: string}
       dockerfile: {type: string, default: ci/Dockerfile.linux}
@@ -57,6 +63,7 @@ jobs:
       image: ubuntu-2404:current
     resource_class: << parameters.resource_class >>
     environment:
+      WEATHER_ROUTING_API_HEADER_VERSION: << parameters.api_headers >>
       OCPN_TARGET: << parameters.target >>
       DOCKER_IMAGE: << parameters.image >>
       DOCKERFILE: << parameters.dockerfile >>
@@ -75,16 +82,19 @@ jobs:
           command: ci/circleci-build-ubuntu-docker.sh
           no_output_timeout: 45m
       - retain-artifacts:
+          api_headers: << parameters.api_headers >>
           target: << parameters.target >>
 
   flatpak:
     parameters:
+      api_headers: {type: string, default: "1.21"}
       arch: {type: string}
       resource_class: {type: string, default: medium}
     machine:
       image: ubuntu-2404:current
     resource_class: << parameters.resource_class >>
     environment:
+      WEATHER_ROUTING_API_HEADER_VERSION: << parameters.api_headers >>
       OCPN_TARGET: flatpak
       BUILD_ARCH: << parameters.arch >>
       FLATPAK_BRANCH: stable
@@ -99,13 +109,17 @@ jobs:
           command: ci/circleci-build-flatpak.sh
           no_output_timeout: 45m
       - retain-artifacts:
+          api_headers: << parameters.api_headers >>
           target: flatpak-<< parameters.arch >>
 
   macos-universal:
+    parameters:
+      api_headers: {type: string, default: "1.21"}
     macos:
       xcode: "16.4.0"
     resource_class: m4pro.medium
     environment:
+      WEATHER_ROUTING_API_HEADER_VERSION: << parameters.api_headers >>
       OCPN_TARGET: macos
       CMAKE_BUILD_PARALLEL_LEVEL: "3"
       HOMEBREW_NO_AUTO_UPDATE: "1"
@@ -119,13 +133,17 @@ jobs:
           command: ci/circleci-build-macos-universal.sh
           no_output_timeout: 45m
       - retain-artifacts:
+          api_headers: << parameters.api_headers >>
           target: macos-arm64
 
   windows-x86:
+    parameters:
+      api_headers: {type: string, default: "1.21"}
     executor:
       name: win/server-2022
       shell: bash.exe
     environment:
+      WEATHER_ROUTING_API_HEADER_VERSION: << parameters.api_headers >>
       OCPN_TARGET: MSVC
       MSVC_VERSION: "2022"
       WX_VER: "32"
@@ -141,9 +159,47 @@ jobs:
           path: artifacts/windows-x86/tests
       - store_artifacts:
           path: artifacts/windows-x86
-      - persist_to_workspace:
-          root: .
-          paths: [artifacts/windows-x86]
+      - when:
+          condition:
+            equal: ["1.21", << parameters.api_headers >>]
+          steps:
+            - persist_to_workspace:
+                root: .
+                paths: [artifacts/windows-x86]
+
+  windows-x64:
+    parameters:
+      api_headers: {type: string, default: "1.21"}
+    executor:
+      name: win/server-2022
+      shell: bash.exe
+    environment:
+      WEATHER_ROUTING_API_HEADER_VERSION: << parameters.api_headers >>
+      WEATHER_ROUTING_CI_XWEATHER: << pipeline.parameters.build_xweather_identity >>
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - windows64-upstream-v1-{{ checksum "ci/windows64-sdk.json" }}
+      - run:
+          shell: cmd.exe
+          name: Upstream OpenCPN 5.14.2 x64 build, tests and import verification
+          command: ci\circleci-build-windows64.bat
+          no_output_timeout: 45m
+      - save_cache:
+          key: windows64-upstream-v1-{{ checksum "ci/windows64-sdk.json" }}
+          paths: [.windows64/cache]
+      - store_test_results:
+          path: artifacts/windows-x64/tests
+      - store_artifacts:
+          path: artifacts/windows-x64
+      - when:
+          condition:
+            equal: ["1.21", << parameters.api_headers >>]
+          steps:
+            - persist_to_workspace:
+                root: .
+                paths: [artifacts/windows-x64]
 
   deploy-alpha:
     docker:
@@ -189,10 +245,13 @@ jobs:
           path: alpha-publication
 
   android-arm64:
+    parameters:
+      api_headers: {type: string, default: "1.21"}
     machine:
       image: ubuntu-2404:current
     resource_class: large
     environment:
+      WEATHER_ROUTING_API_HEADER_VERSION: << parameters.api_headers >>
       CMAKE_BUILD_PARALLEL_LEVEL: "4"
       WEATHER_ROUTING_CI_XWEATHER: << pipeline.parameters.build_xweather_identity >>
     steps:
@@ -208,9 +267,13 @@ jobs:
           no_output_timeout: 60m
       - store_artifacts:
           path: artifacts/android-arm64
-      - persist_to_workspace:
-          root: .
-          paths: [artifacts/android-arm64]
+      - when:
+          condition:
+            equal: ["1.21", << parameters.api_headers >>]
+          steps:
+            - persist_to_workspace:
+                root: .
+                paths: [artifacts/android-arm64]
 
 
 validation-filters: &validation-filters
@@ -265,9 +328,70 @@ workflows:
           filters: *validation-filters
       - windows-x86:
           filters: *validation-filters
+      - windows-x64:
+          filters: *validation-filters
       - macos-universal:
           filters: *validation-filters
       - android-arm64:
+          filters: *validation-filters
+      - linux-catalogue:
+          name: debian13-x86_64-api122
+          api_headers: "1.22"
+          target: trixie
+          image: debian:trixie
+          filters: *validation-filters
+      - linux-catalogue:
+          name: debian12-x86_64-api122
+          api_headers: "1.22"
+          target: bookworm
+          image: debian:bookworm
+          filters: *validation-filters
+      - linux-catalogue:
+          name: ubuntu22.04-x86_64-api122
+          api_headers: "1.22"
+          target: jammy
+          image: ubuntu:22.04
+          dockerfile: ci/Dockerfile.jammy
+          filters: *validation-filters
+      - linux-catalogue:
+          name: ubuntu24.04-x86_64-api122
+          api_headers: "1.22"
+          target: noble
+          image: ubuntu:24.04
+          filters: *validation-filters
+      - linux-catalogue:
+          name: debian12-arm64-api122
+          api_headers: "1.22"
+          target: bookworm-arm64
+          image: arm64v8/debian:bookworm
+          resource_class: arm.medium
+          filters: *validation-filters
+      - flatpak:
+          name: flatpak25.08-x86_64-api122
+          api_headers: "1.22"
+          arch: x86_64
+          filters: *validation-filters
+      - flatpak:
+          name: flatpak25.08-aarch64-api122
+          api_headers: "1.22"
+          arch: aarch64
+          resource_class: arm.medium
+          filters: *validation-filters
+      - windows-x86:
+          name: windows-x86-api122
+          api_headers: "1.22"
+          filters: *validation-filters
+      - windows-x64:
+          name: windows-x64-api122
+          api_headers: "1.22"
+          filters: *validation-filters
+      - macos-universal:
+          name: macos-universal-api122
+          api_headers: "1.22"
+          filters: *validation-filters
+      - android-arm64:
+          name: android-arm64-api122
+          api_headers: "1.22"
           filters: *validation-filters
 
   validate_windows_only:
@@ -294,9 +418,70 @@ workflows:
       - flatpak: *flatpak-arm
       - windows-x86:
           filters: *validation-filters
+      - windows-x64:
+          filters: *validation-filters
       - macos-universal:
           filters: *validation-filters
       - android-arm64:
+          filters: *validation-filters
+      - linux-catalogue:
+          name: debian13-x86_64-api122
+          api_headers: "1.22"
+          target: trixie
+          image: debian:trixie
+          filters: *validation-filters
+      - linux-catalogue:
+          name: debian12-x86_64-api122
+          api_headers: "1.22"
+          target: bookworm
+          image: debian:bookworm
+          filters: *validation-filters
+      - linux-catalogue:
+          name: ubuntu22.04-x86_64-api122
+          api_headers: "1.22"
+          target: jammy
+          image: ubuntu:22.04
+          dockerfile: ci/Dockerfile.jammy
+          filters: *validation-filters
+      - linux-catalogue:
+          name: ubuntu24.04-x86_64-api122
+          api_headers: "1.22"
+          target: noble
+          image: ubuntu:24.04
+          filters: *validation-filters
+      - linux-catalogue:
+          name: debian12-arm64-api122
+          api_headers: "1.22"
+          target: bookworm-arm64
+          image: arm64v8/debian:bookworm
+          resource_class: arm.medium
+          filters: *validation-filters
+      - flatpak:
+          name: flatpak25.08-x86_64-api122
+          api_headers: "1.22"
+          arch: x86_64
+          filters: *validation-filters
+      - flatpak:
+          name: flatpak25.08-aarch64-api122
+          api_headers: "1.22"
+          arch: aarch64
+          resource_class: arm.medium
+          filters: *validation-filters
+      - windows-x86:
+          name: windows-x86-api122
+          api_headers: "1.22"
+          filters: *validation-filters
+      - windows-x64:
+          name: windows-x64-api122
+          api_headers: "1.22"
+          filters: *validation-filters
+      - macos-universal:
+          name: macos-universal-api122
+          api_headers: "1.22"
+          filters: *validation-filters
+      - android-arm64:
+          name: android-arm64-api122
+          api_headers: "1.22"
           filters: *validation-filters
       - hold-for-alpha-approval:
           type: approval
@@ -309,8 +494,20 @@ workflows:
             - flatpak25.08-x86_64
             - flatpak25.08-aarch64
             - windows-x86
+            - windows-x64
             - macos-universal
             - android-arm64
+            - debian13-x86_64-api122
+            - debian12-x86_64-api122
+            - ubuntu22.04-x86_64-api122
+            - ubuntu24.04-x86_64-api122
+            - debian12-arm64-api122
+            - flatpak25.08-x86_64-api122
+            - flatpak25.08-aarch64-api122
+            - windows-x86-api122
+            - windows-x64-api122
+            - macos-universal-api122
+            - android-arm64-api122
       - deploy-alpha:
           context: xgrib-deployment
           requires: [hold-for-alpha-approval]

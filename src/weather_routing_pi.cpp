@@ -33,6 +33,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <type_traits>
 
 #include "Utilities.h"
 #include "ChartSafetyHost.h"
@@ -44,6 +45,13 @@
 #include "WeatherRouting.h"
 #include "WeatherDataProvider.h"
 #include "weather_routing_pi.h"
+
+static_assert(API_VERSION_MINOR == WEATHER_ROUTING_API_HEADER_MINOR,
+              "The selected stock API headers were not used");
+static_assert(OCPN_API_VERSION_MINOR == 21,
+              "Compatibility builds must retain minimum host API 1.21");
+static_assert(std::is_base_of<opencpn_plugin_121, weather_routing_pi>::value,
+              "Compatibility builds must retain the API 1.21 plugin base");
 
 Json::Value g_ReceivedJSONMsg;
 wxString g_ReceivedMessage;
