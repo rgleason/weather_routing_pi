@@ -1,0 +1,123 @@
+[
+  {
+    "channel": "master",
+    "file": "xweather_routing_pi-1.19.1-msvc-x86-wx32-10.0.20348-MSVC.xml",
+    "target": [
+      "msvc-wx32",
+      "10.0.20348",
+      "x86"
+    ],
+    "sha256": "c77a5689a46582923112144bfa4fc65c44f54dad54cfe9e4ccc8a593856f7a52",
+    "url": "https://dl.cloudsmith.io/public/pob220/xweather-routing-alpha-oss/raw/names/xweather_routing_pi-1.19.1-msvc-wx32-10.0.20348-x86-tarball/versions/1.19.1+948.0df6c52/xweather_routing_pi-1.19.1-msvc-x86-wx32-10.0.20348-MSVC.tar.gz"
+  },
+  {
+    "channel": "Alpha",
+    "file": "xweather_routing_pi-1.19.1-msvc-64-x86_64-10.0-MSVC-x64.xml",
+    "target": [
+      "msvc-64",
+      "10",
+      "x86_64"
+    ],
+    "sha256": "3c5665eabce5a21988ab25a74abcbd8d9e4f4a2acb4b58287f7b8c3ad66974bd",
+    "url": "https://dl.cloudsmith.io/public/pob220/xweather-routing-alpha-oss/raw/names/xweather_routing_pi-1.19.1-msvc-64-10-x86_64-tarball/versions/1.19.1+948.0df6c52/xweather_routing_pi-1.19.1-msvc-64-x86_64-10.0-MSVC-x64.tar.gz"
+  },
+  {
+    "channel": "master",
+    "file": "xweather_routing_pi-1.19.1-debian-x86_64-13-trixie.xml",
+    "target": [
+      "debian-x86_64",
+      "13",
+      "x86_64"
+    ],
+    "sha256": "bdca3eededf715cf6a1b2b7255407a56f9afb63abaa97408c103dc8701beb560",
+    "url": "https://dl.cloudsmith.io/public/pob220/xweather-routing-alpha-oss/raw/names/xweather_routing_pi-1.19.1-debian-x86_64-13-x86_64-tarball/versions/1.19.1+948.0df6c52/xweather_routing_pi-1.19.1-debian-x86_64-13-trixie.tar.gz"
+  },
+  {
+    "channel": "master",
+    "file": "xweather_routing_pi-1.19.1-ubuntu-x86_64-24.04-noble.xml",
+    "target": [
+      "ubuntu-x86_64",
+      "24.04",
+      "x86_64"
+    ],
+    "sha256": "463ee5c013d3af852215d6ce93d400a478378d4870c05277351ed205ff196295",
+    "url": "https://dl.cloudsmith.io/public/pob220/xweather-routing-alpha-oss/raw/names/xweather_routing_pi-1.19.1-ubuntu-x86_64-24.04-x86_64-tarball/versions/1.19.1+948.0df6c52/xweather_routing_pi-1.19.1-ubuntu-x86_64-24.04-noble.tar.gz"
+  },
+  {
+    "channel": "master",
+    "file": "xweather_routing_pi-1.19.1-darwin-wx32-arm64-15.3.2-macos-arm64.xml",
+    "target": [
+      "darwin-wx32",
+      "15.3.2",
+      "arm64"
+    ],
+    "sha256": "e780ac1caefb0160706fb3771131ea7a43b24314d0454dca98667bb0ed727af7",
+    "url": "https://dl.cloudsmith.io/public/pob220/xweather-routing-alpha-oss/raw/names/xweather_routing_pi-1.19.1-darwin-wx32-15.3.2-arm64-tarball/versions/1.19.1+948.0df6c52/xweather_routing_pi-1.19.1-darwin-wx32-arm64-15.3.2-macos-arm64.tar.gz"
+  },
+  {
+    "channel": "master",
+    "file": "xweather_routing_pi-1.19.1-ubuntu-x86_64-22.04-jammy.xml",
+    "target": [
+      "ubuntu-x86_64",
+      "22.04",
+      "x86_64"
+    ],
+    "sha256": "ac855e6ecbef4a8c90c386a7724dfeaf23d8c52fd0ac2b7666ce591a933c5c67",
+    "url": "https://dl.cloudsmith.io/public/pob220/xweather-routing-alpha-oss/raw/names/xweather_routing_pi-1.19.1-ubuntu-x86_64-22.04-x86_64-tarball/versions/1.19.1+948.0df6c52/xweather_routing_pi-1.19.1-ubuntu-x86_64-22.04-jammy.tar.gz"
+  },
+  {
+    "channel": "master",
+    "file": "xweather_routing_pi-1.19.1-flatpak-x86_64-32-25.08-flatpak.xml",
+    "target": [
+      "flatpak-32-x86_64",
+      "25.08",
+      "x86_64"
+    ],
+    "sha256": "5148ec79a14abcce82c0246c716963b2b0ca996f84ea5efe9f9568bc30766917",
+    "url": "https://dl.cloudsmith.io/public/pob220/xweather-routing-alpha-oss/raw/names/xweather_routing_pi-1.19.1-flatpak-32-x86_64-25.08-x86_64-tarball/versions/1.19.1+948.0df6c52/xweather_routing_pi-1.19.1-x86_64-32_flatpak-25.08.tar.gz"
+  },
+  {
+    "channel": "master",
+    "file": "xweather_routing_pi-1.19.1-flatpak-aarch64-32-25.08-flatpak.xml",
+    "target": [
+      "flatpak-32-aarch64",
+      "25.08",
+      "aarch64"
+    ],
+    "sha256": "903b559e6e365927f67edb59e4f412794bd21fd54cf04ff9546a5c2e36f271aa",
+    "url": "https://dl.cloudsmith.io/public/pob220/xweather-routing-alpha-oss/raw/names/xweather_routing_pi-1.19.1-flatpak-32-aarch64-25.08-aarch64-tarball/versions/1.19.1+948.0df6c52/xweather_routing_pi-1.19.1-aarch64-32_flatpak-25.08.tar.gz"
+  },
+  {
+    "channel": "master",
+    "file": "xweather_routing_pi-1.19.1-debian-arm64-12-bookworm-arm64.xml",
+    "target": [
+      "debian-arm64",
+      "12",
+      "arm64"
+    ],
+    "sha256": "ad0a4506232a83c05db71d1ae55b593044636369ec122d44eb1d291314b6f818",
+    "url": "https://dl.cloudsmith.io/public/pob220/xweather-routing-alpha-oss/raw/names/xweather_routing_pi-1.19.1-debian-arm64-12-arm64-tarball/versions/1.19.1+948.0df6c52/xweather_routing_pi-1.19.1-debian-arm64-12-bookworm-arm64.tar.gz"
+  },
+  {
+    "channel": "master",
+    "file": "xweather_routing_pi-1.19.1-debian-x86_64-12-bookworm.xml",
+    "target": [
+      "debian-x86_64",
+      "12",
+      "x86_64"
+    ],
+    "sha256": "cc32911d561619401afd453b06edeb9115402746c713ec1c30a96525fb40f81f",
+    "url": "https://dl.cloudsmith.io/public/pob220/xweather-routing-alpha-oss/raw/names/xweather_routing_pi-1.19.1-debian-x86_64-12-x86_64-tarball/versions/1.19.1+948.0df6c52/xweather_routing_pi-1.19.1-debian-x86_64-12-bookworm.tar.gz"
+  },
+  {
+    "channel": "Alpha",
+    "file": "xweather_routing_pi-1.19.1-android-arm64-16-android-arm64.xml",
+    "target": [
+      "android-arm64",
+      "16",
+      "arm64"
+    ],
+    "sha256": "6a7ff1374954c722d2b8d9548c5a4ad927f196c9d8eae28352956d47faac00bc",
+    "url": "https://dl.cloudsmith.io/public/pob220/xweather-routing-alpha-oss/raw/names/xweather_routing_pi-1.19.1-android-arm64-16-arm64-tarball/versions/1.19.1+948.0df6c52/xweather_routing_pi-1.19.1-android-arm64-16-android-arm64.tar.gz"
+  }
+]

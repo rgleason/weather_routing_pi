@@ -36,6 +36,8 @@
 
 #ifdef __OCPN__ANDROID__
 #include <wx/qt/private/wxQtGesture.h>
+#include <wx/simplebook.h>
+class wxScrolledWindow;
 #endif
 #include "ocpn_plugin.h"
 
@@ -352,6 +354,10 @@ public:
   std::shared_ptr<weather_routing::GribTimelineFrameCache>
       m_GribTimelineFrameCache;
   bool m_GribTimelineCacheBatchActive{false};
+  std::int64_t m_NextMemoryWorkerCheckMilliseconds{0};
+  std::uint64_t m_AvailableWorkerMemoryMiB{0};
+  int m_EstimatedWorkerMemoryMiB{256};
+  int m_MemorySampleRunningWorkers{0};
   /**
    * Master list of all weather routes managed by the application.
    *
@@ -547,6 +553,7 @@ private:
   /** Callback invoked when user clicks "Save All as Tracks" menu item. */
   void OnSaveAllAsTracks(wxCommandEvent& event);
   void OnChartAwarenessSettings(wxCommandEvent& event);
+  void OnShorelineData(wxCommandEvent& event);
   void OnSettings(wxCommandEvent& event);
   void OnStatistics(wxCommandEvent& event);
   void OnReport(wxCommandEvent& event);
@@ -615,7 +622,9 @@ private:
 
   RouteMap* SelectedRouteMap();
   /** Save weather routing as OpenCPN track. */
-  void SaveAsTrack(RouteMapOverlay& routemapoverlay);
+  bool SaveAsTrack(RouteMapOverlay& routemapoverlay, bool notify = true);
+  void SaveCombinedTrack(const std::vector<RouteMapOverlay*>& routes,
+                         const std::vector<PlotData>& points);
   /** Save weather routing as OpenCPN route. */
   void SaveAsRoute(RouteMapOverlay& routemapoverlay);
   void ExportRoute(RouteMapOverlay& routemapoverlay);
@@ -941,6 +950,51 @@ private:
   wxFileName m_FileName;
 
   wxSize m_size;
+#ifdef __OCPN__ANDROID__
+public:
+  bool AndroidChartVisible() const;
+  void ShowAndroidRouteOnChart(RouteMapOverlay* route = nullptr);
+  bool AndroidChartPickPending() const { return m_androidChartPickTarget != -2; }
+  void BeginAndroidChartPick(int target);
+  void CancelAndroidChartPick();
+  bool HandleAndroidChartPick(wxMouseEvent& event, PlugIn_ViewPort* viewport);
+private:
+  bool EditAndroidPosition(wxString& name, double& latitude, double& longitude);
+  int m_androidChartPickTarget{-2};
+  wxDialog* m_androidChartPickHint{nullptr};
+  wxPoint m_androidChartPickDown;
+  bool m_androidChartPickPressed{false};
+  bool m_androidChartVisible{false};
+  std::vector<wxButton*> m_androidNavigation;
+  std::vector<wxButton*> m_androidNeedsRoute;
+  std::vector<wxButton*> m_androidNeedsResult;
+  std::vector<wxButton*> m_androidAnyResultButtons;
+  std::vector<wxButton*> m_androidNeedsPosition;
+  std::vector<wxButton*> m_androidAnyRouteButtons;
+  std::vector<wxButton*> m_androidAnyPositionButtons;
+  std::vector<wxButton*> m_androidPickButtons;
+  std::vector<wxButton*> m_androidStopButtons;
+  wxSimplebook* m_androidBook{nullptr};
+  wxStaticText* m_androidPlanStatus{nullptr};
+  wxStaticText* m_androidResultStatus{nullptr};
+  wxChoice* m_androidRouteSort{nullptr};
+  wxCheckBox* m_androidRouteDescending{nullptr};
+  wxStaticText* m_androidRoutesStatus{nullptr};
+  wxScrolledWindow* m_androidRoutesList{nullptr};
+  wxBoxSizer* m_androidRouteCards{nullptr};
+  wxScrolledWindow* m_androidToolsPage{nullptr};
+  wxBoxSizer* m_androidPositionCards{nullptr};
+  wxString m_androidRouteSignature;
+  wxString m_androidPositionSignature;
+  wxWindow* BuildAndroidWorkspace(wxBoxSizer* root);
+  void RefreshAndroidWorkspace();
+  wxSize m_androidDisplaySize;
+  wxWindow* m_androidSizeSource{nullptr};
+  wxTimer m_androidLayoutTimer;
+  void FitAndroidDisplay();
+  void OnAndroidParentSize(wxSizeEvent& event);
+  void OnAndroidLayoutTimer(wxTimerEvent& event);
+#endif
 
   /**
    * Pointer to the closest Position object on the route to the user's cursor

@@ -45,8 +45,8 @@ weather_routing_engine::RoutingCandidateResult CandidateFromRoute(
   if (!search.valid)
     search = weather_routing::RoutingSearchSnapshot::Capture(
         configuration, ModernNativeRouteEnabled(configuration));
-  candidate.engine = wxString::FromUTF8(search.engine);
-  candidate.searchPreset = wxString::FromUTF8(search.preset.id);
+  candidate.engine = wxString::FromUTF8(search.engine.c_str());
+  candidate.searchPreset = wxString::FromUTF8(search.preset.id.c_str());
   candidate.searchPresetRevision = search.preset.revision;
   candidate.searchTimeStepSeconds = search.timeStepSeconds;
   candidate.searchHeadingStepDegrees = search.headingStepDegrees;

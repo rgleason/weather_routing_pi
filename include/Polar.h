@@ -254,8 +254,10 @@ public:
    * detailed status code. If nullptr, status details are not returned. On
    * success, *status is set to POLAR_SPEED_SUCCESS.
    * @param bound If true, returns NAN when wind speed is outside the range
-   * defined in the polar data. If false, extrapolates the boat speed when wind
-   * speed is outside the polar data range.
+   * defined in the polar data. If false, caps strong-wind fallback at the
+   * highest measured wind column, and scales light-wind fallback from the
+   * lowest measured column to zero speed at zero wind. An explicit zero-wind
+   * column (including a powered polar) is used as supplied.
    * @param optimize_tacking If true, calculates the optimal VMG angle for
    * upwind sailing and returns the corresponding speed projected onto the
    * requested course.

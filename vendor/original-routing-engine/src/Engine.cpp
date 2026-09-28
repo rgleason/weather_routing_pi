@@ -683,9 +683,21 @@ public:
     std::vector<Trace*> chain;
     for (auto p = end; p && p->parent; p = p->parent) chain.push_back(p);
     std::reverse(chain.begin(), chain.end());
+    if (request.progress)
+      request.progress({wr::RoutingProgressStage::Validation, candidatesTried,
+                        options.maximumValidatedCandidates,
+                        result.diagnostics.generatedStates, arena.traces.count,
+                        result.diagnostics.landChecks,
+                        result.diagnostics.closestApproachNm, 100});
     State s{request.start, request.departure};
     std::vector<wr::RouteLeg> legs;
     for (auto p : chain) {
+      if (request.progress)
+        request.progress({wr::RoutingProgressStage::Validation, candidatesTried,
+                          options.maximumValidatedCandidates,
+                          result.diagnostics.generatedStates, arena.traces.count,
+                          result.diagnostics.landChecks,
+                          result.diagnostics.closestApproachNm, 100});
       const auto hint = (p->time - p->parent->time).count();
       auto repaired =
           connect(s, p->point, hint,
@@ -901,10 +913,12 @@ public:
             auto* parent = p->trace;
             while (parent && trace.route.size() < 256) {
               trace.route.push_back(parent->point);
+              trace.times.push_back(parent->time);
               parent = parent->parent;
             }
             if (!parent) {
               std::reverse(trace.route.begin(), trace.route.end());
+              std::reverse(trace.times.begin(), trace.times.end());
               layer.traces.push_back(std::move(trace));
               --traces;
             }
