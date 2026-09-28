@@ -66,7 +66,10 @@ def test(host, archive_path, output, source):
         'departureOptimization': {'enabled': False},
         'environment': {'useGrib': True, 'useCurrents': False, 'allowClimatologyFallback': False},
         'route': {'routingEngine': 'original', 'boatFile': str(boat.resolve()),
-                  'timeStepSeconds': 900, 'headingStepDegrees': 5},
+                  'timeStepSeconds': 900, 'headingStepDegrees': 5,
+                  # This fixture contains wind only. Do not ask the engine
+                  # to enforce a wave limit without wave observations.
+                  'maxSwellMeters': 0},
         'safety': {'mode': 'none', 'enforce': False},
     }
     scenario_path = output / 'scenario.json'
