@@ -618,6 +618,11 @@ if (NOT QT_ANDROID)
   # ---------------------------------------------------------------------------
   if (NOT USE_WX_CONFIG_MODE)
     message(STATUS "${CMLOC}Using legacy FindwxWidgets")
+	
+  # ---------------------------------------------------------------------------
+  # X32 and X64 FindwxWidgets (Linux, MinGW, macOS, MSVC fallback)
+  # ---------------------------------------------------------------------------
+	
 
 if (MSVC AND wxWidgets_ROOT_DIR)
     if (CMAKE_GENERATOR_PLATFORM STREQUAL "x64" OR CMAKE_VS_PLATFORM_NAME STREQUAL "x64")
@@ -656,6 +661,44 @@ endif ()
       endif ()
     endforeach ()
   endif ()
+  
+# -----------------------------------------------------------------------------
+# Select correct OpenCPN libraries for Win32 vs x64
+# -----------------------------------------------------------------------------
+if (MSVC)
+    if (CMAKE_SIZEOF_VOID_P EQUAL 8)  # x64
+        message(STATUS "[PluginConfigure] Using x64 OpenCPN libs")
+
+        set(OCPN_API_LIB     "${PROJECT_SOURCE_DIR}/opencpn-libs/api-21/msvc-wx32-x64/opencpn.lib")
+        set(ZLIB_LIB         "${PROJECT_SOURCE_DIR}/opencpn-libs/zlib/win-x64/zlib1.lib")
+        set(BZIP2_LIB        "${PROJECT_SOURCE_DIR}/opencpn-libs/bzip2/x64/bz2.lib")
+        set(TESS_LIB         "${PROJECT_SOURCE_DIR}/opencpn-libs/libtess2/x64/tess2.lib")
+        set(PUGIXML_LIB      "${PROJECT_SOURCE_DIR}/opencpn-libs/pugixml/x64/pugixml.lib")
+        set(GSHHS_LIB        "${PROJECT_SOURCE_DIR}/opencpn-libs/gshhs/x64/gshhs.lib")
+
+    else()  # Win32
+        message(STATUS "[PluginConfigure] Using Win32 OpenCPN libs")
+
+        set(OCPN_API_LIB     "${PROJECT_SOURCE_DIR}/opencpn-libs/api-21/msvc-wx32/opencpn.lib")
+        set(ZLIB_LIB         "${PROJECT_SOURCE_DIR}/opencpn-libs/zlib/win/zlib1.lib")
+        set(BZIP2_LIB        "${PROJECT_SOURCE_DIR}/opencpn-libs/bzip2/win/bz2.lib")
+        set(TESS_LIB         "${PROJECT_SOURCE_DIR}/opencpn-libs/libtess2/win/tess2.lib")
+        set(PUGIXML_LIB      "${PROJECT_SOURCE_DIR}/opencpn-libs/pugixml/win/pugixml.lib")
+        set(GSHHS_LIB        "${PROJECT_SOURCE_DIR}/opencpn-libs/gshhs/win/gshhs.lib")
+    endif()
+endif()
+
+# Link plugin against OpenCPN libraries
+target_link_libraries(${PACKAGE_NAME} PRIVATE
+    ${OCPN_API_LIB}
+    ${ZLIB_LIB}
+    ${BZIP2_LIB}
+    ${TESS_LIB}
+    ${PUGIXML_LIB}
+    ${GSHHS_LIB}
+)
+
+  
 
   # ---------------------------------------------------------------------------
   # Link plugin against wxWidgets imported targets (CONFIG or synthesized)

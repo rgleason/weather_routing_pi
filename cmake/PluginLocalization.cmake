@@ -1,6 +1,14 @@
 # ---------------------------------------------------------------------------
 # Author:      Pavel Kalian / Sean D'Epagnier Copyright: License:     GPLv3+
 # ---------------------------------------------------------------------------
+# Build POTFILES.in
+# Generate .pot
+# Merge .po
+# Build .mo
+# Install .mo into correct platform‑specific locations
+# Handle macOS bundle quirks
+# Handle Flatpak exclusion
+
 
 set(SAVE_CMLOC ${CMLOC})
 set(CMLOC "PluginLocalization: ")
