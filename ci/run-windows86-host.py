@@ -8,9 +8,11 @@ import urllib.request
 root = Path(__file__).resolve().parents[1]
 work = root / '.windows86-host'
 work.mkdir(exist_ok=True)
-installer = work / 'opencpn-5.14.2-x86.exe'
-url = 'https://github.com/OpenCPN/OpenCPN/releases/download/Release_5.14.2/opencpn_5.14.2-0%2B4824.bd6986a_setup.exe'
-expected = '99ed2ec5c0f6ae1b4fd680b271c59980f5cea962b3deac527dad17764330dc72'
+# Upstream replaced the original 4824 installer in Release_5.14.2. Keep
+# the exact replacement and checksum pinned, with a distinct cache name.
+installer = work / 'opencpn-5.14.2-4828.37fcbab-x86.exe'
+url = 'https://github.com/OpenCPN/OpenCPN/releases/download/Release_5.14.2/opencpn_5.14.2-0%2B4828.37fcbab_setup.exe'
+expected = 'ef43f23018c1577b05b6e7333bcf89becc8f3cdad2051c958a5fc778ca9de25d'
 if not installer.exists():
     urllib.request.urlretrieve(url, installer)
 with installer.open('rb') as stream:
