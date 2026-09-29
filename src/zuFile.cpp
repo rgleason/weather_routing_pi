@@ -25,6 +25,14 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <algorithm>
 #include <memory>
 
+#ifdef __WXMSW__
+// The bundled zlib 1.2.3 header omits this declaration. Both Windows SDK
+// libraries export it; let zlib open the Unicode path in its own CRT.
+extern "C" {
+ZEXTERN gzFile ZEXPORT gzopen_w(const wchar_t* path, const char* mode);
+}
+#endif
+
 // Avoid locale-dependent wx filename conversions on Unix: the public API
 // already supplies UTF-8. Windows retains native wide-character filenames.
 static FILE* openNative(const wxString& name, const char* utf8, const char* mode) {

@@ -96,12 +96,17 @@ TEST_F(PolarTest, OpensCompressedPolarsWithLineReader) {
   }
 
   for (const wxString& path : {gzipPath, bzipPath}) {
+    // Create the fixture using zlib's portable narrow API, then rename it
+    // so the reader must handle a Unicode filename on Windows as well.
+    const wxString unicodePath = path + wxString::FromUTF8("-\xc3\xa9-\xe8\x88\xb9") +
+        (path == gzipPath ? ".gz" : ".bz2");
+    ASSERT_TRUE(wxRenameFile(path, unicodePath));
     Polar loaded;
     wxString message;
-    ASSERT_TRUE(loaded.Open(path, message)) << message;
+    ASSERT_TRUE(loaded.Open(unicodePath, message)) << message;
     PolarSpeedStatus status;
     EXPECT_NEAR(loaded.Speed(10, 10, &status, false), 1.3, 1e-6);
-    wxRemoveFile(path);
+    wxRemoveFile(unicodePath);
   }
 }
 
