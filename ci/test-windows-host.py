@@ -39,8 +39,15 @@ def test(host, archive_path, output, source):
     if not version:
         raise ValueError('Unexpected host version string')
     full_version = version[0][:-1].decode()
+    # The pinned 5.14.2 hosts embed VERSION_DATE as their newest ISO date
+    # literal (the other date is a historical 2010 constant). Match the
+    # actual executable: a stale date triggers the blocking Welcome dialog.
+    dates = re.findall(rb'20\d{2}-\d{2}-\d{2}\x00', binary)
+    if not dates:
+        raise ValueError('Missing host build date')
+    build_date = max(date[:-1].decode() for date in dates)
     (host / 'opencpn.ini').write_text(
-        '[Settings]\nConfigVersionString=Version ' + full_version + ' Build 2026-09-24\n'
+        '[Settings]\nConfigVersionString=Version ' + full_version + ' Build ' + build_date + '\n'
         'NavMessageShown=1\nOpenGL=0\nDisableOpenGL=1\nShowMenuBar=1\n'
         '[PlugIns/grib_pi.dll]\nbEnabled=1\n'
         '[PlugIns/xweather_routing_pi.dll]\nbEnabled=1\n'
@@ -105,7 +112,8 @@ def test(host, archive_path, output, source):
         if code != 0 or result.get('status') != 'complete':
             raise RuntimeError(f'Host route failed: exit={code}; result={result}')
         (output / 'acceptance.json').write_text(json.dumps({
-            'host': full_version, 'isolated_portable_profile': True,
+            'host': full_version, 'host_build_date': build_date,
+            'isolated_portable_profile': True,
             'package': archive_path.name, 'result_status': result['status'],
             'minimum_api': '1.21', 'exit_code': code,
         }, indent=2) + '\n')
