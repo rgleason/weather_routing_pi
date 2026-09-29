@@ -100,6 +100,7 @@ TEST_F(PolarTest, OpensCompressedPolarsWithLineReader) {
     // so the reader must handle a Unicode filename on Windows as well.
     const wxString unicodePath = path + wxString::FromUTF8("-\xc3\xa9-\xe8\x88\xb9") +
         (path == gzipPath ? ".gz" : ".bz2");
+    SCOPED_TRACE(std::string(unicodePath.utf8_str()));
     ASSERT_TRUE(wxRenameFile(path, unicodePath));
     Polar loaded;
     wxString message;

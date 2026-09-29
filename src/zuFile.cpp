@@ -24,6 +24,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <climits>
 #include <algorithm>
 #include <memory>
+#include <string>
 
 #ifdef __WXMSW__
 // The bundled zlib 1.2.3 header omits this declaration. Both Windows SDK
@@ -89,14 +90,19 @@ ZUFILE* zu_open_wx(const wxString& fname, const char* mode, int type) {
       f->zfile = gzopen(f->fname, mode);
 #endif
       break;
-    case ZU_COMPRESS_BZIP:
-      f->faux = openNative(fname, f->fname, mode);
+    case ZU_COMPRESS_BZIP: {
+      // The caller may request text lines ("r"), but the compressed input
+      // must stay binary: Windows text mode treats byte 0x1a as EOF.
+      std::string binaryMode(mode);
+      if (binaryMode.find('b') == std::string::npos) binaryMode += 'b';
+      f->faux = openNative(fname, f->fname, binaryMode.c_str());
       if (f->faux) {
         int error = BZ_OK;
         f->zfile = BZ2_bzReadOpen(&error, f->faux, 0, 0, nullptr, 0);
         if (error != BZ_OK) { return nullptr; }
       }
       break;
+    }
     default: break;
   }
   if (!f->zfile) { return nullptr; }
