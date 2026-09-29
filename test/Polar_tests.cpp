@@ -21,6 +21,10 @@
 #include <Polar.h>
 #include <wx/filename.h>
 #include <fstream>
+#include <iterator>
+#include <vector>
+#include <bzlib.h>
+#include <zlib.h>
 
 class PolarTest: public ::testing::Test {
 protected:
@@ -57,6 +61,48 @@ TEST_F(PolarTest, OpenFailed) {
   wxString filename = "invalid.xml", message = "";
   bool success = polar.Open(filename, message);
   EXPECT_EQ(success, false);
+}
+
+TEST_F(PolarTest, OpensCompressedPolarsWithLineReader) {
+  std::ifstream source(m_testPolarFileName.ToStdString(), std::ios::binary);
+  ASSERT_TRUE(source);
+  const std::string contents(std::istreambuf_iterator<char>{source}, {});
+  ASSERT_FALSE(contents.empty());
+
+  const wxString base = wxFileName::CreateTempFileName("wr-polar-compressed-");
+  ASSERT_FALSE(base.empty());
+  wxRemoveFile(base);
+
+  const wxString gzipPath = base + ".pol.gz";
+  {
+    gzFile gzip = gzopen(gzipPath.utf8_str(), "wb");
+    ASSERT_NE(gzip, nullptr);
+    ASSERT_EQ(gzwrite(gzip, contents.data(), contents.size()),
+              static_cast<int>(contents.size()));
+    ASSERT_EQ(gzclose(gzip), Z_OK);
+  }
+
+  const wxString bzipPath = base + ".pol.bz2";
+  {
+    std::vector<char> input(contents.begin(), contents.end());
+    unsigned int packedLength = static_cast<unsigned int>(input.size() * 1.01 + 601);
+    std::vector<char> packed(packedLength);
+    ASSERT_EQ(BZ2_bzBuffToBuffCompress(packed.data(), &packedLength,
+                                      input.data(), input.size(), 9, 0, 30),
+              BZ_OK);
+    std::ofstream out(bzipPath.ToStdString(), std::ios::binary);
+    ASSERT_TRUE(out);
+    out.write(packed.data(), packedLength);
+  }
+
+  for (const wxString& path : {gzipPath, bzipPath}) {
+    Polar loaded;
+    wxString message;
+    ASSERT_TRUE(loaded.Open(path, message)) << message;
+    PolarSpeedStatus status;
+    EXPECT_NEAR(loaded.Speed(10, 10, &status, false), 1.3, 1e-6);
+    wxRemoveFile(path);
+  }
 }
 
 TEST_F(PolarTest, EmptyDimensionsCannotTruncateAnExistingPolar) {

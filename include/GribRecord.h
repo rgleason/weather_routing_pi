@@ -32,6 +32,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <string>
 #include <cstring>  // memcpy
 #include <utility>  // std::swap
+#include <cstddef>
+#include <cstdint>
+#include <ctime>
+#include <limits>
 
 #define DEBUG_INFO false
 #define DEBUG_ERROR true
@@ -492,10 +496,10 @@ public:
    * @return Data value at grid point (i,j)
    * @note No bounds checking is performed
    */
-  double getValue(int i, int j) const { return data[j * Ni + i]; }
+  double getValue(int i, int j) const { return data[std::size_t(j) * Ni + i]; }
 
   void setValue(zuint i, zuint j, double v) {
-    if (i < Ni && j < Nj) data[j * Ni + i] = v;
+    if (data && i < Ni && j < Nj) data[std::size_t(j) * Ni + i] = v;
   }
 
   /**
@@ -610,6 +614,36 @@ private:
   inline bool isYInMap(double y) const;
 
 protected:
+  // No new data members or virtual functions: preserve the shared GRIB ABI.
+  void copyMetadata(const GribRecord& rec);
+  std::size_t dataCount() const {
+    // A widened multiply avoids division in the chart-sampling hot path.
+    const std::uint64_t count = std::uint64_t(Ni) * Nj;
+    return count && count <= std::uint64_t(std::numeric_limits<int>::max()) &&
+           count <= std::numeric_limits<std::size_t>::max() / sizeof(double)
+               ? static_cast<std::size_t>(count) : 0;
+  }
+  bool validGrid() const {
+    return data && dataCount() && std::isfinite(Di) && std::isfinite(Dj) &&
+           Di != 0 && Dj != 0 && std::isfinite(La1) && std::isfinite(La2) &&
+           std::isfinite(Lo1) && std::isfinite(Lo2);
+  }
+  bool sameGrid(const GribRecord& other) const {
+    return Ni == other.Ni && Nj == other.Nj && Di == other.Di && Dj == other.Dj &&
+           Lo1 == other.Lo1 && La1 == other.La1 &&
+           Lo2 == other.Lo2 && La2 == other.La2;
+  }
+  static bool GetSpatialInterpolationGrid(
+      const GribRecord &rec1, const GribRecord &rec2, double &La1,
+      double &Lo1, double &La2, double &Lo2, double &Di, double &Dj, int &Ni,
+      int &Nj);
+  static GribRecord *SpatiallyInterpolatedRecord(const GribRecord &rec1,
+                                                  const GribRecord &rec2,
+                                                  double d, bool dir);
+  static GribRecord *SpatiallyInterpolated2DRecord(
+      GribRecord *&rety, const GribRecord &rec1x, const GribRecord &rec1y,
+      const GribRecord &rec2x, const GribRecord &rec2y, double d);
+
   // private:
   static bool GetInterpolatedParameters(const GribRecord& rec1,
                                         const GribRecord& rec2, double& La1,
@@ -789,19 +823,13 @@ protected:
 
 //==========================================================================
 inline bool GribRecord::hasValue(int i, int j) const {
-  // is data present in BMS ?
-  if (!hasBMS) {
-    return true;
-  }
-  int bit;
-  if (isAdjacentI) {
-    bit = j * Ni + i;
-  } else {
-    bit = i * Nj + j;
-  }
-  zuchar c = BMSbits[bit / 8];
-  zuchar m = (zuchar)128 >> (bit % 8);
-  return (m & c) != 0;
+  if (i < 0 || j < 0 || static_cast<zuint>(i) >= Ni ||
+      static_cast<zuint>(j) >= Nj || !data) return false;
+  if (!hasBMS) return true;
+  const std::size_t bit = isAdjacentI ? std::size_t(j) * Ni + i
+                                    : std::size_t(i) * Nj + j;
+  if (!BMSbits || bit / 8 >= BMSsize) return false;
+  return (BMSbits[bit / 8] & (128u >> (bit % 8))) != 0;
 }
 
 //-----------------------------------------------------------------
@@ -814,19 +842,9 @@ inline bool GribRecord::isPointInMap(double x, double y) const {
 }
 //-----------------------------------------------------------------
 inline bool GribRecord::isXInMap(double x) const {
-  //    return x>=Lo1 && x<=Lo1+(Ni-1)*Di;
-  // printf ("%f %f %f\n", Lo1, Lo2, x);
-  if (Di > 0) {
-    double maxLo = Lo2;
-    if (Lo2 + Di >= 360) /* grib that covers the whole world */
-      maxLo += Di;
-    return x >= Lo1 && x <= maxLo;
-  } else {
-    double maxLo = Lo1;
-    if (Lo2 + Di >= 360) /* grib that covers the whole world */
-      maxLo += Di;
-    return x >= Lo2 && x <= maxLo;
-  }
+  const bool wraps = std::abs(std::abs(Di) * Ni - 360.0) <= 1e-7;
+  return Di > 0 ? x >= Lo1 && x <= Lo2 + (wraps ? Di : 0)
+                : x <= Lo1 && x >= Lo2 + (wraps ? Di : 0);
 }
 //-----------------------------------------------------------------
 inline bool GribRecord::isYInMap(double y) const {
