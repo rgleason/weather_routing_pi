@@ -26,7 +26,7 @@ if [[ -z "${NDK_HOME:-}" ]]; then
   sdkmanager="$sdk_root/cmdline-tools/latest/bin/sdkmanager"
   if [[ ! -x "$sdkmanager" ]]; then
     tools_zip="$work_dir/commandlinetools-linux-11076708_latest.zip"
-    curl --fail --location --retry 3 \
+    curl --fail --location --retry 3 --retry-all-errors \
       https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip \
       --output "$tools_zip"
     mkdir -p "$sdk_root/cmdline-tools/latest"
@@ -52,9 +52,11 @@ test "$(git -C "$core_source" rev-parse HEAD)" = "$core_commit"
 
 support_zip="$support_cache/support.zip"
 if [[ ! -s "$support_zip" ]]; then
-  curl --fail --location --retry 3 \
+  curl --fail --location --retry 3 --retry-all-errors \
     https://github.com/bdbcat/OCPNAndroidCoreBuildSupport/releases/download/v1.2/OCPNAndroidCoreBuildSupport.zip \
-    --output "$support_zip"
+    --output "$support_zip.part"
+  printf '%s  %s\n' "$support_sha256" "$support_zip.part" | sha256sum --check
+  mv -f "$support_zip.part" "$support_zip"
 fi
 printf '%s  %s\n' "$support_sha256" "$support_zip" | sha256sum --check
 
