@@ -65,10 +65,11 @@ cmake -T v143 -A x64 ^
   -DwxWidgets_LIB_DIR=%WX_ROOT%\lib\vc_x64_dll ^
   -DwxWidgets_INCLUDE_DIRS=%WX_ROOT%\lib\vc_x64_dll\mswud ^
   -DOCPN_TARGET=MSVC ^
-  ..
+  -DWEATHER_ROUTING_STANDALONE_API=ON ^
+  .. >>OUTPUT.TXT 2>&1
 
 echo Building x64 plugin (RelWithDebInfo)...
-cmake --build . --config RelWithDebInfo
+cmake --build . --config RelWithDebInfo >>OUTPUT.TXT 2>&1
 
 call :check "RelWithDebInfo\%PLUGIN_NAME%.dll"
 call :check "RelWithDebInfo\%PLUGIN_NAME%.pdb"
@@ -77,7 +78,7 @@ REM ------------------------------------------------------------
 REM Run CPack to generate x64 tarball + XML
 REM ------------------------------------------------------------
 echo Running CPack for x64 Target Package...
-cmake --build . --config RelWithDebInfo --target package
+cmake --build . --config RelWithDebInfo --target package >>OUTPUT.TXT 2>&1
 
 REM ------------------------------------------------------------
 REM X64 Tarball + metadata.xml injection

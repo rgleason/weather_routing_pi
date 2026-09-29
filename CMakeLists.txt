@@ -115,11 +115,11 @@ foreach(_archive IN LISTS _shoreline_archives)
   endif()
 endforeach()
 unset(_shoreline_archives)
-set(VERSION_DATE  "26/09/2026") # DD/MM/YYYY format
+set(VERSION_DATE  "28/09/2026") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov511")
 
 set(OCPN_API_VERSION_MAJOR "1")
-set(OCPN_API_VERSION_MINOR "21")
+set(OCPN_API_VERSION_MINOR "22")
 set(TP_COMMENT "  * RelWithDebInfo using CI")
 
 set(PARENT "opencpn")
@@ -505,6 +505,12 @@ if (NOT OCPN_FLATPAK_CONFIG)
   target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::libtess2)
 
 endif(NOT OCPN_FLATPAK_CONFIG)
+
+# Guarantees zlib is linked
+# find_package(ZLIB REQUIRED)
+# target_link_libraries(${PACKAGE_NAME} PRIVATE ZLIB::ZLIB)
+
+
 
 add_definitions(-DTIXML_USE_STL)
 

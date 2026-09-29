@@ -63,16 +63,16 @@ REM ------------------------------------------------------------
 cd "%BUILD_DIR%"
 
 echo Configuring plugin build...
-cmake -T v143 -A Win32 -DOCPN_TARGET=MSVC ..
+cmake -T v143 -A Win32 -DOCPN_TARGET=MSVC .. >>OUTPUT.TXT 2>&1
 
 echo Building plugin (RelWithDebInfo)...
-cmake --build . --config RelWithDebInfo
+cmake --build . --config RelWithDebInfo >>OUTPUT.TXT 2>&1
 
 REM ------------------------------------------------------------
 REM 5. Generate Tarball and XML metadata
 REM ------------------------------------------------------------
 echo Running CPack to generate tarball and XML metadata...
-cmake --build . --config RelWithDebInfo --target package
+cmake --build . --config RelWithDebInfo --target package >>OUTPUT.TXT 2>&1
 
 REM ------------------------------------------------------------
 REM 6. Insert metadata.xml into tarball (DOUBLE‑TAR REPACK)
