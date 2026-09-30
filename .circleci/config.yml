@@ -16,7 +16,10 @@ parameters:
   publish_beta:
     type: boolean
     default: true
-orbs:
+  run_workflow_deploy:
+    type: boolean
+    default: true
+    orbs:
   win: circleci/windows@5.1.0
 commands:
   retain-artifacts:
@@ -381,6 +384,41 @@ jobs:
               ], check=True)
           PY
         no_output_timeout: 20m
+  publish-prod:
+    docker:
+      - image: cimg/python:3.13
+    resource_class: small
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - run:
+          name: Publish verified native WeatherRouting packages to Prod
+          command: |
+            set -euo pipefail
+            if [[ -z "${CLOUDSMITH_API_KEY:-}" ]]; then
+              echo 'Missing CLOUDSMITH_API_KEY: set it in CircleCI project settings.' >&2
+              exit 1
+            fi
+            python -m pip install --upgrade cloudsmith-cli
+            cloudsmith --version
+            python3 - <<'PY'
+            import hashlib
+            import json
+            from pathlib import Path
+            import subprocess
+
+            for item in json.loads(Path("beta-publication/uploads.json").read_text()):
+                with Path(item["file"]).open("rb") as stream:
+                    if hashlib.file_digest(stream, "sha256").hexdigest() != item["sha256"]:
+                        raise RuntimeError(f"Staged file checksum changed: {item['file']}")
+                subprocess.run([
+                    "cloudsmith", "push", "raw", "--republish",
+                    "--name", item["name"], "--version", item["version"],
+                    "--summary", "WeatherRouting OpenCPN plugin Production build",
+                    "opencpn/weather-routing-prod", item["file"],
+                ], check=True)
+            PY
 workflows:
   validate:
     when:
@@ -451,3 +489,11 @@ workflows:
     jobs:
     - windows-x86:
         filters: *common_filters
+  deploy-prod:
+    when: << pipeline.parameters.run_workflow_deploy >>
+    jobs:
+      - approve-publication:
+          type: approval
+      - publish-prod:
+          requires:
+            - approve-publication
