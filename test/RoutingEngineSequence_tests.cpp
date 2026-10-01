@@ -83,7 +83,7 @@ TEST(RoutingEngineSequence, AllRunsFourAndChoosesEarliestValidatedArrival) {
             (std::vector{SequenceEngine::Original, SequenceEngine::Quick,
                          SequenceEngine::Alternative, SequenceEngine::Main}));
   EXPECT_EQ(result.engineIdentity, "alternative");
-  EXPECT_EQ(result.metrics.elapsed, wr::Duration{200});
+  EXPECT_EQ(result.metrics.elapsed.count(), 200);
 }
 TEST(RoutingEngineSequence,
      AllComparesArrivalTimesRatherThanUntrustedSummaryMetrics) {
@@ -222,7 +222,10 @@ TEST(RoutingEngineSequenceIntegration,
         << wr::toString(candidate.status) << " legs=" << candidate.legs.size()
         << " validation=" << candidate.validation.passed << " "
         << candidate.message;
-    EXPECT_LE(result.legs.back().endTime, candidate.legs.back().endTime);
+    // GoogleTest's chrono formatting uses newer macOS runtime APIs.
+    // Comparing the integer ticks preserves the check on the macOS 11 target.
+    EXPECT_LE(result.legs.back().endTime.time_since_epoch().count(),
+              candidate.legs.back().endTime.time_since_epoch().count());
   }
 }
 }  // namespace
