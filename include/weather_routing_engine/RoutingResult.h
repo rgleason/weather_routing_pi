@@ -34,6 +34,7 @@ struct RoutingResultPoint {
 
 struct RoutingCandidateResult {
   wxString engine;
+  wxString selectedEngine;
   wxString searchPreset;
   int searchPresetRevision{0};
   double searchTimeStepSeconds{0};

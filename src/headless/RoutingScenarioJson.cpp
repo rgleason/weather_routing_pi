@@ -164,8 +164,9 @@ bool LoadRoutingScenarioJson(const wxString& path,
       scenario.route.routingEngine = JsonString(route, "routingEngine");
       scenario.route.hasRoutingEngine = true;
       if (scenario.route.routingEngine != "main" && scenario.route.routingEngine != "quick" &&
-          scenario.route.routingEngine != "original") {
-        error = "routingEngine must be original (Quick), quick (Standard), or main (Professional)";
+          scenario.route.routingEngine != "original" && scenario.route.routingEngine != "auto" &&
+          scenario.route.routingEngine != "all") {
+        error = "routingEngine must be auto, original (Quick), quick (Standard), main (Professional), or all";
         return false;
       }
     }
@@ -396,6 +397,7 @@ bool SaveRoutingResultJson(const wxString& path,
       value["departure"] = TimeToJson(candidate.departure).ToUTF8().data();
     value["state"] = candidate.state.ToUTF8().data();
     if (!candidate.engine.IsEmpty()) value["engine"] = candidate.engine.ToUTF8().data();
+    if (!candidate.selectedEngine.IsEmpty()) value["selectedEngine"] = candidate.selectedEngine.ToUTF8().data();
     value["shoreline"]["resolution"] = candidate.shorelineResolution;
     value["shoreline"]["enabled"] = candidate.detectLand;
     value["shoreline"]["dataset"] = candidate.shorelineDataset.ToStdString();
@@ -404,9 +406,10 @@ bool SaveRoutingResultJson(const wxString& path,
     value["searchSettings"]["timeStepSeconds"] = candidate.searchTimeStepSeconds;
     value["searchSettings"]["headingStepDegrees"] = candidate.searchHeadingStepDegrees;
     value["searchSettings"]["maximumSearchAngleDegrees"] = candidate.searchMaximumAngleDegrees;
-    if (candidate.engine == "main")
+    const auto& resolvedEngine = candidate.selectedEngine.IsEmpty() ? candidate.engine : candidate.selectedEngine;
+    if (resolvedEngine == "main" || resolvedEngine == "alternative")
       value["searchSettings"]["effortPercent"] = candidate.searchEffortPercent;
-    if (candidate.engine == "quick" || candidate.engine == "original")
+    if (resolvedEngine == "quick" || resolvedEngine == "original")
       value["searchSettings"]["searchMemoryBudgetMiB"] = candidate.searchMemoryBudgetMiB;
     if (candidate.eta.IsValid())
       value["eta"] = TimeToJson(candidate.eta).ToUTF8().data();

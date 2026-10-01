@@ -87,10 +87,10 @@ set(PACKAGE_CONTACT "Sean d'Epagnier; Weather Routing Plugin Team")
 set(SHORT_DESCRIPTION
     "Advanced weather routing with departure and arrival planning.")
 set(LONG_DESCRIPTION
-    "WeatherRouting offers Quick, Standard and Professional engines with independent saved settings and explicit search presets. Quick uses hardened contour routing with independent chronological validation. Standard provides bounded adaptive search; Professional adds broader recovery methods. All support plugin-managed GSHHG shorelines; optional chart-backed safety requires a compatible host.")
+    "WeatherRouting offers Auto, Quick, Standard, Professional and All (slow), with independent saved engine settings and explicit search presets. Auto falls back through Quick and Standard to Professional up to 400% effort. All compares four engines, including the internal Alternative engine, and selects the earliest validated arrival. Quick uses hardened contour routing with independent chronological validation. Standard provides bounded adaptive search; Professional adds broader recovery methods. All support plugin-managed GSHHG shorelines; optional chart-backed safety requires a compatible host.")
 
 set(VERSION_MAJOR "1")
-set(VERSION_MINOR "20")
+set(VERSION_MINOR "21")
 set(VERSION_PATCH "0")
 set(VERSION_TWEAK "0")
 # Keep all five approved source archives for verification and regression tests.
@@ -113,7 +113,7 @@ foreach(_archive IN LISTS _shoreline_archives)
   endif()
 endforeach()
 unset(_shoreline_archives)
-set(VERSION_DATE  "29/09/2026") # DD/MM/YYYY format
+set(VERSION_DATE  "02/10/2026") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov511")
 
 set(OCPN_API_VERSION_MAJOR "1")
@@ -312,6 +312,7 @@ SET(SRCS
             vendor/weather-routing-engine/src/EnvironmentResolver.cpp
             vendor/weather-routing-engine/src/Engine.cpp
             vendor/weather-routing-engine/src/QuickEngine.cpp
+            vendor/weather-routing-engine/src/AlternativeEngine.cpp
             vendor/original-routing-engine/src/Engine.cpp
             vendor/original-routing-engine/src/Contour.cpp
             vendor/weather-routing-engine/src/Validator.cpp

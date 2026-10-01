@@ -15,26 +15,38 @@ constexpr int kDefaultMaxDivertedCourse = 120;
 
 // Serialized IDs are permanent: historical "quick" is now Standard, and
 // "main" is Professional. Never reinterpret an existing user's selection.
-enum class RoutingEngine { Main, Quick, Unsupported, Original };
+enum class RoutingEngine { Main, Quick, Unsupported, Original, Auto, All };
 
 inline int EngineSelection(RoutingEngine engine) {
   switch (engine) {
-    case RoutingEngine::Original: return 0;
-    case RoutingEngine::Quick: return 1;
-    case RoutingEngine::Main: return 2;
+    case RoutingEngine::Auto: return 0;
+    case RoutingEngine::Original: return 1;
+    case RoutingEngine::Quick: return 2;
+    case RoutingEngine::Main: return 3;
+    case RoutingEngine::All: return 4;
     default: return -1;
   }
 }
 inline RoutingEngine EngineFromSelection(int selection) {
-  return selection == 0 ? RoutingEngine::Original : selection == 1
-      ? RoutingEngine::Quick : selection == 2 ? RoutingEngine::Main
-      : RoutingEngine::Unsupported;
+  switch (selection) {
+    case 0: return RoutingEngine::Auto;
+    case 1: return RoutingEngine::Original;
+    case 2: return RoutingEngine::Quick;
+    case 3: return RoutingEngine::Main;
+    case 4: return RoutingEngine::All;
+    default: return RoutingEngine::Unsupported;
+  }
+}
+inline bool IsCombinedEngine(RoutingEngine engine) {
+  return engine == RoutingEngine::Auto || engine == RoutingEngine::All;
 }
 inline const char* EngineTitle(RoutingEngine engine) {
   switch (engine) {
     case RoutingEngine::Original: return "Quick";
     case RoutingEngine::Quick: return "Standard";
     case RoutingEngine::Main: return "Professional";
+    case RoutingEngine::Auto: return "Auto";
+    case RoutingEngine::All: return "All (slow)";
     default: return "Unsupported";
   }
 }
@@ -78,6 +90,8 @@ struct RoutingEngineSettings {
       case RoutingEngine::Main: return "main";
       case RoutingEngine::Quick: return "quick";
       case RoutingEngine::Original: return "original";
+      case RoutingEngine::Auto: return "auto";
+      case RoutingEngine::All: return "all";
       default: return unsupportedId;
     }
   }
@@ -86,6 +100,8 @@ struct RoutingEngineSettings {
     if (id == "main") engine = RoutingEngine::Main;
     else if (id == "quick") engine = RoutingEngine::Quick;
     else if (id == "original") engine = RoutingEngine::Original;
+    else if (id == "auto") engine = RoutingEngine::Auto;
+    else if (id == "all") engine = RoutingEngine::All;
     else {
       engine = RoutingEngine::Unsupported;
       unsupportedId = id;
@@ -109,7 +125,7 @@ struct RoutingEngineSettings {
 inline void ApplyFirstUseEngineDefaults(RoutingEngineSettings& settings,
                                         bool hasSavedDefaults) {
   if (hasSavedDefaults) return;
-  settings.engine = RoutingEngine::Original;
+  settings.engine = RoutingEngine::Auto;
   settings.mainPreset = {"balanced", kBalancedSearchPresetRevision};
 }
 
@@ -124,6 +140,7 @@ struct RoutingSearchSnapshot {
   int effortPercent{0};
   int shorelineResolution{4};
   bool detectLand{false};
+  std::string selectedEngine;
 
   template <typename Configuration>
   static RoutingSearchSnapshot Capture(const Configuration& c, bool native) {

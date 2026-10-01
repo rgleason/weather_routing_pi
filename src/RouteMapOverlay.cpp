@@ -181,8 +181,8 @@ bool RouteMapOverlay::Start(wxString& error) {
         wxString::FromUTF8(configuration.EngineSettings.EngineId().c_str());
     return false;
   }
-  if (configuration.IsFastEngine() && !ModernNativeRouteEnabled(configuration)) {
-    error = _("Quick and Standard cannot analyse an existing route or use cumulative climatology/legacy routing. Select Professional for this configuration.");
+  if ((configuration.IsFastEngine() || weather_routing::IsCombinedEngine(configuration.EngineSettings.engine)) && !ModernNativeRouteEnabled(configuration)) {
+    error = _("Auto, Quick, Standard and All cannot analyse an existing route or use cumulative climatology/legacy routing. Select Professional for this configuration.");
     return false;
   }
   /* test for cyclone data if needed */
@@ -297,7 +297,7 @@ void RouteMapOverlay::RouteAnalysis(PlugIn_Route* proute) {
 
 void RouteMapOverlay::SetModernNativeProgress(
     const supercpn::weather_routing::RoutingProgressUpdate& progress,
-    std::uint64_t generation) {
+    std::uint64_t generation, const wxString& engineLabel) {
   using supercpn::weather_routing::RoutingProgressStage;
   wxString stage;
   switch (progress.stage) {
@@ -338,6 +338,7 @@ void RouteMapOverlay::SetModernNativeProgress(
   if (std::isfinite(progress.closestApproachNm))
     detail += wxString::Format(_("; closest approach %.1f NM remaining"),
                               progress.closestApproachNm);
+  if (!engineLabel.empty()) stage = engineLabel + ": " + stage;
   m_ModernProgress.Publish(generation, {stage, detail});
 }
 
@@ -2456,6 +2457,17 @@ bool RouteMapOverlay::ValidatePlottedDestinationRouteLand(
   if (!configuration.DetectLand) return true;
   if (!Finished() || !ReachedDestination()) return true;
   wxStopWatch timer;
+  RouteMapConfiguration validationConfiguration = configuration;
+  const auto computed = GetComputedSearchSettings();
+  if (weather_routing::IsCombinedEngine(configuration.EngineSettings.engine) &&
+      !computed.selectedEngine.empty()) {
+    // Preserve the saved selector, but replay with the winning engine's rules.
+    validationConfiguration.EngineSettings.SetEngineId(
+        computed.selectedEngine == "alternative" ? "main" : computed.selectedEngine);
+    const int resolution = validationConfiguration.EffectiveShorelineResolution();
+    if (resolution >= 0 && resolution < 5 && configuration.engine_shorelines[resolution])
+      validationConfiguration.shoreline_dataset = configuration.engine_shorelines[resolution];
+  }
 
   std::list<PlotData>& plotdata = GetPlotData(false);
   if (plotdata.empty()) return true;
@@ -2480,7 +2492,7 @@ bool RouteMapOverlay::ValidatePlottedDestinationRouteLand(
         continue;
       }
       wxString failure_reason;
-      RouteMapConfiguration segment_configuration = configuration;
+      RouteMapConfiguration segment_configuration = validationConfiguration;
       if (m_UsesModernNativeResult && previous_leg_coastal_egress)
         segment_configuration.SafetyMarginLand = 0.0;
       if (!ConstraintChecker::CheckFinalRouteLandConstraint(
@@ -2537,7 +2549,7 @@ bool RouteMapOverlay::ValidatePlottedDestinationRouteLand(
       return true;
     }
     wxString failure_reason;
-    RouteMapConfiguration segment_configuration = configuration;
+    RouteMapConfiguration segment_configuration = validationConfiguration;
     if (m_UsesModernNativeResult && previous_leg_coastal_egress)
       segment_configuration.SafetyMarginLand = 0.0;
     if (!ConstraintChecker::CheckFinalRouteLandConstraint(

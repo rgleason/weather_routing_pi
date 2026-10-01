@@ -1,4 +1,4 @@
-# Quick, Standard and Professional — 1.18.3
+# Routing engines — 1.21
 
 Choose one engine on **Basic → Routing engine**, in this order:
 
@@ -13,7 +13,10 @@ possible route or safe navigation independently of its data, polar and constrain
 
 ## Installation, upgrades and saved settings
 
-A first installation with **no saved last-used configuration** defaults to Quick.
+A first installation with **no saved last-used configuration** defaults to Auto. Auto tries Quick, Standard, then Professional up to 400%
+effort and stops at the first validated complete route. All (slow) compares
+Quick, Standard, internal Alternative and Professional, selecting the earliest
+validated arrival. See [1.21 release notes](release-1.21.0.md).
 Existing routes and last-used defaults retain their algorithm and numerical values:
 old Main becomes Professional, and old Quick becomes Standard. Legacy XML without
 an engine field remains Professional. New routes copy the selected route, or use

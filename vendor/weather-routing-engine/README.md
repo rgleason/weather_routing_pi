@@ -67,7 +67,7 @@ application and GPL applications which vendor the engine.
 
 `QuickEngine.h` exposes an optional bounded beam-search engine. Link
 `weather_routing_engine::quick_weather_routing_engine`; the Main target and
-`RoutingEngine` entry point retain their existing behavior. The two engines share
+`RoutingEngine` entry point retain their existing behavior. These engines share
 physical operations and independent route validation. Quick has a configurable
 per-route search-memory ceiling (256 MiB by default), compact retained labels and
 bounded search work. Its narrower search can miss or lengthen routes.
@@ -78,3 +78,17 @@ settings, limits, embedding and the headless comparison suite. Run
 `weather_routing_head_to_head quick ocean 256` from the standalone build's `tests`
 directory for a synthetic comparison; each successful result is independently
 revalidated and emitted as JSON.
+
+The plugin labels this bounded beam engine **Standard**. Its **Quick** engine
+is the separate hardened original contour implementation in the sibling
+`vendor/original-routing-engine` directory; `RoutingEngine` is **Professional**.
+
+## Separate Alternative engine
+
+`AlternativeEngine.h` exposes a Windy-style fixed-heading, sector-pruned
+frontier as a standalone target,
+`weather_routing_engine::alternative_weather_routing_engine`. The plugin uses
+it internally in All (slow) from 1.21; it has no individually selectable plugin
+option. It shares checked motion and independent final validation with the
+other solvers. See [Alternative routing](../../docs/alternative-routing.md)
+for scope and benchmark instructions.

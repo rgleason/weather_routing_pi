@@ -9741,16 +9741,19 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
   } else {
     if (routemapoverlay->Finished()) {
       if (routemapoverlay->ReachedDestination()) {
-        const auto engine = routemapoverlay->GetComputedSearchSettings().engine;
+        const auto computed = routemapoverlay->GetComputedSearchSettings();
+        const auto& engine = computed.selectedEngine.empty() ? computed.engine : computed.selectedEngine;
+        const wxString title = engine == "original" ? _("Quick")
+            : engine == "quick" ? _("Standard") : engine == "main" ? _("Professional")
+            : engine == "alternative" ? _("Alternative") : wxString();
+        const wxString mode = computed.engine == "auto" ? _("Auto")
+            : computed.engine == "all" ? _("All (slow)") : wxString();
 #ifdef __OCPN__ANDROID__
-        State = engine == "original" ? _("Complete: Quick")
-            : engine == "quick" ? _("Complete: Standard")
-            : engine == "main" ? _("Complete: Professional") : _("Complete");
+        State = _("Complete") + (title.empty() ? wxString() : ": " + title);
 #else
-        State = engine == "original" ? _("Complete — Quick")
-            : engine == "quick" ? _("Complete — Standard")
-            : engine == "main" ? _("Complete — Professional") : _("Complete");
+        State = _("Complete") + (title.empty() ? wxString() : " — " + title);
 #endif
+        if (!mode.empty()) State += " (" + mode + ")";
       } else
         State = BuildRouteFailureState(routemapoverlay);
     } else {
@@ -12259,12 +12262,46 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
           UpdateRoutingProgress(_("Preparing shoreline data"),
                                 _("Verifying the selected shoreline dataset"),
                                 -1, -1);
-        configuration.shoreline_dataset =
-            weather_routing::ShorelineManager::Prepare(configuration.EffectiveShorelineResolution());
-        configuration.shoreline_description =
-            weather_routing::ShorelineManager::Description(configuration.EffectiveShorelineResolution());
+        const bool combined = weather_routing::IsCombinedEngine(configuration.EngineSettings.engine);
+        if (combined) {
+          configuration.engine_shorelines = {};
+          configuration.engine_shoreline_errors = {};
+          configuration.engine_shoreline_descriptions = {};
+          configuration.shoreline_dataset.reset();
+          // Load each selected engine's immutable snapshot on the main thread.
+          // An unavailable optional dataset rejects that engine, not the sequence.
+          for (const auto engine : {weather_routing::RoutingEngine::Original,
+                                    weather_routing::RoutingEngine::Quick,
+                                    weather_routing::RoutingEngine::Main}) {
+            auto candidate = configuration;
+            candidate.EngineSettings.engine = engine;
+            const int resolution = candidate.EffectiveShorelineResolution();
+            if (configuration.engine_shorelines[resolution] ||
+                !configuration.engine_shoreline_errors[resolution].empty()) continue;
+            try {
+              configuration.engine_shorelines[resolution] =
+                  weather_routing::ShorelineManager::Prepare(resolution);
+              configuration.engine_shoreline_descriptions[resolution] =
+                  weather_routing::ShorelineManager::Description(resolution);
+              if (!configuration.shoreline_dataset) {
+                configuration.shoreline_dataset = configuration.engine_shorelines[resolution];
+                configuration.shoreline_description = weather_routing::ShorelineManager::Description(resolution);
+              }
+            } catch (const std::bad_alloc&) { throw; }
+            catch (const std::exception& error) {
+              configuration.engine_shoreline_errors[resolution] = wxString::FromUTF8(error.what());
+            }
+          }
+          if (!configuration.shoreline_dataset)
+            throw std::runtime_error("No routing engine's selected shoreline dataset is available");
+        } else {
+          configuration.shoreline_dataset =
+              weather_routing::ShorelineManager::Prepare(configuration.EffectiveShorelineResolution());
+          configuration.shoreline_description =
+              weather_routing::ShorelineManager::Description(configuration.EffectiveShorelineResolution());
+        }
         configuration.shoreline_error.clear();
-        if (!use_experimental_chart_safety && configuration.shoreline_dataset->CrossesLand(
+        if (!combined && !use_experimental_chart_safety && configuration.shoreline_dataset->CrossesLand(
                 configuration.StartLat, configuration.StartLon,
                 configuration.StartLat, configuration.StartLon)) {
           routemapoverlay->SetError(
@@ -12272,7 +12309,7 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
                 "Choose an offshore start position."));
           return;
         }
-        if (!use_experimental_chart_safety && configuration.shoreline_dataset->CrossesLand(
+        if (!combined && !use_experimental_chart_safety && configuration.shoreline_dataset->CrossesLand(
                 configuration.EndLat, configuration.EndLon,
                 configuration.EndLat, configuration.EndLon)) {
           routemapoverlay->SetError(

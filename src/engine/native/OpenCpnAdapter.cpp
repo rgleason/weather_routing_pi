@@ -24,6 +24,7 @@
 #include "engine/native/CoordinateNormalization.h"
 #include "engine/native/ConstraintTime.h"
 #include "engine/native/WeatherCoverage.h"
+#include "engine/native/RoutingEngineSequence.h"
 #include "RouteMapOverlay.h"
 #include "RoutingQualityPolicy.h"
 #include "RoutingResourcePolicy.h"
@@ -32,6 +33,7 @@
 #include "supercpn/weather_routing/ArrivalPlanner.h"
 #include "supercpn/weather_routing/Engine.h"
 #include "supercpn/weather_routing/QuickEngine.h"
+#include "supercpn/weather_routing/AlternativeEngine.h"
 #include "original_routing/Engine.h"
 
 namespace {
@@ -1015,49 +1017,192 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
   wr::RoutingEngine engine;
   wr::RoutingResult result;
   std::uint64_t quickGenerated = 0;
-  auto solve = [&](const wr::RoutingRequest& solveRequest, const wr::RoutingEnvironment& solveEnvironment) {
-    if (configuration.IsOriginal()) {
+  std::uint64_t originalGenerated = 0;
+  auto solveSingle = [&](const wr::RoutingRequest& solveRequest,
+                         const wr::RoutingEnvironment& solveEnvironment,
+                         const RouteMapConfiguration& selectedConfiguration) {
+    if (selectedConfiguration.IsOriginal()) {
       auto bounded = solveRequest;
-      if (configuration.TimeMode == RouteMapConfiguration::ROUTE_BY_ARRIVAL_TIME) {
-        if (quickGenerated >= 20000000) {
+      if (selectedConfiguration.TimeMode ==
+          RouteMapConfiguration::ROUTE_BY_ARRIVAL_TIME) {
+        if (originalGenerated >= 20000000) {
           wr::RoutingResult exhausted;
           exhausted.status = wr::RoutingStatus::ResourceLimitReached;
           exhausted.message = "Quick arrival search allowance reached";
           return exhausted;
         }
-        bounded.limits.maximumGeneratedStates = std::min<std::uint64_t>(
-            bounded.limits.maximumGeneratedStates, 20000000 - quickGenerated);
+        bounded.limits.maximumGeneratedStates =
+            std::min<std::uint64_t>(bounded.limits.maximumGeneratedStates,
+                                    20000000 - originalGenerated);
       }
       original_routing::Options originalOptions;
       originalOptions.captureVisualization = true;
-      auto original = original_routing::Engine{}.route(bounded, solveEnvironment, originalOptions);
-      quickGenerated += original.diagnostics.generatedStates;
+      auto original = original_routing::Engine{}.route(
+          bounded, solveEnvironment, originalOptions);
+      originalGenerated += original.diagnostics.generatedStates;
       return original;
     }
-    if (!configuration.IsQuick())
+    if (!selectedConfiguration.IsQuick())
       return engine.route(solveRequest, solveEnvironment);
     wr::QuickRoutingOptions quickOptions;
-    quickOptions.memoryBudgetMiB = static_cast<unsigned>(configuration.EngineSettings.quick.memoryBudgetMiB);
-    quickOptions.offshoreStep = std::chrono::minutes(configuration.EngineSettings.quick.offshoreStepMinutes);
-    quickOptions.headingStepDegrees = configuration.EngineSettings.quick.headingStepDegrees;
-    if (configuration.TimeMode == RouteMapConfiguration::ROUTE_BY_ARRIVAL_TIME) {
+    quickOptions.memoryBudgetMiB = static_cast<unsigned>(
+        selectedConfiguration.EngineSettings.quick.memoryBudgetMiB);
+    quickOptions.offshoreStep = std::chrono::minutes(
+        selectedConfiguration.EngineSettings.quick.offshoreStepMinutes);
+    quickOptions.headingStepDegrees =
+        selectedConfiguration.EngineSettings.quick.headingStepDegrees;
+    if (selectedConfiguration.TimeMode ==
+        RouteMapConfiguration::ROUTE_BY_ARRIVAL_TIME) {
       if (quickGenerated >= 1800000) {
         wr::RoutingResult exhausted;
         exhausted.status = wr::RoutingStatus::ResourceLimitReached;
         exhausted.message = "Quick arrival search allowance reached";
         return exhausted;
       }
-      quickOptions.maximumGeneratedStates = std::min<std::uint64_t>(600000, 1800000 - quickGenerated);
+      quickOptions.maximumGeneratedStates =
+          std::min<std::uint64_t>(600000, 1800000 - quickGenerated);
     }
-    auto quick = wr::QuickRoutingEngine{}.route(solveRequest, solveEnvironment, quickOptions);
+    auto quick = wr::QuickRoutingEngine{}.route(solveRequest, solveEnvironment,
+                                                quickOptions);
     quickGenerated += quick.route.diagnostics.generatedStates;
-    wxLogMessage("WR_QUICK_SUMMARY policy=1 budget_mib=%u peak_search_bytes=%llu weather_calls=%llu attempted_motions=%llu attempts=%u generated=%llu closest_nm=%.3f status=%s",
-      quick.quick.memoryBudgetMiB, static_cast<unsigned long long>(quick.quick.peakSearchBytes),
-      static_cast<unsigned long long>(quick.quick.weatherCalls),
-      static_cast<unsigned long long>(quick.quick.attemptedMotions), quick.quick.attempts,
-      static_cast<unsigned long long>(quick.route.diagnostics.generatedStates), quick.route.diagnostics.closestApproachNm,
-      wxString::FromUTF8(wr::toString(quick.route.status).c_str()));
+    wxLogMessage(
+        "WR_QUICK_SUMMARY policy=1 budget_mib=%u peak_search_bytes=%llu "
+        "weather_calls=%llu attempted_motions=%llu attempts=%u generated=%llu "
+        "closest_nm=%.3f status=%s",
+        quick.quick.memoryBudgetMiB,
+        static_cast<unsigned long long>(quick.quick.peakSearchBytes),
+        static_cast<unsigned long long>(quick.quick.weatherCalls),
+        static_cast<unsigned long long>(quick.quick.attemptedMotions),
+        quick.quick.attempts,
+        static_cast<unsigned long long>(
+            quick.route.diagnostics.generatedStates),
+        quick.route.diagnostics.closestApproachNm,
+        wxString::FromUTF8(wr::toString(quick.route.status).c_str()));
     return std::move(quick.route);
+  };
+  OpenCpnWeatherProvider::CacheDiagnostics sequenceWeatherCache;
+  auto solve = [&](const wr::RoutingRequest& solveRequest,
+                   const wr::RoutingEnvironment& solveEnvironment) {
+    if (!weather_routing::IsCombinedEngine(configuration.EngineSettings.engine))
+      return solveSingle(solveRequest, solveEnvironment, configuration);
+    using weather_routing::native::SequenceEngine;
+    auto runAttempt = [&](SequenceEngine selectedEngine) {
+      auto candidateConfiguration =
+          weather_routing::native::ConfigurationForSequenceEngine(
+              configuration, selectedEngine);
+      const bool alternative = selectedEngine == SequenceEngine::Alternative;
+      candidateConfiguration.StartTime = ToWx(solveRequest.departure);
+      wr::RoutingResult candidateResult;
+      const wxString title = wxGetTranslation(wxString::FromUTF8(
+          weather_routing::native::SequenceEngineTitle(selectedEngine)));
+      const auto attemptStarted = std::chrono::steady_clock::now();
+      try {
+        if (candidateConfiguration.DetectLand) {
+          const int resolution =
+              candidateConfiguration.EffectiveShorelineResolution();
+          candidateConfiguration.shoreline_dataset =
+              configuration.chart_safety_scout_preview
+                  ? configuration.shoreline_dataset
+                  : configuration.engine_shorelines.at(resolution);
+          if (!candidateConfiguration.shoreline_dataset) {
+            candidateResult.status =
+                wr::RoutingStatus::InvalidVesselConfiguration;
+            candidateResult.message =
+                configuration.engine_shoreline_errors.at(resolution)
+                    .ToStdString();
+            if (candidateResult.message.empty())
+              candidateResult.message =
+                  "Selected shoreline snapshot was not prepared";
+            return candidateResult;
+          }
+        }
+        auto candidateWeather = std::make_shared<OpenCpnWeatherProvider>(
+            overlay, candidateConfiguration);
+        auto candidateLand = std::make_shared<OpenCpnLandProvider>(
+            overlay, candidateConfiguration);
+        auto candidatePerformance =
+            std::make_shared<OpenCpnPerformanceModel>(candidateConfiguration);
+        wr::RoutingEnvironment candidateEnvironment;
+        candidateEnvironment.grib = candidateWeather;
+        candidateEnvironment.landAndBoundaries = candidateLand;
+        candidateEnvironment.performance = candidatePerformance;
+        candidateEnvironment.memberIdentity = "OpenCPN native deterministic";
+        auto candidateRequest = BuildRequest(overlay, candidateConfiguration);
+        candidateRequest.departure = solveRequest.departure;
+        candidateRequest.progress =
+            [&overlay, title, generation = overlay.ModernProgressGeneration()](
+                const wr::RoutingProgressUpdate& progress) {
+              overlay.SetModernNativeProgress(progress, generation, title);
+            };
+        if (alternative)
+          candidateResult = wr::AlternativeRoutingEngine{}
+                                .route(candidateRequest, candidateEnvironment)
+                                .route;
+        else
+          candidateResult = solveSingle(candidateRequest, candidateEnvironment,
+                                        candidateConfiguration);
+        const auto cache = candidateWeather->cacheDiagnostics();
+        sequenceWeatherCache.calls += cache.calls;
+        sequenceWeatherCache.immediateHits += cache.immediateHits;
+        sequenceWeatherCache.localHits += cache.localHits;
+        sequenceWeatherCache.sharedHits += cache.sharedHits;
+        sequenceWeatherCache.misses += cache.misses;
+        sequenceWeatherCache.waits += cache.waits;
+        sequenceWeatherCache.interpolationMicroseconds +=
+            cache.interpolationMicroseconds;
+        // Check the delivered plotting chords before selecting a winner,
+        // so a host rejection can fall back to another candidate.
+        if (weather_routing::native::AcceptedRoute(candidateResult) &&
+            candidateConfiguration.DetectLand &&
+            !candidateConfiguration.chart_safety_scout_preview) {
+          for (const auto& leg : candidateResult.legs) {
+            auto segment = candidateConfiguration;
+            segment.time = ToWx(leg.startTime);
+            if (leg.coastalDepartureEgress) segment.SafetyMarginLand = 0.0;
+            wxString reason;
+            if (!ConstraintChecker::CheckFinalRouteLandConstraint(
+                    segment, leg.start.latitude, leg.start.longitude,
+                    leg.end.latitude, leg.end.longitude,
+                    wr::initialBearingDegrees(leg.start, leg.end), &reason)) {
+              candidateResult.status = wr::RoutingStatus::ValidationFailure;
+              candidateResult.validation.passed = false;
+              candidateResult.message =
+                  reason.empty()
+                      ? "Final route geometry rejected by host validation"
+                      : reason.ToStdString();
+              break;
+            }
+          }
+        }
+      } catch (const std::bad_alloc&) {
+        throw;
+      } catch (const std::exception& exception) {
+        candidateResult.status = wr::RoutingStatus::InternalError;
+        candidateResult.message = exception.what();
+      }
+      wxLogMessage(
+          "WR_ENGINE_ATTEMPT mode=%s engine=%s status=%s validated=%d "
+          "elapsed_ms=%lld passage_s=%lld",
+          wxString::FromUTF8(configuration.EngineSettings.EngineId().c_str()),
+          title,
+          wxString::FromUTF8(wr::toString(candidateResult.status).c_str()),
+          candidateResult.validation.passed ? 1 : 0,
+          static_cast<long long>(
+              std::chrono::duration_cast<std::chrono::milliseconds>(
+                  std::chrono::steady_clock::now() - attemptStarted)
+                  .count()),
+          static_cast<long long>(candidateResult.metrics.elapsed.count()));
+      return candidateResult;
+    };
+    // A prewarm scout is only a geometry probe, not the All comparison itself.
+    if (configuration.chart_safety_scout_preview) {
+      auto candidate = runAttempt(SequenceEngine::Original);
+      candidate.engineIdentity = "original";
+      return candidate;
+    }
+    return weather_routing::native::RunRoutingEngineSequence(
+        configuration.EngineSettings.engine, solveRequest.cancellation,
+        runAttempt);
   };
   OpenCpnWeatherProvider::CacheDiagnostics arrivalWeatherCache;
   std::optional<wr::ArrivalPlanningResult> arrivalPlan;
@@ -1066,8 +1211,7 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
   // arrival-time departure search for that probe; the authoritative route
   // below performs arrival planning with full-quality forward validation.
   const bool planArrival =
-      configuration.TimeMode ==
-          RouteMapConfiguration::ROUTE_BY_ARRIVAL_TIME &&
+      configuration.TimeMode == RouteMapConfiguration::ROUTE_BY_ARRIVAL_TIME &&
       !configuration.chart_safety_scout_preview;
   if (planArrival) {
     if (!configuration.PlannedArrivalTime.IsValid()) {
@@ -1195,20 +1339,42 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
         arrivalPlan->diagnostics.bracketRefinements,
         arrivalPlan->diagnostics.evaluationBudgetExhausted ? 1 : 0);
   }
+  auto reportingConfiguration = resultConfiguration;
+  auto reportingRequest = request;
+  if (!result.engineIdentity.empty()) {
+    reportingConfiguration.EngineSettings.SetEngineId(
+        result.engineIdentity == "alternative" ? "main"
+                                               : result.engineIdentity);
+    if (configuration.EngineSettings.engine ==
+            weather_routing::RoutingEngine::Auto &&
+        result.engineIdentity == "main")
+      reportingConfiguration.RoutingEffortPercent = 400;
+    reportingRequest = BuildRequest(overlay, reportingConfiguration);
+    if (reportingConfiguration.DetectLand &&
+        !configuration.chart_safety_scout_preview) {
+      const int resolution =
+          reportingConfiguration.EffectiveShorelineResolution();
+      resultConfiguration.shoreline_description =
+          configuration.engine_shoreline_descriptions.at(resolution);
+      resultConfiguration.shoreline_dataset =
+          configuration.engine_shorelines.at(resolution);
+    }
+  }
   resultConfiguration.routing_generated_states =
       result.diagnostics.generatedStates;
   resultConfiguration.routing_generated_state_limit =
-      request.limits.maximumGeneratedStates;
+      reportingRequest.limits.maximumGeneratedStates;
   resultConfiguration.routing_retained_states =
       result.diagnostics.retainedStates;
   resultConfiguration.routing_retained_state_limit =
-      request.limits.maximumRetainedStates;
+      reportingRequest.limits.maximumRetainedStates;
   resultConfiguration.routing_graph_labels = result.diagnostics.graphLabels;
   resultConfiguration.routing_graph_label_limit =
-      request.limits.maximumGraphLabels;
+      reportingRequest.limits.maximumGraphLabels;
   overlay.SetConfigurationPreserveResult(resultConfiguration);
   const OpenCpnWeatherProvider::CacheDiagnostics weatherCache =
-      arrivalPlan ? arrivalWeatherCache : weather->cacheDiagnostics();
+      weather_routing::IsCombinedEngine(configuration.EngineSettings.engine)
+          ? sequenceWeatherCache : arrivalPlan ? arrivalWeatherCache : weather->cacheDiagnostics();
   const auto elapsedMilliseconds =
       std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::steady_clock::now() - started)
@@ -1252,13 +1418,13 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
       static_cast<unsigned long long>(result.diagnostics.validationSamples),
       result.diagnostics.closestApproachNm,
       weather_routing::NormalizeRoutingEffortPercent(
-          configuration.RoutingEffortPercent),
+          reportingConfiguration.RoutingEffortPercent),
       result.diagnostics.completedEffortPercent,
       static_cast<unsigned long long>(
           result.diagnostics.cumulativeGeneratedStates),
-      static_cast<unsigned long long>(request.limits.maximumGeneratedStates),
-      static_cast<unsigned long long>(request.limits.maximumRetainedStates),
-      static_cast<unsigned long long>(request.limits.maximumGraphLabels),
+      static_cast<unsigned long long>(reportingRequest.limits.maximumGeneratedStates),
+      static_cast<unsigned long long>(reportingRequest.limits.maximumRetainedStates),
+      static_cast<unsigned long long>(reportingRequest.limits.maximumGraphLabels),
       configuration.chart_safety_scout_preview ? 1 : 0,
       static_cast<unsigned long long>(RouteFingerprint(result.legs)));
   wxLogMessage(
@@ -1285,20 +1451,20 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
           result.diagnostics.frontierRecoveryLabels),
       static_cast<unsigned long long>(result.diagnostics.graphGeneratedStates),
       static_cast<unsigned long long>(
-          request.limits.maximumCoastalEndpointGeneratedStates),
+          reportingRequest.limits.maximumCoastalEndpointGeneratedStates),
       static_cast<unsigned long long>(
-          request.limits.maximumForwardGeneratedStates),
+          reportingRequest.limits.maximumForwardGeneratedStates),
       static_cast<unsigned long long>(
-          request.limits.maximumForwardArrivalGeneratedStates),
-      static_cast<unsigned long long>(request.limits.maximumReverseCandidates),
+          reportingRequest.limits.maximumForwardArrivalGeneratedStates),
+      static_cast<unsigned long long>(reportingRequest.limits.maximumReverseCandidates),
       static_cast<unsigned long long>(
-          request.limits.maximumReverseBridgeAttempts),
+          reportingRequest.limits.maximumReverseBridgeAttempts),
       static_cast<unsigned long long>(
-          request.limits.maximumFrontierRecoveryGeneratedStates),
+          reportingRequest.limits.maximumFrontierRecoveryGeneratedStates),
       static_cast<unsigned long long>(
-          request.limits.maximumFrontierRecoveryLabels),
+          reportingRequest.limits.maximumFrontierRecoveryLabels),
       static_cast<unsigned long long>(
-          request.limits.maximumGraphGeneratedStates));
+          reportingRequest.limits.maximumGraphGeneratedStates));
   wxLogMessage(
       "WR_MODERN_NATIVE_ENVIRONMENT route=\"%s -> %s\" "
       "candidate_offset=%d grib_wind_s=%lld climatology_wind_s=%lld "
@@ -1355,6 +1521,17 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
           static_cast<int>(configuration.MaxDivertedCourse),
           static_cast<int>(configuration.MaxSearchAngle));
     }
+  }
+  if (!result.engineIdentity.empty() && Complete(result.status)) {
+    overlay.CaptureSearchSettings(reportingConfiguration, true,
+                                  configuration.EngineSettings.EngineId(),
+                                  result.engineIdentity);
+    wxLogMessage(
+        "WR_ENGINE_SELECTED mode=%s engine=%s passage_s=%lld validated=%d",
+        wxString::FromUTF8(configuration.EngineSettings.EngineId().c_str()),
+        wxString::FromUTF8(result.engineIdentity.c_str()),
+        static_cast<long long>(result.metrics.elapsed.count()),
+        result.validation.passed ? 1 : 0);
   }
   overlay.InstallModernNativeResult(result);
   if (!Complete(result.status)) overlay.SetFailureReason(error);

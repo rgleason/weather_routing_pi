@@ -27,6 +27,7 @@
 #include <wx/object.h>
 #include <wx/weakref.h>
 
+#include <array>
 #include <list>
 #include <atomic>
 #include <condition_variable>
@@ -230,6 +231,10 @@ struct RouteMapConfiguration {
   bool output_grib_point_queries{false};
   // Pinned per calculation; chart geometry retains its separate host path.
   std::shared_ptr<weather_routing::ShorelineDataset> shoreline_dataset;
+  // Prepared on the main thread for Auto/All; workers never call the manager.
+  std::array<std::shared_ptr<weather_routing::ShorelineDataset>, 5> engine_shorelines;
+  std::array<wxString, 5> engine_shoreline_errors;
+  std::array<wxString, 5> engine_shoreline_descriptions;
   wxString shoreline_description;
   int ShorelineResolution{2};  // Offline base default; saved route choices are preserved.
   int QuickShorelineResolution{weather_routing::kDefaultQuickShorelineResolution};
@@ -1080,9 +1085,13 @@ public:
     Unlock();
     return snapshot;
   }
-  void CaptureSearchSettings(const RouteMapConfiguration& configuration, bool native) {
+  void CaptureSearchSettings(const RouteMapConfiguration& configuration, bool native,
+                             const std::string& requestedEngine = {},
+                             const std::string& selectedEngine = {}) {
     Lock();
     m_ComputedSearchSettings = weather_routing::RoutingSearchSnapshot::Capture(configuration, native);
+    if (!requestedEngine.empty()) m_ComputedSearchSettings.engine = requestedEngine;
+    m_ComputedSearchSettings.selectedEngine = selectedEngine;
     Unlock();
   }
   void SetConfiguration(const RouteMapConfiguration& o) {

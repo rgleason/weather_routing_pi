@@ -6,22 +6,26 @@
 #include "ShorelineSettings.h"
 
 namespace wr = weather_routing;
-TEST(RoutingEngineSettings, ThreeTitlesKeepStableSavedIdsAndBasicOrder) {
+TEST(RoutingEngineSettings, FiveTitlesKeepStableSavedIdsAndBasicOrder) {
   wr::RoutingEngineSettings settings;
-  for (int i = 0; i < 3; ++i) {
+  const char* titles[] = {"Auto", "Quick", "Standard", "Professional", "All (slow)"};
+  const char* ids[] = {"auto", "original", "quick", "main", "all"};
+  for (int i = 0; i < 5; ++i) {
     settings.engine = wr::EngineFromSelection(i);
     EXPECT_EQ(wr::EngineSelection(settings.engine), i);
-    EXPECT_STREQ(wr::EngineTitle(settings.engine),
-                 i == 0 ? "Quick" : i == 1 ? "Standard" : "Professional");
-    EXPECT_EQ(settings.EngineId(), i == 0 ? "original" : i == 1 ? "quick" : "main");
+    EXPECT_STREQ(wr::EngineTitle(settings.engine), titles[i]);
+    EXPECT_EQ(settings.EngineId(), ids[i]);
   }
   EXPECT_EQ(wr::EngineFromSelection(-1), wr::RoutingEngine::Unsupported);
+  EXPECT_EQ(wr::EngineFromSelection(5), wr::RoutingEngine::Unsupported);
+  settings.SetEngineId("alternative");
+  EXPECT_EQ(settings.engine, wr::RoutingEngine::Unsupported);
 }
-TEST(RoutingEngineSettings, FirstInstallQuickButUpgradePreservesEveryExistingSelection) {
+TEST(RoutingEngineSettings, FirstInstallAutoButUpgradePreservesEveryExistingSelection) {
   wr::RoutingEngineSettings fresh;
   wr::ApplyFirstUseEngineDefaults(fresh, false);
-  EXPECT_EQ(fresh.engine, wr::RoutingEngine::Original);
-  for (const char* id : {"original", "quick", "main", "unknown"}) {
+  EXPECT_EQ(fresh.engine, wr::RoutingEngine::Auto);
+  for (const char* id : {"original", "quick", "main", "auto", "all", "unknown"}) {
     TiXmlElement xml("Configuration");
     xml.SetAttribute("RoutingEngine", id);
     auto saved = wr::ReadRoutingEngineSettings(xml);
@@ -45,7 +49,7 @@ TEST(RoutingEngineSettings, AllThreeBlocksSurviveSwitchSaveReinstallAndIndepende
   const int originalCacheMiB =
       wr::NormalizeGribTimelineCacheMiB(1024, true);
   settings.originalGribTimelineCacheMiB = originalCacheMiB;
-  for (int i = 0; i < 3; ++i) {
+  for (int i = 0; i < 5; ++i) {
     settings.engine = wr::EngineFromSelection(i);
     TiXmlElement xml("Configuration");
     wr::WriteRoutingEngineSettings(settings, xml);
