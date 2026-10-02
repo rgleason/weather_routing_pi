@@ -28,7 +28,7 @@ Every retained candidate also records:
 
 Worst-leg severity is available for sorting and inspection now; no additional peak penalty is imposed in this pass. Search frontier/isochrone geometry is not retained for each alternative, keeping the cache compact.
 
-Missing wave or wind information is **unknown**, not calm. A partially covered route remains selectable as a validated fastest result, but cannot win the full-condition comfort ranking. The explicit **Compare wind only (ignore waves)** checkbox permits wind-only comparison and labels that mode. Existing hard weather and land limits continue to apply before retention. Changing comparison mode never relaxes validation.
+Missing wave or wind information is **unknown**, not calm. A partially covered route remains selectable as a validated fastest result, but cannot win the full-condition comfort ranking. The explicit **Compare wind only (ignore waves)** checkbox permits wind-only comparison and labels that mode. Existing hard weather and land limits continue to apply before retention. Changing comparison mode never relaxes validation. With no wave coverage, the dialog tells the user to select wind-only comparison or load wave data and recompute; unknown difficult exposure is labelled incomplete. Departure, ETA and worst-leg timestamps in this comparison are explicitly formatted as UTC, including when the desktop uses BST.
 
 ## Scope and limitations
 
