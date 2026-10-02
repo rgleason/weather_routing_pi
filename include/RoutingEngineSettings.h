@@ -13,8 +13,8 @@ constexpr double kDefaultHeadingStepDegrees = 10.0;
 constexpr int kDefaultQuickShorelineResolution = 2;
 constexpr int kDefaultMaxDivertedCourse = 120;
 
-// Serialized IDs are permanent: historical "quick" is now Standard, and
-// "main" is Professional. Never reinterpret an existing user's selection.
+// Serialized IDs remain stable: historical "quick" is Standard, while
+// "main" selects the current Professional implementation.
 enum class RoutingEngine { Main, Quick, Unsupported, Original, Auto, All };
 
 inline int EngineSelection(RoutingEngine engine) {
@@ -79,10 +79,12 @@ struct RoutingEngineSettings {
   int originalGribTimelineCacheMiB{kQuickGribTimelineCacheDefaultMiB};
 
   QuickSearchSettings& FastSettings() {
-    return engine == RoutingEngine::Original ? original : quick;
+    return engine == RoutingEngine::Original || engine == RoutingEngine::Main
+        ? original : quick;
   }
   const QuickSearchSettings& FastSettings() const {
-    return engine == RoutingEngine::Original ? original : quick;
+    return engine == RoutingEngine::Original || engine == RoutingEngine::Main
+        ? original : quick;
   }
 
   std::string EngineId() const {
@@ -97,7 +99,7 @@ struct RoutingEngineSettings {
   }
   void SetEngineId(std::string_view id) {
     unsupportedId.clear();
-    if (id == "main") engine = RoutingEngine::Main;
+    if (id == "main" || id == "professional2") engine = RoutingEngine::Main;
     else if (id == "quick") engine = RoutingEngine::Quick;
     else if (id == "original") engine = RoutingEngine::Original;
     else if (id == "auto") engine = RoutingEngine::Auto;

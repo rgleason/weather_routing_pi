@@ -248,7 +248,12 @@ struct RouteMapConfiguration {
         IsQuick() ? QuickGribTimelineCacheMiB : MainGribTimelineCacheMiB;
   }
   int& FastGribTimelineCacheMiB() {
-    return IsOriginal() ? EngineSettings.originalGribTimelineCacheMiB : QuickGribTimelineCacheMiB;
+    return IsOriginal() || EngineSettings.engine == weather_routing::RoutingEngine::Main
+        ? EngineSettings.originalGribTimelineCacheMiB : QuickGribTimelineCacheMiB;
+  }
+  int FastGribTimelineCacheMiB() const {
+    return IsOriginal() || EngineSettings.engine == weather_routing::RoutingEngine::Main
+        ? EngineSettings.originalGribTimelineCacheMiB : QuickGribTimelineCacheMiB;
   }
   int& FastShorelineResolution() {
     return IsOriginal() ? EngineSettings.originalShorelineResolution : QuickShorelineResolution;

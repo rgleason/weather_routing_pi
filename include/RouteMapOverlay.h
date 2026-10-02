@@ -364,6 +364,9 @@ public:
     return m_ModernProgress.Read().generation;
   }
   bool UsesModernNativeResult() const { return m_UsesModernNativeResult; }
+  bool HasModernNativeCoastalEndpointLeeway() const {
+    return m_ModernNativeCoastalEndpointLeeway;
+  }
   void SetRetainedCandidates(std::vector<weather_routing::RetainedRouteCandidate> candidates);
   std::vector<weather_routing::RetainedRouteCandidate> RetainedCandidates();
   bool SelectRetainedCandidate(const std::string& id);
@@ -498,6 +501,7 @@ private:
   RouteMapOverlayThread* m_Thread;
 
   bool m_UsesModernNativeResult{false};
+  bool m_ModernNativeCoastalEndpointLeeway{false};
   std::vector<weather_routing::RetainedRouteCandidate> m_RetainedCandidates;
   std::string m_SelectedRetainedCandidateId;
   std::vector<Position*> m_ModernRoutePositions;

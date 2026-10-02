@@ -181,8 +181,8 @@ bool RouteMapOverlay::Start(wxString& error) {
         wxString::FromUTF8(configuration.EngineSettings.EngineId().c_str());
     return false;
   }
-  if ((configuration.IsFastEngine() || weather_routing::IsCombinedEngine(configuration.EngineSettings.engine)) && !ModernNativeRouteEnabled(configuration)) {
-    error = _("Auto, Quick, Standard and All cannot analyse an existing route or use cumulative climatology/legacy routing. Select Professional for this configuration.");
+  if (!ModernNativeRouteEnabled(configuration)) {
+    error = _("Auto, Quick, Standard, Professional and All require native routing and cannot analyse an existing route or use cumulative climatology/legacy routing.");
     return false;
   }
   /* test for cyclone data if needed */
@@ -373,6 +373,12 @@ void RouteMapOverlay::InstallModernNativeResult(
       result.status == wr::RoutingStatus::CompleteUsingGraphFallback;
   const bool resourceExhausted = ResourceExhausted();
   const bool complete = resultComplete && !resourceExhausted;
+  const bool coastalEndpointLeeway = complete &&
+      std::any_of(result.warnings.begin(), result.warnings.end(),
+                  [](const wr::RoutingWarning& warning) {
+                    return warning.code ==
+                           wr::RoutingWarningCode::CoastalEndpointLeeway;
+                  });
   if (complete && result.validation.passed && !result.legs.empty() &&
       m_RetainedCandidates.empty())
     m_RetainedCandidates.push_back(weather_routing::RetainRouteCandidate(
@@ -450,6 +456,7 @@ void RouteMapOverlay::InstallModernNativeResult(
   last_destination_plotdata.clear();
   last_cursor_plotdata.clear();
   m_UsesModernNativeResult = true;
+  m_ModernNativeCoastalEndpointLeeway = coastalEndpointLeeway;
 
   m_ModernIsochrones.reserve(result.visualization.isochrones.size());
   for (const wr::IsochroneLayer& source : result.visualization.isochrones) {

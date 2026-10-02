@@ -1032,7 +1032,7 @@ void ConfigurationDialog::SetConfigurations(
       weather_routing::EngineSelection(firstEngine));
   SET_SPIN_VALUE(QuickMemoryBudgetMiB, (*it).EngineSettings.FastSettings().memoryBudgetMiB);
   SET_SPIN(MainGribTimelineCacheMiB);
-  SET_SPIN_VALUE(QuickGribTimelineCacheMiB, (*it).IsOriginal() ? (*it).EngineSettings.originalGribTimelineCacheMiB : (*it).QuickGribTimelineCacheMiB);
+  SET_SPIN_VALUE(QuickGribTimelineCacheMiB, (*it).FastGribTimelineCacheMiB());
   SET_SPIN_VALUE(QuickOffshoreStepMinutes, (*it).EngineSettings.FastSettings().offshoreStepMinutes);
   SET_SPIN_DOUBLE_VALUE(QuickHeadingStepDegrees, (*it).EngineSettings.FastSettings().headingStepDegrees);
   SET_SPIN_VALUE(QuickMaximumSearchAngle, (*it).EngineSettings.FastSettings().maximumSearchAngle);
@@ -1386,7 +1386,9 @@ void ConfigurationDialog::UpdateEngineControls() {
   const auto engine = weather_routing::EngineFromSelection(m_cRoutingEngine->GetSelection());
   const bool combined = weather_routing::IsCombinedEngine(engine);
   m_pMainEngine->Show(engine == weather_routing::RoutingEngine::Main || combined);
-  m_pQuickEngine->Show(engine == weather_routing::RoutingEngine::Original || engine == weather_routing::RoutingEngine::Quick);
+  m_pQuickEngine->Show(engine == weather_routing::RoutingEngine::Original ||
+                       engine == weather_routing::RoutingEngine::Quick ||
+                       engine == weather_routing::RoutingEngine::Main);
   m_bResetAdvanced->Enable(engine != weather_routing::RoutingEngine::Unsupported);
   m_cEnginePreset->Enable(engine != weather_routing::RoutingEngine::Unsupported);
   bool running = false;
@@ -1438,7 +1440,7 @@ void ConfigurationDialog::UpdateEngineControls() {
       : engine == weather_routing::RoutingEngine::All
       ? _("All (slow): compares Quick, Standard, Alternative and Professional, plus bounded comfort alternatives when enabled; returns the earliest validated arrival.")
       : engine == weather_routing::RoutingEngine::Main
-      ? _("Professional: broader search with multiple recovery methods.")
+      ? _("Professional: keeps a validated Quick candidate, then searches for a faster route with broader recovery. The Quick controls below tune its integrated candidate.")
       : engine == weather_routing::RoutingEngine::Quick ? _("Standard: bounded adaptive search with recovery.")
       : engine == weather_routing::RoutingEngine::Original ? _("Quick: fast contour search with independently validated arrival; may miss a feasible route.")
       : _("Mixed or unsupported engines. Select Auto, Quick, Standard, Professional or All (slow)."));

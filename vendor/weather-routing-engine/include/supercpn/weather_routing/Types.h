@@ -380,7 +380,8 @@ enum class RoutingWarningCode {
   EstimatedPolar,
   SearchPruned,
   SearchIncomplete,
-  EnsembleMemberFailed
+  EnsembleMemberFailed,
+  CoastalEndpointLeeway
 };
 
 struct RoutingWarning {

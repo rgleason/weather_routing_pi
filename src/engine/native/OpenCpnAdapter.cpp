@@ -35,6 +35,8 @@
 #include "supercpn/weather_routing/QuickEngine.h"
 #include "supercpn/weather_routing/AlternativeEngine.h"
 #include "original_routing/Engine.h"
+#include "ProfessionalQuickPolicy.h"
+#include "SystemMemory.h"
 
 namespace {
 namespace wr = supercpn::weather_routing;
@@ -1021,6 +1023,95 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
   auto solveSingle = [&](const wr::RoutingRequest& solveRequest,
                          const wr::RoutingEnvironment& solveEnvironment,
                          const RouteMapConfiguration& selectedConfiguration) {
+    if (selectedConfiguration.EngineSettings.engine ==
+        weather_routing::RoutingEngine::Main) {
+      if (selectedConfiguration.chart_safety_scout_preview)
+        return wr::ProfessionalEngine{}.route(solveRequest, solveEnvironment);
+      // Quick here is the original contour engine. The class named
+      // QuickRoutingEngine implements the UI's Standard mode.
+      RouteMapConfiguration quickConfiguration = selectedConfiguration;
+      quickConfiguration.EngineSettings.engine =
+          weather_routing::RoutingEngine::Original;
+      quickConfiguration.EngineSettings.originalShorelineResolution =
+          selectedConfiguration.ShorelineResolution;
+      quickConfiguration.StartTime = ToWx(solveRequest.departure);
+      const auto quickMemory = weather_routing::SelectProfessionalQuickAdmission(
+          static_cast<unsigned>(std::max(
+              1, selectedConfiguration.EngineSettings.original.memoryBudgetMiB)),
+          weather_routing::AvailablePhysicalMemoryMiB());
+      quickConfiguration.EngineSettings.original.memoryBudgetMiB =
+          static_cast<int>(quickMemory.effectiveMiB);
+      wr::RoutingRequest quickRequest = BuildRequest(overlay, quickConfiguration);
+      auto quickWeather = std::make_shared<OpenCpnWeatherProvider>(
+          overlay, quickConfiguration);
+      auto quickLand = std::make_shared<OpenCpnLandProvider>(
+          overlay, quickConfiguration);
+      auto quickPerformance = std::make_shared<OpenCpnPerformanceModel>(
+          quickConfiguration);
+      wr::RoutingEnvironment quickEnvironment;
+      quickEnvironment.grib = quickWeather;
+      quickEnvironment.landAndBoundaries = quickLand;
+      quickEnvironment.performance = quickPerformance;
+      quickEnvironment.memberIdentity = "Professional Quick incumbent";
+      original_routing::Options quickOptions;
+      quickOptions.captureVisualization = true;
+      quickOptions.allowCoastalEndpointLeeway = true;
+      quickOptions.allowProfessionalInterimBridge = true;
+      if (quickMemory.effectiveMiB >= 2 * quickMemory.savedMiB) {
+        quickRequest.limits.maximumGeneratedStates = 40000000;
+        quickOptions.maximumGeometryOperations = 400000000;
+        quickOptions.maximumWeatherQueries = 40000000;
+      }
+      wxLogMessage(
+          "WR_PROFESSIONAL_QUICK_BUDGET saved_mib=%u target_mib=%u "
+          "effective_mib=%u available_mib=%llu required_before_mib=%llu "
+          "generated_limit=%llu",
+          quickMemory.savedMiB, quickMemory.targetMiB,
+          quickMemory.effectiveMiB,
+          static_cast<unsigned long long>(quickMemory.availableMiB),
+          static_cast<unsigned long long>(quickMemory.requiredBeforeMiB),
+          static_cast<unsigned long long>(
+              quickRequest.limits.maximumGeneratedStates));
+      wr::RoutingResult quick;
+      if (quickMemory.effectiveMiB == 0) {
+        quick.status = wr::RoutingStatus::ResourceLimitReached;
+        quick.message = "Professional Quick skipped: insufficient free memory";
+      } else if (selectedConfiguration.TimeMode ==
+                 RouteMapConfiguration::ROUTE_BY_ARRIVAL_TIME) {
+        if (originalGenerated >= 20000000) {
+          quick.status = wr::RoutingStatus::ResourceLimitReached;
+          quick.message = "Professional Quick arrival allowance reached";
+        } else {
+          quickRequest.limits.maximumGeneratedStates =
+              std::min<std::uint64_t>(
+                  quickRequest.limits.maximumGeneratedStates,
+                  20000000 - originalGenerated);
+        }
+      }
+      if (quick.status != wr::RoutingStatus::ResourceLimitReached) {
+        quick = original_routing::Engine{}.route(
+            quickRequest, quickEnvironment, quickOptions);
+        originalGenerated += quick.diagnostics.generatedStates;
+      }
+      wxLogMessage(
+          "WR_PROFESSIONAL_QUICK status=%s validated=%d passage_s=%lld "
+          "generated=%llu closest_nm=%.3f weather_samples=%llu "
+          "land_checks=%llu message=\"%s\"",
+          wxString::FromUTF8(wr::toString(quick.status).c_str()),
+          quick.validation.passed ? 1 : 0,
+          static_cast<long long>(quick.metrics.elapsed.count()),
+          static_cast<unsigned long long>(quick.diagnostics.generatedStates),
+          quick.diagnostics.closestApproachNm,
+          static_cast<unsigned long long>(quick.diagnostics.weatherSamples),
+          static_cast<unsigned long long>(quick.diagnostics.landChecks),
+          wxString::FromUTF8(quick.message.c_str()));
+      for (const auto& reason : quick.diagnostics.stageStopReasons)
+        wxLogMessage("WR_PROFESSIONAL_QUICK_DIAGNOSTIC %s",
+                     wxString::FromUTF8(reason.c_str()));
+      if (quick.status == wr::RoutingStatus::Cancelled) return quick;
+      return wr::ProfessionalEngine{}.route(
+          solveRequest, solveEnvironment, &quick);
+    }
     if (selectedConfiguration.IsOriginal()) {
       auto bounded = solveRequest;
       if (selectedConfiguration.TimeMode ==

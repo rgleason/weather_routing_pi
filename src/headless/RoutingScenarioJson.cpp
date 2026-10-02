@@ -163,7 +163,9 @@ bool LoadRoutingScenarioJson(const wxString& path,
     if (route.isMember("routingEngine")) {
       scenario.route.routingEngine = JsonString(route, "routingEngine");
       scenario.route.hasRoutingEngine = true;
-      if (scenario.route.routingEngine != "main" && scenario.route.routingEngine != "quick" &&
+      if (scenario.route.routingEngine != "main" &&
+          scenario.route.routingEngine != "professional2" &&
+          scenario.route.routingEngine != "quick" &&
           scenario.route.routingEngine != "original" && scenario.route.routingEngine != "auto" &&
           scenario.route.routingEngine != "all") {
         error = "routingEngine must be auto, original (Quick), quick (Standard), main (Professional), or all";

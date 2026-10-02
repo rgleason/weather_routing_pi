@@ -281,7 +281,7 @@ TEST(RoutingScenarioJson, EngineIdAndIndependentQuickSamplingAreValidated) {
       {R"("routingEngine":"auto")", true},
       {R"("routingEngine":"all")", true},
       {R"("routingEngine":"alternative")", false},
-      {R"("routingEngine":"professional2")", false},
+      {R"("routingEngine":"professional2")", true},
       {R"("routingEngine":"original","quickOffshoreStepMinutes":180,"maxSwellMeters":0)", true},
       {R"("routingEngine":"original","maxSwellMeters":-1)", false},
       {R"("routingEngine":"original","maxSwellMeters":"bad")", false},

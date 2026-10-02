@@ -140,6 +140,56 @@ TEST(OriginalEngine, ConcurrentRequestsKeepBoatProvidersIndependent) {
   EXPECT_GT(slow.metrics.elapsed.count(), result.metrics.elapsed.count() * 1.9);
 }
 
+struct EndpointBufferProvider final : wr::LandAndBoundaryProvider {
+  wr::GeoPoint start, destination;
+  bool actualLand{};
+  bool pointForbidden(wr::GeoPoint point) const override {
+    return actualLand && wr::distanceNm(point, destination) < 0.3;
+  }
+  bool segmentForbidden(wr::GeoPoint a, wr::GeoPoint b,
+                        double margin) const override {
+    if (actualLand && wr::distanceNm(b, destination) < 0.3) return true;
+    return margin > 0.0 &&
+           (wr::distanceNm(a, start) < 0.5 ||
+            wr::distanceNm(b, start) < 0.5 ||
+            wr::distanceNm(a, destination) < 0.5 ||
+            wr::distanceNm(b, destination) < 0.5);
+  }
+  double distanceToForbiddenNm(wr::GeoPoint point) const override {
+    return (wr::distanceNm(point, start) < 0.5 ||
+            wr::distanceNm(point, destination) < 0.5) ? 0.1 : 10.0;
+  }
+  std::string identity() const override { return "endpoint-buffer-test"; }
+};
+
+TEST(OriginalEngine, ProfessionalCoastalLeewayIsScopedAndValidated) {
+  auto r = request();
+  r.start = {-20.0, -130.0};
+  r.destination = {-20.0, -129.8};
+  r.constraints.landSafetyMarginNm = 0.4;
+  auto e = environment();
+  auto coast = std::make_shared<EndpointBufferProvider>();
+  coast->start = r.start;
+  coast->destination = r.destination;
+  e.landAndBoundaries = coast;
+  EXPECT_EQ(original_routing::Engine{}.route(r, e).status,
+            wr::RoutingStatus::InvalidStart);
+  original_routing::Options options;
+  options.allowCoastalEndpointLeeway = true;
+  const auto result = original_routing::Engine{}.route(r, e, options);
+  ASSERT_EQ(result.status, wr::RoutingStatus::Complete) << result.message;
+  ASSERT_TRUE(result.validation.passed);
+  EXPECT_LT(wr::distanceNm(result.legs.back().end, r.destination), 0.003);
+  const auto coastalWarning = [](const wr::RoutingWarning& warning) {
+    return warning.code == wr::RoutingWarningCode::CoastalEndpointLeeway;
+  };
+  EXPECT_EQ(std::count_if(result.warnings.begin(), result.warnings.end(),
+                          coastalWarning), 2);
+  coast->actualLand = true;
+  EXPECT_EQ(original_routing::Engine{}.route(r, e, options).status,
+            wr::RoutingStatus::InvalidDestination);
+}
+
 // Use the actual first-install polar: unlike ConstantBoat it does not supply
 // speed outside 50..150 degrees, even if the configured limits are 40..160.
 struct DefaultPolarBoat final : wr::VesselPerformanceModel {

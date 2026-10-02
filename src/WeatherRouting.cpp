@@ -9772,6 +9772,8 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
         State = _("Complete") + (title.empty() ? wxString() : " — " + title);
 #endif
         if (!mode.empty()) State += " (" + mode + ")";
+        if (routemapoverlay->HasModernNativeCoastalEndpointLeeway())
+          State += _(" (shore buffer at endpoint: check route)");
       } else
         State = BuildRouteFailureState(routemapoverlay);
     } else {

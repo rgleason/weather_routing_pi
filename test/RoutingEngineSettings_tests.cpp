@@ -2,10 +2,41 @@
 #include <gtest/gtest.h>
 #include <wx/fileconf.h>
 #include <wx/sstream.h>
+#include "ProfessionalQuickPolicy.h"
 #include "RoutingEngineSettingsPersistence.h"
 #include "ShorelineSettings.h"
 
 namespace wr = weather_routing;
+TEST(RoutingEngineSettings, ProfessionalQuickAdmissionKeepsMemoryReserve) {
+  const auto spacious = wr::SelectProfessionalQuickAdmission(256, 50000, 64);
+  EXPECT_EQ(spacious.effectiveMiB, 1024U);
+  EXPECT_EQ(spacious.requiredBeforeMiB, 6144U);
+  const auto constrained = wr::SelectProfessionalQuickAdmission(256, 4096, 64);
+  EXPECT_EQ(constrained.effectiveMiB, 512U);
+  EXPECT_LE(constrained.requiredBeforeMiB, constrained.availableMiB);
+  EXPECT_EQ(wr::SelectProfessionalQuickAdmission(256, 2200, 64).effectiveMiB,
+            0U);
+  EXPECT_EQ(wr::SelectProfessionalQuickAdmission(256, 0, 64).effectiveMiB,
+            256U);
+  EXPECT_EQ(wr::SelectProfessionalQuickAdmission(256, 4096, 32).effectiveMiB,
+            192U);
+}
+TEST(RoutingEngineSettings, ProfessionalUsesItsIndependentQuickBlock) {
+  wr::RoutingEngineSettings settings;
+  settings.quick.memoryBudgetMiB = 128;
+  settings.original.memoryBudgetMiB = 512;
+  settings.engine = wr::RoutingEngine::Main;
+  EXPECT_EQ(settings.FastSettings().memoryBudgetMiB, 512);
+  settings.FastSettings().memoryBudgetMiB = 768;
+  EXPECT_EQ(settings.original.memoryBudgetMiB, 768);
+  EXPECT_EQ(settings.quick.memoryBudgetMiB, 128);
+}
+TEST(RoutingEngineSettings, ExperimentalProfessionalIdMigratesToMain) {
+  wr::RoutingEngineSettings settings;
+  settings.SetEngineId("professional2");
+  EXPECT_EQ(settings.engine, wr::RoutingEngine::Main);
+  EXPECT_EQ(settings.EngineId(), "main");
+}
 TEST(RoutingEngineSettings, FiveTitlesKeepStableSavedIdsAndBasicOrder) {
   wr::RoutingEngineSettings settings;
   const char* titles[] = {"Auto", "Quick", "Standard", "Professional", "All (slow)"};
