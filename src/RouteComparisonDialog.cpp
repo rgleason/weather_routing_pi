@@ -4,6 +4,7 @@
 #include "weather_routing_pi.h"
 #include "TimeZoneDisplay.h"
 #include <wx/button.h>
+#include <wx/fileconf.h>
 #include <wx/sizer.h>
 #include <numeric>
 #include <tuple>
@@ -58,6 +59,9 @@ RouteComparisonDialog::RouteComparisonDialog(WeatherRouting& routing)
   controls->Add(m_Order, 0, wxALIGN_CENTER_VERTICAL | wxALL, 6);
   layout->Add(controls, 0, wxEXPAND);
   m_WindOnly = new wxCheckBox(this, wxID_ANY, _("Rank by wind comfort only"));
+  auto* config = GetOCPNConfigObject();
+  m_WindOnly->SetValue(!config || config->ReadBool(
+      "/PlugIns/WeatherRouting/ComfortComparisonWindOnly", true));
   m_WindOnly->SetToolTip(_("Exclude waves from comfort ranking. The worst known leg still includes available waves. Route validation is unchanged."));
   layout->Add(m_WindOnly, 0, wxALL, 6);
   m_Summary = new wxStaticText(this, wxID_ANY, wxEmptyString);
@@ -88,7 +92,13 @@ RouteComparisonDialog::RouteComparisonDialog(WeatherRouting& routing)
   close->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { Destroy(); });
   Bind(wxEVT_CLOSE_WINDOW, [this](wxCloseEvent&) { Destroy(); });
   m_Slider->Bind(wxEVT_SLIDER, [this](wxCommandEvent&) { Choose(); });
-  m_WindOnly->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent&) { Populate(); Choose(); });
+  m_WindOnly->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent&) {
+    if (auto* config = GetOCPNConfigObject()) {
+      config->Write("/PlugIns/WeatherRouting/ComfortComparisonWindOnly", m_WindOnly->GetValue());
+      config->Flush();
+    }
+    Populate(); Choose();
+  });
   m_Order->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) {
     m_SortColumn = m_Order->GetSelection() == 0 ? 4 : 6;
     m_Ascending = true; Populate(); Choose();
@@ -110,6 +120,10 @@ RouteComparisonDialog::RouteComparisonDialog(WeatherRouting& routing)
 
 void RouteComparisonDialog::RunHostContract(bool lifecycle) {
   bool passed = !m_Entries.empty();
+  const bool initialWindOnly = m_WindOnly->GetValue();
+  wxString expectedWindOnly;
+  if (wxGetEnv("WR_HEADLESS_EXPECTED_COMPARISON_WIND_ONLY", &expectedWindOnly))
+    passed = passed && initialWindOnly == (expectedWindOnly == "1");
   wxString expectedUtc;
   wxGetEnv("WR_HEADLESS_EXPECTED_COMPARISON_UTC", &expectedUtc);
   for (long row = 0; row < m_List->GetItemCount(); ++row) {
@@ -126,10 +140,13 @@ void RouteComparisonDialog::RunHostContract(bool lifecycle) {
           segment.owner->GetPlotData().size() == legs.size();
     }
   }
-  for (bool windOnly : {true, false}) {
+  for (bool windOnly : {initialWindOnly, !initialWindOnly}) {
     m_WindOnly->SetValue(windOnly);
     wxCommandEvent mode(wxEVT_CHECKBOX, m_WindOnly->GetId());
     m_WindOnly->GetEventHandler()->ProcessEvent(mode);
+    if (auto* config = GetOCPNConfigObject())
+      passed = passed && config->ReadBool(
+          "/PlugIns/WeatherRouting/ComfortComparisonWindOnly", !windOnly) == windOnly;
     for (long row = 0; row < m_List->GetItemCount(); ++row) {
       const auto& full = m_Entries[m_List->GetItemData(row)].fullComfort;
       passed = passed && m_List->GetItemText(row, 9) == WorstKnownText(full) &&
@@ -166,8 +183,9 @@ void RouteComparisonDialog::RunHostContract(bool lifecycle) {
     passed = passed && !m_Slider->IsEnabled() &&
         m_Summary->GetLabel().Contains("Results changed");
   }
-  wxLogMessage("WR_COMFORT_UI_CONTRACT passed=%d rows=%lu lifecycle=%d",
-      passed ? 1 : 0, static_cast<unsigned long>(m_Entries.size()), lifecycle ? 1 : 0);
+  wxLogMessage("WR_COMFORT_UI_CONTRACT passed=%d rows=%lu lifecycle=%d initial_wind_only=%d",
+      passed ? 1 : 0, static_cast<unsigned long>(m_Entries.size()), lifecycle ? 1 : 0,
+      initialWindOnly ? 1 : 0);
   wxLog::FlushActive();
   if (!passed) std::_Exit(4);
 }
