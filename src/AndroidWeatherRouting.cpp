@@ -290,6 +290,7 @@ wxWindow* WeatherRouting::BuildAndroidWorkspace(wxBoxSizer* root) {
          _("Time"), _("Boat"), _("Weather"), _("Safety"), _("Engine"),
          _("Sailing"), _("Edit boat and polars"), _("Routing status"),
          _("Edit selected"), _("Duplicate selected"), _("Delete selected"), _("Multi-leg settings"),
+         _("Fastest / Comfort"),
          _("Compute multi-leg"), _("Optimise multi-leg departure")})
       if (label == required) m_androidNeedsRoute.push_back(button);
     for (const wxString& required : {_("Statistics"), _("Report"), _("Plot"),
@@ -442,6 +443,7 @@ wxWindow* WeatherRouting::BuildAndroidWorkspace(wxBoxSizer* root) {
       {_("Cursor position"), command(&WeatherRouting::OnCursorPosition)},
       {_("Route position"), command(&WeatherRouting::OnRoutePosition)},
       {_("Stability corridor"), command(&WeatherRouting::OnViewStabilityCorridor)},
+      {_("Fastest / Comfort"), [this]() { ShowRouteComparison(); }},
   });
   addActions(results, resultsContent, _("Use this route"), {
       {_("Save as OpenCPN route"), command(&WeatherRouting::OnSaveAsRoute)},

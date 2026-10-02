@@ -181,8 +181,8 @@ bool RouteMapOverlay::Start(wxString& error) {
         wxString::FromUTF8(configuration.EngineSettings.EngineId().c_str());
     return false;
   }
-  if (configuration.IsFastEngine() && !ModernNativeRouteEnabled(configuration)) {
-    error = _("Quick and Standard cannot analyse an existing route or use cumulative climatology/legacy routing. Select Professional for this configuration.");
+  if (!ModernNativeRouteEnabled(configuration)) {
+    error = _("Auto, Quick, Standard, Professional and All require native routing and cannot analyse an existing route or use cumulative climatology/legacy routing.");
     return false;
   }
   /* test for cyclone data if needed */
@@ -213,6 +213,8 @@ bool RouteMapOverlay::Start(wxString& error) {
 
   Lock();
   m_ModernProgress.Begin();
+  m_RetainedCandidates.clear();
+  m_SelectedRetainedCandidateId.clear();
   Unlock();
 
   CaptureSearchSettings(configuration, ModernNativeRouteEnabled(configuration));
@@ -297,7 +299,7 @@ void RouteMapOverlay::RouteAnalysis(PlugIn_Route* proute) {
 
 void RouteMapOverlay::SetModernNativeProgress(
     const supercpn::weather_routing::RoutingProgressUpdate& progress,
-    std::uint64_t generation) {
+    std::uint64_t generation, const wxString& engineLabel) {
   using supercpn::weather_routing::RoutingProgressStage;
   wxString stage;
   switch (progress.stage) {
@@ -338,6 +340,7 @@ void RouteMapOverlay::SetModernNativeProgress(
   if (std::isfinite(progress.closestApproachNm))
     detail += wxString::Format(_("; closest approach %.1f NM remaining"),
                               progress.closestApproachNm);
+  if (!engineLabel.empty()) stage = engineLabel + ": " + stage;
   m_ModernProgress.Publish(generation, {stage, detail});
 }
 
@@ -370,6 +373,33 @@ void RouteMapOverlay::InstallModernNativeResult(
       result.status == wr::RoutingStatus::CompleteUsingGraphFallback;
   const bool resourceExhausted = ResourceExhausted();
   const bool complete = resultComplete && !resourceExhausted;
+  const bool coastalEndpointLeeway = complete &&
+      std::any_of(result.warnings.begin(), result.warnings.end(),
+                  [](const wr::RoutingWarning& warning) {
+                    return warning.code ==
+                           wr::RoutingWarningCode::CoastalEndpointLeeway;
+                  });
+  if (complete && result.validation.passed && !result.legs.empty() &&
+      m_RetainedCandidates.empty())
+    m_RetainedCandidates.push_back(weather_routing::RetainRouteCandidate(
+        result, GetConfiguration()));
+  if (complete && !result.legs.empty()) {
+    const auto engine = result.engineIdentity.empty()
+        ? GetConfiguration().EngineSettings.EngineId() : result.engineIdentity;
+    for (const auto& candidate : m_RetainedCandidates)
+      if (candidate.result->engineIdentity == engine &&
+          candidate.result->legs.front().startTime == result.legs.front().startTime &&
+          candidate.result->legs.back().endTime == result.legs.back().endTime &&
+          candidate.result->legs.size() == result.legs.size() &&
+          std::equal(candidate.result->legs.begin(), candidate.result->legs.end(),
+              result.legs.begin(), [](const auto& a, const auto& b) {
+                return a.start == b.start && a.end == b.end &&
+                    a.startTime == b.startTime && a.endTime == b.endTime;
+              })) {
+        m_SelectedRetainedCandidateId = candidate.id;
+        break;
+      }
+  }
   if (!resourceExhausted) {
     wxString reason = complete ? wxString()
                               : wxString::FromUTF8(result.message.c_str());
@@ -426,6 +456,7 @@ void RouteMapOverlay::InstallModernNativeResult(
   last_destination_plotdata.clear();
   last_cursor_plotdata.clear();
   m_UsesModernNativeResult = true;
+  m_ModernNativeCoastalEndpointLeeway = coastalEndpointLeeway;
 
   m_ModernIsochrones.reserve(result.visualization.isochrones.size());
   for (const wr::IsochroneLayer& source : result.visualization.isochrones) {
@@ -554,6 +585,54 @@ void RouteMapOverlay::InstallModernNativeResult(
   clear_destination_plotdata = false;
   SetFinished(complete);
   Unlock();
+}
+
+void RouteMapOverlay::SetRetainedCandidates(
+    std::vector<weather_routing::RetainedRouteCandidate> candidates) {
+  Lock();
+  m_RetainedCandidates = std::move(candidates);
+  for (const auto& candidate : m_RetainedCandidates)
+    wxLogMessage("WR_COMFORT_RETAINED id=%s engine=%s legs=%lu processing_ms=%.3f exposure=%.4f wave_covered_s=%lld worst_leg=%lu worst_severity=%.4f",
+        wxString::FromUTF8(candidate.id.c_str()), wxString::FromUTF8(candidate.result->engineIdentity.c_str()),
+        static_cast<unsigned long>(candidate.result->legs.size()), candidate.processingMilliseconds,
+        candidate.comfort.exposureHours, static_cast<long long>(candidate.comfort.waveCoveredSeconds),
+        static_cast<unsigned long>(candidate.comfort.worstLegIndex), candidate.comfort.worstSeverity);
+  Unlock();
+}
+
+std::vector<weather_routing::RetainedRouteCandidate>
+RouteMapOverlay::RetainedCandidates() {
+  if (Running() || !Valid() || !Finished() || !ReachedDestination() ||
+      !GetDiagnosticError().empty()) return {};
+  Lock();
+  auto candidates = m_RetainedCandidates;
+  Unlock();
+  return candidates;
+}
+
+bool RouteMapOverlay::SelectRetainedCandidate(const std::string& id) {
+  if (Running() || !Finished() || !ReachedDestination() ||
+      !GetDiagnosticError().empty()) return false;
+  const auto candidates = RetainedCandidates();
+  for (const auto& candidate : candidates) {
+    if (candidate.id != id || !candidate.result->validation.passed) continue;
+    auto configuration = GetConfiguration();
+    configuration.StartTime = wxDateTime(static_cast<time_t>(
+        candidate.result->legs.front().startTime.time_since_epoch().count()));
+    configuration.shoreline_dataset = candidate.configuration.shoreline_dataset;
+    configuration.shoreline_description = candidate.configuration.shoreline_description;
+    configuration.routing_generated_states = candidate.result->diagnostics.generatedStates;
+    configuration.routing_retained_states = candidate.result->diagnostics.retainedStates;
+    SetConfigurationPreserveResult(configuration);
+    CaptureSearchSettings(candidate.configuration, true,
+        configuration.EngineSettings.EngineId(), candidate.result->engineIdentity);
+    InstallModernNativeResult(*candidate.result);
+    wxLogMessage("WR_COMFORT_SELECTED id=%s engine=%s passage_s=%lld search_restarted=0",
+        wxString::FromUTF8(id.c_str()), wxString::FromUTF8(candidate.result->engineIdentity.c_str()),
+        static_cast<long long>(candidate.result->metrics.elapsed.count()));
+    return true;
+  }
+  return false;
 }
 
 void RouteMapOverlay::DeleteThread() {
@@ -1132,64 +1211,9 @@ void RouteMapOverlay::RenderPolarChangeMarks(bool cursor_route, piDC& dc,
  *    Red = Strong conditions, heavy sailors, be prepared
  */
 int RouteMapOverlay::sailingConditionLevel(const PlotData& plot) const {
-  /* Method to calculate a indicator between 1 and 3 of the sailing conditions
-   * based on wind, wind course and waves.
-   *
-   * All these calculations are empirical and just made from experience and how
-   * people feel sailing comfort which is a highly subjective value...
-   */
+  return weather_routing::ConditionCategory(weather_routing::ConditionSeverity(
+      plot.twsOverWater, plot.ctw - plot.twdOverWater, plot.WVHT));
 
-  double level_calc = 0.0;
-
-  // Define maximum constants. Over this value, sailing comfort is very impacted
-  // (coef > 1) and automatically displayed in red.
-  // Definitions:
-  // AW   - Apparent Wind Direction from the boat (0 = upwind)
-  // VW   - Velocity of wind over water
-  // WVHT - Swell (if available)
-  double MAX_WV = 27;   // Vigilant over 27knts == 7B
-  double MAX_AW = 35;   // Upwind start at 35° from wind
-  double MAX_WVHT = 5;  // No more than 5m waves
-
-  // Wind impact exponentially on sailing comfort
-  // We propose a power 3 function as difficulties increase exponentially
-  // Over 30knts, it starts to be tough
-  double twsOverWater = plot.twsOverWater;
-  double WV_normal = pow(twsOverWater / MAX_WV, 3);
-
-  // Wind direction impact on sailing comfort.
-  // Ex: if you decide to sail upwind with 30knts, it is not the same
-  // conditions as if you sail downwind (impact of waves, heel, and more).
-  // Use a normal distribution to set the maximum difficulty at 35° upwind,
-  // and reduce when we go downwind.
-  double AW = heading_resolve(plot.ctw - plot.twdOverWater);
-  double teta = 30;
-  double mu = 35;
-  double amp = 20;
-  double AW_normal = amp * (1 / (teta * pow((2 * M_PI), 0.5))) *
-                     exp(-pow(AW - mu, 2) / (2 * pow(teta, 2)));
-
-  // If available, add swell conditions in comfort model.
-  // Use same exponential function for swell as sailing
-  // comfort exponentially decrease with swell height.
-  double WVHT = plot.WVHT;
-  double WVHT_normal = 0.0;
-  if (WVHT > 0) WVHT_normal = pow(WVHT / MAX_WVHT, 2);
-
-  // Calculate score
-  // Use an OR function X,Y E [0,1], f(X,Y) = 1-(1-X)(1-Y)
-  level_calc = 1 - (1 - WV_normal * (1 + AW_normal) * (1 + WVHT_normal));
-
-  if (level_calc <= 0.5)
-    // Light conditions, enjoy ;-)
-    return 1;
-  if (level_calc > 0.5 && level_calc < 1)
-    // Can be tough
-    return 2;
-  if (level_calc >= 1)
-    // Strong conditions
-    return 3;
-  return 0;
 }
 
 wxColour RouteMapOverlay::sailingConditionColor(int level) {
@@ -2269,6 +2293,8 @@ int RouteMapOverlay::Cyclones(int* months) {
 }
 
 void RouteMapOverlay::Clear() {
+  m_RetainedCandidates.clear();
+  m_SelectedRetainedCandidateId.clear();
   if (m_UsesModernNativeResult) {
     for (Position* position : m_ModernRoutePositions) delete position;
     for (Position* position : m_ModernCursorRoutePositions) delete position;
@@ -2456,6 +2482,17 @@ bool RouteMapOverlay::ValidatePlottedDestinationRouteLand(
   if (!configuration.DetectLand) return true;
   if (!Finished() || !ReachedDestination()) return true;
   wxStopWatch timer;
+  RouteMapConfiguration validationConfiguration = configuration;
+  const auto computed = GetComputedSearchSettings();
+  if (weather_routing::IsCombinedEngine(configuration.EngineSettings.engine) &&
+      !computed.selectedEngine.empty()) {
+    // Preserve the saved selector, but replay with the winning engine's rules.
+    validationConfiguration.EngineSettings.SetEngineId(
+        computed.selectedEngine == "alternative" ? "main" : computed.selectedEngine);
+    const int resolution = validationConfiguration.EffectiveShorelineResolution();
+    if (resolution >= 0 && resolution < 5 && configuration.engine_shorelines[resolution])
+      validationConfiguration.shoreline_dataset = configuration.engine_shorelines[resolution];
+  }
 
   std::list<PlotData>& plotdata = GetPlotData(false);
   if (plotdata.empty()) return true;
@@ -2480,7 +2517,7 @@ bool RouteMapOverlay::ValidatePlottedDestinationRouteLand(
         continue;
       }
       wxString failure_reason;
-      RouteMapConfiguration segment_configuration = configuration;
+      RouteMapConfiguration segment_configuration = validationConfiguration;
       if (m_UsesModernNativeResult && previous_leg_coastal_egress)
         segment_configuration.SafetyMarginLand = 0.0;
       if (!ConstraintChecker::CheckFinalRouteLandConstraint(
@@ -2537,7 +2574,7 @@ bool RouteMapOverlay::ValidatePlottedDestinationRouteLand(
       return true;
     }
     wxString failure_reason;
-    RouteMapConfiguration segment_configuration = configuration;
+    RouteMapConfiguration segment_configuration = validationConfiguration;
     if (m_UsesModernNativeResult && previous_leg_coastal_egress)
       segment_configuration.SafetyMarginLand = 0.0;
     if (!ConstraintChecker::CheckFinalRouteLandConstraint(

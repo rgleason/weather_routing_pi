@@ -472,3 +472,12 @@ yet a standalone engine library. The next refactor stages should move request,
 result, execution, and environment adapter boundaries out of `WeatherRouting`
 incrementally while keeping the GUI and headless runner on the same route
 algorithm.
+
+## Combined engine modes (1.21)
+
+`route.routingEngine` accepts `auto` and `all` in addition to the stable
+`original` (Quick), `quick` (Standard) and `main` (Professional) IDs.
+`alternative` and `professional2` are not accepted plugin selections.
+For completed combined-mode results, `engine` retains the requested mode
+and `selectedEngine` identifies the solver that supplied the selected route.
+`searchSettings` and `shoreline` describe the winning solver's configuration.

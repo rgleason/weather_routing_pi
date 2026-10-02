@@ -1658,13 +1658,15 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   auto engineBox = new wxStaticBoxSizer(
       new wxStaticBox(m_pBasic, wxID_ANY, _("Routing engine")), wxVERTICAL);
   m_cRoutingEngine = new wxChoice(engineBox->GetStaticBox(), wxID_ANY);
+  m_cRoutingEngine->Append(_("Auto"));
   m_cRoutingEngine->Append(_("Quick"));
   m_cRoutingEngine->Append(_("Standard"));
   m_cRoutingEngine->Append(_("Professional"));
+  m_cRoutingEngine->Append(_("All (slow)"));
   m_cRoutingEngine->SetSelection(0);
   engineBox->Add(m_cRoutingEngine, 0, wxALL | wxEXPAND, 5);
   m_tRoutingEngineDescription = new wxStaticText(engineBox->GetStaticBox(), wxID_ANY,
-      _("Quick: fast contour search with independently validated arrival."));
+      _("Auto: Quick, then Standard, then Professional up to 400% effort; stops at the first validated route."));
   m_tRoutingEngineDescription->Wrap(430);
   engineBox->Add(m_tRoutingEngineDescription, 0, wxALL | wxEXPAND, 5);
   fgSizer112->Add(engineBox, 0, wxEXPAND | wxALL, 5);
@@ -2921,8 +2923,8 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   enginePage->Bind(wxEVT_SIZE, [this](wxSizeEvent& event) {
     wxString text = m_tRoutingEngineDescription->GetLabel();
     text.Replace("\n", " ");
-    m_tRoutingEngineDescription->SetLabel(text);
-    m_tRoutingEngineDescription->Wrap(wxMax(200, event.GetSize().x - 65));
+    WR_WrapAndroidText(m_tRoutingEngineDescription, text,
+        wxMax(200, GetClientSize().x - 100));
     event.Skip();
   });
   m_notebook7->SetSelection(0);

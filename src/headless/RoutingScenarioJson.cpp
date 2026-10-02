@@ -163,9 +163,12 @@ bool LoadRoutingScenarioJson(const wxString& path,
     if (route.isMember("routingEngine")) {
       scenario.route.routingEngine = JsonString(route, "routingEngine");
       scenario.route.hasRoutingEngine = true;
-      if (scenario.route.routingEngine != "main" && scenario.route.routingEngine != "quick" &&
-          scenario.route.routingEngine != "original") {
-        error = "routingEngine must be original (Quick), quick (Standard), or main (Professional)";
+      if (scenario.route.routingEngine != "main" &&
+          scenario.route.routingEngine != "professional2" &&
+          scenario.route.routingEngine != "quick" &&
+          scenario.route.routingEngine != "original" && scenario.route.routingEngine != "auto" &&
+          scenario.route.routingEngine != "all") {
+        error = "routingEngine must be auto, original (Quick), quick (Standard), main (Professional), or all";
         return false;
       }
     }
@@ -396,6 +399,7 @@ bool SaveRoutingResultJson(const wxString& path,
       value["departure"] = TimeToJson(candidate.departure).ToUTF8().data();
     value["state"] = candidate.state.ToUTF8().data();
     if (!candidate.engine.IsEmpty()) value["engine"] = candidate.engine.ToUTF8().data();
+    if (!candidate.selectedEngine.IsEmpty()) value["selectedEngine"] = candidate.selectedEngine.ToUTF8().data();
     value["shoreline"]["resolution"] = candidate.shorelineResolution;
     value["shoreline"]["enabled"] = candidate.detectLand;
     value["shoreline"]["dataset"] = candidate.shorelineDataset.ToStdString();
@@ -404,9 +408,10 @@ bool SaveRoutingResultJson(const wxString& path,
     value["searchSettings"]["timeStepSeconds"] = candidate.searchTimeStepSeconds;
     value["searchSettings"]["headingStepDegrees"] = candidate.searchHeadingStepDegrees;
     value["searchSettings"]["maximumSearchAngleDegrees"] = candidate.searchMaximumAngleDegrees;
-    if (candidate.engine == "main")
+    const auto& resolvedEngine = candidate.selectedEngine.IsEmpty() ? candidate.engine : candidate.selectedEngine;
+    if (resolvedEngine == "main" || resolvedEngine == "alternative")
       value["searchSettings"]["effortPercent"] = candidate.searchEffortPercent;
-    if (candidate.engine == "quick" || candidate.engine == "original")
+    if (resolvedEngine == "quick" || resolvedEngine == "original")
       value["searchSettings"]["searchMemoryBudgetMiB"] = candidate.searchMemoryBudgetMiB;
     if (candidate.eta.IsValid())
       value["eta"] = TimeToJson(candidate.eta).ToUTF8().data();
@@ -443,6 +448,63 @@ bool SaveRoutingResultJson(const wxString& path,
       route.append(coordinate);
     }
     value["route"] = route;
+    if (!candidate.retainedRoutes.empty()) {
+      const auto summary = [](const weather_routing::RouteComfort& c) {
+        Json::Value out;
+        out["modelRevision"] = c.modelRevision;
+        out["windOnly"] = c.windOnly;
+        out["comparable"] = c.comparable();
+        out["durationSeconds"] = Json::Int64(c.durationSeconds);
+        out["unknownSeconds"] = Json::Int64(c.categorySeconds[0]);
+        out["goodSeconds"] = Json::Int64(c.categorySeconds[1]);
+        out["bumpySeconds"] = Json::Int64(c.categorySeconds[2]);
+        out["difficultSeconds"] = Json::Int64(c.categorySeconds[3]);
+        out["waveCoveredSeconds"] = Json::Int64(c.waveCoveredSeconds);
+        out["longestDifficultSeconds"] = Json::Int64(c.longestDifficultSeconds);
+        if (c.comparable()) {
+          out["exposureHours"] = c.exposureHours;
+          out["averageDiscomfort"] = c.averageDiscomfort;
+        }
+        if (c.worstCategory > 0) {
+          out["worstLeg"]["index"] = Json::UInt64(c.worstLegIndex);
+          out["worstLeg"]["category"] = c.worstCategory;
+          out["worstLeg"]["severity"] = c.worstSeverity;
+          out["worstLeg"]["startTimeEpoch"] = Json::Int64(c.worstLegStartTime.time_since_epoch().count());
+          out["worstLeg"]["endTimeEpoch"] = Json::Int64(c.worstLegEndTime.time_since_epoch().count());
+          out["worstLeg"]["startLat"] = c.worstLegStart.latitude;
+          out["worstLeg"]["startLon"] = c.worstLegStart.longitude;
+          out["worstLeg"]["endLat"] = c.worstLegEnd.latitude;
+          out["worstLeg"]["endLon"] = c.worstLegEnd.longitude;
+        }
+        return out;
+      };
+      Json::Value retained(Json::arrayValue);
+      for (const auto& r : candidate.retainedRoutes) {
+        Json::Value entry;
+        entry["id"] = r.id.ToStdString();
+        entry["engine"] = r.engine.ToStdString();
+        entry["searchVariant"] = r.searchVariant.ToStdString();
+        entry["elapsedSeconds"] = Json::Int64(r.elapsedSeconds);
+        entry["distanceNm"] = r.distanceNm;
+        entry["finalSafety"] = "pass";
+        entry["shoreline"]["resolution"] = r.shorelineResolution;
+        entry["shoreline"]["dataset"] = r.shoreline.ToStdString();
+        entry["processingMilliseconds"] = r.processingMilliseconds;
+        entry["comfort"] = summary(r.comfort);
+        entry["windOnlyComfort"] = summary(r.windOnlyComfort);
+        Json::Value geometry(Json::arrayValue);
+        for (const auto& p : r.route) {
+          Json::Value point;
+          point["latitudeDegrees"] = p.latitudeDegrees;
+          point["longitudeDegrees"] = p.longitudeDegrees;
+          point["timeUtc"] = TimeToJson(p.time).ToStdString();
+          geometry.append(point);
+        }
+        entry["route"] = geometry;
+        retained.append(entry);
+      }
+      value["retainedRoutes"] = retained;
+    }
     candidates.append(value);
   }
   root["candidates"] = candidates;

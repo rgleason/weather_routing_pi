@@ -1032,7 +1032,7 @@ void ConfigurationDialog::SetConfigurations(
       weather_routing::EngineSelection(firstEngine));
   SET_SPIN_VALUE(QuickMemoryBudgetMiB, (*it).EngineSettings.FastSettings().memoryBudgetMiB);
   SET_SPIN(MainGribTimelineCacheMiB);
-  SET_SPIN_VALUE(QuickGribTimelineCacheMiB, (*it).IsOriginal() ? (*it).EngineSettings.originalGribTimelineCacheMiB : (*it).QuickGribTimelineCacheMiB);
+  SET_SPIN_VALUE(QuickGribTimelineCacheMiB, (*it).FastGribTimelineCacheMiB());
   SET_SPIN_VALUE(QuickOffshoreStepMinutes, (*it).EngineSettings.FastSettings().offshoreStepMinutes);
   SET_SPIN_DOUBLE_VALUE(QuickHeadingStepDegrees, (*it).EngineSettings.FastSettings().headingStepDegrees);
   SET_SPIN_VALUE(QuickMaximumSearchAngle, (*it).EngineSettings.FastSettings().maximumSearchAngle);
@@ -1341,7 +1341,8 @@ bool ConfigurationDialog::HandleEngineEdit(wxObject* control) {
       config.DeltaTime = 3600 * hours + 60 * minutes;
     }
     if (control == m_sByDegrees) config.ByDegrees = m_sByDegrees->GetValue();
-    if (control == m_cRoutingEffortPercent)
+    if (control == m_cRoutingEffortPercent &&
+        config.EngineSettings.engine != weather_routing::RoutingEngine::Auto)
       config.RoutingEffortPercent = RoutingEffortPercentForSelection(m_cRoutingEffortPercent->GetSelection());
     if (control == m_sMaxSearchAngle) config.MaxSearchAngle = m_sMaxSearchAngle->GetValue();
     if (control == m_cbUseReverseReachabilityRecovery)
@@ -1382,11 +1383,14 @@ bool ConfigurationDialog::HandleEngineEdit(wxObject* control) {
 }
 
 void ConfigurationDialog::UpdateEngineControls() {
-  const int engine = m_cRoutingEngine->GetSelection();
-  m_pMainEngine->Show(engine == 2);
-  m_pQuickEngine->Show(engine == 0 || engine == 1);
-  m_bResetAdvanced->Enable(engine != wxNOT_FOUND);
-  m_cEnginePreset->Enable(engine != wxNOT_FOUND);
+  const auto engine = weather_routing::EngineFromSelection(m_cRoutingEngine->GetSelection());
+  const bool combined = weather_routing::IsCombinedEngine(engine);
+  m_pMainEngine->Show(engine == weather_routing::RoutingEngine::Main || combined);
+  m_pQuickEngine->Show(engine == weather_routing::RoutingEngine::Original ||
+                       engine == weather_routing::RoutingEngine::Quick ||
+                       engine == weather_routing::RoutingEngine::Main);
+  m_bResetAdvanced->Enable(engine != weather_routing::RoutingEngine::Unsupported);
+  m_cEnginePreset->Enable(engine != weather_routing::RoutingEngine::Unsupported);
   bool running = false;
   for (auto* route : m_WeatherRouting.CurrentRouteMaps(false)) running |= route->Running();
   m_cRoutingEngine->Enable(!running);
@@ -1426,13 +1430,20 @@ void ConfigurationDialog::UpdateEngineControls() {
       ? _("Chart geometry and depth checks are authoritative. This separately saved shoreline choice controls preliminary scouting. It starts at Crude; increase it for finer coastal detail.")
       : _("Shoreline detail for the selected engine. Quick, Standard and Professional remember independent choices. High and Full require installation from Shoreline data on Advanced. Lower resolutions omit smaller coastal features."));
   m_pMainEngine->Enable(!running);
+  m_cRoutingEffortPercent->Enable(!running && engine != weather_routing::RoutingEngine::Auto);
+  if (engine == weather_routing::RoutingEngine::Auto)
+    m_cRoutingEffortPercent->SetSelection(RoutingEffortSelection(400));
   m_pQuickEngine->Enable(!running);
   if (running) m_bResetAdvanced->Enable(false);
-  m_tRoutingEngineDescription->SetLabel(engine == 2
-      ? _("Professional: broader search with multiple recovery methods.")
-      : engine == 1 ? _("Standard: bounded adaptive search with recovery.")
-      : engine == 0 ? _("Quick: fast contour search with independently validated arrival; may miss a feasible route.")
-      : _("Mixed or unsupported engines. Select Quick, Standard or Professional."));
+  m_tRoutingEngineDescription->SetLabel(engine == weather_routing::RoutingEngine::Auto
+      ? _("Auto: Quick, then Standard, then Professional up to 400% effort; stops at the first validated route.")
+      : engine == weather_routing::RoutingEngine::All
+      ? _("All (slow): compares Quick, Standard, Alternative and Professional, plus bounded comfort alternatives when enabled; returns the earliest validated arrival.")
+      : engine == weather_routing::RoutingEngine::Main
+      ? _("Professional: keeps a validated Quick candidate, then searches for a faster route with broader recovery. The Quick controls below tune its integrated candidate.")
+      : engine == weather_routing::RoutingEngine::Quick ? _("Standard: bounded adaptive search with recovery.")
+      : engine == weather_routing::RoutingEngine::Original ? _("Quick: fast contour search with independently validated arrival; may miss a feasible route.")
+      : _("Mixed or unsupported engines. Select Auto, Quick, Standard, Professional or All (slow)."));
   // These legacy controls do not tune either native engine. Preserve their
   // saved values for compatibility without suggesting that they affect search.
   bool allNative = true;
@@ -1440,7 +1451,7 @@ void ConfigurationDialog::UpdateEngineControls() {
     allNative = allNative && ModernNativeRouteEnabled(route->GetConfiguration());
   m_cbInvertedRegions->Enable(!allNative);
   // Both native engines pass this option to the shared polar evaluator.
-  m_cbOptimizeTacking->Enable(!running && engine != 0);
+  m_cbOptimizeTacking->Enable(!running && engine != weather_routing::RoutingEngine::Original);
   m_cIntegrator->Enable(!allNative);
   // Departure concurrency is a scheduler setting shared by all three engines.
   m_sDepartureTimeOptimizationConcurrentRoutes->Enable(!running);
@@ -1448,22 +1459,35 @@ void ConfigurationDialog::UpdateEngineControls() {
   m_pAdvanced->FitInside();
   m_pBasic->SendSizeEvent();
   m_pBasic->Layout();
+#ifdef __OCPN__ANDROID__
+  // Engine panels are reparented to the Android Engine page. Refit that
+  // page after switching modes so newly shown Professional controls and
+  // the longer Auto/All descriptions contribute to its scrolling geometry.
+  auto* page = static_cast<wxScrolledWindow*>(m_notebook7->GetPage(5));
+  WR_WrapAndroidText(m_tRoutingEngineDescription,
+      m_tRoutingEngineDescription->GetLabel(),
+      wxMax(200, wxMax(page->GetClientSize().x, GetClientSize().x) - 100));
+  FitTabletConfigurationPage(page);
+#endif
 }
 
 void ConfigurationDialog::RefreshEnginePresetStatus() {
   wxString status;
-  const int engine = m_cRoutingEngine->GetSelection();
+  const auto engine = weather_routing::EngineFromSelection(m_cRoutingEngine->GetSelection());
+  const bool combined = weather_routing::IsCombinedEngine(engine);
   for (auto* route : m_WeatherRouting.CurrentRouteMaps(false)) {
     const auto config = route->GetConfiguration();
-    const auto& preset = (engine == 0 || engine == 1) ? config.EngineSettings.FastSettings().preset
+    const auto& preset = (engine == weather_routing::RoutingEngine::Original || engine == weather_routing::RoutingEngine::Quick) ? config.EngineSettings.FastSettings().preset
                                     : config.EngineSettings.mainPreset;
     wxString label = preset.id == "balanced"
         ? wxString::Format(_("Balanced (revision %d)"), preset.revision)
         : _("Custom");
+    if (combined && (config.EngineSettings.original.preset != preset ||
+                     config.EngineSettings.quick.preset != preset)) label = _("Custom");
     if (status.empty()) status = label;
     else if (status != label) { status = _("Mixed"); break; }
   }
-  if (engine == wxNOT_FOUND) status = _("Mixed or unsupported");
+  if (engine == weather_routing::RoutingEngine::Unsupported) status = _("Mixed or unsupported");
 #ifdef __OCPN__ANDROID__
   WR_WrapAndroidText(m_tEnginePresetStatus, _("Current settings: ") + status,
       wxMax(300, m_pAdvanced->GetClientSize().x - 100));
@@ -1475,8 +1499,9 @@ void ConfigurationDialog::RefreshEnginePresetStatus() {
 }
 
 void ConfigurationDialog::OnResetAdvanced(wxCommandEvent&) {
-  const int engine = m_cRoutingEngine->GetSelection();
-  if (m_bBlockUpdate || engine == wxNOT_FOUND || m_cEnginePreset->GetSelection() != 0)
+  const auto engine = weather_routing::EngineFromSelection(m_cRoutingEngine->GetSelection());
+  const bool combined = weather_routing::IsCombinedEngine(engine);
+  if (m_bBlockUpdate || engine == weather_routing::RoutingEngine::Unsupported || m_cEnginePreset->GetSelection() != 0)
     return;
   const auto routes = m_WeatherRouting.CurrentRouteMaps(false);
   if (routes.empty()) return;
@@ -1484,7 +1509,9 @@ void ConfigurationDialog::OnResetAdvanced(wxCommandEvent&) {
   // The configuration editor applies changes immediately. Previewing the
   // explicit reset gives it an Apply/Cancel boundary without changing that
   // established workflow or modifying routes before the user accepts.
-  const wxString values = engine == 2
+  const wxString values = combined
+      ? _("Auto / All - Balanced\nReset Quick and Standard to 3-hour adaptive steps and 10-degree headings. Reset Professional to 1-hour steps, 10-degree headings and 100% effort. Auto always allows Professional up to 400% effort.")
+      : engine == weather_routing::RoutingEngine::Main
       ? _("Professional - Balanced\nTime step: 1 hour\nHeading separation: 10 degrees\nRouting effort: 100%\nMaximum search angle: 120 degrees\nOptional reverse reachability recovery: off")
       : _("Quick / Standard - Balanced\nOffshore time step: 3 hours (adaptive)\nHeading separation: 10 degrees (adaptive)\nMaximum search angle: 120 degrees");
   WR_MessageDialog preview(this, values +
@@ -1495,8 +1522,13 @@ void ConfigurationDialog::OnResetAdvanced(wxCommandEvent&) {
   std::list<RouteMapConfiguration> configurations;
   for (auto* route : routes) {
     auto config = route->GetConfiguration();
-    if (engine == 2) weather_routing::ResetMainToBalanced(config);
-    else if (engine == 0) config.EngineSettings.ResetOriginalToBalanced();
+    if (combined) {
+      weather_routing::ResetMainToBalanced(config);
+      config.EngineSettings.ResetOriginalToBalanced();
+      config.EngineSettings.ResetQuickToBalanced();
+    }
+    else if (engine == weather_routing::RoutingEngine::Main) weather_routing::ResetMainToBalanced(config);
+    else if (engine == weather_routing::RoutingEngine::Original) config.EngineSettings.ResetOriginalToBalanced();
     else config.EngineSettings.ResetQuickToBalanced();
     route->SetConfiguration(config);
     m_WeatherRouting.SaveLastUsedConfigurationDefaults(config);
@@ -1862,10 +1894,11 @@ void ConfigurationDialog::Update() {
     GET_CHECKBOX(InvertedRegions);
     GET_CHECKBOX(UseReverseReachabilityRecovery);
     GET_CHECKBOX(Anchoring);
-    if (NO_EDITED_CONTROLS ||
-        std::find(m_edited_controls.begin(), m_edited_controls.end(),
-                  static_cast<wxObject*>(m_cRoutingEffortPercent)) !=
-            m_edited_controls.end()) {
+    if (configuration.EngineSettings.engine != weather_routing::RoutingEngine::Auto &&
+        (NO_EDITED_CONTROLS ||
+         std::find(m_edited_controls.begin(), m_edited_controls.end(),
+                   static_cast<wxObject*>(m_cRoutingEffortPercent)) !=
+             m_edited_controls.end())) {
       configuration.RoutingEffortPercent = RoutingEffortPercentForSelection(
           m_cRoutingEffortPercent->GetSelection());
       m_cRoutingEffortPercent->SetForegroundColour(wxColour(0, 0, 0));
@@ -1919,7 +1952,7 @@ void ConfigurationDialog::Update() {
   }
 
   double by = m_sByDegrees->GetValue();
-  if (m_cRoutingEngine->GetSelection() == 2 &&
+  if (m_cRoutingEngine->GetSelection() == weather_routing::EngineSelection(weather_routing::RoutingEngine::Main) &&
       m_sToDegree->GetValue() - m_sFromDegree->GetValue() < 2 * by) {
     WR_MessageDialog mdlg(
         this, _("Warning: less than 4 different degree steps specified\n"),

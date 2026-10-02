@@ -472,6 +472,11 @@ endif ()
 
 if (MSVC)
   add_definitions(-D__MSVC__)
+  # Upstream OpenCPN's Win32 installer carries MSVC 14.12 runtime DLLs.
+  # Newer MSVC headers' constexpr mutex initialization is incompatible with
+  # those DLLs. Use Microsoft's supported legacy initialization escape hatch
+  # for every plugin/test translation unit sharing mutexes.
+  add_compile_definitions(_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
   add_definitions(-D_CRT_NONSTDC_NO_DEPRECATE -D_CRT_SECURE_NO_DEPRECATE)
   add_definitions(-DHAVE_SNPRINTF)
 else ()

@@ -28,6 +28,7 @@
 #include "RouteMap.h"
 #include "RoutingFootprint.h"
 #include "RoutingProgressState.h"
+#include "RetainedRouteCandidate.h"
 #include "LineBufferOverlay.h"
 
 class PlugIn_ViewPort;
@@ -357,12 +358,25 @@ public:
       const supercpn::weather_routing::RoutingResult& result);
   void SetModernNativeProgress(
       const supercpn::weather_routing::RoutingProgressUpdate& progress,
-      std::uint64_t generation);
+      std::uint64_t generation, const wxString& engineLabel = wxString());
   bool GetModernNativeProgress(wxString& stage, wxString& detail);
   std::uint64_t ModernProgressGeneration() const {
     return m_ModernProgress.Read().generation;
   }
   bool UsesModernNativeResult() const { return m_UsesModernNativeResult; }
+  bool HasModernNativeCoastalEndpointLeeway() const {
+    return m_ModernNativeCoastalEndpointLeeway;
+  }
+  void SetRetainedCandidates(std::vector<weather_routing::RetainedRouteCandidate> candidates);
+  std::vector<weather_routing::RetainedRouteCandidate> RetainedCandidates();
+  bool SelectRetainedCandidate(const std::string& id);
+  std::string SelectedRetainedCandidateId() {
+    if (Running()) return {};
+    Lock();
+    const auto id = m_SelectedRetainedCandidateId;
+    Unlock();
+    return id;
+  }
 
   /**
    * Deletes the calculation thread.
@@ -487,6 +501,9 @@ private:
   RouteMapOverlayThread* m_Thread;
 
   bool m_UsesModernNativeResult{false};
+  bool m_ModernNativeCoastalEndpointLeeway{false};
+  std::vector<weather_routing::RetainedRouteCandidate> m_RetainedCandidates;
+  std::string m_SelectedRetainedCandidateId;
   std::vector<Position*> m_ModernRoutePositions;
   std::vector<Position*> m_ModernCursorRoutePositions;
   std::vector<ModernIsochroneLayer> m_ModernIsochrones;

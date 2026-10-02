@@ -67,8 +67,26 @@ else()
   target_compile_options(quick_weather_routing_engine PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+add_library(alternative_weather_routing_engine STATIC
+  include/supercpn/weather_routing/AlternativeEngine.h
+  src/AlternativeEngine.cpp)
+add_library(weather_routing_engine::alternative_weather_routing_engine
+  ALIAS alternative_weather_routing_engine)
+target_compile_features(alternative_weather_routing_engine PUBLIC cxx_std_20)
+target_link_libraries(alternative_weather_routing_engine PUBLIC
+  weather_routing_engine::weather_routing_engine)
+set_target_properties(alternative_weather_routing_engine PROPERTIES
+  POSITION_INDEPENDENT_CODE ON)
+if(MSVC)
+  target_compile_options(alternative_weather_routing_engine PRIVATE /W4 /permissive-)
+else()
+  target_compile_options(alternative_weather_routing_engine PRIVATE
+    -Wall -Wextra -Wpedantic)
+endif()
+
 if(WEATHER_ROUTING_ENGINE_ENABLE_INSTALL)
   install(TARGETS weather_routing_engine quick_weather_routing_engine
+                  alternative_weather_routing_engine
     EXPORT weather_routing_engineTargets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})

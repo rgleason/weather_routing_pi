@@ -24,7 +24,7 @@ class AlphaArtifacts(unittest.TestCase):
         directory = self.root / "artifacts" / name / "package"
         directory.mkdir(parents=True)
         archive = directory / f"xweather_routing_pi-{version}-{name}.tar.gz"
-        library = ("xweather_routing_pi.dll" if name == "windows-x86" else
+        library = ("xweather_routing_pi.dll" if name.startswith("windows-") else
                    "libxweather_routing_pi.dylib" if name == "macos-arm64" else
                    "libxweather_routing_pi.so")
         with tarfile.open(archive, "w:gz") as package:
@@ -86,7 +86,7 @@ class AlphaArtifacts(unittest.TestCase):
         output = self.root / "release"
         prepare.prepare(self.root / "artifacts", output, "abcdef1", "23")
         uploads = json.loads((output / "uploads.json").read_text())
-        self.assertEqual(len(uploads), 20)
+        self.assertEqual(len(uploads), 2 * len(prepare.TARGETS))
         self.assertTrue(all(item["version"] == "1.18.3+23.abcdef1" for item in uploads))
         for archive in output.glob("*.tar.gz"):
             with tarfile.open(archive, "r:gz") as package:

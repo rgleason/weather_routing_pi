@@ -37,6 +37,7 @@ src/RouteSimplifier.cpp
 src/StabilityRouteAdapter.cpp
 src/StabilityCorridorLifecycle.cpp
 src/RoutingTablePanel.cpp
+src/RouteComparisonDialog.cpp
 src/Utilities.cpp
 src/LineBufferOverlay.cpp
 src/PolygonRegion.cpp
@@ -61,6 +62,7 @@ vendor/weather-routing-engine/src/Polar.cpp
 vendor/weather-routing-engine/src/EnvironmentResolver.cpp
 vendor/weather-routing-engine/src/Engine.cpp
 vendor/weather-routing-engine/src/QuickEngine.cpp
+vendor/weather-routing-engine/src/AlternativeEngine.cpp
 vendor/original-routing-engine/src/Engine.cpp
 vendor/original-routing-engine/src/Contour.cpp
 vendor/weather-routing-engine/src/Validator.cpp
@@ -113,6 +115,9 @@ include/Boat.h
 include/ChartSafetyAtlas.h
 include/RouteMap.h
 include/RouteMapOverlay.h
+include/RouteComfort.h
+include/RetainedRouteCandidate.h
+include/RouteComparisonDialog.h
 include/DepartureScheduler.h
 include/RoutingQualityPolicy.h
 include/RoutingFootprint.h

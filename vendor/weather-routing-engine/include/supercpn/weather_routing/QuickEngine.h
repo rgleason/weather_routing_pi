@@ -16,6 +16,12 @@ struct QuickRoutingOptions {
   unsigned maximumValidatedCandidates{3};
   Duration offshoreStep{std::chrono::hours{3}};
   double headingStepDegrees{20.0};
+  // Opt-in exploration used alongside the normal engines. Zero disables it
+  // completely; ordinary Standard searches keep first-success behaviour.
+  double comfortWeight{};
+  bool comfortWindOnly{true};
+  unsigned maximumComfortAlternatives{4};
+  std::chrono::milliseconds maximumSearchTime{};
 };
 
 struct QuickRoutingDiagnostics {
@@ -27,11 +33,15 @@ struct QuickRoutingDiagnostics {
   std::uint64_t reclaimedLabels{};
   unsigned attempts{};
   unsigned validatedCandidates{};
+  unsigned comfortAlternatives{};
+  unsigned missingComfortMotions{};
+  bool comfortAllowanceReached{};
 };
 
 struct QuickRoutingResult {
   RoutingResult route;
   QuickRoutingDiagnostics quick;
+  std::vector<RoutingResult> alternatives;
 };
 
 class QuickRoutingEngine {

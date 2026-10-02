@@ -218,7 +218,7 @@ bool Polar::Open(const wxString& filename, wxString& message) {
   if (filename[0] == 0) return false;
 
   int linenum = 0;
-  ZUFILE* f = zu_open(filename, "r");
+  ZUFILE* f = zu_open_wx(filename, "r");
   char line[1024];
   double lastentryW = -1;
   char *token, *saveptr;

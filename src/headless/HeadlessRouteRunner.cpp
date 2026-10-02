@@ -46,6 +46,7 @@ weather_routing_engine::RoutingCandidateResult CandidateFromRoute(
     search = weather_routing::RoutingSearchSnapshot::Capture(
         configuration, ModernNativeRouteEnabled(configuration));
   candidate.engine = wxString::FromUTF8(search.engine.c_str());
+  candidate.selectedEngine = wxString::FromUTF8(search.selectedEngine.c_str());
   candidate.searchPreset = wxString::FromUTF8(search.preset.id.c_str());
   candidate.searchPresetRevision = search.preset.revision;
   candidate.searchTimeStepSeconds = search.timeStepSeconds;
@@ -105,6 +106,25 @@ weather_routing_engine::RoutingCandidateResult CandidateFromRoute(
   for (const auto& point : route->GetPlotData(false))
     append_point(point.lat, point.lon, point.time);
   append_point(configuration.EndLat, configuration.EndLon, candidate.eta);
+  for (const auto& retained : route->RetainedCandidates()) {
+    weather_routing_engine::RetainedRouteReport report;
+    report.id = wxString::FromUTF8(retained.id.c_str());
+    report.engine = wxString::FromUTF8(retained.result->engineIdentity.c_str());
+    report.searchVariant = wxString::FromUTF8(retained.result->searchVariant.c_str());
+    report.shoreline = retained.configuration.shoreline_description;
+    report.shorelineResolution = retained.configuration.EffectiveShorelineResolution();
+    report.elapsedSeconds = retained.result->metrics.elapsed.count();
+    report.distanceNm = retained.result->metrics.distanceNm;
+    report.processingMilliseconds = retained.processingMilliseconds;
+    report.comfort = retained.comfort;
+    report.windOnlyComfort = retained.windOnlyComfort;
+    const auto time = [](auto t) { return wxDateTime(static_cast<time_t>(t.time_since_epoch().count())); };
+    const auto& legs = retained.result->legs;
+    report.route.emplace_back(legs.front().start.latitude, legs.front().start.longitude, time(legs.front().startTime));
+    for (const auto& leg : legs)
+      report.route.emplace_back(leg.end.latitude, leg.end.longitude, time(leg.endTime));
+    candidate.retainedRoutes.push_back(std::move(report));
+  }
   return candidate;
 }
 
