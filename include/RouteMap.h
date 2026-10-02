@@ -283,6 +283,9 @@ struct RouteMapConfiguration {
   };
 
   weather_routing::RoutingEngineSettings EngineSettings;
+  // Snapshotted from global comparison preferences on the main thread.
+  bool ExploreComfortAlternatives{true};
+  bool ComfortExplorationWindOnly{true};
   bool IsQuick() const {
     return EngineSettings.engine == weather_routing::RoutingEngine::Quick;
   }

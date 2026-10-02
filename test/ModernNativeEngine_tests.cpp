@@ -13,6 +13,7 @@
 #include "engine/native/WeatherCoverage.h"
 #include "supercpn/weather_routing/Engine.h"
 #include "supercpn/weather_routing/QuickEngine.h"
+#include "supercpn/weather_routing/Comfort.h"
 
 namespace {
 using namespace supercpn::weather_routing;
@@ -1512,6 +1513,101 @@ TEST(QuickNativeEngine, RejectsInvalidBudgetWithoutSearching) {
     EXPECT_EQ(result.quick.peakSearchBytes, 0U);
     EXPECT_EQ(result.quick.weatherCalls, 0U);
   }
+}
+
+
+class ComfortWeather final : public WeatherProvider {
+ public:
+  explicit ComfortWeather(bool missing = false) : missing_(missing) {}
+  ParameterCoverage windCoverage() const override { return TestWeather()->windCoverage(); }
+  ParameterCoverage currentCoverage() const override { return TestWeather()->currentCoverage(); }
+  ParameterCoverage waveCoverage() const override { return TestWeather()->waveCoverage(); }
+  WindSample wind(GeoPoint p, TimePoint t) const override {
+    auto wind = TestWeather()->wind(p, t);
+    const bool rough = std::abs(p.latitude) < 0.025 && p.longitude > 0.05 && p.longitude < 0.35;
+    wind.velocity = speedDirectionToVector(rough ? 36.0 : 8.0, 180.0);
+    return wind;
+  }
+  CurrentSample current(GeoPoint p, TimePoint t) const override { return TestWeather()->current(p, t); }
+  WaveSample waves(GeoPoint p, TimePoint t) const override {
+    auto wave = TestWeather()->waves(p, t); wave.available = !missing_; return wave;
+  }
+  std::string identity() const override { return "comfort-weather"; }
+ private:
+  bool missing_;
+};
+QuickRoutingOptions ComfortOptions() {
+  QuickRoutingOptions options;
+  options.comfortWeight = 1;
+  options.maximumGeneratedStates = 20000;
+  options.maximumValidatedCandidates = 24;
+  options.maximumSearchTime = std::chrono::seconds{5};
+  options.memoryBudgetMiB = 16;
+  options.offshoreStep = std::chrono::minutes{30};
+  options.headingStepDegrees = 10;
+  return options;
+}
+TEST(ComfortExploration, FindsGentlerDetourInsteadOfOnlyRerankingFastest) {
+  auto request = TestRequest();
+  request.start = {0, 0}; request.destination = {0, .4};
+  request.limits.maximumRouteDuration = std::chrono::hours{5};
+  auto environment = TestEnvironment();
+  environment.grib = std::make_shared<ComfortWeather>();
+  environment.performance = std::make_shared<ConstantSpeedPerformance>();
+  const auto fastest = QuickRoutingEngine{}.route(request, environment);
+  ASSERT_TRUE(Successful(fastest.route.status)) << fastest.route.message;
+  const auto explored = QuickRoutingEngine{}.route(request, environment, ComfortOptions());
+  ASSERT_FALSE(explored.alternatives.empty()) << explored.route.message;
+  const auto baseline = routeDiscomfortSeconds(fastest.route.legs, true);
+  bool improved = false;
+  for (const auto& route : explored.alternatives) {
+    EXPECT_TRUE(route.validation.passed);
+    EXPECT_LE(route.metrics.elapsed, request.limits.maximumRouteDuration);
+    EXPECT_TRUE(RouteValidator{}.validate(request, environment, *environment.performance, route.legs).passed);
+    if (route.metrics.elapsed > fastest.route.metrics.elapsed &&
+        routeDiscomfortSeconds(route.legs, true) < baseline * .75) improved = true;
+  }
+  EXPECT_TRUE(improved) << "baseline exposure seconds=" << baseline;
+  EXPECT_LE(explored.alternatives.size(), 4U);
+  EXPECT_LE(explored.route.diagnostics.generatedStates, 20000U);
+}
+TEST(ComfortExploration, FullConditionSearchDoesNotTreatMissingWavesAsCalm) {
+  auto request = TestRequest(); request.destination = destinationPoint(request.start, 270, 8);
+  auto environment = TestEnvironment();
+  environment.grib = std::make_shared<ComfortWeather>(true);
+  auto options = ComfortOptions(); options.comfortWindOnly = false;
+  auto full = QuickRoutingEngine{}.route(request, environment, options);
+  EXPECT_TRUE(full.alternatives.empty());
+  EXPECT_GT(full.quick.missingComfortMotions, 0U);
+  options.comfortWindOnly = true;
+  const auto wind = QuickRoutingEngine{}.route(request, environment, options);
+  ASSERT_FALSE(wind.alternatives.empty()) << wind.route.message;
+  for (const auto& route : wind.alternatives) EXPECT_TRUE(route.validation.passed);
+}
+TEST(ComfortExploration, CancellationDiscardsPreviouslyCompletedAlternatives) {
+  auto request = TestRequest(); request.destination = destinationPoint(request.start, 270, 8);
+  request.progress = [&](const auto& progress) {
+    if (progress.generatedStates > 0) request.cancellation.cancel();
+  };
+  const auto result = QuickRoutingEngine{}.route(request, TestEnvironment(), ComfortOptions());
+  EXPECT_EQ(result.route.status, RoutingStatus::Cancelled);
+  EXPECT_TRUE(result.alternatives.empty());
+}
+TEST(ComfortExploration, KeepsValidatedResultsWhenBoundedSearchBudgetEnds) {
+  auto request = TestRequest(); request.destination = destinationPoint(request.start, 270, 8);
+  auto options = ComfortOptions(); options.maximumGeneratedStates = 10;
+  const auto result = QuickRoutingEngine{}.route(request, TestEnvironment(), options);
+  ASSERT_FALSE(result.alternatives.empty()) << result.route.message;
+  EXPECT_TRUE(result.route.validation.passed);
+  EXPECT_LE(result.route.diagnostics.generatedStates, 10U);
+  EXPECT_LE(result.quick.peakSearchBytes, 16U * 1024U * 1024U);
+}
+TEST(ComfortExploration, IndependentValidationRejectsUnsafeAlternatives) {
+  auto request = TestRequest(); request.destination = destinationPoint(request.start, 270, 8);
+  const auto result = QuickRoutingEngine{}.route(request,
+      TestEnvironment(std::make_shared<SplitSearchValidationProvider>()), ComfortOptions());
+  EXPECT_TRUE(result.alternatives.empty());
+  EXPECT_FALSE(result.route.validation.passed);
 }
 
 }  // namespace

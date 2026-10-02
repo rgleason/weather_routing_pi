@@ -34,7 +34,7 @@ struct RoutingResultPoint {
 };
 
 struct RetainedRouteReport {
-  wxString id, engine, shoreline;
+  wxString id, engine, shoreline, searchVariant;
   int shorelineResolution{};
   long elapsedSeconds{};
   double distanceNm{};

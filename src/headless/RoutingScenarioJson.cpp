@@ -481,6 +481,7 @@ bool SaveRoutingResultJson(const wxString& path,
         Json::Value entry;
         entry["id"] = r.id.ToStdString();
         entry["engine"] = r.engine.ToStdString();
+        entry["searchVariant"] = r.searchVariant.ToStdString();
         entry["elapsedSeconds"] = Json::Int64(r.elapsedSeconds);
         entry["distanceNm"] = r.distanceNm;
         entry["finalSafety"] = "pass";

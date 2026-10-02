@@ -1323,6 +1323,114 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
   } else {
     result = solve(request, environment);
   }
+  try {
+    if (!planArrival && !configuration.chart_safety_scout_preview &&
+        configuration.EngineSettings.engine == weather_routing::RoutingEngine::All &&
+        configuration.ExploreComfortAlternatives &&
+        weather_routing::native::AcceptedRoute(result)) {
+      const auto started = std::chrono::steady_clock::now();
+      auto comfortConfiguration = configuration;
+      comfortConfiguration.EngineSettings.SetEngineId("quick");
+      const int resolution = comfortConfiguration.EffectiveShorelineResolution();
+      comfortConfiguration.shoreline_dataset = configuration.engine_shorelines.at(resolution);
+      comfortConfiguration.shoreline_description = configuration.engine_shoreline_descriptions.at(resolution);
+      if (!comfortConfiguration.DetectLand || comfortConfiguration.shoreline_dataset) {
+        auto provider = std::make_shared<OpenCpnWeatherProvider>(overlay, comfortConfiguration);
+        wr::RoutingEnvironment comfortEnvironment;
+        comfortEnvironment.grib = provider;
+        comfortEnvironment.landAndBoundaries = std::make_shared<OpenCpnLandProvider>(overlay, comfortConfiguration);
+        comfortEnvironment.performance = std::make_shared<OpenCpnPerformanceModel>(comfortConfiguration);
+        auto comfortRequest = BuildRequest(overlay, comfortConfiguration);
+        const auto extra = std::min(result.metrics.elapsed / 2, wr::Duration{12 * 3600});
+        comfortRequest.limits.maximumRouteDuration = std::min(
+            comfortRequest.limits.maximumRouteDuration, result.metrics.elapsed + extra);
+        comfortRequest.progress = [&overlay, generation = overlay.ModernProgressGeneration()](
+            const wr::RoutingProgressUpdate& progress) {
+          overlay.SetModernNativeProgress(progress, generation, _("Comfort alternatives"));
+        };
+        wr::QuickRoutingOptions options;
+        options.comfortWeight = 1.0;
+        options.comfortWindOnly = configuration.ComfortExplorationWindOnly;
+        options.maximumGeneratedStates = 50000;
+        options.maximumWeatherCalls = 2000000;
+        wxString scenarioPath, testLimit;
+        long workLimit = 0;
+        if (wxGetEnv("WR_HEADLESS_SCENARIO", &scenarioPath) && !scenarioPath.empty() &&
+            wxGetEnv("WR_HEADLESS_COMFORT_WORK_LIMIT", &testLimit) &&
+            testLimit.ToLong(&workLimit) && workLimit > 0) {
+          options.maximumGeneratedStates = std::min<std::uint64_t>(50000, workLimit);
+          options.maximumWeatherCalls = std::min<std::uint64_t>(2000000, workLimit);
+        }
+        options.maximumValidatedCandidates = 24;
+        options.memoryBudgetMiB = std::min(64, comfortConfiguration.EngineSettings.quick.memoryBudgetMiB);
+        options.maximumSearchTime = std::chrono::seconds{20};
+        options.offshoreStep = std::chrono::minutes{60};
+        options.headingStepDegrees = 10;
+        auto explored = wr::QuickRoutingEngine{}.route(comfortRequest, comfortEnvironment, options);
+        unsigned accepted = 0, duplicates = 0, hostRejected = 0;
+        for (auto& candidate : explored.alternatives) {
+          candidate.engineIdentity = "quick";
+          candidate.searchVariant = options.comfortWindOnly ? "comfort-wind" : "comfort-waves";
+          bool valid = weather_routing::native::AcceptedRoute(candidate);
+          if (valid && comfortConfiguration.DetectLand) {
+            for (const auto& leg : candidate.legs) {
+              auto segment = comfortConfiguration;
+              segment.time = ToWx(leg.startTime);
+              if (leg.coastalDepartureEgress) segment.SafetyMarginLand = 0;
+              if (!ConstraintChecker::CheckFinalRouteLandConstraint(segment,
+                      leg.start.latitude, leg.start.longitude, leg.end.latitude,
+                      leg.end.longitude, wr::initialBearingDegrees(leg.start, leg.end))) {
+                valid = false; break;
+              }
+            }
+          }
+          if (!valid) { ++hostRejected; continue; }
+          const auto fingerprint = RouteFingerprint(candidate.legs);
+          if (std::any_of(retainedCandidates.begin(), retainedCandidates.end(), [&](const auto& other) {
+                  return RouteFingerprint(other.result->legs) == fingerprint;
+              })) { ++duplicates; continue; }
+          retainedCandidates.push_back(weather_routing::RetainRouteCandidate(candidate, comfortConfiguration));
+          ++accepted;
+          if (candidate.metrics.elapsed < result.metrics.elapsed) result = candidate;
+        }
+        const auto cache = provider->cacheDiagnostics();
+        sequenceWeatherCache.calls += cache.calls;
+        sequenceWeatherCache.immediateHits += cache.immediateHits;
+        sequenceWeatherCache.localHits += cache.localHits;
+        sequenceWeatherCache.sharedHits += cache.sharedHits;
+        sequenceWeatherCache.misses += cache.misses;
+        sequenceWeatherCache.waits += cache.waits;
+        sequenceWeatherCache.interpolationMicroseconds += cache.interpolationMicroseconds;
+        wxLogMessage("WR_COMFORT_SEARCH wind_only=%d elapsed_ms=%lld generated=%llu "
+            "weather_calls=%llu peak_search_bytes=%llu validated=%u accepted=%u duplicates=%u "
+            "host_rejected=%u missing_motions=%u allowance_reached=%d horizon_s=%lld status=%s",
+            options.comfortWindOnly ? 1 : 0,
+            static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - started).count()),
+            static_cast<unsigned long long>(explored.route.diagnostics.generatedStates),
+            static_cast<unsigned long long>(explored.quick.weatherCalls),
+            static_cast<unsigned long long>(explored.quick.peakSearchBytes),
+            explored.quick.validatedCandidates, accepted, duplicates, hostRejected,
+            explored.quick.missingComfortMotions, explored.quick.comfortAllowanceReached ? 1 : 0,
+            static_cast<long long>(comfortRequest.limits.maximumRouteDuration.count()),
+            wxString::FromUTF8(wr::toString(explored.route.status)));
+        if (request.cancellation.cancelled() || explored.route.status == wr::RoutingStatus::Cancelled) {
+          result = {};
+          result.status = wr::RoutingStatus::Cancelled;
+          result.message = "Comfort search cancelled";
+        }
+      }
+    }
+  } catch (const std::exception& exception) {
+    // Extra exploration is optional: preserve the validated baseline on a
+    // bounded allocation/service failure, never turn a failed extra into a route.
+    wxLogMessage("WR_COMFORT_SEARCH skipped reason=%s", wxString::FromUTF8(exception.what()));
+  }
+  if (request.cancellation.cancelled()) {
+    result = {};
+    result.status = wr::RoutingStatus::Cancelled;
+    result.message = "Routing cancelled";
+  }
   RouteMapConfiguration resultConfiguration = overlay.GetConfiguration();
   if (arrivalPlan) {
     resultConfiguration.ArrivalPlanningEvaluatedRoutes =

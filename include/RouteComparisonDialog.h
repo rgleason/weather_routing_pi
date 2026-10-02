@@ -36,6 +36,7 @@ class RouteComparisonDialog : public wxDialog {
   wxListCtrl* m_List{};
   wxSlider* m_Slider{};
   wxCheckBox* m_WindOnly{};
+  wxCheckBox* m_ExploreComfort{};
   wxChoice* m_Order{};
   wxStaticText* m_Summary{};
   bool m_Updating{};

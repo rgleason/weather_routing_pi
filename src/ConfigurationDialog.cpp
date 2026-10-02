@@ -1436,7 +1436,7 @@ void ConfigurationDialog::UpdateEngineControls() {
   m_tRoutingEngineDescription->SetLabel(engine == weather_routing::RoutingEngine::Auto
       ? _("Auto: Quick, then Standard, then Professional up to 400% effort; stops at the first validated route.")
       : engine == weather_routing::RoutingEngine::All
-      ? _("All (slow): compares Quick, Standard, Alternative and Professional; returns the earliest validated arrival.")
+      ? _("All (slow): compares Quick, Standard, Alternative and Professional, plus bounded comfort alternatives when enabled; returns the earliest validated arrival.")
       : engine == weather_routing::RoutingEngine::Main
       ? _("Professional: broader search with multiple recovery methods.")
       : engine == weather_routing::RoutingEngine::Quick ? _("Standard: bounded adaptive search with recovery.")

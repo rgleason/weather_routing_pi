@@ -12249,6 +12249,12 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
     return;
   }
 
+  if (auto* preferences = GetOCPNConfigObject()) {
+    configuration.ExploreComfortAlternatives = preferences->ReadBool(
+        "/PlugIns/WeatherRouting/ComfortExplorationEnabled", true);
+    configuration.ComfortExplorationWindOnly = preferences->ReadBool(
+        "/PlugIns/WeatherRouting/ComfortComparisonWindOnly", true);
+  }
   configuration.chart_safety_missing_tile_rejections = 0;
   configuration.chart_safety_missing_tile_first_lat_tile = 0;
   configuration.chart_safety_missing_tile_first_lon_tile = 0;

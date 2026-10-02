@@ -110,6 +110,7 @@ weather_routing_engine::RoutingCandidateResult CandidateFromRoute(
     weather_routing_engine::RetainedRouteReport report;
     report.id = wxString::FromUTF8(retained.id);
     report.engine = wxString::FromUTF8(retained.result->engineIdentity);
+    report.searchVariant = wxString::FromUTF8(retained.result->searchVariant);
     report.shoreline = retained.configuration.shoreline_description;
     report.shorelineResolution = retained.configuration.EffectiveShorelineResolution();
     report.elapsedSeconds = retained.result->metrics.elapsed.count();

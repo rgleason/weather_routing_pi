@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "supercpn/weather_routing/QuickEngine.h"
 #include "MotionKernel.h"
+#include "supercpn/weather_routing/Comfort.h"
 
 #include <algorithm>
 #include <array>
@@ -48,8 +49,12 @@ struct Work {
   const RoutingRequest& request;
   const QuickRoutingOptions& options;
   QuickRoutingDiagnostics& diagnostics;
+  std::chrono::steady_clock::time_point started{std::chrono::steady_clock::now()};
   void check() const {
     if (request.cancellation.cancelled()) throw Cancelled{};
+    if (options.maximumSearchTime.count() > 0 &&
+        std::chrono::steady_clock::now() - started >= options.maximumSearchTime)
+      throw WorkLimit("Comfort search time allowance reached");
   }
   void weather() {
     check();
@@ -109,7 +114,7 @@ private:
 // physical state and action are sufficient to reconstruct a selected lineage.
 struct Label {
   GeoPoint position;
-  double heading{}, fuel{}, risk{}, score{};
+  double heading{}, fuel{}, risk{}, score{}, discomfort{};
   std::int64_t time{}, modeSeconds{}, motorSeconds{}, waitSeconds{};
   std::uint32_t parent{none}, references{}, profile{}, manoeuvres{}, duration{};
   int sailPlan{-1};
@@ -239,6 +244,56 @@ auto cell(const RoutingRequest& r, const Label& n) {
                     n.flags & 1};
 }
 
+// Round-robin lanes retain promising fast, gentle and balanced paths before
+// a bounded beam discards them. Nearby families remain a heuristic, not a
+// proof of physical-state equivalence or globally optimal comfort.
+void comfortThin(const RoutingRequest& request, std::pmr::vector<Label>& nodes,
+                 unsigned limit) {
+  if (nodes.size() <= limit) return;
+  auto* resource = nodes.get_allocator().resource();
+  std::array<std::pmr::vector<std::size_t>, 3> lanes{
+      std::pmr::vector<std::size_t>{resource}, std::pmr::vector<std::size_t>{resource},
+      std::pmr::vector<std::size_t>{resource}};
+  for (auto& lane : lanes) { lane.resize(nodes.size()); std::iota(lane.begin(), lane.end(), 0); }
+  const auto hint = [&](const Label& n) {
+    return distanceNm(n.position, request.destination) / 6.0 * 3600;
+  };
+  for (unsigned mode = 0; mode < lanes.size(); ++mode)
+    std::stable_sort(lanes[mode].begin(), lanes[mode].end(), [&](auto a, auto b) {
+      const auto cost = [&](const Label& n) {
+        return mode == 0 ? n.time - request.departure.time_since_epoch().count() + hint(n)
+             : mode == 1 ? n.discomfort + 0.25 * hint(n) : n.score;
+      };
+      const auto x = cost(nodes[a]), y = cost(nodes[b]);
+      return x != y ? x < y : rank(nodes[a]) < rank(nodes[b]);
+    });
+  std::pmr::vector<Label> chosen(nodes.get_allocator().resource());
+  std::pmr::vector<bool> used(nodes.size(), false, resource);
+  std::array<std::size_t, 3> cursor{};
+  bool progress = true;
+  while (chosen.size() < limit && progress) {
+    progress = false;
+    for (unsigned lane = 0; lane < lanes.size() && chosen.size() < limit; ++lane) {
+      while (cursor[lane] < lanes[lane].size()) {
+        const auto index = lanes[lane][cursor[lane]++];
+        if (used[index]) continue;
+        used[index] = true;
+        const auto& n = nodes[index];
+        unsigned family = 0;
+        bool dominated = false;
+        for (const auto& other : chosen) {
+          if (cell(request, n) != cell(request, other)) continue;
+          ++family;
+          if (other.time <= n.time && other.discomfort <= n.discomfort) dominated = true;
+        }
+        if (dominated || family >= 2) continue;
+        chosen.push_back(n); progress = true; break;
+      }
+    }
+  }
+  nodes.swap(chosen);
+}
+
 std::vector<RouteLeg> reconstruct(const RoutingRequest& request,
                                   const RoutingEnvironment& environment,
                                   const VesselPerformanceModel& performance,
@@ -307,7 +362,10 @@ QuickRoutingResult QuickRoutingEngine::route(
       options.maximumGeneratedStates > 10000000 ||
       options.maximumWeatherCalls == 0 ||
       options.maximumValidatedCandidates == 0 ||
-      options.maximumValidatedCandidates > 8 ||
+      options.maximumValidatedCandidates > (options.comfortWeight > 0 ? 24U : 8U) ||
+      !std::isfinite(options.comfortWeight) || options.comfortWeight < 0 ||
+      options.maximumComfortAlternatives == 0 || options.maximumComfortAlternatives > 4 ||
+      options.maximumSearchTime.count() < 0 ||
       request.limits.maximumRouteDuration <= Duration::zero()) {
     result.status = RoutingStatus::InvalidVesselConfiguration;
     result.message = "Invalid Quick routing options";
@@ -447,6 +505,11 @@ QuickRoutingResult QuickRoutingEngine::route(
             std::max<std::uint64_t>(result.diagnostics.retainedStates,
                                     pool.labels.size() - pool.free.size());
         work.check();
+        if (options.comfortWeight > 0 && output.quick.validatedCandidates >=
+                options.maximumValidatedCandidates) {
+          output.quick.comfortAllowanceReached = true;
+          throw WorkLimit("Comfort validated-candidate allowance reached");
+        }
         if (request.progress)
           request.progress({RoutingProgressStage::ForwardIsochrone, attempt + 1,
                             2, result.diagnostics.generatedStates,
@@ -481,6 +544,11 @@ QuickRoutingResult QuickRoutingEngine::route(
             auto legs = reconstruct(request, environment, performance, pool, id,
                                     result.diagnostics, &memory);
             legs.push_back(std::move(terminal->leg));
+            if (options.comfortWeight > 0 && !std::isfinite(
+                    routeDiscomfortSeconds(legs, options.comfortWindOnly))) {
+              ++output.quick.missingComfortMotions;
+              continue;
+            }
             if (environment.landAndBoundaries)
               environment.landAndBoundaries->prepareValidationRoute(
                   legs, request.constraints.landSafetyMarginNm);
@@ -490,6 +558,35 @@ QuickRoutingResult QuickRoutingEngine::route(
                 request, source, performance, legs, nullptr);
             result.diagnostics.validationSamples += validation.samples;
             if (validation.passed) {
+              if (options.comfortWeight > 0) {
+                RoutingResult candidate;
+                candidate.legs = std::move(legs);
+                candidate.validation = std::move(validation);
+                candidate.status = RoutingStatus::Complete;
+                candidate.solverPath = SolverPath::QuickBeam;
+                candidate.message = "Validated comfort alternative";
+                internal::summariseRoute(candidate);
+                const auto dominated = [&](const RoutingResult& other, const RoutingResult& next) {
+                  return other.metrics.elapsed <= next.metrics.elapsed &&
+                      routeDiscomfortSeconds(other.legs, options.comfortWindOnly) <=
+                          routeDiscomfortSeconds(next.legs, options.comfortWindOnly) + 1e-8;
+                };
+                if (std::none_of(output.alternatives.begin(), output.alternatives.end(),
+                        [&](const auto& other) { return dominated(other, candidate); })) {
+                  std::erase_if(output.alternatives,
+                      [&](const auto& other) { return dominated(candidate, other); });
+                  output.alternatives.push_back(std::move(candidate));
+                  std::stable_sort(output.alternatives.begin(), output.alternatives.end(),
+                      [](const auto& a, const auto& b) { return a.metrics.elapsed < b.metrics.elapsed; });
+                  if (output.alternatives.size() > options.maximumComfortAlternatives) {
+                    // Keep both time/comfort extremes when thinning a completed Pareto set.
+                    const auto remove = options.maximumComfortAlternatives == 1 ? 1U :
+                        static_cast<unsigned>(output.alternatives.size() / 2);
+                    output.alternatives.erase(output.alternatives.begin() + remove);
+                  }
+                }
+                continue;
+              }
               result.legs = std::move(legs);
               result.validation = std::move(validation);
               result.status = RoutingStatus::Complete;
@@ -563,6 +660,11 @@ QuickRoutingResult QuickRoutingEngine::route(
                   request.limits.maximumExplorationDistanceNm)
                 continue;
               Label n = pool.pack(motion.state);
+              if (options.comfortWeight > 0) {
+                const auto exposure = legDiscomfortSeconds(motion.leg, options.comfortWindOnly);
+                if (!std::isfinite(exposure)) { ++output.quick.missingComfortMotions; continue; }
+                n.discomfort = parent.discomfort + exposure;
+              }
               n.parent = id;
               n.depth = parent.depth + 1;
               n.duration = static_cast<std::uint32_t>(step.count());
@@ -570,10 +672,15 @@ QuickRoutingResult QuickRoutingEngine::route(
               const double remaining =
                   distanceNm(n.position, request.destination);
               // Common positive speed keeps the score a ranking hint only.
-              n.score = objectiveCost(request, n) + remaining / 6.0 * 3600;
+              n.score = objectiveCost(request, n) + remaining / 6.0 * 3600 +
+                  options.comfortWeight * n.discomfort;
               candidates.push_back(n);
             }
             if (candidates.size() > 4096) {
+              if (options.comfortWeight > 0) {
+                comfortThin(request, candidates, 2048);
+                continue;
+              }
               std::sort(candidates.begin(), candidates.end(),
                         [](const auto& a, const auto& b) {
                           return rank(a) < rank(b);
@@ -587,12 +694,18 @@ QuickRoutingResult QuickRoutingEngine::route(
             if (wait) {
               ++result.diagnostics.generatedStates;
               Label n = pool.pack(wait->state);
+              if (options.comfortWeight > 0) {
+                const auto exposure = legDiscomfortSeconds(wait->leg, options.comfortWindOnly);
+                if (!std::isfinite(exposure)) { ++output.quick.missingComfortMotions; continue; }
+                n.discomfort = parent.discomfort + exposure;
+              }
               n.parent = id;
               n.depth = parent.depth + 1;
               n.duration = static_cast<std::uint32_t>(step.count());
               n.flags |= 2;
               n.score = objectiveCost(request, n) +
-                        distanceNm(n.position, request.destination) / 6 * 3600;
+                        distanceNm(n.position, request.destination) / 6 * 3600 +
+                        options.comfortWeight * n.discomfort;
               candidates.push_back(n);
             }
           }
@@ -600,6 +713,14 @@ QuickRoutingResult QuickRoutingEngine::route(
         std::sort(
             candidates.begin(), candidates.end(),
             [](const auto& a, const auto& b) { return rank(a) < rank(b); });
+        if (options.comfortWeight > 0) {
+          comfortThin(request, candidates, beam);
+          for (const auto& n : candidates) nextFrontier.push_back(pool.add(n));
+          for (auto id : frontier) pool.release(id);
+          frontier.swap(nextFrontier);
+          ++layer;
+          continue;
+        }
         // Preserve multiple approach directions before filling with the best
         // remaining eligible spatial/heading families.
         std::array<unsigned, 72> sectorCount{};
@@ -644,6 +765,7 @@ QuickRoutingResult QuickRoutingEngine::route(
         "Quick search did not find a validated route within its allowance; try "
         "the main engine";
   } catch (const Cancelled&) {
+    output.alternatives.clear();
     result.status = RoutingStatus::Cancelled;
     result.message = "Quick route cancelled";
   } catch (const std::bad_alloc&) {
@@ -652,9 +774,19 @@ QuickRoutingResult QuickRoutingEngine::route(
         "Quick allocation failed: search budget or process memory limit "
         "reached";
   } catch (const WorkLimit& error) {
+    output.quick.comfortAllowanceReached = options.comfortWeight > 0;
     result.status = RoutingStatus::ResourceLimitReached;
     result.message = error.what();
   }
+  if (!output.alternatives.empty()) {
+    auto diagnostics = std::move(result.diagnostics);
+    result = output.alternatives.front();
+    result.diagnostics = std::move(diagnostics);
+    result.message = "Complete — bounded comfort exploration";
+  }
+  output.quick.comfortAlternatives = static_cast<unsigned>(output.alternatives.size());
+  if (options.comfortWeight > 0 && result.diagnostics.generatedStates >= options.maximumGeneratedStates)
+    output.quick.comfortAllowanceReached = true;
   output.quick.peakSearchBytes = memory.peak;
   return output;
 }

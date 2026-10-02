@@ -652,6 +652,7 @@ struct RoutingResult {
   std::string message;
   // Optional client-side solver provenance, retained by arrival planning.
   std::string engineIdentity;
+  std::string searchVariant;
 };
 
 }  // namespace supercpn::weather_routing

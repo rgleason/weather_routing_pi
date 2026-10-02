@@ -36,6 +36,7 @@ inline RetainedRouteCandidate RetainRouteCandidate(
                                ? configuration.EngineSettings.EngineId()
                                : result.engineIdentity;
   compact->message = result.message;
+  compact->searchVariant = result.searchVariant;
   compact->diagnostics = result.diagnostics;
   candidate.result = compact;
   candidate.comfort = CalculateRouteComfort(compact->legs);

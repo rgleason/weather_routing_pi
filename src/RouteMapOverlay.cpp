@@ -383,7 +383,13 @@ void RouteMapOverlay::InstallModernNativeResult(
     for (const auto& candidate : m_RetainedCandidates)
       if (candidate.result->engineIdentity == engine &&
           candidate.result->legs.front().startTime == result.legs.front().startTime &&
-          candidate.result->legs.back().endTime == result.legs.back().endTime) {
+          candidate.result->legs.back().endTime == result.legs.back().endTime &&
+          candidate.result->legs.size() == result.legs.size() &&
+          std::equal(candidate.result->legs.begin(), candidate.result->legs.end(),
+              result.legs.begin(), [](const auto& a, const auto& b) {
+                return a.start == b.start && a.end == b.end &&
+                    a.startTime == b.startTime && a.endTime == b.endTime;
+              })) {
         m_SelectedRetainedCandidateId = candidate.id;
         break;
       }

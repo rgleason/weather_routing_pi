@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 #include "supercpn/weather_routing/Types.h"
+#include "supercpn/weather_routing/Comfort.h"
 
 namespace weather_routing {
 namespace wr = supercpn::weather_routing;
@@ -18,17 +19,7 @@ namespace wr = supercpn::weather_routing;
 // category durations and the worst leg remain independent metrics.
 inline double ConditionSeverity(double windKnots, double relativeWindDegrees,
                                 double waveMetres) {
-  if (!std::isfinite(windKnots) || windKnots < 0 ||
-      !std::isfinite(relativeWindDegrees))
-    return std::numeric_limits<double>::quiet_NaN();
-  constexpr double pi = 3.14159265358979323846;
-  const double angle = std::remainder(relativeWindDegrees, 360.0);
-  const double wind = std::pow(windKnots / 27.0, 3);
-  const double upwind = 20.0 / (30.0 * std::sqrt(2.0 * pi)) *
-      std::exp(-std::pow(angle - 35.0, 2) / (2.0 * 30.0 * 30.0));
-  const double waves = std::isfinite(waveMetres) && waveMetres > 0
-                           ? std::pow(waveMetres / 5.0, 2) : 0.0;
-  return wind * (1.0 + upwind) * (1.0 + waves);
+  return wr::comfortSeverity(windKnots, relativeWindDegrees, waveMetres);
 }
 inline int ConditionCategory(double severity) {
   if (!std::isfinite(severity)) return 0;

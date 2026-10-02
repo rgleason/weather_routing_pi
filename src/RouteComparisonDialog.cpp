@@ -42,8 +42,8 @@ wxString WorstKnownText(const weather_routing::RouteComfort& comfort) {
 }
 
 RouteComparisonDialog::RouteComparisonDialog(WeatherRouting& routing)
-    : wxDialog(&routing, wxID_ANY, _("Fastest / Comfort — 1.22 prototype"),
-               wxDefaultPosition, wxSize(1750, 650),
+    : wxDialog(&routing, wxID_ANY, _("Fastest / Comfort — 1.23 prototype"),
+               wxDefaultPosition, wxSize(1750, 800),
                wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER), m_Routing(routing) {
   auto* layout = new wxBoxSizer(wxVERTICAL);
   auto* controls = new wxBoxSizer(wxHORIZONTAL);
@@ -64,6 +64,12 @@ RouteComparisonDialog::RouteComparisonDialog(WeatherRouting& routing)
       "/PlugIns/WeatherRouting/ComfortComparisonWindOnly", true));
   m_WindOnly->SetToolTip(_("Exclude waves from comfort ranking. The worst known leg still includes available waves. Route validation is unchanged."));
   layout->Add(m_WindOnly, 0, wxALL, 6);
+  m_ExploreComfort = new wxCheckBox(this, wxID_ANY,
+      _("Search additional comfort alternatives on next All run (slower)"));
+  m_ExploreComfort->SetValue(!config || config->ReadBool(
+      "/PlugIns/WeatherRouting/ComfortExplorationEnabled", true));
+  m_ExploreComfort->SetToolTip(_("For each departure, All adds a bounded search retaining faster and gentler partial paths. Uses the ranking mode selected when computation starts. Toggle off and recompute to measure the overhead. Auto is unchanged."));
+  layout->Add(m_ExploreComfort, 0, wxLEFT | wxRIGHT | wxBOTTOM, 6);
   m_Summary = new wxStaticText(this, wxID_ANY, wxEmptyString);
   layout->Add(m_Summary, 0, wxEXPAND | wxALL, 6);
   m_List = new wxListCtrl(this, wxID_ANY, wxDefaultPosition, wxDefaultSize,
@@ -102,6 +108,12 @@ RouteComparisonDialog::RouteComparisonDialog(WeatherRouting& routing)
   m_Order->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) {
     m_SortColumn = m_Order->GetSelection() == 0 ? 4 : 6;
     m_Ascending = true; Populate(); Choose();
+  });
+  m_ExploreComfort->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent&) {
+    if (auto* config = GetOCPNConfigObject()) {
+      config->Write("/PlugIns/WeatherRouting/ComfortExplorationEnabled", m_ExploreComfort->GetValue());
+      config->Flush();
+    }
   });
   m_List->Bind(wxEVT_LIST_COL_CLICK, [this](wxListEvent& event) {
     if (event.GetColumn() == m_SortColumn) m_Ascending = !m_Ascending;
@@ -173,6 +185,15 @@ void RouteComparisonDialog::RunHostContract(bool lifecycle) {
   for (int column : {4, 6, 9, 12, 2}) {
     wxListEvent sort(wxEVT_LIST_COL_CLICK, m_List->GetId());
     sort.SetColumn(column); m_List->GetEventHandler()->ProcessEvent(sort);
+  }
+  const bool explorationPreference = m_ExploreComfort->GetValue();
+  for (const bool enabled : {!explorationPreference, explorationPreference}) {
+    m_ExploreComfort->SetValue(enabled);
+    wxCommandEvent event(wxEVT_CHECKBOX, m_ExploreComfort->GetId());
+    m_ExploreComfort->GetEventHandler()->ProcessEvent(event);
+    if (auto* config = GetOCPNConfigObject())
+      passed = passed && config->ReadBool(
+          "/PlugIns/WeatherRouting/ComfortExplorationEnabled", !enabled) == enabled;
   }
   if (lifecycle && !m_Entries.empty()) {
     // Dedicated headless fixture only: prove that a dialog holding immutable
@@ -255,6 +276,8 @@ void RouteComparisonDialog::Collect() {
       entry.fullComfort = candidate.comfort;
       entry.windComfort = candidate.windOnlyComfort;
       entry.engine = EngineTitle(candidate.result->engineIdentity);
+      if (candidate.result->searchVariant == "comfort-wind") entry.engine += _(" (comfort: wind)");
+      if (candidate.result->searchVariant == "comfort-waves") entry.engine += _(" (comfort: wind + waves)");
       entry.departure = WxTime(candidate.result->legs.front().startTime);
       entry.eta = WxTime(candidate.result->legs.back().endTime);
       m_Entries.push_back(std::move(entry));
@@ -433,6 +456,8 @@ void RouteComparisonDialog::Preview(std::size_t index) {
   else if (!selection.tradeOffAvailable)
     text += _("No fastest / comfort trade-off available among comparable candidates.");
   if (m_WindOnly->GetValue()) text += _(" Wind-only ranking: waves excluded from ranking; worst known leg still includes available waves.");
+  if (!text.EndsWith("\n")) text += "\n";
+  text += _("Extra search: up to 4 routes, 50% extra passage time (maximum 12 h), and a 20 s search allowance per departure. Limits apply only to extras; the original valid route is kept.");
   m_Summary->SetLabel(text); m_Summary->Wrap(std::max(300, GetClientSize().x - 24));
   m_Updating = true;
   for (long row = 0; row < m_List->GetItemCount(); ++row) {
