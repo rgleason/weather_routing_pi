@@ -21,6 +21,8 @@
 #define _WEATHER_ROUTING_EDITPOLAR_DIALOG_H_
 
 #include "WeatherRoutingUI.h"
+#include <array>
+#include <vector>
 
 class BoatDialog;
 
@@ -30,6 +32,9 @@ public:
   EditPolarDialog(wxWindow* parent);
 
   void SetPolarIndex(int i);
+#ifdef __OCPN__ANDROID__
+  bool Saved() const { return m_androidSaved; }
+#endif
 
 private:
   void OnPolarGridChanged(wxGridEvent& event);
@@ -41,14 +46,37 @@ private:
   void OnRemoveMeasurement(wxCommandEvent& event);
   void OnRemoveAllMeasurements(wxCommandEvent& event);
   void OnGeneratePolar(wxCommandEvent& event);
-  void OnSave(wxCommandEvent& event) { EndModal(wxID_SAVE); }
+  void OnSave(wxCommandEvent& event) {
+#ifdef __OCPN__ANDROID__
+    if (!ValidateAndroidPolar()) return;
+    m_androidSaved = true;
+#endif
+    EndModal(wxID_SAVE);
+  }
 
   void RebuildTrueWindAngles();
   void RebuildTrueWindSpeeds();
   void RebuildGrid();
   Polar* GetPolar();
 
-  int polarindex;
+#ifdef __OCPN__ANDROID__
+  bool ValidateAndroidSpeeds();
+  bool ValidateAndroidPolar();
+  void RefreshAndroidSpeeds();
+  void RefreshAndroidMeasurements();
+  void ShowAndroidMeasurement();
+  bool m_androidSaved{false};
+  int m_androidDisplayedAngle{-1};
+  wxChoice* m_androidAngle{nullptr};
+  wxChoice* m_androidDimensionAngle{nullptr};
+  wxChoice* m_androidDimensionWind{nullptr};
+  wxScrolledWindow* m_androidSpeeds{nullptr};
+  wxBoxSizer* m_androidSpeedFields{nullptr};
+  wxChoice* m_androidMeasurementPicker{nullptr};
+  wxStaticText* m_androidMeasurementDetails{nullptr};
+  std::vector<std::array<double, 3>> m_androidMeasurements;
+#endif
+  int polarindex{-1};
   BoatDialog* m_BoatDialog;
 };
 

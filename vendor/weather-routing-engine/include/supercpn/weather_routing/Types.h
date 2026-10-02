@@ -380,7 +380,8 @@ enum class RoutingWarningCode {
   EstimatedPolar,
   SearchPruned,
   SearchIncomplete,
-  EnsembleMemberFailed
+  EnsembleMemberFailed,
+  CoastalEndpointLeeway
 };
 
 struct RoutingWarning {
@@ -447,7 +448,8 @@ enum class SolverPath {
   ReverseRecovery,
   FrontierRecovery,
   GraphFallback,
-  QuickBeam
+  QuickBeam,
+  AlternativeSector
 };
 
 struct ConstraintMargins {
@@ -516,6 +518,8 @@ struct IsochroneContour {
 struct IsochroneTrace {
   GeoPoint endpoint;
   std::vector<GeoPoint> route;
+  // Keep each predecessor's instant: adaptive steps need not be equal.
+  std::vector<TimePoint> times;
 };
 
 struct IsochroneLayer {
@@ -647,6 +651,9 @@ struct RoutingResult {
   RoutingVisualization visualization;
   std::optional<RoutingPreflightResult> preflight;
   std::string message;
+  // Optional client-side solver provenance, retained by arrival planning.
+  std::string engineIdentity;
+  std::string searchVariant;
 };
 
 }  // namespace supercpn::weather_routing

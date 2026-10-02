@@ -2,15 +2,6 @@
 # Author:      Pavel Kalian (Based on the work of Sean D'Epagnier) Copyright:
 # 2014 License:     GPLv3+
 # ---------------------------------------------------------------------------
-# Install the plugin binary
-# Install plugin data (shorelines, icons, etc.)
-# Handle platform‑specific install paths
-# Handle macOS bundle quirks
-# Handle Linux packaging paths
-# Handle Windows plugin directory layout
-# Handle Flatpak exclusions
-# Handle MinGW/MSVC differences
-# Handle Android special cases
 
 set(SAVE_CMLOC ${CMLOC})
 set(CMLOC "PluginInstall: ")
@@ -59,9 +50,7 @@ if (UNIX AND NOT APPLE AND NOT QT_ANDROID)
   include_directories(${BZIP2_INCLUDE_DIR})
   find_package(ZLIB REQUIRED)
   include_directories(${ZLIB_INCLUDE_DIR})
-  target_link_libraries(${PACKAGE_NAME} 
-	PRIVATE ${BZIP2_LIBRARIES}
-	PRIVATE ${ZLIB_LIBRARY})
+  target_link_libraries(${PACKAGE_NAME} PRIVATE ${BZIP2_LIBRARIES} ${ZLIB_LIBRARY})
 endif ()
 
 set(PARENT opencpn)

@@ -44,12 +44,21 @@ private:
   void OnUpdatePlot(wxScrollEvent& event) { m_PlotWindow->Refresh(); }
   void OnUpdatePlotVariable(wxCommandEvent& event) {
     GetScale();
+#ifdef __OCPN__ANDROID__
+    ResetAndroidReadout();
+#endif
     m_PlotWindow->Refresh();
   }
   void OnUpdateRoute(wxCommandEvent& event);
   void OnUpdateUI(wxUpdateUIEvent& event);
 
 private:
+#ifdef __OCPN__ANDROID__
+  void ResetAndroidReadout();
+  wxStaticText* m_androidSampleTime{nullptr};
+  RouteMapOverlay* m_androidPlotRoute{nullptr};
+  bool m_androidCursorRoute{false};
+#endif
   double GetValue(PlotData& data, Variable variable);
   int GetType(int var);
   void GetScale();

@@ -163,9 +163,16 @@ private:
   void UpdateVMG();
   void PlotVMG(wxPaintDC& dc, double lW, double W, double scale, int plottype);
   long SelectedPolar() {
+#ifdef __OCPN__ANDROID__
+    if (m_androidPolarPicker) return m_androidPolarPicker->GetSelection();
+#endif
     return m_lPolars->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
   }
+  void SelectPolar(long index);
 
+#ifdef __OCPN__ANDROID__
+  wxChoice* m_androidPolarPicker{nullptr};
+#endif
   WeatherRouting& m_WeatherRouting;
 
   double m_PlotScale;

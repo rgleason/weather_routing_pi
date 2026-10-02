@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include "DeviceMemoryPolicy.h"
 
 namespace weather_routing {
 
@@ -21,11 +22,19 @@ constexpr int kMainGribTimelineCacheFallback64BitMiB = 512;
 constexpr int kQuickGribTimelineCacheFallbackMiB = 64;
 constexpr int kGribTimelineCacheMaximum32BitMiB = 192;
 constexpr int kMainGribTimelineCacheDefaultMiB =
+#ifdef __OCPN__ANDROID__
+    128;
+#else
     sizeof(void*) <= 4 ? kGribTimelineCacheMaximum32BitMiB
                        : kMainGribTimelineCacheDefault64BitMiB;
+#endif
 constexpr int kQuickGribTimelineCacheDefaultMiB =
+#ifdef __OCPN__ANDROID__
+    128;
+#else
     sizeof(void*) <= 4 ? kQuickGribTimelineCacheFallbackMiB
                        : kQuickGribTimelineCacheDefault64BitMiB;
+#endif
 constexpr int kGribTimelineCacheMaximum64BitMiB = 8192;
 constexpr std::uint64_t kGribTimelineCacheBaseReserveMiB = 2048;
 
@@ -33,9 +42,13 @@ constexpr std::uint64_t kGribTimelineCacheBaseReserveMiB = 2048;
 // Raising a default must never implicitly exempt it from memory admission.
 inline int GribTimelineCacheFallbackMiB(
     bool quick, unsigned process_bits = sizeof(void*) * 8U) {
+#ifdef __OCPN__ANDROID__
+  return quick ? 64 : 128;
+#else
   return quick ? kQuickGribTimelineCacheFallbackMiB
                : (process_bits <= 32 ? kGribTimelineCacheMaximum32BitMiB
                                      : kMainGribTimelineCacheFallback64BitMiB);
+#endif
 }
 
 inline int NormalizeGribTimelineCacheMiB(int requested, bool quick,
@@ -46,7 +59,13 @@ inline int NormalizeGribTimelineCacheMiB(int requested, bool quick,
                                   : kQuickGribTimelineCacheDefault64BitMiB)
             : (process_bits <= 32 ? kGribTimelineCacheMaximum32BitMiB
                                   : kMainGribTimelineCacheDefault64BitMiB);
-  if (requested <= 0) requested = fallback;
+  if (requested <= 0) {
+#ifdef __OCPN__ANDROID__
+    requested = 128;
+#else
+    requested = fallback;
+#endif
+  }
   const int maximum = process_bits <= 32
                           ? kGribTimelineCacheMaximum32BitMiB
                           : kGribTimelineCacheMaximum64BitMiB;
@@ -68,7 +87,8 @@ struct GribTimelineCacheAdmission {
  * Admit a larger timeline cache only when physical RAM can
  * contain the complete cache and still leave 2 GiB plus twice its size free.
  * Step down to a smaller power-of-two allowance when necessary. Historical
- * floors remain available when memory reporting is unavailable or smaller.
+ * floors are reduced too when physical headroom is below 2 GiB. Limits
+ * describe retained frames, not the provider's original forecast or search.
  */
 inline GribTimelineCacheAdmission EvaluateGribTimelineCacheAdmission(
     int requested_mib, bool quick, std::uint64_t available_mib,
@@ -87,6 +107,16 @@ inline GribTimelineCacheAdmission EvaluateGribTimelineCacheAdmission(
   result.required_before_mib =
       result.required_reserve_mib +
       static_cast<std::uint64_t>(result.requested_mib);
+
+  if (available_mib && available_mib < kGribTimelineCacheBaseReserveMiB) {
+    result.effective_mib = PressureCacheLimitMiB(
+        result.requested_mib, available_mib);
+    result.required_reserve_mib = available_mib > static_cast<unsigned>(result.effective_mib)
+        ? available_mib - result.effective_mib : 0;
+    result.required_before_mib = available_mib;
+    result.approved = result.effective_mib == result.requested_mib;
+    return result;
+  }
 
   if (process_bits <= 32) {
     result.effective_mib = std::min(result.requested_mib,

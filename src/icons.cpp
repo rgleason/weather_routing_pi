@@ -6,6 +6,7 @@
 #endif
 #include <wx/mstream.h>
 #include "icons.h"
+#include "version.h"
 
 wxBitmap* _img_WeatherRouting;
 
@@ -18,7 +19,7 @@ wxString _svg_weather_routing_toggled;
 
 wxString WeatherRoutingDataFile(const wxString& filename) {
   wxFileName installed;
-  installed.SetPath(GetPluginDataDir("weather_routing_pi"));
+  installed.SetPath(GetPluginDataDir(PLUGIN_PACKAGE_NAME));
   installed.AppendDir(_T("data"));
   installed.SetFullName(filename);
   if (installed.FileExists()) return installed.GetFullPath();
@@ -195,7 +196,7 @@ void initialize_images(void) {
 
 #ifdef PLUGIN_USE_SVG
   wxFileName fn;
-  fn.SetPath(GetPluginDataDir("weather_routing_pi"));
+  fn.SetPath(GetPluginDataDir(PLUGIN_PACKAGE_NAME));
   fn.AppendDir(_T("data"));
   fn.SetFullName(_T("weather_routing_pi.svg"));
   _svg_weather_routing = fn.GetFullPath();

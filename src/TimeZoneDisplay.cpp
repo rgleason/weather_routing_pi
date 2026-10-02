@@ -23,6 +23,10 @@
 #include <set>
 #include <string>
 #include <vector>
+#ifdef __OCPN__ANDROID__
+#include <QDateTime>
+#include <QTimeZone>
+#endif
 
 namespace marine_time {
 namespace {
@@ -329,7 +333,8 @@ std::vector<wxString> TzifZoneNames() {
   }
   std::vector<wxString> result;
   result.reserve(names.size());
-  for (const auto& name : names) result.push_back(wxString::FromUTF8(name));
+  for (const auto& name : names)
+    result.push_back(wxString::FromUTF8(name.c_str()));
   return result;
 }
 
@@ -352,6 +357,12 @@ std::chrono::sys_seconds ToSysSeconds(const wxDateTime& value) {
 
 std::vector<wxString> AvailableTimeZones() {
   std::set<wxString> names;
+#ifdef __OCPN__ANDROID__
+  for (const auto& id : QTimeZone::availableTimeZoneIds()) {
+    const wxString name = wxString::FromUTF8(id.constData());
+    if (name != "UTC") names.insert(name);
+  }
+#endif
 #if MARINE_TIME_HAS_CHRONO_TZDB
   try {
     const auto& zones = std::chrono::get_tzdb().zones;
@@ -374,6 +385,10 @@ std::vector<wxString> AvailableTimeZones() {
 }
 
 wxString SystemTimeZone() {
+#ifdef __OCPN__ANDROID__
+  const QByteArray id = QTimeZone::systemTimeZoneId();
+  if (!id.isEmpty()) return wxString::FromUTF8(id.constData());
+#endif
 #if MARINE_TIME_HAS_CHRONO_TZDB
   try {
     const auto name = std::chrono::current_zone()->name();
@@ -394,13 +409,13 @@ wxString SystemTimeZone() {
   const std::size_t markerAt = local.find(marker);
   if (!error && markerAt != std::string::npos) {
     const wxString name =
-        wxString::FromUTF8(local.substr(markerAt + marker.size()));
+        wxString::FromUTF8(local.substr(markerAt + marker.size()).c_str());
     if (LoadTzif(name)) return name;
   }
   std::ifstream timezone("/etc/timezone");
   std::string name;
   if (std::getline(timezone, name)) {
-    const wxString candidate = wxString::FromUTF8(name);
+    const wxString candidate = wxString::FromUTF8(name.c_str());
     if (LoadTzif(candidate)) return candidate;
   }
 #endif
@@ -409,6 +424,9 @@ wxString SystemTimeZone() {
 
 bool IsTimeZoneAvailable(const wxString& zoneName) {
   if (zoneName == "UTC") return true;
+#ifdef __OCPN__ANDROID__
+  if (QTimeZone(QByteArray(zoneName.utf8_str())).isValid()) return true;
+#endif
 #if MARINE_TIME_HAS_CHRONO_TZDB
   if (Locate(zoneName)) return true;
 #endif
@@ -419,6 +437,15 @@ wxDateTime ToWallClock(const wxDateTime& utc, const wxString& zoneName) {
   if (!utc.IsValid()) return wxDateTime();
   if (zoneName == "UTC") return DateTimeFromSeconds(
       std::chrono::seconds{static_cast<std::int64_t>(utc.GetTicks())});
+#ifdef __OCPN__ANDROID__
+  const QTimeZone androidZone(QByteArray(zoneName.utf8_str()));
+  if (androidZone.isValid()) {
+    const auto instant = QDateTime::fromSecsSinceEpoch(utc.GetTicks(), Qt::UTC);
+    return DateTimeFromSeconds(std::chrono::seconds{
+        static_cast<std::int64_t>(utc.GetTicks()) +
+        androidZone.offsetFromUtc(instant)});
+  }
+#endif
 #if MARINE_TIME_HAS_CHRONO_TZDB
   if (const auto* zone = Locate(zoneName)) {
     const auto wall = zone->to_local(ToSysSeconds(utc));
@@ -459,6 +486,31 @@ WallClockConversion FromWallClock(int year, int month, int day, int hour,
     result.status = WallClockStatus::Valid;
     return result;
   }
+
+#ifdef __OCPN__ANDROID__
+  const QTimeZone androidZone(QByteArray(zoneName.utf8_str()));
+  if (androidZone.isValid()) {
+    const auto naive = duration_cast<seconds>(wall.time_since_epoch()).count();
+    std::set<int> offsets;
+    for (const auto delta : {-172800, 0, 172800})
+      offsets.insert(androidZone.offsetFromUtc(
+          QDateTime::fromSecsSinceEpoch(naive + delta, Qt::UTC)));
+    std::set<std::int64_t> candidates;
+    for (int offset : offsets) {
+      const auto candidate = naive - offset;
+      if (androidZone.offsetFromUtc(
+              QDateTime::fromSecsSinceEpoch(candidate, Qt::UTC)) == offset)
+        candidates.insert(candidate);
+    }
+    if (candidates.empty()) result.status = WallClockStatus::Nonexistent;
+    else {
+      result.utc = DateTimeFromSeconds(seconds{*candidates.begin()});
+      result.status = candidates.size() > 1 ? WallClockStatus::Ambiguous
+                                           : WallClockStatus::Valid;
+    }
+    return result;
+  }
+#endif
 
 #if MARINE_TIME_HAS_CHRONO_TZDB
   if (const auto* zone = Locate(zoneName)) {
@@ -501,6 +553,15 @@ wxString TimeZoneAbbreviation(const wxDateTime& utc,
                               const wxString& zoneName) {
   if (!utc.IsValid()) return wxEmptyString;
   if (zoneName == "UTC") return "UTC";
+#ifdef __OCPN__ANDROID__
+  const QTimeZone androidZone(QByteArray(zoneName.utf8_str()));
+  if (androidZone.isValid()) {
+    const auto instant = QDateTime::fromSecsSinceEpoch(utc.GetTicks(), Qt::UTC);
+    return CanonicalAbbreviation(zoneName,
+        std::chrono::seconds{androidZone.offsetFromUtc(instant)},
+        wxString::FromUTF8(androidZone.abbreviation(instant).toUtf8().constData()));
+  }
+#endif
 #if MARINE_TIME_HAS_CHRONO_TZDB
   if (const auto* zone = Locate(zoneName)) {
     const auto info = zone->get_info(ToSysSeconds(utc));
@@ -514,7 +575,7 @@ wxString TimeZoneAbbreviation(const wxDateTime& utc,
             TypeAt(*zone, static_cast<std::int64_t>(utc.GetTicks())))
       return CanonicalAbbreviation(
           zoneName, std::chrono::seconds{type->utcOffset},
-          wxString::FromUTF8(type->abbreviation));
+          wxString::FromUTF8(type->abbreviation.c_str()));
   }
   return wxEmptyString;
 }
@@ -524,7 +585,19 @@ wxString FormatInTimeZone(const wxDateTime& utc, const wxString& format,
                           bool appendAbbreviation) {
   const wxDateTime wall = ToWallClock(utc, zoneName);
   if (!wall.IsValid()) return wxEmptyString;
+#ifdef __OCPN__ANDROID__
+  // wxQt adds the system DST offset even for an explicit UTC formatter.
+  // A wall-clock epoch has already had its requested zone offset applied.
+  const time_t epoch = wall.GetTicks();
+  struct tm fields {};
+  char buffer[512] {};
+  wxString result;
+  if (gmtime_r(&epoch, &fields) &&
+      strftime(buffer, sizeof(buffer), format.utf8_str(), &fields))
+    result = wxString::FromUTF8(buffer);
+#else
   wxString result = wall.Format(format, wxDateTime::UTC);
+#endif
   if (appendAbbreviation) {
     const wxString abbreviation = TimeZoneAbbreviation(utc, zoneName);
     if (!abbreviation.empty()) result += " " + abbreviation;
