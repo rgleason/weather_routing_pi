@@ -1669,6 +1669,25 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
       _("Auto: Quick, then Standard, then Professional up to 400% effort; stops at the first validated route."));
   m_tRoutingEngineDescription->Wrap(430);
   engineBox->Add(m_tRoutingEngineDescription, 0, wxALL | wxEXPAND, 5);
+  m_cbExploreComfortAlternatives = new wxCheckBox(engineBox->GetStaticBox(), wxID_ANY,
+      _("Search additional fastest / comfort alternatives"), wxDefaultPosition, wxDefaultSize, wxCHK_3STATE);
+  m_cbExploreComfortAlternatives->SetToolTip(_("Find and preserve the normal validated route first, then explore alternatives using the selected engine. Auto explores with its successful engine. Extra limits never restrict finding the first route."));
+  engineBox->Add(m_cbExploreComfortAlternatives, 0, wxALL | wxEXPAND, 5);
+  auto* comfortControls = new wxFlexGridSizer(0, 2, 4, 6);
+  comfortControls->Add(new wxStaticText(engineBox->GetStaticBox(), wxID_ANY, _("Additional search allowance (%)")), 0, wxALIGN_CENTER_VERTICAL);
+  m_sComfortAdditionalPercent = new wxSpinCtrl(engineBox->GetStaticBox(), wxID_ANY, "200", wxDefaultPosition, wxSize(120,-1), wxSP_ARROW_KEYS, 0, 400, 200);
+  m_sComfortAdditionalPercent->SetToolTip(_("Extra computation time as a percentage of the normal route computation. 200% permits twice that time after the valid route is secured. Separate from Professional effort."));
+  comfortControls->Add(m_sComfortAdditionalPercent, 0);
+  comfortControls->Add(new wxStaticText(engineBox->GetStaticBox(), wxID_ANY, _("Maximum additional time (seconds)")), 0, wxALIGN_CENTER_VERTICAL);
+  m_sComfortMaximumSeconds = new wxSpinCtrl(engineBox->GetStaticBox(), wxID_ANY, "20", wxDefaultPosition, wxSize(120,-1), wxSP_ARROW_KEYS, 0, 3600, 20);
+  m_sComfortMaximumSeconds->SetToolTip(_("Use the smaller of the percentage allowance and this cap, per departure. Stop further search work at the deadline; an in-flight provider call can overrun. Zero disables extras."));
+  comfortControls->Add(m_sComfortMaximumSeconds, 0);
+  engineBox->Add(comfortControls, 0, wxALL, 5);
+  m_cbExploreComfortAlternatives->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent& event) { OnUpdate(event); });
+  m_sComfortAdditionalPercent->Bind(wxEVT_SPINCTRL, [this](wxSpinEvent& event) { OnUpdateSpin(event); });
+  m_sComfortMaximumSeconds->Bind(wxEVT_SPINCTRL, [this](wxSpinEvent& event) { OnUpdateSpin(event); });
+  m_sComfortAdditionalPercent->Bind(wxEVT_TEXT, [this](wxCommandEvent& event) { OnUpdate(event); });
+  m_sComfortMaximumSeconds->Bind(wxEVT_TEXT, [this](wxCommandEvent& event) { OnUpdate(event); });
   fgSizer112->Add(engineBox, 0, wxEXPAND | wxALL, 5);
 
   wxStaticBoxSizer* sbOptions;

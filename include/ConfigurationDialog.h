@@ -78,6 +78,7 @@ public:
    */
   void SetConfigurations(std::list<RouteMapConfiguration> configuration);
   void Update();
+  bool RunComfortHostContract();
 
   void AddSource(wxString name);
   void RemoveSource(wxString name);

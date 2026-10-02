@@ -310,11 +310,28 @@ public:
       : flag_(std::move(flag)) {}
   void cancel() const { flag_->store(true, std::memory_order_relaxed); }
   [[nodiscard]] bool cancelled() const {
-    return flag_->load(std::memory_order_relaxed);
+    return flag_->load(std::memory_order_relaxed) ||
+        extraStopped() ||
+        (deadline_ && std::chrono::steady_clock::now() >= *deadline_);
+  }
+  // A bounded child never cancels its parent when its allowance expires.
+  [[nodiscard]] CancellationToken bounded(
+      std::chrono::steady_clock::time_point deadline,
+      std::shared_ptr<std::atomic_bool> stop) const {
+    auto child = *this;
+    if (!child.deadline_ || deadline < *child.deadline_) child.deadline_ = deadline;
+    if (stop) child.extraStops_.push_back(std::move(stop));
+    return child;
   }
 
 private:
   std::shared_ptr<std::atomic_bool> flag_;
+  bool extraStopped() const {
+    for (const auto& flag : extraStops_) if (flag->load(std::memory_order_relaxed)) return true;
+    return false;
+  }
+  std::vector<std::shared_ptr<std::atomic_bool>> extraStops_;
+  std::optional<std::chrono::steady_clock::time_point> deadline_;
 };
 
 enum class RoutingProgressStage {

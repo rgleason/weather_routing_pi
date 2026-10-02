@@ -213,6 +213,8 @@ bool RouteMapOverlay::Start(wxString& error) {
 
   Lock();
   m_ModernProgress.Begin();
+  m_ComfortStop->store(false);
+  m_ExploringComfort.store(false);
   m_RetainedCandidates.clear();
   m_SelectedRetainedCandidateId.clear();
   Unlock();

@@ -926,6 +926,7 @@ private:
   wxTextCtrl* m_RoutingProgressDetail;
   wxStaticText* m_RoutingProgressTiming;
   wxGauge* m_RoutingProgressGauge;
+  wxButton* m_StopComfortButton{nullptr};
   wxDateTime m_RoutingProgressStartTime;
   wxDateTime m_RoutingProgressStageStartTime;
   wxString m_RoutingProgressCurrentStage;

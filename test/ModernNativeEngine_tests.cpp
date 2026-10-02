@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "engine/native/ComfortAlternatives.h"
 #include "engine/native/CoordinateNormalization.h"
 #include "engine/native/WeatherCoverage.h"
 #include "original_routing/Engine.h"
@@ -1689,3 +1690,261 @@ TEST(ModernNativeEngine, RejectsUncoveredDestinationBeforeGeneratingSearchStates
   EXPECT_NE(result.message.find("route endpoints"), std::string::npos);
   EXPECT_EQ(result.diagnostics.generatedStates, 0u);
 }
+
+namespace {
+namespace alternatives = weather_routing::native;
+class RoughLaneWeather final : public WeatherProvider {
+ public:
+  bool wavesAvailable{true};
+  std::shared_ptr<UniformWeatherProvider> weather{TestWeather()};
+  ParameterCoverage windCoverage() const override { return weather->windCoverage(); }
+  ParameterCoverage currentCoverage() const override { return weather->currentCoverage(); }
+  ParameterCoverage waveCoverage() const override {
+    return wavesAvailable ? weather->waveCoverage() : ParameterCoverage{};
+  }
+  WindSample wind(GeoPoint p, TimePoint t) const override {
+    auto sample = weather->wind(p, t);
+    sample.velocity = speedDirectionToVector(std::abs(p.latitude) < 0.006 ? 30.0 : 14.0, 180.0);
+    return sample;
+  }
+  CurrentSample current(GeoPoint p, TimePoint t) const override { return weather->current(p, t); }
+  WaveSample waves(GeoPoint p, TimePoint t) const override {
+    return wavesAvailable ? weather->waves(p, t) : WaveSample{};
+  }
+  std::string identity() const override { return "rough-central-lane"; }
+};
+RoutingRequest AlternativesRequest() {
+  auto request = TestRequest();
+  request.start = {0, 0};
+  request.destination = {0, .2};
+  request.options.timeStep = std::chrono::minutes{20};
+  request.options.headingStepDegrees = 10;
+  request.options.minimumTimeStep = std::chrono::minutes{5};
+  request.options.destinationToleranceNm = .05;
+  request.options.useGraphFallback = false;
+  request.options.useFrontierRecovery = false;
+  request.options.useReverseRecovery = false;
+  request.vessel.tackPenalty = {};
+  request.vessel.gybePenalty = {};
+  request.limits.maximumRouteDuration = std::chrono::hours{8};
+  return request;
+}
+RoutingEnvironment AlternativesEnvironment(const RoutingRequest& request) {
+  auto env = TestEnvironment();
+  env.grib = std::make_shared<RoughLaneWeather>();
+  env.performance = std::make_shared<ConstantSpeedPerformance>();
+  return env;
+}
+alternatives::ComfortSolve AlternativeSolver(int engine, bool windOnly = true) {
+  return [engine, windOnly](const RoutingRequest& request, const RoutingEnvironment& env,
+                            bool directed) {
+    std::vector<RoutingResult> results;
+    if (engine == 0)
+      results.push_back(original_routing::Engine{}.route(request, env));
+    else if (engine == 2)
+      results.push_back(ProfessionalEngine{}.route(request, env));
+    else {
+      QuickRoutingOptions options;
+      options.offshoreStep = request.options.timeStep;
+      options.headingStepDegrees = request.options.headingStepDegrees;
+      options.maximumGeneratedStates = request.limits.maximumGeneratedStates;
+      if (directed) {
+        options.comfortWeight = 1;
+        options.comfortWindOnly = windOnly;
+        options.maximumValidatedCandidates = 24;
+      }
+      auto result = QuickRoutingEngine{}.route(request, env, options);
+      results = std::move(result.alternatives);
+      if (results.empty())
+        results.push_back(std::move(result.route));
+      else
+        results.front().diagnostics = result.route.diagnostics;
+    }
+    return results;
+  };
+}
+TEST(ComfortAlternatives, RelativeAllowanceHasAnIndependentSecondsCeiling) {
+  alternatives::ComfortSearchOptions options;
+  options.additionalPercent = 400;
+  options.maximumSeconds = 20;
+  EXPECT_EQ(alternatives::ComfortAllowance(std::chrono::seconds{3}, options),
+            std::chrono::seconds{12});
+  EXPECT_EQ(alternatives::ComfortAllowance(std::chrono::seconds{30}, options),
+            std::chrono::seconds{20});
+  options.additionalPercent = 0;
+  EXPECT_EQ(alternatives::ComfortAllowance(std::chrono::seconds{30}, options).count(), 0);
+}
+TEST(ComfortAlternatives, NestedDeadlineAndStopDoNotCancelTheParent) {
+  CancellationToken parent;
+  auto stop = std::make_shared<std::atomic_bool>(false);
+  auto work = std::make_shared<std::atomic_bool>(false);
+  auto child = parent.bounded(std::chrono::steady_clock::now() + std::chrono::hours{1}, stop)
+                   .bounded(std::chrono::steady_clock::now() + std::chrono::hours{1}, work);
+  stop->store(true);
+  EXPECT_TRUE(child.cancelled());
+  EXPECT_FALSE(parent.cancelled());
+  stop->store(false);
+  work->store(true);
+  EXPECT_TRUE(child.cancelled());
+  EXPECT_FALSE(parent.cancelled());
+  auto expired = parent.bounded(std::chrono::steady_clock::now(), {});
+  EXPECT_TRUE(expired.cancelled());
+  EXPECT_FALSE(parent.cancelled());
+  parent.cancel();
+  EXPECT_TRUE(child.cancelled());
+}
+class AllEngineAlternatives : public testing::TestWithParam<int> {};
+TEST_P(AllEngineAlternatives, SameEngineExplorationFindsAndRevalidatesGentlerRoutes) {
+  auto request = AlternativesRequest();
+  auto env = AlternativesEnvironment(request);
+  auto solver = AlternativeSolver(GetParam());
+  auto first = solver(request, env, false);
+  ASSERT_FALSE(first.empty());
+  auto baseline = first.front();
+  ASSERT_TRUE(alternatives::AcceptedRoute(baseline)) << baseline.message;
+  const auto saved = baseline.legs.size();
+  alternatives::ComfortSearchOptions options;
+  options.maximumSeconds = 4;
+  options.additionalPercent = 400;
+  options.nativeComfortLanes = GetParam() == 1;
+  auto report = alternatives::ExploreComfortAlternatives(
+      request, env, baseline, std::chrono::seconds{1}, options, solver,
+      [](const auto&) { return true; }, std::make_shared<std::atomic_bool>(false));
+  ASSERT_FALSE(report.alternatives.empty())
+      << "engine=" << GetParam() << " attempts=" << report.attempts
+      << " rejected=" << report.rejected << " missing=" << report.missing
+      << " exhausted=" << report.exhausted << " weather=" << report.weatherCalls
+      << " generated=" << report.generated;
+  EXPECT_EQ(baseline.legs.size(), saved);
+  bool gentler = false;
+  for (const auto& route : report.alternatives) {
+    EXPECT_TRUE(RouteValidator{}.validate(request, env, *env.performance, route.legs).passed);
+    EXPECT_LE(route.metrics.elapsed, baseline.metrics.elapsed + baseline.metrics.elapsed / 2);
+    gentler = gentler || routeDiscomfortSeconds(route.legs, true) <
+                             routeDiscomfortSeconds(baseline.legs, true) * .9;
+  }
+  EXPECT_TRUE(gentler);
+  EXPECT_LE(report.alternatives.size(), 4U);
+}
+INSTANTIATE_TEST_SUITE_P(QuickStandardProfessional, AllEngineAlternatives,
+                         testing::Values(0, 1, 2));
+TEST(ComfortAlternatives, ExhaustedWorkAndExplicitStopPreserveTheBaseline) {
+  auto request = AlternativesRequest();
+  auto env = AlternativesEnvironment(request);
+  auto solver = AlternativeSolver(1);
+  const auto baseline = solver(request, env, false).front();
+  ASSERT_TRUE(alternatives::AcceptedRoute(baseline));
+  auto stop = std::make_shared<std::atomic_bool>(false);
+  alternatives::ComfortSearchOptions options;
+  options.maximumWeatherCalls = 1;
+  auto report = alternatives::ExploreComfortAlternatives(
+      request, env, baseline, std::chrono::seconds{1}, options, solver,
+      [](const auto&) { return true; }, stop);
+  EXPECT_TRUE(report.exhausted);
+  EXPECT_TRUE(report.alternatives.empty());
+  EXPECT_TRUE(alternatives::AcceptedRoute(baseline));
+  stop->store(true);
+  options.maximumWeatherCalls = 2000000;
+  report = alternatives::ExploreComfortAlternatives(
+      request, env, baseline, std::chrono::seconds{1}, options, solver,
+      [](const auto&) { return true; }, stop);
+  EXPECT_TRUE(report.stopped);
+  EXPECT_FALSE(report.cancelled);
+  EXPECT_TRUE(report.alternatives.empty());
+  EXPECT_TRUE(alternatives::AcceptedRoute(baseline));
+}
+TEST(ComfortAlternatives, MissingWavesNeverProduceFullConditionCandidates) {
+  auto request = AlternativesRequest();
+  auto env = AlternativesEnvironment(request);
+  auto weather = std::make_shared<RoughLaneWeather>();
+  weather->wavesAvailable = false;
+  env.grib = weather;
+  auto solver = AlternativeSolver(1);
+  const auto baseline = solver(request, env, false).front();
+  ASSERT_TRUE(alternatives::AcceptedRoute(baseline));
+  alternatives::ComfortSearchOptions options;
+  options.windOnly = false;
+  options.maximumSeconds = 1;
+  auto report = alternatives::ExploreComfortAlternatives(
+      request, env, baseline, std::chrono::seconds{1}, options, solver,
+      [](const auto&) { return true; }, std::make_shared<std::atomic_bool>(false));
+  EXPECT_TRUE(report.alternatives.empty());
+  EXPECT_GT(report.missing, 0U);
+}
+TEST(ComfortAlternatives, HostRejectionsCannotBecomeRetainedCandidates) {
+  auto request = AlternativesRequest();
+  auto env = AlternativesEnvironment(request);
+  auto solver = AlternativeSolver(1);
+  const auto baseline = solver(request, env, false).front();
+  ASSERT_TRUE(alternatives::AcceptedRoute(baseline));
+  alternatives::ComfortSearchOptions options;
+  options.maximumSeconds = 1;
+  auto report = alternatives::ExploreComfortAlternatives(
+      request, env, baseline, std::chrono::seconds{1}, options, solver,
+      [](const auto&) { return false; }, std::make_shared<std::atomic_bool>(false));
+  EXPECT_TRUE(report.alternatives.empty());
+  EXPECT_GT(report.rejected, 0U);
+}
+TEST(ComfortAlternatives, FailedBaselineNeverSpendsExplorationBudget) {
+  auto request = AlternativesRequest();
+  auto env = AlternativesEnvironment(request);
+  RoutingResult failed;
+  unsigned calls = 0;
+  alternatives::ComfortSearchOptions options;
+  auto report = alternatives::ExploreComfortAlternatives(
+      request, env, failed, std::chrono::seconds{1}, options,
+      [&](const auto&, const auto&, bool) {
+        ++calls;
+        return std::vector<RoutingResult>{};
+      },
+      [](const auto&) { return true; }, std::make_shared<std::atomic_bool>(false));
+  EXPECT_EQ(calls, 0U);
+  EXPECT_TRUE(report.alternatives.empty());
+}
+TEST(ComfortAlternatives, SoftStopKeepsValidatedExtrasButWholeCancellationDiscardsThem) {
+  for (bool whole : {false, true}) {
+    auto request = AlternativesRequest();
+    auto env = AlternativesEnvironment(request);
+    auto solver = AlternativeSolver(1);
+    const auto baseline = solver(request, env, false).front();
+    ASSERT_TRUE(alternatives::AcceptedRoute(baseline));
+    auto stop = std::make_shared<std::atomic_bool>(false);
+    alternatives::ComfortSearchOptions options;
+    options.maximumSeconds = 1;
+    const auto report = alternatives::ExploreComfortAlternatives(
+        request, env, baseline, std::chrono::seconds{1}, options, solver,
+        [&](const auto&) {
+          if (whole)
+            request.cancellation.cancel();
+          else
+            stop->store(true);
+          return true;
+        },
+        stop);
+    EXPECT_EQ(report.cancelled, whole);
+    EXPECT_EQ(report.stopped, !whole);
+    EXPECT_EQ(report.alternatives.empty(), whole);
+    EXPECT_TRUE(alternatives::AcceptedRoute(baseline));
+  }
+}
+TEST(ComfortAlternatives, ThrowingSolverStopsUnaccountedWorkAndPreservesBaseline) {
+  auto request = AlternativesRequest();
+  auto env = AlternativesEnvironment(request);
+  const auto baseline = AlternativeSolver(1)(request, env, false).front();
+  ASSERT_TRUE(alternatives::AcceptedRoute(baseline));
+  unsigned calls = 0;
+  alternatives::ComfortSearchOptions options;
+  const auto report = alternatives::ExploreComfortAlternatives(
+      request, env, baseline, std::chrono::seconds{1}, options,
+      [&](const auto&, const auto&, bool) -> std::vector<RoutingResult> {
+        ++calls;
+        throw std::runtime_error("optional solver failed after spending work");
+      },
+      [](const auto&) { return true; }, std::make_shared<std::atomic_bool>(false));
+  EXPECT_EQ(calls, 1U);
+  EXPECT_TRUE(report.exhausted);
+  EXPECT_FALSE(report.cancelled);
+  EXPECT_TRUE(report.alternatives.empty());
+  EXPECT_TRUE(alternatives::AcceptedRoute(baseline));
+}
+}  // namespace

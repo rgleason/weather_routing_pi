@@ -1189,6 +1189,9 @@ void ConfigurationDialog::SetConfigurations(
   SET_CHECKBOX(DetectBoundary);
   SET_CHECKBOX(Currents);
   SET_CHECKBOX(OptimizeTacking);
+  SET_CHECKBOX(ExploreComfortAlternatives);
+  SET_SPIN(ComfortAdditionalPercent);
+  SET_SPIN(ComfortMaximumSeconds);
 
   SET_CHECKBOX(InvertedRegions);
   SET_CHECKBOX(UseReverseReachabilityRecovery);
@@ -1302,10 +1305,11 @@ bool ConfigurationDialog::HandleEngineEdit(wxObject* control) {
   const bool quickField = control == m_sQuickOffshoreStepMinutes ||
       control == m_sQuickHeadingStepDegrees || control == m_sQuickMaximumSearchAngle;
   if (!mainField && !quickField && control != m_cRoutingEngine &&
-      control != m_sQuickMemoryBudgetMiB &&
-      control != m_sMainGribTimelineCacheMiB &&
-      control != m_sQuickGribTimelineCacheMiB &&
-      control != m_cShorelineResolution) return false;
+      control != m_sQuickMemoryBudgetMiB && control != m_cbExploreComfortAlternatives &&
+      control != m_sComfortAdditionalPercent && control != m_sComfortMaximumSeconds &&
+      control != m_sMainGribTimelineCacheMiB && control != m_sQuickGribTimelineCacheMiB &&
+      control != m_cShorelineResolution)
+    return false;
   if (m_bBlockUpdate) return true;
   // Engine edits must not round-trip unrelated controls: some old controls
   // display rounded percentages or mixed values. Keep their exact saved data.
@@ -1327,6 +1331,13 @@ bool ConfigurationDialog::HandleEngineEdit(wxObject* control) {
       config.shoreline_description.clear();
       config.shoreline_error.clear();
     }
+    if (control == m_cbExploreComfortAlternatives &&
+        m_cbExploreComfortAlternatives->Get3StateValue() != wxCHK_UNDETERMINED)
+      config.ExploreComfortAlternatives = m_cbExploreComfortAlternatives->IsChecked();
+    if (control == m_sComfortAdditionalPercent)
+      config.ComfortAdditionalPercent = std::clamp(m_sComfortAdditionalPercent->GetValue(), 0, 400);
+    if (control == m_sComfortMaximumSeconds)
+      config.ComfortMaximumSeconds = std::clamp(m_sComfortMaximumSeconds->GetValue(), 0, 3600);
     if (control == m_cRoutingEngine) {
       if (m_cRoutingEngine->GetSelection() == wxNOT_FOUND) continue;
       config.EngineSettings.engine = weather_routing::EngineFromSelection(m_cRoutingEngine->GetSelection());
@@ -1394,6 +1405,12 @@ void ConfigurationDialog::UpdateEngineControls() {
   bool running = false;
   for (auto* route : m_WeatherRouting.CurrentRouteMaps(false)) running |= route->Running();
   m_cRoutingEngine->Enable(!running);
+  const bool departureMode = m_rbRouteByDepartureTime->GetValue();
+  m_cbExploreComfortAlternatives->Enable(!running && departureMode);
+  m_sComfortAdditionalPercent->Enable(!running && departureMode &&
+                                      m_cbExploreComfortAlternatives->IsChecked());
+  m_sComfortMaximumSeconds->Enable(!running && departureMode &&
+                                   m_cbExploreComfortAlternatives->IsChecked());
   const bool chartAuthoritative = m_WeatherRouting.HasEnhancedChartSafety() &&
       m_cbUseExperimentalChartSafety->GetValue() && m_cbEnforceExperimentalChartSafety->GetValue();
   int shoreline = wxNOT_FOUND;
@@ -1982,4 +1999,59 @@ void ConfigurationDialog::Update() {
 
   // Schedule auto-save to persist any configuration changes
   m_WeatherRouting.ScheduleAutoSave();
+}
+
+// Invoked only by an explicit disposable headless scenario in the host.
+bool ConfigurationDialog::RunComfortHostContract() {
+  auto routes = m_WeatherRouting.CurrentRouteMaps(false);
+  if (routes.size() != 1 || routes.front()->Running()) return false;
+  const auto saved = routes.front()->GetConfiguration();
+  SetConfigurations({saved});
+  const auto checkbox = [&](bool value) {
+    m_cbExploreComfortAlternatives->SetValue(value);
+    wxCommandEvent event(wxEVT_CHECKBOX, m_cbExploreComfortAlternatives->GetId());
+    event.SetEventObject(m_cbExploreComfortAlternatives);
+    m_cbExploreComfortAlternatives->GetEventHandler()->ProcessEvent(event);
+  };
+  const auto spin = [&](wxSpinCtrl* control, int value) {
+    control->SetValue(value);
+    wxSpinEvent event(wxEVT_SPINCTRL, control->GetId());
+    event.SetEventObject(control);
+    control->GetEventHandler()->ProcessEvent(event);
+  };
+  checkbox(false);
+  bool passed = !routes.front()->GetConfiguration().ExploreComfortAlternatives &&
+                !m_sComfortAdditionalPercent->IsEnabled();
+  checkbox(true);
+  spin(m_sComfortAdditionalPercent, 400);
+  spin(m_sComfortMaximumSeconds, 3);
+  const auto changed = routes.front()->GetConfiguration();
+  passed = passed && changed.ExploreComfortAlternatives &&
+           changed.ComfortAdditionalPercent == 400 && changed.ComfortMaximumSeconds == 3 &&
+           m_sComfortAdditionalPercent->IsEnabled();
+  passed = passed && changed.StartTime == saved.StartTime && changed.DeltaTime == saved.DeltaTime &&
+           changed.MaxSwellMeters == saved.MaxSwellMeters &&
+           changed.EngineSettings.engine == saved.EngineSettings.engine;
+  SetConfigurations({changed});
+  passed = passed && m_cbExploreComfortAlternatives->IsChecked() &&
+           m_sComfortAdditionalPercent->GetValue() == 400 &&
+           m_sComfortMaximumSeconds->GetValue() == 3;
+  if (auto* config = GetOCPNConfigObject()) {
+    passed =
+        passed &&
+        config->ReadBool("/PlugIns/WeatherRouting/LastUsedConfiguration/ExploreComfortAlternatives",
+                         false) &&
+        config->ReadLong("/PlugIns/WeatherRouting/LastUsedConfiguration/ComfortAdditionalPercent",
+                         0) == 400 &&
+        config->ReadLong("/PlugIns/WeatherRouting/LastUsedConfiguration/ComfortMaximumSeconds",
+                         0) == 3;
+  } else
+    passed = false;
+  checkbox(saved.ExploreComfortAlternatives);
+  spin(m_sComfortAdditionalPercent, saved.ComfortAdditionalPercent);
+  spin(m_sComfortMaximumSeconds, saved.ComfortMaximumSeconds);
+  Show();
+  Raise();
+  wxLogMessage("WR_COMFORT_CONFIGURATION_CONTRACT passed=%d", passed ? 1 : 0);
+  return passed;
 }
