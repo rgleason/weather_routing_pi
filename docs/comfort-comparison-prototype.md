@@ -22,13 +22,17 @@ For each delivered leg, exposure is its condition severity multiplied by its dur
 Every retained candidate also records:
 
 - Time in Good, Bumpy, Difficult and unknown conditions.
-- Wave-data coverage and the longest continuous Difficult spell.
+- Wave-data coverage, missing-wave duration and the longest continuous Difficult spell.
 - The **worst known leg**, independently of the total: category, numerical severity, leg index, start/end coordinates and start/end time. Its duration is retained too. This permits later weighting of the peak, or a separate worst-leg constraint, without recalculating the search.
 - Delivered geometry, elapsed time, engine provenance, shoreline provenance and validation status.
 
 Worst-leg severity is available for sorting and inspection now; no additional peak penalty is imposed in this pass. Search frontier/isochrone geometry is not retained for each alternative, keeping the cache compact.
 
-Missing wave or wind information is **unknown**, not calm. A partially covered route remains selectable as a validated fastest result, but cannot win the full-condition comfort ranking. The explicit **Compare wind only (ignore waves)** checkbox permits wind-only comparison and labels that mode. Existing hard weather and land limits continue to apply before retention. Changing comparison mode never relaxes validation. With no wave coverage, the dialog tells the user to select wind-only comparison or load wave data and recompute; unknown difficult exposure is labelled incomplete. Departure, ETA and worst-leg timestamps in this comparison are explicitly formatted as UTC, including when the desktop uses BST.
+Missing wave or wind information is **unknown**, not calm. A partially covered route remains selectable as a validated fastest result, but cannot win the full-condition comfort ranking. Wind + wave ranking requires wind and wave height at every delivered route-leg sample (100% coverage). Coastal wave-grid gaps can prevent this even when the GRIB contains wave fields; coastal routing is not inherently excluded. Coverage and missing-wave duration are weighted by each leg's duration, rather than a continuous measurement of every point along the passage.
+
+The explicit **Rank by wind comfort only** checkbox excludes waves from exposure, average discomfort and difficult-duration ranking metrics. The separate **Worst known (wind + waves)** column, its sorting and the detailed **Worst known leg, including available waves** summary always use the full-condition metric, irrespective of ranking mode. If no leg has both wind and wave-height data, that metric remains unknown. The wave-coverage percentage and missing-wave duration also remain visible in both modes. Missing conditions never become calm conditions or an estimated wave value.
+
+Existing hard weather and land limits continue to apply before retention. Changing comparison mode never relaxes validation. With incomplete coverage, the dialog explains the full-condition requirement and offers wind-only ranking; unknown difficult exposure is labelled incomplete. Departure, ETA and worst-leg timestamps in this comparison are explicitly formatted as UTC, including when the desktop uses BST.
 
 ## Scope and limitations
 

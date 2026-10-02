@@ -33,6 +33,11 @@ wxString EngineTitle(const std::string& engine) {
   if (engine == "alternative") return _("Alternative");
   return wxString::FromUTF8(engine);
 }
+wxString WorstKnownText(const weather_routing::RouteComfort& comfort) {
+  return comfort.worstCategory > 0 ? wxString::Format("%s %.3f",
+      RouteMapOverlay::sailingConditionText(comfort.worstCategory), comfort.worstSeverity)
+      : _("Unknown");
+}
 }
 
 RouteComparisonDialog::RouteComparisonDialog(WeatherRouting& routing)
@@ -52,7 +57,8 @@ RouteComparisonDialog::RouteComparisonDialog(WeatherRouting& routing)
   m_Order->SetSelection(0);
   controls->Add(m_Order, 0, wxALIGN_CENTER_VERTICAL | wxALL, 6);
   layout->Add(controls, 0, wxEXPAND);
-  m_WindOnly = new wxCheckBox(this, wxID_ANY, _("Compare wind only (ignore waves)"));
+  m_WindOnly = new wxCheckBox(this, wxID_ANY, _("Rank by wind comfort only"));
+  m_WindOnly->SetToolTip(_("Exclude waves from comfort ranking. The worst known leg still includes available waves. Route validation is unchanged."));
   layout->Add(m_WindOnly, 0, wxALL, 6);
   m_Summary = new wxStaticText(this, wxID_ANY, wxEmptyString);
   layout->Add(m_Summary, 0, wxEXPAND | wxALL, 6);
@@ -61,7 +67,8 @@ RouteComparisonDialog::RouteComparisonDialog(WeatherRouting& routing)
   auto tableFont = m_List->GetFont(); tableFont.SetPointSize(11); m_List->SetFont(tableFont);
   const wxString columns[] = {_("ID"), _("Engine"), _("Departure UTC"), _("ETA UTC"),
       _("Passage"), _("Extra time"), _("Exposure"), _("Average"), _("Difficult"),
-      _("Worst known"), _("Longest difficult"), _("Wave coverage"), _("Validation")};
+      _("Worst known (wind + waves)"), _("Longest difficult"), _("Wave coverage"),
+      _("Missing waves"), _("Validation")};
   for (unsigned i = 0; i < std::size(columns); ++i)
     m_List->InsertColumn(i, columns[i], wxLIST_FORMAT_LEFT,
                          i == 2 || i == 3 ? 180 : i == 10 ? 140 : i == 0 ? 75 : 110);
@@ -69,7 +76,10 @@ RouteComparisonDialog::RouteComparisonDialog(WeatherRouting& routing)
   auto* note = new wxStaticText(this, wxID_ANY,
       _("Choose a row to show that validated route immediately. Slider sets an extra-time allowance. "
         "Table durations use hours:minutes:seconds. Exposure accumulates condition severity over time (severity-hours). "
-        "Unknown conditions are excluded from comfort ranking."));
+        "Wind + wave ranking requires wind and wave height at every route-leg sample (100% coverage). "
+        "Coastal wave-grid gaps can prevent this even when the GRIB contains waves. "
+        "Rank by wind comfort only to compare without waves. Worst known leg always includes available waves; "
+        "conditions in gaps remain unknown. Coverage and missing-wave duration are weighted by leg duration."));
   note->Wrap(1050);
   layout->Add(note, 0, wxEXPAND | wxALL, 6);
   auto* close = new wxButton(this, wxID_CLOSE, _("Close"));
@@ -120,6 +130,11 @@ void RouteComparisonDialog::RunHostContract(bool lifecycle) {
     m_WindOnly->SetValue(windOnly);
     wxCommandEvent mode(wxEVT_CHECKBOX, m_WindOnly->GetId());
     m_WindOnly->GetEventHandler()->ProcessEvent(mode);
+    for (long row = 0; row < m_List->GetItemCount(); ++row) {
+      const auto& full = m_Entries[m_List->GetItemData(row)].fullComfort;
+      passed = passed && m_List->GetItemText(row, 9) == WorstKnownText(full) &&
+          m_List->GetItemText(row, 12) == TableDuration(full.durationSeconds - full.waveCoveredSeconds);
+    }
     for (int value = 0; value <= 100; value += 5) {
       m_Slider->SetValue(value);
       wxCommandEvent event(wxEVT_SLIDER, m_Slider->GetId());
@@ -128,9 +143,17 @@ void RouteComparisonDialog::RunHostContract(bool lifecycle) {
       for (const auto& entry : m_Entries) metrics.push_back(entry.metric);
       const auto selected = weather_routing::SelectComfortCandidate(metrics, value);
       passed = passed && m_PreviewId == metrics[selected.selected].id;
+      const auto& full = m_Entries[selected.selected].fullComfort;
+      passed = passed && m_Summary->GetLabel().Contains(
+          wxString::Format(_("Missing waves: %s."), DurationText(full.durationSeconds - full.waveCoveredSeconds)));
+      if (full.worstCategory > 0)
+        passed = passed && m_Summary->GetLabel().Contains(wxString::Format(
+            _("Worst known leg, including available waves: #%lu, %s, severity %.3f"),
+            static_cast<unsigned long>(full.worstLegIndex + 1),
+            RouteMapOverlay::sailingConditionText(full.worstCategory), full.worstSeverity));
     }
   }
-  for (int column : {4, 6, 9, 2}) {
+  for (int column : {4, 6, 9, 12, 2}) {
     wxListEvent sort(wxEVT_LIST_COL_CLICK, m_List->GetId());
     sort.SetColumn(column); m_List->GetEventHandler()->ProcessEvent(sort);
   }
@@ -250,9 +273,11 @@ void RouteComparisonDialog::Populate() {
       case 6: return c.comparable() ? c.exposureHours : std::numeric_limits<double>::infinity();
       case 7: return c.comparable() ? c.averageDiscomfort : std::numeric_limits<double>::infinity();
       case 8: return c.categorySeconds[3];
-      case 9: return c.worstSeverity;
+      case 9: return e.fullComfort.worstSeverity;
       case 10: return c.longestDifficultSeconds;
-      case 11: return c.durationSeconds > 0 ? double(c.waveCoveredSeconds) / c.durationSeconds : 0;
+      case 11: return e.fullComfort.durationSeconds > 0 ?
+          double(e.fullComfort.waveCoveredSeconds) / e.fullComfort.durationSeconds : 0;
+      case 12: return e.fullComfort.durationSeconds - e.fullComfort.waveCoveredSeconds;
       default: return e.metric.elapsedSeconds;
     }
   };
@@ -287,12 +312,12 @@ void RouteComparisonDialog::Populate() {
     m_List->SetItem(row, 6, c.comparable() ? wxString::Format("%.3f", c.exposureHours) : _("Incomplete"));
     m_List->SetItem(row, 7, c.comparable() ? wxString::Format("%.3f", c.averageDiscomfort) : _("Incomplete"));
     m_List->SetItem(row, 8, c.comparable() ? TableDuration(c.categorySeconds[3]) : _("Incomplete"));
-    m_List->SetItem(row, 9, c.worstCategory > 0 ? wxString::Format("%s %.3f",
-        RouteMapOverlay::sailingConditionText(c.worstCategory), c.worstSeverity) : _("Unknown"));
+    m_List->SetItem(row, 9, WorstKnownText(e.fullComfort));
     m_List->SetItem(row, 10, c.comparable() ? TableDuration(c.longestDifficultSeconds) : _("Incomplete"));
-    m_List->SetItem(row, 11, wxString::Format("%.0f%%", c.durationSeconds > 0 ?
-        100.0 * c.waveCoveredSeconds / c.durationSeconds : 0.0));
-    m_List->SetItem(row, 12, _("Pass"));
+    m_List->SetItem(row, 11, wxString::Format("%.0f%%", e.fullComfort.durationSeconds > 0 ?
+        100.0 * e.fullComfort.waveCoveredSeconds / e.fullComfort.durationSeconds : 0.0));
+    m_List->SetItem(row, 12, TableDuration(e.fullComfort.durationSeconds - e.fullComfort.waveCoveredSeconds));
+    m_List->SetItem(row, 13, _("Pass"));
     if (e.metric.id == m_PreviewId) m_List->SetItemState(row, wxLIST_STATE_SELECTED, wxLIST_STATE_SELECTED);
   }
   for (int column = 0; column < m_List->GetColumnCount(); ++column) {
@@ -367,27 +392,29 @@ void RouteComparisonDialog::Preview(std::size_t index) {
   wxString text = wxString::Format(_("%lu validated candidates. Allow up to %s extra. Selected %s (%s): passage %s.\n"),
       static_cast<unsigned long>(m_Entries.size()), DurationText(selection.allowanceSeconds),
       wxString::FromUTF8(entry.metric.id), entry.engine, DurationText(entry.metric.elapsedSeconds));
+  const auto& full = entry.fullComfort;
+  text += wxString::Format(_("Wave coverage: %.0f%%. Missing waves: %s.\n"),
+      full.durationSeconds > 0 ? 100.0 * full.waveCoveredSeconds / full.durationSeconds : 0.0,
+      DurationText(full.durationSeconds - full.waveCoveredSeconds));
   if (c.comparable()) text += wxString::Format(_("Exposure %.3f; average %.3f. Good %s; Bumpy %s; Difficult %s.\n"),
       c.exposureHours, c.averageDiscomfort, DurationText(c.categorySeconds[1]),
       DurationText(c.categorySeconds[2]), DurationText(c.categorySeconds[3]));
   else if (!m_WindOnly->GetValue() && entry.windComfort.comparable()) {
-    if (c.waveCoveredSeconds == 0)
-      text += _("No wave data along this route. Tick Compare wind only (ignore waves) to show wind-based comfort now, or load wave data and recompute.\n");
-    else
-      text += wxString::Format(_("Wave data cover %.0f%% of this route. Full-condition comfort is incomplete; tick Compare wind only (ignore waves) for wind-based comfort.\n"),
-          100.0 * c.waveCoveredSeconds / c.durationSeconds);
+    text += _("Wind + wave comfort is incomplete: wave height is required at every route-leg sample. "
+              "Tick Rank by wind comfort only to compare without waves.\n");
   } else text += _("Comfort comparison incomplete: wind conditions are missing for part of this route.\n");
-  if (c.worstCategory > 0) text += wxString::Format(
-      _("Worst known leg #%lu: %s, severity %.3f, %s UTC for %s, %.4f / %.4f. Longest difficult spell %s.\n"),
-      static_cast<unsigned long>(c.worstLegIndex + 1), RouteMapOverlay::sailingConditionText(c.worstCategory),
-      c.worstSeverity, UtcText(WxTime(c.worstLegStartTime)),
-      DurationText((c.worstLegEndTime - c.worstLegStartTime).count()),
-      c.worstLegStart.latitude, c.worstLegStart.longitude, DurationText(c.longestDifficultSeconds));
+  if (full.worstCategory > 0) text += wxString::Format(
+      _("Worst known leg, including available waves: #%lu, %s, severity %.3f, %s UTC for %s, %.4f / %.4f.\n"),
+      static_cast<unsigned long>(full.worstLegIndex + 1), RouteMapOverlay::sailingConditionText(full.worstCategory),
+      full.worstSeverity, UtcText(WxTime(full.worstLegStartTime)),
+      DurationText((full.worstLegEndTime - full.worstLegStartTime).count()),
+      full.worstLegStart.latitude, full.worstLegStart.longitude);
+  else text += _("Worst known leg, including available waves: unknown; no leg has both wind and wave-height data.\n");
   if (!selection.comfortAvailable)
     text += _("Comfort slider unavailable until comparable condition data are available.");
   else if (!selection.tradeOffAvailable)
     text += _("No fastest / comfort trade-off available among comparable candidates.");
-  if (m_WindOnly->GetValue()) text += _(" Wind-only comparison: waves excluded from ranking.");
+  if (m_WindOnly->GetValue()) text += _(" Wind-only ranking: waves excluded from ranking; worst known leg still includes available waves.");
   m_Summary->SetLabel(text); m_Summary->Wrap(std::max(300, GetClientSize().x - 24));
   m_Updating = true;
   for (long row = 0; row < m_List->GetItemCount(); ++row) {
