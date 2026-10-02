@@ -71,6 +71,7 @@ set(TEST_SRC
     StabilityCorridorLifecycle_tests.cpp
     RoutingEngineSettings_tests.cpp
     RoutingEngineSequence_tests.cpp
+    RouteComfort_tests.cpp
     RoutingScenarioJson_tests.cpp
     DepartureScheduler_tests.cpp
     RoutingQualityPolicy_tests.cpp

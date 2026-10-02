@@ -220,6 +220,7 @@ public:
 class WeatherRouting : public WeatherRoutingBase {
 private:
   friend class RoutingTablePanel;
+  friend class RouteComparisonDialog;
 
   bool m_disable_colpane;
   wxCollapsiblePane* m_colpane;
@@ -562,6 +563,7 @@ private:
   // CUSTOMIZATION
   void OnRoutePosition(wxCommandEvent& event);
   void OnWeatherTable(wxCommandEvent& event);
+  void ShowRouteComparison();
   void OnManual(wxCommandEvent& event);
   void OnInformation(wxCommandEvent& event);
   void OnAbout(wxCommandEvent& event);

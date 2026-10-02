@@ -1512,6 +1512,10 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
 
   UpdateColumns();
 
+  const int comparisonId = wxWindow::NewControlId();
+  m_mContextMenu->Append(comparisonId, _("Compare Fastest / Comfort..."));
+  Bind(wxEVT_MENU, [this](wxCommandEvent&) { ShowRouteComparison(); }, comparisonId);
+
   if (m_colpane) m_colpane->Expand();
 
   if (EnvString("WR_HEADLESS_SCENARIO").IsEmpty()) {
@@ -4373,6 +4377,20 @@ void WeatherRouting::CompleteHeadlessSingleRouteTest(bool timed_out,
   if (m_tCompute.IsRunning()) m_tCompute.Stop();
   if (m_tRoutingProgress.IsRunning()) m_tRoutingProgress.Stop();
   if (m_tDeferredRoutingStart.IsRunning()) m_tDeferredRoutingStart.Stop();
+  if (!timed_out && complete > 0 && EnvString("WR_HEADLESS_COMFORT_COMPARE") == "1") {
+    Show(true);
+    auto* list = m_panel->m_lWeatherRoutes;
+    long completedRow = -1;
+    for (long row = 0; row < list->GetItemCount(); ++row) {
+      auto* route = reinterpret_cast<WeatherRoute*>(wxUIntToPtr(list->GetItemData(row)));
+      if (completedRow < 0 && !route->routemapoverlay->RetainedCandidates().empty())
+        completedRow = row;
+      list->SetItemState(row, 0, wxLIST_STATE_SELECTED);
+    }
+    if (completedRow >= 0)
+      list->SetItemState(completedRow, wxLIST_STATE_SELECTED, wxLIST_STATE_SELECTED);
+    ShowRouteComparison();
+  }
   FinishHeadlessRouteTestProcess(timed_out ? 3 : 0);
 }
 

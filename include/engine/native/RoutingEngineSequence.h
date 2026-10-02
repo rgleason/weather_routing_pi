@@ -2,6 +2,7 @@
 #pragma once
 
 #include <array>
+#include <functional>
 #include <utility>
 #include <string>
 #include "RoutingEngineSettings.h"
@@ -67,7 +68,9 @@ inline bool AcceptedRoute(
 template <typename Solve>
 supercpn::weather_routing::RoutingResult RunRoutingEngineSequence(
     RoutingEngine mode,
-    const supercpn::weather_routing::CancellationToken& cancel, Solve&& solve) {
+    const supercpn::weather_routing::CancellationToken& cancel, Solve&& solve,
+    const std::function<void(SequenceEngine,
+        const supercpn::weather_routing::RoutingResult&)>& accepted = {}) {
   namespace wr = supercpn::weather_routing;
   wr::RoutingResult best, last;
   bool haveBest = false;
@@ -94,6 +97,7 @@ supercpn::weather_routing::RoutingResult RunRoutingEngineSequence(
       return last;
     }
     if (AcceptedRoute(last)) {
+      if (accepted) accepted(engine, last);
       if (mode == RoutingEngine::Auto) return last;
       if (!haveBest || last.legs.back().endTime < best.legs.back().endTime) {
         best = std::move(last);

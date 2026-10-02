@@ -446,6 +446,62 @@ bool SaveRoutingResultJson(const wxString& path,
       route.append(coordinate);
     }
     value["route"] = route;
+    if (!candidate.retainedRoutes.empty()) {
+      const auto summary = [](const weather_routing::RouteComfort& c) {
+        Json::Value out;
+        out["modelRevision"] = c.modelRevision;
+        out["windOnly"] = c.windOnly;
+        out["comparable"] = c.comparable();
+        out["durationSeconds"] = Json::Int64(c.durationSeconds);
+        out["unknownSeconds"] = Json::Int64(c.categorySeconds[0]);
+        out["goodSeconds"] = Json::Int64(c.categorySeconds[1]);
+        out["bumpySeconds"] = Json::Int64(c.categorySeconds[2]);
+        out["difficultSeconds"] = Json::Int64(c.categorySeconds[3]);
+        out["waveCoveredSeconds"] = Json::Int64(c.waveCoveredSeconds);
+        out["longestDifficultSeconds"] = Json::Int64(c.longestDifficultSeconds);
+        if (c.comparable()) {
+          out["exposureHours"] = c.exposureHours;
+          out["averageDiscomfort"] = c.averageDiscomfort;
+        }
+        if (c.worstCategory > 0) {
+          out["worstLeg"]["index"] = Json::UInt64(c.worstLegIndex);
+          out["worstLeg"]["category"] = c.worstCategory;
+          out["worstLeg"]["severity"] = c.worstSeverity;
+          out["worstLeg"]["startTimeEpoch"] = Json::Int64(c.worstLegStartTime.time_since_epoch().count());
+          out["worstLeg"]["endTimeEpoch"] = Json::Int64(c.worstLegEndTime.time_since_epoch().count());
+          out["worstLeg"]["startLat"] = c.worstLegStart.latitude;
+          out["worstLeg"]["startLon"] = c.worstLegStart.longitude;
+          out["worstLeg"]["endLat"] = c.worstLegEnd.latitude;
+          out["worstLeg"]["endLon"] = c.worstLegEnd.longitude;
+        }
+        return out;
+      };
+      Json::Value retained(Json::arrayValue);
+      for (const auto& r : candidate.retainedRoutes) {
+        Json::Value entry;
+        entry["id"] = r.id.ToStdString();
+        entry["engine"] = r.engine.ToStdString();
+        entry["elapsedSeconds"] = Json::Int64(r.elapsedSeconds);
+        entry["distanceNm"] = r.distanceNm;
+        entry["finalSafety"] = "pass";
+        entry["shoreline"]["resolution"] = r.shorelineResolution;
+        entry["shoreline"]["dataset"] = r.shoreline.ToStdString();
+        entry["processingMilliseconds"] = r.processingMilliseconds;
+        entry["comfort"] = summary(r.comfort);
+        entry["windOnlyComfort"] = summary(r.windOnlyComfort);
+        Json::Value geometry(Json::arrayValue);
+        for (const auto& p : r.route) {
+          Json::Value point;
+          point["latitudeDegrees"] = p.latitudeDegrees;
+          point["longitudeDegrees"] = p.longitudeDegrees;
+          point["timeUtc"] = TimeToJson(p.time).ToStdString();
+          geometry.append(point);
+        }
+        entry["route"] = geometry;
+        retained.append(entry);
+      }
+      value["retainedRoutes"] = retained;
+    }
     candidates.append(value);
   }
   root["candidates"] = candidates;

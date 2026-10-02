@@ -213,6 +213,8 @@ bool RouteMapOverlay::Start(wxString& error) {
 
   Lock();
   m_ModernProgress.Begin();
+  m_RetainedCandidates.clear();
+  m_SelectedRetainedCandidateId.clear();
   Unlock();
 
   CaptureSearchSettings(configuration, ModernNativeRouteEnabled(configuration));
@@ -371,6 +373,21 @@ void RouteMapOverlay::InstallModernNativeResult(
       result.status == wr::RoutingStatus::CompleteUsingGraphFallback;
   const bool resourceExhausted = ResourceExhausted();
   const bool complete = resultComplete && !resourceExhausted;
+  if (complete && result.validation.passed && !result.legs.empty() &&
+      m_RetainedCandidates.empty())
+    m_RetainedCandidates.push_back(weather_routing::RetainRouteCandidate(
+        result, GetConfiguration()));
+  if (complete && !result.legs.empty()) {
+    const auto engine = result.engineIdentity.empty()
+        ? GetConfiguration().EngineSettings.EngineId() : result.engineIdentity;
+    for (const auto& candidate : m_RetainedCandidates)
+      if (candidate.result->engineIdentity == engine &&
+          candidate.result->legs.front().startTime == result.legs.front().startTime &&
+          candidate.result->legs.back().endTime == result.legs.back().endTime) {
+        m_SelectedRetainedCandidateId = candidate.id;
+        break;
+      }
+  }
   if (!resourceExhausted) {
     wxString reason = complete ? wxString()
                               : wxString::FromUTF8(result.message.c_str());
@@ -555,6 +572,54 @@ void RouteMapOverlay::InstallModernNativeResult(
   clear_destination_plotdata = false;
   SetFinished(complete);
   Unlock();
+}
+
+void RouteMapOverlay::SetRetainedCandidates(
+    std::vector<weather_routing::RetainedRouteCandidate> candidates) {
+  Lock();
+  m_RetainedCandidates = std::move(candidates);
+  for (const auto& candidate : m_RetainedCandidates)
+    wxLogMessage("WR_COMFORT_RETAINED id=%s engine=%s legs=%lu processing_ms=%.3f exposure=%.4f wave_covered_s=%lld worst_leg=%lu worst_severity=%.4f",
+        wxString::FromUTF8(candidate.id), wxString::FromUTF8(candidate.result->engineIdentity),
+        static_cast<unsigned long>(candidate.result->legs.size()), candidate.processingMilliseconds,
+        candidate.comfort.exposureHours, static_cast<long long>(candidate.comfort.waveCoveredSeconds),
+        static_cast<unsigned long>(candidate.comfort.worstLegIndex), candidate.comfort.worstSeverity);
+  Unlock();
+}
+
+std::vector<weather_routing::RetainedRouteCandidate>
+RouteMapOverlay::RetainedCandidates() {
+  if (Running() || !Valid() || !Finished() || !ReachedDestination() ||
+      !GetDiagnosticError().empty()) return {};
+  Lock();
+  auto candidates = m_RetainedCandidates;
+  Unlock();
+  return candidates;
+}
+
+bool RouteMapOverlay::SelectRetainedCandidate(const std::string& id) {
+  if (Running() || !Finished() || !ReachedDestination() ||
+      !GetDiagnosticError().empty()) return false;
+  const auto candidates = RetainedCandidates();
+  for (const auto& candidate : candidates) {
+    if (candidate.id != id || !candidate.result->validation.passed) continue;
+    auto configuration = GetConfiguration();
+    configuration.StartTime = wxDateTime(static_cast<time_t>(
+        candidate.result->legs.front().startTime.time_since_epoch().count()));
+    configuration.shoreline_dataset = candidate.configuration.shoreline_dataset;
+    configuration.shoreline_description = candidate.configuration.shoreline_description;
+    configuration.routing_generated_states = candidate.result->diagnostics.generatedStates;
+    configuration.routing_retained_states = candidate.result->diagnostics.retainedStates;
+    SetConfigurationPreserveResult(configuration);
+    CaptureSearchSettings(candidate.configuration, true,
+        configuration.EngineSettings.EngineId(), candidate.result->engineIdentity);
+    InstallModernNativeResult(*candidate.result);
+    wxLogMessage("WR_COMFORT_SELECTED id=%s engine=%s passage_s=%lld search_restarted=0",
+        wxString::FromUTF8(id), wxString::FromUTF8(candidate.result->engineIdentity),
+        static_cast<long long>(candidate.result->metrics.elapsed.count()));
+    return true;
+  }
+  return false;
 }
 
 void RouteMapOverlay::DeleteThread() {
@@ -1133,64 +1198,9 @@ void RouteMapOverlay::RenderPolarChangeMarks(bool cursor_route, piDC& dc,
  *    Red = Strong conditions, heavy sailors, be prepared
  */
 int RouteMapOverlay::sailingConditionLevel(const PlotData& plot) const {
-  /* Method to calculate a indicator between 1 and 3 of the sailing conditions
-   * based on wind, wind course and waves.
-   *
-   * All these calculations are empirical and just made from experience and how
-   * people feel sailing comfort which is a highly subjective value...
-   */
+  return weather_routing::ConditionCategory(weather_routing::ConditionSeverity(
+      plot.twsOverWater, plot.ctw - plot.twdOverWater, plot.WVHT));
 
-  double level_calc = 0.0;
-
-  // Define maximum constants. Over this value, sailing comfort is very impacted
-  // (coef > 1) and automatically displayed in red.
-  // Definitions:
-  // AW   - Apparent Wind Direction from the boat (0 = upwind)
-  // VW   - Velocity of wind over water
-  // WVHT - Swell (if available)
-  double MAX_WV = 27;   // Vigilant over 27knts == 7B
-  double MAX_AW = 35;   // Upwind start at 35° from wind
-  double MAX_WVHT = 5;  // No more than 5m waves
-
-  // Wind impact exponentially on sailing comfort
-  // We propose a power 3 function as difficulties increase exponentially
-  // Over 30knts, it starts to be tough
-  double twsOverWater = plot.twsOverWater;
-  double WV_normal = pow(twsOverWater / MAX_WV, 3);
-
-  // Wind direction impact on sailing comfort.
-  // Ex: if you decide to sail upwind with 30knts, it is not the same
-  // conditions as if you sail downwind (impact of waves, heel, and more).
-  // Use a normal distribution to set the maximum difficulty at 35° upwind,
-  // and reduce when we go downwind.
-  double AW = heading_resolve(plot.ctw - plot.twdOverWater);
-  double teta = 30;
-  double mu = 35;
-  double amp = 20;
-  double AW_normal = amp * (1 / (teta * pow((2 * M_PI), 0.5))) *
-                     exp(-pow(AW - mu, 2) / (2 * pow(teta, 2)));
-
-  // If available, add swell conditions in comfort model.
-  // Use same exponential function for swell as sailing
-  // comfort exponentially decrease with swell height.
-  double WVHT = plot.WVHT;
-  double WVHT_normal = 0.0;
-  if (WVHT > 0) WVHT_normal = pow(WVHT / MAX_WVHT, 2);
-
-  // Calculate score
-  // Use an OR function X,Y E [0,1], f(X,Y) = 1-(1-X)(1-Y)
-  level_calc = 1 - (1 - WV_normal * (1 + AW_normal) * (1 + WVHT_normal));
-
-  if (level_calc <= 0.5)
-    // Light conditions, enjoy ;-)
-    return 1;
-  if (level_calc > 0.5 && level_calc < 1)
-    // Can be tough
-    return 2;
-  if (level_calc >= 1)
-    // Strong conditions
-    return 3;
-  return 0;
 }
 
 wxColour RouteMapOverlay::sailingConditionColor(int level) {
@@ -2270,6 +2280,8 @@ int RouteMapOverlay::Cyclones(int* months) {
 }
 
 void RouteMapOverlay::Clear() {
+  m_RetainedCandidates.clear();
+  m_SelectedRetainedCandidateId.clear();
   if (m_UsesModernNativeResult) {
     for (Position* position : m_ModernRoutePositions) delete position;
     for (Position* position : m_ModernCursorRoutePositions) delete position;

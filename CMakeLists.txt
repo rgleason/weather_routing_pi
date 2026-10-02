@@ -90,7 +90,7 @@ set(LONG_DESCRIPTION
     "WeatherRouting offers Auto, Quick, Standard, Professional and All (slow), with independent saved engine settings and explicit search presets. Auto falls back through Quick and Standard to Professional up to 400% effort. All compares four engines, including the internal Alternative engine, and selects the earliest validated arrival. Quick uses hardened contour routing with independent chronological validation. Standard provides bounded adaptive search; Professional adds broader recovery methods. All support plugin-managed GSHHG shorelines; optional chart-backed safety requires a compatible host.")
 
 set(VERSION_MAJOR "1")
-set(VERSION_MINOR "21")
+set(VERSION_MINOR "22")
 set(VERSION_PATCH "0")
 set(VERSION_TWEAK "0")
 # Keep all five approved source archives for verification and regression tests.
@@ -288,6 +288,7 @@ SET(SRCS
             src/StabilityRouteAdapter.cpp
             src/StabilityCorridorLifecycle.cpp
             src/RoutingTablePanel.cpp
+            src/RouteComparisonDialog.cpp
             src/Utilities.cpp
             src/LineBufferOverlay.cpp
             src/PolygonRegion.cpp
@@ -371,6 +372,9 @@ SET (HDRS
             include/ChartSafetyAtlas.h
             include/RouteMap.h
             include/RouteMapOverlay.h
+            include/RouteComfort.h
+            include/RetainedRouteCandidate.h
+            include/RouteComparisonDialog.h
             include/DepartureScheduler.h
             include/RoutingQualityPolicy.h
             include/RoutingFootprint.h

@@ -1081,6 +1081,7 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
     return std::move(quick.route);
   };
   OpenCpnWeatherProvider::CacheDiagnostics sequenceWeatherCache;
+  std::vector<weather_routing::RetainedRouteCandidate> retainedCandidates;
   auto solve = [&](const wr::RoutingRequest& solveRequest,
                    const wr::RoutingEnvironment& solveEnvironment) {
     if (!weather_routing::IsCombinedEngine(configuration.EngineSettings.engine))
@@ -1202,7 +1203,23 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
     }
     return weather_routing::native::RunRoutingEngineSequence(
         configuration.EngineSettings.engine, solveRequest.cancellation,
-        runAttempt);
+        runAttempt, [&](SequenceEngine engine, const wr::RoutingResult& accepted) {
+          // Arrival-planning probes are internal evaluations, not a collection
+          // of interchangeable deadline-valid results. Retain its winner only.
+          if (configuration.EngineSettings.engine != weather_routing::RoutingEngine::All ||
+              configuration.TimeMode == RouteMapConfiguration::ROUTE_BY_ARRIVAL_TIME)
+            return;
+          auto candidateConfiguration =
+              weather_routing::native::ConfigurationForSequenceEngine(configuration, engine);
+          candidateConfiguration.StartTime = ToWx(solveRequest.departure);
+          if (candidateConfiguration.DetectLand) {
+            const int resolution = candidateConfiguration.EffectiveShorelineResolution();
+            candidateConfiguration.shoreline_dataset = configuration.engine_shorelines.at(resolution);
+            candidateConfiguration.shoreline_description = configuration.engine_shoreline_descriptions.at(resolution);
+          }
+          retainedCandidates.push_back(weather_routing::RetainRouteCandidate(
+              accepted, candidateConfiguration));
+        });
   };
   OpenCpnWeatherProvider::CacheDiagnostics arrivalWeatherCache;
   std::optional<wr::ArrivalPlanningResult> arrivalPlan;
@@ -1533,6 +1550,9 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
         static_cast<long long>(result.metrics.elapsed.count()),
         result.validation.passed ? 1 : 0);
   }
+  if (!Complete(result.status) || configuration.chart_safety_scout_preview)
+    retainedCandidates.clear();
+  overlay.SetRetainedCandidates(std::move(retainedCandidates));
   overlay.InstallModernNativeResult(result);
   if (!Complete(result.status)) overlay.SetFailureReason(error);
   return Complete(result.status);

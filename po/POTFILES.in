@@ -37,6 +37,7 @@ src/RouteSimplifier.cpp
 src/StabilityRouteAdapter.cpp
 src/StabilityCorridorLifecycle.cpp
 src/RoutingTablePanel.cpp
+src/RouteComparisonDialog.cpp
 src/Utilities.cpp
 src/LineBufferOverlay.cpp
 src/PolygonRegion.cpp
@@ -67,7 +68,6 @@ vendor/original-routing-engine/src/Contour.cpp
 vendor/weather-routing-engine/src/Validator.cpp
 vendor/weather-routing-engine/src/Ensemble.cpp
 src/engine/native/OpenCpnAdapter.cpp
-src/AndroidWeatherRouting.cpp
 include/AppendOnlyCache.h
 include/ChartSafetyCache.h
 include/ChartHazardEvaluator.h
@@ -114,6 +114,9 @@ include/Boat.h
 include/ChartSafetyAtlas.h
 include/RouteMap.h
 include/RouteMapOverlay.h
+include/RouteComfort.h
+include/RetainedRouteCandidate.h
+include/RouteComparisonDialog.h
 include/DepartureScheduler.h
 include/RoutingQualityPolicy.h
 include/RoutingFootprint.h

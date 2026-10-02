@@ -16,6 +16,7 @@
 #include <wx/string.h>
 
 #include "weather_routing_engine/RoutingDiagnostics.h"
+#include "RouteComfort.h"
 
 namespace weather_routing_engine {
 
@@ -30,6 +31,16 @@ struct RoutingResultPoint {
       : latitudeDegrees(latitude),
         longitudeDegrees(longitude),
         time(arrival) {}
+};
+
+struct RetainedRouteReport {
+  wxString id, engine, shoreline;
+  int shorelineResolution{};
+  long elapsedSeconds{};
+  double distanceNm{};
+  double processingMilliseconds{};
+  weather_routing::RouteComfort comfort, windOnlyComfort;
+  std::vector<RoutingResultPoint> route;
 };
 
 struct RoutingCandidateResult {
@@ -63,6 +74,7 @@ struct RoutingCandidateResult {
   wxString reverseFailureReason;
   bool reverseFinalValidationPass;
   std::vector<RoutingResultPoint> route;
+  std::vector<RetainedRouteReport> retainedRoutes;
 
   RoutingCandidateResult()
       : elapsedSeconds(-1),
