@@ -1600,7 +1600,7 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
               "WR_COMFORT_SEARCH engine=%s wind_only=%d initial_ms=%lld allowance_ms=%lld "
               "elapsed_ms=%lld attempts=%u generated=%llu weather_calls=%llu validated=%u "
               "accepted=%lu stopped=%d exhausted=%d",
-              wxString::FromUTF8(base.result->engineIdentity), options.windOnly ? 1 : 0,
+              wxString::FromUTF8(base.result->engineIdentity.c_str()), options.windOnly ? 1 : 0,
               static_cast<long long>(initial.count()),
               static_cast<long long>(totalAllowance.count()),
               static_cast<long long>(explored.elapsed.count()), explored.attempts,

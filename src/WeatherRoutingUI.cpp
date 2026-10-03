@@ -1670,7 +1670,11 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   m_tRoutingEngineDescription->Wrap(430);
   engineBox->Add(m_tRoutingEngineDescription, 0, wxALL | wxEXPAND, 5);
   m_cbExploreComfortAlternatives = new wxCheckBox(engineBox->GetStaticBox(), wxID_ANY,
+#ifdef __OCPN__ANDROID__
+      _("Find fastest / comfort alternatives"), wxDefaultPosition, wxDefaultSize, wxCHK_3STATE);
+#else
       _("Search additional fastest / comfort alternatives"), wxDefaultPosition, wxDefaultSize, wxCHK_3STATE);
+#endif
   m_cbExploreComfortAlternatives->SetToolTip(_("Find and preserve the normal validated route first, then explore alternatives using the selected engine. Auto explores with its successful engine. Extra limits never restrict finding the first route."));
   engineBox->Add(m_cbExploreComfortAlternatives, 0, wxALL | wxEXPAND, 5);
   auto* comfortControls = new wxFlexGridSizer(0, 2, 4, 6);
@@ -1683,6 +1687,16 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   m_sComfortMaximumSeconds->SetToolTip(_("Use the smaller of the percentage allowance and this cap, per departure. Stop further search work at the deadline; an in-flight provider call can overrun. Zero disables extras."));
   comfortControls->Add(m_sComfortMaximumSeconds, 0);
   engineBox->Add(comfortControls, 0, wxALL, 5);
+#ifdef __OCPN__ANDROID__
+  // Keep editable allowances and their explanations readable in portrait and
+  // with the soft keyboard open. The existing Engine page owns these controls.
+  comfortControls->SetCols(1);
+  m_sComfortAdditionalPercent->SetMinSize(wxSize(300, 72));
+  m_sComfortMaximumSeconds->SetMinSize(wxSize(300, 72));
+  const wxString comfortHelpText = _("Keep the normal valid route first, then search for up to four useful alternatives. Auto uses the engine that found that route. Extra search time is the smaller of the percentage allowance and the seconds cap, per departure. 200% allows twice the original computation time after success. Zero disables extras. These limits never restrict finding the first route.");
+  auto* comfortHelp = new wxStaticText(engineBox->GetStaticBox(), wxID_ANY, comfortHelpText);
+  engineBox->Add(comfortHelp, 0, wxALL | wxEXPAND, 5);
+#endif
   m_cbExploreComfortAlternatives->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent& event) { OnUpdate(event); });
   m_sComfortAdditionalPercent->Bind(wxEVT_SPINCTRL, [this](wxSpinEvent& event) { OnUpdateSpin(event); });
   m_sComfortMaximumSeconds->Bind(wxEVT_SPINCTRL, [this](wxSpinEvent& event) { OnUpdateSpin(event); });
@@ -2944,6 +2958,11 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
     text.Replace("\n", " ");
     WR_WrapAndroidText(m_tRoutingEngineDescription, text,
         wxMax(200, GetClientSize().x - 100));
+    event.Skip();
+  });
+  enginePage->Bind(wxEVT_SIZE, [this, comfortHelp, comfortHelpText](wxSizeEvent& event) {
+    WR_WrapAndroidText(comfortHelp, comfortHelpText,
+        wxMax(200, GetClientSize().x - 120));
     event.Skip();
   });
   m_notebook7->SetSelection(0);

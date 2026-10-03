@@ -2617,7 +2617,12 @@ void WeatherRouting::ShowRoutingProgress(const wxString& title) {
 #endif
     note->Wrap(kProgressTextWidth);
     topSizer->Add(note, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 8);
-    wxBoxSizer* buttons = new wxBoxSizer(wxHORIZONTAL);
+    wxBoxSizer* buttons = new wxBoxSizer(
+#ifdef __OCPN__ANDROID__
+        wxVERTICAL);
+#else
+        wxHORIZONTAL);
+#endif
     wxButton* hide = new wxButton(m_RoutingProgressDialog, wxID_ANY, _("Hide"));
     wxButton* stop = new wxButton(m_RoutingProgressDialog, wxID_ANY,
                                   _("Stop all computations"));
@@ -2637,15 +2642,23 @@ void WeatherRouting::ShowRoutingProgress(const wxString& title) {
         }
       wxLogMessage("WR_COMFORT_STOP requested active=%u", count);
     });
-    buttons->Add(stopExtra, 1, wxALL | wxEXPAND, 5);
+    buttons->Add(stopExtra,
+#ifdef __OCPN__ANDROID__
+                 0,
+#else
+                 1,
+#endif
+                 wxALL | wxEXPAND, 5);
     stop->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
       CancelMultiLegDepartureOptimization(true);
       StopAll();
       FinishRoutingProgress(_("Stopped"), _("Route computations stopped."));
     });
 #ifdef __OCPN__ANDROID__
-    buttons->Add(hide, 1, wxALL | wxEXPAND, 5);
-    buttons->Add(stop, 1, wxALL | wxEXPAND, 5);
+    auto* primaryButtons = new wxBoxSizer(wxHORIZONTAL);
+    primaryButtons->Add(hide, 1, wxALL | wxEXPAND, 5);
+    primaryButtons->Add(stop, 1, wxALL | wxEXPAND, 5);
+    buttons->Add(primaryButtons, 0, wxEXPAND);
     topSizer->Add(buttons, 0, wxEXPAND);
     for (auto* button : {hide, stop, stopExtra}) {
       button->SetMinSize(wxSize(180, 72));

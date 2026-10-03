@@ -35,6 +35,7 @@ class RouteComparisonDialog : public wxDialog {
   wxChoice* m_AndroidCandidate{};
   wxStaticText* m_AndroidDetails{};
   wxStaticText* m_AndroidNote{};
+  wxStaticText* m_AndroidExplorationHelp{};
   wxButton* m_AndroidShowChart{};
 #endif
   void RunHostContract(bool lifecycle);

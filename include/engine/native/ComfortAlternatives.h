@@ -214,10 +214,10 @@ inline ComfortSearchReport ExploreComfortAlternatives(
                      std::max(1U, 6U - std::min(5U, report.attempts)));
     auto attemptStop = std::make_shared<std::atomic_bool>(false);
     next.cancellation = request.cancellation.bounded(std::min(deadline, now + slice), attemptStop);
-    const auto slots = std::max(1U, 6U - std::min(5U, report.attempts));
+    const auto remainingAttempts = std::max(1U, 6U - std::min(5U, report.attempts));
     weather->beginAttempt(
         next.cancellation,
-        std::max<std::uint64_t>(1, (options.maximumWeatherCalls - weather->calls) / slots),
+        std::max<std::uint64_t>(1, (options.maximumWeatherCalls - weather->calls) / remainingAttempts),
         attemptStop);
     ++report.attempts;
     std::vector<wr::RoutingResult> results;

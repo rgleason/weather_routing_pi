@@ -100,6 +100,10 @@ RouteComparisonDialog::RouteComparisonDialog(WeatherRouting& routing)
   auto* explorationHelp = new wxStaticText(content, wxID_ANY,
       _("Enable additional fastest / comfort alternatives in the routing configuration before computing. Applies to Quick, Standard, Professional, Auto and All."));
   explorationHelp->Wrap(1100);
+#ifdef __OCPN__ANDROID__
+  explorationHelp->SetLabel(_("Enable alternatives in Plan > Engine before computing. Applies to Quick, Standard, Professional, Auto and All."));
+  m_AndroidExplorationHelp = explorationHelp;
+#endif
   layout->Add(explorationHelp, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 6);
 #ifdef __OCPN__ANDROID__
   m_AndroidCandidate = new wxChoice(content, wxID_ANY);
@@ -134,7 +138,7 @@ RouteComparisonDialog::RouteComparisonDialog(WeatherRouting& routing)
   auto* note = new wxStaticText(content, wxID_ANY,
 #ifdef __OCPN__ANDROID__
       _("Choose a candidate to select its validated route. The slider allows extra passage time for comfort. "
-        "All can search up to four additional comfort routes per departure. "
+        "With alternatives enabled, any engine can search for up to four useful extra routes per departure. "
         "Wind + wave ranking requires complete wind and wave-height coverage; gaps remain unknown. "
         "Wind-only ranking excludes waves, while the worst known leg still includes available waves."));
   m_AndroidNote = note;
@@ -597,6 +601,8 @@ void RouteComparisonDialog::RefreshAndroidComparison() {
   WR_WrapAndroidText(m_Summary, m_Summary->GetLabel(), width);
   WR_WrapAndroidText(m_AndroidDetails, details, width);
   WR_WrapAndroidText(m_AndroidNote, m_AndroidNote->GetLabel(), width);
+  WR_WrapAndroidText(m_AndroidExplorationHelp,
+      m_AndroidExplorationHelp->GetLabel(), width);
   m_AndroidScroll->Layout();
   m_AndroidScroll->FitInside();
   m_Updating = false;

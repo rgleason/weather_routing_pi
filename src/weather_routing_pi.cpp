@@ -34,6 +34,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <type_traits>
+#ifdef __OCPN__ANDROID__
+#include <QCoreApplication>
+#include <QEvent>
+#endif
 
 #include "Utilities.h"
 #include "ChartSafetyHost.h"
@@ -318,6 +322,13 @@ bool weather_routing_pi::DeInit() {
   m_pWeather_Routing =
       NULL; /* needed first as destructor may call event loop */
   delete wr;
+
+#ifdef __OCPN__ANDROID__
+  // wxQt schedules native widget destruction with deleteLater(). Complete
+  // those deletions while the plugin is still loaded: its application/canvas
+  // event filters and Qt delegates must not survive a hot plugin replacement.
+  QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+#endif
 
   return true;
 }
