@@ -2475,8 +2475,14 @@ void WeatherRouting::ShowRoutingStatus(RouteMapOverlay* selectedRoute) {
     if (!route) return;
     RouteMapConfiguration configuration = route->GetConfiguration();
 
-    WeatherRoute display;
-    display.routemapoverlay = route;
+    // WeatherRoute owns its overlay. Reuse the existing entry when formatting
+    // status: a temporary owner would delete the live route at scope exit.
+    const auto found = std::find_if(m_WeatherRoutes.begin(), m_WeatherRoutes.end(),
+        [route](const WeatherRoute* entry) {
+          return entry->routemapoverlay == route;
+        });
+    if (found == m_WeatherRoutes.end()) return;
+    WeatherRoute& display = **found;
     display.Update(this);
 
     wxString state = display.State;

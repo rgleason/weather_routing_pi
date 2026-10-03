@@ -141,6 +141,9 @@ weather_routing_pi::weather_routing_pi(void* ppimgr)
   // End of from Shipdriver
 
   b_in_boundary_reply = false;
+  // Touch devices may select a route before OpenCPN sends any chart cursor.
+  m_cursor_lat = NAN;
+  m_cursor_lon = NAN;
   m_use_persistent_chart_safe_cache = true;
   m_chart_safety_ram_cache_mib = 0;
   m_chart_safety_atlas_enabled = false;
