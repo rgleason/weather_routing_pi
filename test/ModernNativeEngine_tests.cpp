@@ -1804,11 +1804,14 @@ TEST_P(AllEngineAlternatives, SameEngineExplorationFindsAndRevalidatesGentlerRou
   ASSERT_TRUE(alternatives::AcceptedRoute(baseline)) << baseline.message;
   const auto saved = baseline.legs.size();
   alternatives::ComfortSearchOptions options;
-  options.maximumSeconds = 4;
+  // This checks route quality and replay, not runner throughput. Native
+  // Windows runners need more than four seconds to complete the same search.
+  // Allowance arithmetic, exhaustion and cancellation have separate tests.
+  options.maximumSeconds = 30;
   options.additionalPercent = 400;
   options.nativeComfortLanes = GetParam() == 1;
   auto report = alternatives::ExploreComfortAlternatives(
-      request, env, baseline, std::chrono::seconds{1}, options, solver,
+      request, env, baseline, std::chrono::seconds{10}, options, solver,
       [](const auto&) { return true; }, std::make_shared<std::atomic_bool>(false));
   ASSERT_FALSE(report.alternatives.empty())
       << "engine=" << GetParam() << " attempts=" << report.attempts
