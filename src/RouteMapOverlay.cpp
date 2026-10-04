@@ -213,6 +213,8 @@ bool RouteMapOverlay::Start(wxString& error) {
 
   Lock();
   m_ModernProgress.Begin();
+  m_ComfortStop->store(false);
+  m_ExploringComfort.store(false);
   m_RetainedCandidates.clear();
   m_SelectedRetainedCandidateId.clear();
   Unlock();
@@ -2403,6 +2405,8 @@ void RouteMapOverlay::UpdateCursorPosition() {
 }
 
 bool RouteMapOverlay::SetCursorLatLon(double lat, double lon) {
+  if (!std::isfinite(lat) || !std::isfinite(lon) || fabs(lat) > 90)
+    return false;
   Position* p = last_cursor_position;
   last_cursor_lat = lat;
   last_cursor_lon = lon;

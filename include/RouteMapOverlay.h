@@ -367,6 +367,10 @@ public:
   bool HasModernNativeCoastalEndpointLeeway() const {
     return m_ModernNativeCoastalEndpointLeeway;
   }
+  std::shared_ptr<std::atomic_bool> ComfortStopFlag() const { return m_ComfortStop; }
+  void StopComfortExploration() { m_ComfortStop->store(true); }
+  bool ExploringComfort() const { return m_ExploringComfort.load(); }
+  void SetExploringComfort(bool active) { m_ExploringComfort.store(active); }
   void SetRetainedCandidates(std::vector<weather_routing::RetainedRouteCandidate> candidates);
   std::vector<weather_routing::RetainedRouteCandidate> RetainedCandidates();
   bool SelectRetainedCandidate(const std::string& id);
@@ -502,6 +506,8 @@ private:
 
   bool m_UsesModernNativeResult{false};
   bool m_ModernNativeCoastalEndpointLeeway{false};
+  std::shared_ptr<std::atomic_bool> m_ComfortStop{std::make_shared<std::atomic_bool>(false)};
+  std::atomic_bool m_ExploringComfort{false};
   std::vector<weather_routing::RetainedRouteCandidate> m_RetainedCandidates;
   std::string m_SelectedRetainedCandidateId;
   std::vector<Position*> m_ModernRoutePositions;

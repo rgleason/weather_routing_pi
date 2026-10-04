@@ -472,6 +472,9 @@ protected:
   wxCheckBox* m_cbEnforceExperimentalChartSafety;
   wxCheckBox* m_cbDetectBoundary;
   wxCheckBox* m_cbOptimizeTacking;
+  wxCheckBox* m_cbExploreComfortAlternatives;
+  wxSpinCtrl* m_sComfortAdditionalPercent;
+  wxSpinCtrl* m_sComfortMaximumSeconds;
   wxCheckBox* m_cbAllowDataDeficient;
   wxButton* m_bOK;
   wxScrolledWindow* m_pAdvanced;
