@@ -1384,6 +1384,12 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
 
   int confVersion;
   pConf->Read(_T ( "ConfigVersion" ), &confVersion, 0);
+  // v1.25 adds a route checker; its bundled boats and polars are unchanged
+  // from v1.24. Do not offer to overwrite existing user data for this upgrade.
+  if (confVersion == 124 && PLUGIN_VERSION_MAJOR == 1 && PLUGIN_VERSION_MINOR == 25) {
+    confVersion = 125;
+    pConf->Write(_T("ConfigVersion"), confVersion);
+  }
 
 #ifndef __OCPN__ANDROID__
   if (confVersion < PLUGIN_VERSION_MAJOR * 100 + PLUGIN_VERSION_MINOR) {

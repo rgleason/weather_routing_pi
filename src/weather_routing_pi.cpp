@@ -33,6 +33,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <type_traits>
 #ifdef __OCPN__ANDROID__
 #include <QCoreApplication>
@@ -46,6 +47,7 @@
 #include "RouteMap.h"
 #include "RouteMapOverlay.h"
 #include "RouteWaypointExtractor.h"
+#include "RouteSafetyDialog.h"
 #include "WeatherRouting.h"
 #include "WeatherDataProvider.h"
 #include "weather_routing_pi.h"
@@ -215,6 +217,8 @@ int weather_routing_pi::Init() {
   // Get a pointer to the opencpn display canvas, to use as a parent for the
   // WEATHER_ROUTING dialog
   m_parent_window = GetOCPNCanvasWindow();
+  m_route_check_viewport_valid = false;
+  m_route_check_marker_mouse_down = false;
 
   m_pWeather_Routing = NULL;
 
@@ -271,6 +275,9 @@ int weather_routing_pi::Init() {
       new wxMenuItem(&dummy_menu, -1, _("Create Weather Routing Legs...")),
       this,
       "Route");
+  m_route_check_menu_id = AddCanvasMenuItem(
+      new wxMenuItem(&dummy_menu, -1, wxString::Format(_("Check this route (%s)..."), GetCommonName())),
+      this, "Route");
   wxLogMessage(
       "WeatherRouting route context menu ids: analysis=%d multileg=%d",
       m_route_menu_id, m_route_multileg_menu_id);
@@ -292,14 +299,23 @@ int weather_routing_pi::Init() {
 
   return (WANTS_OVERLAY_CALLBACK | WANTS_OPENGL_OVERLAY_CALLBACK |
           WANTS_TOOLBAR_CALLBACK | WANTS_CONFIG | WANTS_CURSOR_LATLON |
-          WANTS_NMEA_EVENTS | WANTS_PLUGIN_MESSAGING | USES_AUI_MANAGER
-#ifdef __OCPN__ANDROID__
-          | WANTS_MOUSE_EVENTS
-#endif
+          WANTS_NMEA_EVENTS | WANTS_PLUGIN_MESSAGING | USES_AUI_MANAGER |
+          WANTS_MOUSE_EVENTS
           );
 }
 
 bool weather_routing_pi::DeInit() {
+  m_route_check_marker_mouse_down = false;
+  m_route_check_viewport_valid = false;
+  // Locale changes and plugin disable can occur during a modal startup loop.
+  // No delayed fixture may retain a pointer to an unloaded plugin instance.
+  delete m_headless_route_test_starter;
+  m_headless_route_test_starter = nullptr;
+  if (m_route_safety_dialog) delete m_route_safety_dialog.get();
+  if (m_route_check_menu_id >= 0) {
+    RemoveCanvasMenuItem(m_route_check_menu_id, "Route");
+    m_route_check_menu_id = -1;
+  }
   m_chart_safety_atlas_timer.Stop();
   if (m_chart_safety_atlas_filter_installed) {
     wxEvtHandler::RemoveFilter(this);
@@ -638,6 +654,27 @@ void weather_routing_pi::RequestOcpnDrawSetting() {
   }
 }
 
+// Isolated-profile fixtures only: simulate an external route editor through
+// the public host API. The checker itself never calls a route-write API.
+class RouteCheckFixtureMutation : public wxTimer {
+ public:
+  RouteCheckFixtureMutation(wxString guid, wxString action)
+      : guid_(std::move(guid)), action_(std::move(action)) { StartOnce(1200); }
+  void Notify() override {
+    if (action_ == "remove") {
+      DeletePlugInRoute(guid_);
+    } else if (auto route = GetRoute_Plugin(guid_)) {
+      if (action_ == "rename") route->m_NameString += " — edited";
+      else if (route->pWaypointList && route->pWaypointList->GetFirst())
+        route->pWaypointList->GetFirst()->GetData()->m_lon += .001;
+      UpdatePlugInRoute(route.get());
+    }
+    delete this;
+  }
+ private:
+  wxString guid_, action_;
+};
+
 class HeadlessRouteTestStarter : public wxTimer {
 public:
   explicit HeadlessRouteTestStarter(weather_routing_pi* plugin)
@@ -656,23 +693,86 @@ public:
             "WR_HEADLESS_ROUTE_TEST startup_wait reason=modal_dialog "
             "title=\"%s\"",
             dialog->GetTitle());
+        m_waited_for_modal = true;
+        StartOnce(1000);
+        return;
+      }
+    }
+    if (m_waited_for_modal) {
+      m_waited_for_modal = false;
+      StartOnce(5000);
+      return;
+    }
+
+    wxString startup_mode;
+    wxGetEnv("WR_HEADLESS_ROUTE_TEST", &startup_mode);
+    if (startup_mode.IsSameAs("route-check", false)) {
+      wxString scenario;
+      wxGetEnv("WR_HEADLESS_SCENARIO", &scenario);
+      std::ifstream stream(scenario.ToStdString());
+      Json::Value input;
+      Json::Reader reader;
+      // Command-line GPX import happens during the host's later startup
+      // phases. A plugin Init timer can otherwise run before that import.
+      if (reader.parse(stream, input) && input["routeGuid"].isString() && !input["waypoints"].isArray() &&
+          !GetRoute_Plugin(wxString::FromUTF8(input["routeGuid"].asCString())) &&
+          m_route_check_waits++ < 30) {
+        wxLogMessage("WR_ROUTE_CHECK_TEST waiting for GPX route import");
         StartOnce(1000);
         return;
       }
     }
 
     weather_routing_pi* plugin = m_plugin;
+    plugin->m_headless_route_test_starter = nullptr;
     delete this;
 
     wxLogMessage("WR_HEADLESS_ROUTE_TEST timer_fire");
+    wxString mode;
+    wxGetEnv("WR_HEADLESS_ROUTE_TEST", &mode);
+    if (mode.IsSameAs("route-check", false)) {
+      wxString scenario, output;
+      wxGetEnv("WR_HEADLESS_SCENARIO", &scenario);
+      wxGetEnv("WR_HEADLESS_OUTPUT", &output);
+      std::ifstream stream(scenario.ToStdString());
+      Json::Value input;
+      Json::Reader reader;
+      if (!reader.parse(stream, input) || !input["routeGuid"].isString()) {
+        wxLogError("WR_ROUTE_CHECK_TEST invalid scenario");
+        wxTheApp->ExitMainLoop();
+        return;
+      }
+      if (input["waypoints"].isArray() && weather_routing::chart_safety_host::Available()) {
+        // Create only a temporary fixture, through the same public route API
+        // used by route exporters. The checker itself only reads this route.
+        PlugIn_Route fixture;
+        fixture.m_GUID = wxString::FromUTF8(input["routeGuid"].asCString());
+        fixture.m_NameString = wxString::FromUTF8(input.get("routeName", "Route check fixture").asCString());
+        for (const auto& point : input["waypoints"]) {
+          fixture.pWaypointList->Append(new PlugIn_Waypoint(point["lat"].asDouble(),
+              point["lon"].asDouble(), "diamond", wxString::FromUTF8(point["name"].asCString()),
+              wxString::FromUTF8(point["guid"].asCString())));
+        }
+        if (!AddPlugInRoute(&fixture, false)) {
+          wxLogError("WR_ROUTE_CHECK_TEST could not add temporary route");
+          wxTheApp->ExitMainLoop();
+          return;
+        }
+      }
+      plugin->StartRouteSafetyCheck(wxString::FromUTF8(input["routeGuid"].asCString()),
+          output, wxString::FromUTF8(input.get("action", "").asCString()),
+          input.get("minimumDepthM", 0.).asDouble(), input.get("landMarginNM", 0.).asDouble());
+      const wxString action = wxString::FromUTF8(input.get("action", "").asCString());
+      if (action == "edit" || action == "remove" || action == "rename")
+        new RouteCheckFixtureMutation(wxString::FromUTF8(input["routeGuid"].asCString()), action);
+      return;
+    }
     if (!plugin->m_pWeather_Routing) plugin->NewWR();
     if (!plugin->m_pWeather_Routing) {
       wxLogMessage("WR_HEADLESS_ROUTE_TEST abort reason=weather_routing_unavailable");
       wxTheApp->ExitMainLoop();
       return;
     }
-    wxString mode;
-    wxGetEnv("WR_HEADLESS_ROUTE_TEST", &mode);
     if (mode.IsSameAs("open-only", false)) {
       plugin->m_pWeather_Routing->Show(true);
       wxLogMessage("WR_HEADLESS_ROUTE_TEST open_only ready");
@@ -683,6 +783,8 @@ public:
 
 private:
   weather_routing_pi* m_plugin;
+  int m_route_check_waits{0};
+  bool m_waited_for_modal{false};
 };
 
 void weather_routing_pi::MaybeStartHeadlessRouteTest() {
@@ -698,8 +800,12 @@ void weather_routing_pi::MaybeStartHeadlessRouteTest() {
   // settled.
   wxLogMessage("WR_HEADLESS_ROUTE_TEST timer_scheduled mode=%s scenario=%s",
                enabled ? enabled : "", scenario ? scenario : "");
-  HeadlessRouteTestStarter* starter = new HeadlessRouteTestStarter(this);
-  starter->StartOnce(5000);
+  delete m_headless_route_test_starter;
+  auto* starter = new HeadlessRouteTestStarter(this);
+  m_headless_route_test_starter = starter;
+  wxString test_mode;
+  wxGetEnv("WR_HEADLESS_ROUTE_TEST", &test_mode);
+  starter->StartOnce(test_mode.IsSameAs("route-check", false) ? 12000 : 5000);
 }
 
 void weather_routing_pi::NewWR() {
@@ -729,6 +835,10 @@ void weather_routing_pi::OnToolbarToolCallback(int id) {
 }
 
 void weather_routing_pi::OnContextMenuItemCallback(int id) {
+  if (id == m_route_check_menu_id) {
+    StartRouteSafetyCheck(GetSelectedRouteGUID_Plugin());
+    return;
+  }
   if (!m_pWeather_Routing) NewWR();
 
   wxLogMessage(
@@ -779,7 +889,36 @@ void weather_routing_pi::OnContextMenuItemCallback(int id) {
   m_pWeather_Routing->Reset();
 }
 
+void weather_routing_pi::StartRouteSafetyCheck(const wxString& route_guid,
+    const wxString& test_output, const wxString& test_action,
+    double test_depth, double test_margin) {
+  double depth = 0, margin = 0;
+  if (m_pWeather_Routing && m_pWeather_Routing->FirstCurrentRouteMap()) {
+    const auto& config = m_pWeather_Routing->FirstCurrentRouteMap()->GetConfiguration();
+    depth = config.MinimumDepthMeters;
+    margin = config.SafetyMarginLand;
+  }
+  const auto old_path = m_pconfig->GetPath();
+  m_pconfig->SetPath("/PlugIns/WeatherRouting/RouteCheck");
+  m_pconfig->Read("MinimumDepthM", &depth, depth);
+  m_pconfig->Read("LandMarginNM", &margin, margin);
+  m_pconfig->SetPath(old_path);
+  if (!test_output.IsEmpty()) { depth = test_depth; margin = test_margin; }
+  if (m_route_safety_dialog) delete m_route_safety_dialog.get();
+  m_route_safety_dialog = new RouteSafetyDialog(*this, route_guid, depth, margin);
+  if (!test_output.IsEmpty()) m_route_safety_dialog->SetTestOutput(test_output, test_action);
+  m_route_safety_dialog->Show();
+  m_route_safety_dialog->Start();
+}
+
 bool weather_routing_pi::RenderOverlay(wxDC& wxdc, PlugIn_ViewPort* vp) {
+  m_route_check_viewport = *vp;
+  m_route_check_viewport_valid = true;
+  bool rendered = false;
+  if (m_route_safety_dialog) {
+    piDC dc(wxdc);
+    rendered = m_route_safety_dialog->Render(dc, *vp);
+  }
 #ifdef __OCPN__ANDROID__
   m_androidViewport = *vp;
   m_androidViewportValid = true;
@@ -793,11 +932,19 @@ bool weather_routing_pi::RenderOverlay(wxDC& wxdc, PlugIn_ViewPort* vp) {
     m_pWeather_Routing->Render(dc, *vp);
     return true;
   }
-  return false;
+  return rendered;
 }
 
 bool weather_routing_pi::RenderGLOverlay(wxGLContext* pcontext,
                                          PlugIn_ViewPort* vp) {
+  m_route_check_viewport = *vp;
+  m_route_check_viewport_valid = true;
+  bool rendered = false;
+  if (m_route_safety_dialog) {
+    piDC dc;
+    dc.SetVP(vp);
+    rendered = m_route_safety_dialog->Render(dc, *vp);
+  }
 #ifdef __OCPN__ANDROID__
   m_androidViewport = *vp;
   m_androidViewportValid = true;
@@ -812,15 +959,30 @@ bool weather_routing_pi::RenderGLOverlay(wxGLContext* pcontext,
     m_pWeather_Routing->Render(dc, *vp);
     return true;
   }
-  return false;
+  return rendered;
 }
 
-#ifdef __OCPN__ANDROID__
 bool weather_routing_pi::MouseEventHook(wxMouseEvent& event) {
+  // Own the whole marker gesture, so the same click cannot start moving an
+  // underlying route or waypoint. GTK/touch hosts can filter double clicks;
+  // a single click selects a marker consistently on all supported hosts.
+  if (m_route_check_marker_mouse_down) {
+    if (event.LeftUp()) { m_route_check_marker_mouse_down = false; return true; }
+    if (event.Dragging() || event.LeftDClick()) return true;
+  }
+  if ((event.LeftDown() || event.LeftDClick()) && m_route_safety_dialog &&
+      m_route_check_viewport_valid &&
+      m_route_safety_dialog->SelectMarker(event.GetPosition(), m_route_check_viewport)) {
+    m_route_check_marker_mouse_down = true;
+    return true;
+  }
+#ifdef __OCPN__ANDROID__
   return m_pWeather_Routing && m_androidViewportValid &&
       m_pWeather_Routing->HandleAndroidChartPick(event, &m_androidViewport);
-}
+#else
+  return false;
 #endif
+}
 
 void weather_routing_pi::OnCursorLatLonTimer(wxTimerEvent&) {
   if (m_pWeather_Routing == 0) return;
@@ -1034,6 +1196,10 @@ void weather_routing_pi::ScheduleChartSafetyAtlas(bool rebuild_plan,
 }
 
 void weather_routing_pi::OnChartSafetyAtlasTimer(wxTimerEvent&) {
+  if (m_route_safety_dialog && m_route_safety_dialog->IsChecking()) {
+    ScheduleChartSafetyAtlas(false, 1000);
+    return;
+  }
   const bool provider_available =
       weather_routing::chart_safety_host::Available();
   const bool route_idle =

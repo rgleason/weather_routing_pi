@@ -20,6 +20,8 @@ TEST(ChartSafetyHost, StockHostWithoutOptionalSymbolsRemainsUsable) {
   result.struct_size = sizeof(result);
   EXPECT_FALSE(weather_routing::chart_safety_host::CheckSegment(
       53.3, -4.6, 53.4, -4.7, &options, &result));
+  EXPECT_FALSE(weather_routing::chart_safety_host::ReviewSegment(
+      53.3, -4.6, 53.4, -4.7, &options, &result));
 
   weather_routing::chart_safety_host::Shutdown();
 }

@@ -85,12 +85,12 @@ else()
 endif()
 set(PACKAGE_CONTACT "Sean d'Epagnier; Weather Routing Plugin Team")
 set(SHORT_DESCRIPTION
-    "Advanced weather routing with departure and arrival planning.")
+    "Advanced weather routing, passage planning and existing-route chart checks.")
 set(LONG_DESCRIPTION
-    "WeatherRouting offers Auto, Quick, Standard, Professional and All (slow), with independent saved engine settings and explicit search presets. Auto falls back through Quick and Standard to Professional up to 400% effort. All compares four engines, including the internal Alternative engine, and shares a bounded extra-search allowance across successful engines. Optional fastest/comfort alternatives also work with individual engines and Auto, with saved percentage and seconds limits. A retained-route comparison table and slider balance passage time against discomfort exposure while preserving the worst known leg. Wind-only ranking is enabled by default and remembered. Extra comfort limits never reduce the ordinary engines' budgets; All initially selects the earliest validated arrival. Quick uses hardened contour routing with independent chronological validation. Standard provides bounded adaptive search; Professional keeps a validated Quick candidate and searches for a faster route with broader recovery methods. All support plugin-managed GSHHG shorelines; optional chart-backed safety requires a compatible host.")
+    "Check existing OpenCPN routes for charted land, drying areas, hazards, clearance and optional minimum depth without altering their waypoints. A per-leg report and chart markers distinguish hazards from unavailable coverage or depth; cancellation produces a partial report and route or chart changes invalidate results. Chart checks require a compatible host. WeatherRouting offers Auto, Quick, Standard, Professional and All (slow), with independent saved engine settings and explicit search presets. Auto falls back through Quick and Standard to Professional up to 400% effort. All compares four engines, including the internal Alternative engine, and shares a bounded extra-search allowance across successful engines. Optional fastest/comfort alternatives also work with individual engines and Auto, with saved percentage and seconds limits. A retained-route comparison table and slider balance passage time against discomfort exposure while preserving the worst known leg. Wind-only ranking is enabled by default and remembered. Extra comfort limits never reduce the ordinary engines' budgets; All initially selects the earliest validated arrival. Quick uses hardened contour routing with independent chronological validation. Standard provides bounded adaptive search; Professional keeps a validated Quick candidate and searches for a faster route with broader recovery methods. All support plugin-managed GSHHG shorelines; optional chart-backed safety requires a compatible host.")
 
 set(VERSION_MAJOR "1")
-set(VERSION_MINOR "24")
+set(VERSION_MINOR "25")
 set(VERSION_PATCH "0")
 set(VERSION_TWEAK "0")
 # Keep all five approved source archives for verification and regression tests.
@@ -113,7 +113,7 @@ foreach(_archive IN LISTS _shoreline_archives)
   endif()
 endforeach()
 unset(_shoreline_archives)
-set(VERSION_DATE  "03/10/2026") # DD/MM/YYYY format
+set(VERSION_DATE  "04/10/2026") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov511")
 
 set(OCPN_API_VERSION_MAJOR "1")
@@ -256,6 +256,8 @@ SET(SRCS
             src/ChartSafetyAtlas.cpp
             src/ChartHazardEvaluator.cpp
             src/ChartSafetyHost.cpp
+            src/RouteSafetyCheck.cpp
+            src/RouteSafetyDialog.cpp
             src/OceanPrewarmPolicy.cpp
             src/ReachabilityPrewarmPolicy.cpp
             src/ExternalPlanningProvider.cpp
@@ -330,6 +332,8 @@ SET (HDRS
             include/ChartSafetyCache.h
             include/ChartHazardEvaluator.h
             include/ChartSafetyHost.h
+            include/RouteSafetyCheck.h
+            include/RouteSafetyDialog.h
             include/headless/HeadlessRouteMonitor.h
             include/OptionalChartSafetyApi.h
             include/OceanPrewarmPolicy.h
