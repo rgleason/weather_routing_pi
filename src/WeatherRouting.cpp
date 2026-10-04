@@ -1384,6 +1384,12 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
 
   int confVersion;
   pConf->Read(_T ( "ConfigVersion" ), &confVersion, 0);
+  // v1.25 adds a route checker; its bundled boats and polars are unchanged
+  // from v1.24. Do not offer to overwrite existing user data for this upgrade.
+  if (confVersion == 124 && PLUGIN_VERSION_MAJOR == 1 && PLUGIN_VERSION_MINOR == 25) {
+    confVersion = 125;
+    pConf->Write(_T("ConfigVersion"), confVersion);
+  }
 
 #ifndef __OCPN__ANDROID__
   if (confVersion < PLUGIN_VERSION_MAJOR * 100 + PLUGIN_VERSION_MINOR) {
@@ -2475,8 +2481,14 @@ void WeatherRouting::ShowRoutingStatus(RouteMapOverlay* selectedRoute) {
     if (!route) return;
     RouteMapConfiguration configuration = route->GetConfiguration();
 
-    WeatherRoute display;
-    display.routemapoverlay = route;
+    // WeatherRoute owns its overlay. Reuse the existing entry when formatting
+    // status: a temporary owner would delete the live route at scope exit.
+    const auto found = std::find_if(m_WeatherRoutes.begin(), m_WeatherRoutes.end(),
+        [route](const WeatherRoute* entry) {
+          return entry->routemapoverlay == route;
+        });
+    if (found == m_WeatherRoutes.end()) return;
+    WeatherRoute& display = **found;
     display.Update(this);
 
     wxString state = display.State;
@@ -2611,23 +2623,50 @@ void WeatherRouting::ShowRoutingProgress(const wxString& title) {
 #endif
     note->Wrap(kProgressTextWidth);
     topSizer->Add(note, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 8);
-    wxBoxSizer* buttons = new wxBoxSizer(wxHORIZONTAL);
+    wxBoxSizer* buttons = new wxBoxSizer(
+#ifdef __OCPN__ANDROID__
+        wxVERTICAL);
+#else
+        wxHORIZONTAL);
+#endif
     wxButton* hide = new wxButton(m_RoutingProgressDialog, wxID_ANY, _("Hide"));
     wxButton* stop = new wxButton(m_RoutingProgressDialog, wxID_ANY,
                                   _("Stop all computations"));
     hide->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
       m_RoutingProgressDialog->Hide();
     });
+    wxButton* stopExtra =
+        new wxButton(m_RoutingProgressDialog, wxID_ANY, _("Stop exploration; keep results"));
+    m_StopComfortButton = stopExtra;
+    stopExtra->Enable(false);
+    stopExtra->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+      unsigned count = 0;
+      for (auto* route : m_WeatherRoutes)
+        if (route->routemapoverlay->ExploringComfort()) {
+          route->routemapoverlay->StopComfortExploration();
+          ++count;
+        }
+      wxLogMessage("WR_COMFORT_STOP requested active=%u", count);
+    });
+    buttons->Add(stopExtra,
+#ifdef __OCPN__ANDROID__
+                 0,
+#else
+                 1,
+#endif
+                 wxALL | wxEXPAND, 5);
     stop->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
       CancelMultiLegDepartureOptimization(true);
       StopAll();
       FinishRoutingProgress(_("Stopped"), _("Route computations stopped."));
     });
 #ifdef __OCPN__ANDROID__
-    buttons->Add(hide, 1, wxALL | wxEXPAND, 5);
-    buttons->Add(stop, 1, wxALL | wxEXPAND, 5);
+    auto* primaryButtons = new wxBoxSizer(wxHORIZONTAL);
+    primaryButtons->Add(hide, 1, wxALL | wxEXPAND, 5);
+    primaryButtons->Add(stop, 1, wxALL | wxEXPAND, 5);
+    buttons->Add(primaryButtons, 0, wxEXPAND);
     topSizer->Add(buttons, 0, wxEXPAND);
-    for (auto* button : {hide, stop}) {
+    for (auto* button : {hide, stop, stopExtra}) {
       button->SetMinSize(wxSize(180, 72));
       button->GetHandle()->setStyleSheet(
           "QPushButton { font-size: 17pt; padding: 8px; color: #173849; "
@@ -2771,6 +2810,12 @@ void WeatherRouting::OnRoutingProgressTimer(wxTimerEvent&) {
 }
 
 void WeatherRouting::RefreshRoutingProgressTiming() {
+  if (m_StopComfortButton) {
+    bool exploring = false;
+    for (auto* route : m_WeatherRoutes)
+      exploring = exploring || route->routemapoverlay->ExploringComfort();
+    m_StopComfortButton->Enable(exploring);
+  }
   if (!m_RoutingProgressDialog || !m_RoutingProgressTiming) return;
   wxDateTime now = wxDateTime::Now();
   wxString timing;
@@ -4231,6 +4276,17 @@ void WeatherRouting::OnHeadlessRouteTestTimer(wxTimerEvent&) {
     return;
   }
 
+  if (EnvString("WR_HEADLESS_COMFORT_STOP") == "1" && !EnvString("WR_HEADLESS_SCENARIO").empty()) {
+    for (auto* route : m_WeatherRoutes)
+      if (route->routemapoverlay->ExploringComfort()) {
+        if (!m_StopComfortButton) ShowRoutingProgress(_("Comfort stop contract"));
+        RefreshRoutingProgressTiming();
+        wxCommandEvent event(wxEVT_BUTTON, m_StopComfortButton->GetId());
+        m_StopComfortButton->GetEventHandler()->ProcessEvent(event);
+        wxSetEnv("WR_HEADLESS_COMFORT_STOP", "0");
+        break;
+      }
+  }
   const long elapsed_ms =
       (wxGetUTCTimeMillis() - m_HeadlessRouteTestState->startedMs).ToLong();
   bool active = !m_RunningRouteMaps.empty() || !m_WaitingRouteMaps.empty();
@@ -4390,6 +4446,17 @@ void WeatherRouting::CompleteHeadlessSingleRouteTest(bool timed_out,
     if (completedRow >= 0)
       list->SetItemState(completedRow, wxLIST_STATE_SELECTED, wxLIST_STATE_SELECTED);
     ShowRouteComparison();
+  }
+  if (!timed_out && complete > 0 &&
+      EnvString("WR_HEADLESS_COMFORT_CONFIGURATION_CONTRACT") == "1" &&
+      !EnvString("WR_HEADLESS_SCENARIO").empty()) {
+    auto* list = m_panel->m_lWeatherRoutes;
+    for (long row = 0; row < list->GetItemCount(); ++row) {
+      auto* route = reinterpret_cast<WeatherRoute*>(wxUIntToPtr(list->GetItemData(row)));
+      list->SetItemState(row, route->routemapoverlay == selected_route ? wxLIST_STATE_SELECTED : 0,
+                         wxLIST_STATE_SELECTED);
+    }
+    m_ConfigurationDialog.RunComfortHostContract();
   }
   FinishHeadlessRouteTestProcess(timed_out ? 3 : 0);
 }
@@ -4761,6 +4828,11 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
               ? weather_routing::RoutingEngine::Quick : weather_routing::RoutingEngine::Main;
           if (scenario.route.hasRoutingEngine)
             configuration.EngineSettings.SetEngineId(scenario.route.routingEngine.ToStdString());
+          if (scenario.route.hasComfortAlternatives) {
+            configuration.ExploreComfortAlternatives = scenario.route.comfortAlternativesEnabled;
+            configuration.ComfortAdditionalPercent = scenario.route.comfortAdditionalPercent;
+            configuration.ComfortMaximumSeconds = scenario.route.comfortMaximumSeconds;
+          }
           if (scenario.route.hasQuickMemoryBudgetMiB) configuration.EngineSettings.FastSettings().memoryBudgetMiB = scenario.route.quickMemoryBudgetMiB;
           if (scenario.route.hasGribTimelineCacheMiB) {
             if (configuration.IsFastEngine())
@@ -8984,6 +9056,16 @@ bool WeatherRouting::OpenXML(wxString filename, bool reportfailure) {
                    AttributeInt(
                        e, "DepartureTimeOptimizationConcurrentRoutes", 0)));
         configuration.EngineSettings = weather_routing::ReadRoutingEngineSettings(*e);
+        configuration.ExploreComfortAlternatives = AttributeBool(
+            e, "ExploreComfortAlternatives",
+            configuration.EngineSettings.engine == weather_routing::RoutingEngine::All &&
+                (!GetOCPNConfigObject() ||
+                 GetOCPNConfigObject()->ReadBool(
+                     "/PlugIns/WeatherRouting/ComfortExplorationEnabled", true)));
+        configuration.ComfortAdditionalPercent =
+            std::clamp(AttributeInt(e, "ComfortAdditionalPercent", 200), 0, 400);
+        configuration.ComfortMaximumSeconds =
+            std::clamp(AttributeInt(e, "ComfortMaximumSeconds", 20), 0, 3600);
         configuration.ShorelineResolution = weather_routing::ReadShorelineResolution(*e, weather_routing::ShorelineManager::DefaultResolution());
         configuration.QuickShorelineResolution = weather_routing::ReadShorelineResolution(*e, weather_routing::kDefaultQuickShorelineResolution, "QuickShorelineResolution");
         configuration.ChartShorelineResolution = weather_routing::ReadShorelineResolution(*e, 0, "ChartShorelineResolution");
@@ -9203,6 +9285,9 @@ void WeatherRouting::SaveXML(wxString filename) {
     c->SetAttribute("DepartureTimeOptimizationConcurrentRoutes",
                     configuration.DepartureTimeOptimizationConcurrentRoutes);
     weather_routing::WriteRoutingEngineSettings(configuration.EngineSettings, *c);
+    c->SetAttribute("ExploreComfortAlternatives", configuration.ExploreComfortAlternatives);
+    c->SetAttribute("ComfortAdditionalPercent", configuration.ComfortAdditionalPercent);
+    c->SetAttribute("ComfortMaximumSeconds", configuration.ComfortMaximumSeconds);
     c->SetAttribute("ShorelineResolution", configuration.ShorelineResolution);
     c->SetAttribute("QuickShorelineResolution", configuration.QuickShorelineResolution);
     c->SetAttribute("ChartShorelineResolution", configuration.ChartShorelineResolution);
@@ -12252,8 +12337,6 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
   }
 
   if (auto* preferences = GetOCPNConfigObject()) {
-    configuration.ExploreComfortAlternatives = preferences->ReadBool(
-        "/PlugIns/WeatherRouting/ComfortExplorationEnabled", true);
     configuration.ComfortExplorationWindOnly = preferences->ReadBool(
         "/PlugIns/WeatherRouting/ComfortComparisonWindOnly", true);
   }
@@ -12825,6 +12908,9 @@ void WeatherRouting::SaveLastUsedConfigurationDefaults(
   pConf->Write(_T("ArrivalSafetyMarginMinutes"),
                configuration.ArrivalSafetyMarginMinutes);
   weather_routing::WriteRoutingEngineSettings(configuration.EngineSettings, *pConf);
+  pConf->Write("ExploreComfortAlternatives", configuration.ExploreComfortAlternatives);
+  pConf->Write("ComfortAdditionalPercent", configuration.ComfortAdditionalPercent);
+  pConf->Write("ComfortMaximumSeconds", configuration.ComfortMaximumSeconds);
   pConf->Write("ShorelineResolution", configuration.ShorelineResolution);
   pConf->Write("QuickShorelineResolution", configuration.QuickShorelineResolution);
   pConf->Write("ChartShorelineResolution", configuration.ChartShorelineResolution);
@@ -12955,6 +13041,11 @@ void WeatherRouting::ApplyLastUsedConfigurationDefaults(
                                             arrival_safety_margin)));
   const bool hasSavedDefaults = pConf->GetNumberOfEntries() > 0;
   configuration.EngineSettings = weather_routing::ReadRoutingEngineSettings(*pConf);
+  pConf->Read("ExploreComfortAlternatives", &configuration.ExploreComfortAlternatives, false);
+  configuration.ComfortAdditionalPercent =
+      std::clamp(static_cast<int>(pConf->ReadLong("ComfortAdditionalPercent", 200)), 0, 400);
+  configuration.ComfortMaximumSeconds =
+      std::clamp(static_cast<int>(pConf->ReadLong("ComfortMaximumSeconds", 20)), 0, 3600);
   configuration.ShorelineResolution = weather_routing::ReadShorelineResolution(*pConf, weather_routing::ShorelineManager::DefaultResolution());
   configuration.QuickShorelineResolution = weather_routing::ReadShorelineResolution(*pConf, weather_routing::kDefaultQuickShorelineResolution, "QuickShorelineResolution");
   configuration.ChartShorelineResolution = weather_routing::ReadShorelineResolution(*pConf, 0, "ChartShorelineResolution");

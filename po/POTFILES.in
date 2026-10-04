@@ -5,6 +5,8 @@ src/ChartSafetyCache.cpp
 src/ChartSafetyAtlas.cpp
 src/ChartHazardEvaluator.cpp
 src/ChartSafetyHost.cpp
+src/RouteSafetyCheck.cpp
+src/RouteSafetyDialog.cpp
 src/OceanPrewarmPolicy.cpp
 src/ReachabilityPrewarmPolicy.cpp
 src/ExternalPlanningProvider.cpp
@@ -68,11 +70,12 @@ vendor/original-routing-engine/src/Contour.cpp
 vendor/weather-routing-engine/src/Validator.cpp
 vendor/weather-routing-engine/src/Ensemble.cpp
 src/engine/native/OpenCpnAdapter.cpp
-src/AndroidWeatherRouting.cpp
 include/AppendOnlyCache.h
 include/ChartSafetyCache.h
 include/ChartHazardEvaluator.h
 include/ChartSafetyHost.h
+include/RouteSafetyCheck.h
+include/RouteSafetyDialog.h
 include/headless/HeadlessRouteMonitor.h
 include/OptionalChartSafetyApi.h
 include/OceanPrewarmPolicy.h

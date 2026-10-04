@@ -2873,6 +2873,14 @@ RoutingPreflightResult RoutingEngine::preflight(
   return result;
 }
 
+void summariseDeliveredRoute(RoutingResult& result) {
+  result.metrics = {};
+  result.environment = {};
+  result.sourceTransitions.clear();
+  result.warnings.clear();
+  calculateResultSummaries(result);
+}
+
 RoutingResult ProfessionalEngine::route(
     const RoutingRequest& request,
     const RoutingEnvironment& environment) const {

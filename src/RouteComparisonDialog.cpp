@@ -97,16 +97,14 @@ RouteComparisonDialog::RouteComparisonDialog(WeatherRouting& routing)
       "/PlugIns/WeatherRouting/ComfortComparisonWindOnly", true));
   m_WindOnly->SetToolTip(_("Exclude waves from comfort ranking. The worst known leg still includes available waves. Route validation is unchanged."));
   layout->Add(m_WindOnly, 0, wxALL, 6);
-  m_ExploreComfort = new wxCheckBox(content, wxID_ANY,
+  auto* explorationHelp = new wxStaticText(content, wxID_ANY,
+      _("Enable additional fastest / comfort alternatives in the routing configuration before computing. Applies to Quick, Standard, Professional, Auto and All."));
+  explorationHelp->Wrap(1100);
 #ifdef __OCPN__ANDROID__
-      _("Search extra comfort routes on next All run"));
-#else
-      _("Search additional comfort alternatives on next All run (slower)"));
+  explorationHelp->SetLabel(_("Enable alternatives in Plan > Engine before computing. Applies to Quick, Standard, Professional, Auto and All."));
+  m_AndroidExplorationHelp = explorationHelp;
 #endif
-  m_ExploreComfort->SetValue(!config || config->ReadBool(
-      "/PlugIns/WeatherRouting/ComfortExplorationEnabled", true));
-  m_ExploreComfort->SetToolTip(_("For each departure, All adds a bounded search retaining faster and gentler partial paths. Uses the ranking mode selected when computation starts. Toggle off and recompute to measure the overhead. Auto is unchanged."));
-  layout->Add(m_ExploreComfort, 0, wxLEFT | wxRIGHT | wxBOTTOM, 6);
+  layout->Add(explorationHelp, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 6);
 #ifdef __OCPN__ANDROID__
   m_AndroidCandidate = new wxChoice(content, wxID_ANY);
   layout->Add(m_AndroidCandidate, 0, wxEXPAND | wxALL, 12);
@@ -140,7 +138,7 @@ RouteComparisonDialog::RouteComparisonDialog(WeatherRouting& routing)
   auto* note = new wxStaticText(content, wxID_ANY,
 #ifdef __OCPN__ANDROID__
       _("Choose a candidate to select its validated route. The slider allows extra passage time for comfort. "
-        "All can search up to four additional comfort routes per departure. "
+        "With alternatives enabled, any engine can search for up to four useful extra routes per departure. "
         "Wind + wave ranking requires complete wind and wave-height coverage; gaps remain unknown. "
         "Wind-only ranking excludes waves, while the worst known leg still includes available waves."));
   m_AndroidNote = note;
@@ -214,12 +212,6 @@ RouteComparisonDialog::RouteComparisonDialog(WeatherRouting& routing)
 #endif
     m_Ascending = true; Populate(); Choose();
   });
-  m_ExploreComfort->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent&) {
-    if (auto* config = GetOCPNConfigObject()) {
-      config->Write("/PlugIns/WeatherRouting/ComfortExplorationEnabled", m_ExploreComfort->GetValue());
-      config->Flush();
-    }
-  });
   m_List->Bind(wxEVT_LIST_COL_CLICK, [this](wxListEvent& event) {
     if (event.GetColumn() == m_SortColumn) m_Ascending = !m_Ascending;
     else { m_SortColumn = event.GetColumn(); m_Ascending = true; }
@@ -290,15 +282,6 @@ void RouteComparisonDialog::RunHostContract(bool lifecycle) {
   for (int column : {4, 6, 9, 12, 2}) {
     wxListEvent sort(wxEVT_LIST_COL_CLICK, m_List->GetId());
     sort.m_col = column; m_List->GetEventHandler()->ProcessEvent(sort);
-  }
-  const bool explorationPreference = m_ExploreComfort->GetValue();
-  for (const bool enabled : {!explorationPreference, explorationPreference}) {
-    m_ExploreComfort->SetValue(enabled);
-    wxCommandEvent event(wxEVT_CHECKBOX, m_ExploreComfort->GetId());
-    m_ExploreComfort->GetEventHandler()->ProcessEvent(event);
-    if (auto* config = GetOCPNConfigObject())
-      passed = passed && config->ReadBool(
-          "/PlugIns/WeatherRouting/ComfortExplorationEnabled", !enabled) == enabled;
   }
   if (lifecycle && !m_Entries.empty()) {
     // Dedicated headless fixture only: prove that a dialog holding immutable
@@ -573,7 +556,7 @@ void RouteComparisonDialog::Preview(std::size_t index) {
     text += _("No fastest / comfort trade-off available among comparable candidates.");
   if (m_WindOnly->GetValue()) text += _(" Wind-only ranking: waves excluded from ranking; worst known leg still includes available waves.");
   if (!text.EndsWith("\n")) text += "\n";
-  text += _("Extra search: up to 4 routes, 50% extra passage time (maximum 12 h), and a 20 s search allowance per departure. Limits apply only to extras; the original valid route is kept.");
+  text += _("Extra search retains up to 4 useful alternatives per departure, within 50% extra passage time (maximum 12 h). Computation limits are set in routing configuration. The original valid route is kept.");
   m_Summary->SetLabel(text);
 #ifndef __OCPN__ANDROID__
   m_Summary->Wrap(std::max(300, GetClientSize().x - 24));
@@ -618,6 +601,8 @@ void RouteComparisonDialog::RefreshAndroidComparison() {
   WR_WrapAndroidText(m_Summary, m_Summary->GetLabel(), width);
   WR_WrapAndroidText(m_AndroidDetails, details, width);
   WR_WrapAndroidText(m_AndroidNote, m_AndroidNote->GetLabel(), width);
+  WR_WrapAndroidText(m_AndroidExplorationHelp,
+      m_AndroidExplorationHelp->GetLabel(), width);
   m_AndroidScroll->Layout();
   m_AndroidScroll->FitInside();
   m_Updating = false;

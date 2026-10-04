@@ -352,3 +352,42 @@ TEST(RoutingScenarioJson, GribTimelineCacheLimitIsExplicitAndValidated) {
   }
   wxRemoveFile(path);
 }
+
+TEST(RoutingScenarioJson, ComfortAlternativeBudgetsAreExplicitAndBounded) {
+  const wxString path = "/tmp/weather-routing-comfort-budgets.json";
+  const auto load = [&](const std::string& extra,
+                        weather_routing_engine::RoutingScenario& scenario) {
+    std::ofstream output(path.mb_str());
+    output
+        << R"({"schemaVersion":1,"start":{"name":"A","lat":53,"lon":-5},"end":{"name":"B","lat":54,"lon":-5},"route":{)"
+        << extra << "}}";
+    output.close();
+    wxString error;
+    return weather_routing_headless::LoadRoutingScenarioJson(path, scenario, error);
+  };
+  weather_routing_engine::RoutingScenario scenario;
+  ASSERT_TRUE(load("", scenario));
+  EXPECT_FALSE(scenario.route.hasComfortAlternatives);
+  EXPECT_FALSE(scenario.route.comfortAlternativesEnabled);
+  ASSERT_TRUE(load(
+      R"("comfortAlternatives":{"enabled":true,"additionalPercent":400,"maximumSeconds":3600})",
+      scenario));
+  EXPECT_TRUE(scenario.route.hasComfortAlternatives);
+  EXPECT_TRUE(scenario.route.comfortAlternativesEnabled);
+  EXPECT_EQ(400, scenario.route.comfortAdditionalPercent);
+  EXPECT_EQ(3600, scenario.route.comfortMaximumSeconds);
+  ASSERT_TRUE(
+      load(R"("comfortAlternatives":{"enabled":true,"additionalPercent":0,"maximumSeconds":0})",
+           scenario));
+  EXPECT_EQ(0, scenario.route.comfortAdditionalPercent);
+  EXPECT_EQ(0, scenario.route.comfortMaximumSeconds);
+  for (const auto* invalid :
+       {R"("comfortAlternatives":{"enabled":true,"additionalPercent":401})",
+        R"("comfortAlternatives":{"enabled":true,"additionalPercent":-1})",
+        R"("comfortAlternatives":{"enabled":true,"maximumSeconds":3601})",
+        R"("comfortAlternatives":{"enabled":"true"})",
+        R"("comfortAlternatives":{"enabled":true,"additionalPercent":2.5})"}) {
+    EXPECT_FALSE(load(invalid, scenario)) << invalid;
+  }
+  std::remove(path.mb_str());
+}

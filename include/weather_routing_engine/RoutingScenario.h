@@ -56,6 +56,10 @@ struct RoutingScenarioEnvironment {
 };
 
 struct RoutingScenarioRouteSettings {
+  bool hasComfortAlternatives{false};
+  bool comfortAlternativesEnabled{false};
+  int comfortAdditionalPercent{200};
+  int comfortMaximumSeconds{20};
   double maxSwellMeters{20};
   bool hasMaxSwellMeters{false};
   int chartShorelineResolution{0};
