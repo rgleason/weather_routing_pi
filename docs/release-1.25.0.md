@@ -29,7 +29,7 @@ changes, independently of check progress. Positive chart findings on Android
 require a host implementing the optional chart-safety service and remain
 unverified on the stock tablet host.
 
-Local desktop/Android builds passed, along with 402 native tests and five
+Local desktop/Android builds passed, along with 402 native tests and six
 publication-contract tests. All 19 real-chart integration cases passed. Eight
 routing comparisons against 1.24 retained identical route results, ETA, comfort
 metrics and failure behavior. Standard and OpenGL report/marker interactions
