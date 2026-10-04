@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "supercpn/weather_routing/Engine.h"
 #ifndef MAIN_BASELINE_ONLY
+#include "supercpn/weather_routing/AlternativeEngine.h"
 #include "supercpn/weather_routing/QuickEngine.h"
+#ifdef HAS_ORIGINAL_ENGINE
+#include "original_routing/Engine.h"
+#endif
 #endif
 #include <bit>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <iomanip>
@@ -12,6 +17,56 @@
 
 using namespace supercpn::weather_routing;
 namespace {
+class CountingWeather final : public WeatherProvider {
+public:
+  CountingWeather(std::shared_ptr<const WeatherProvider> delegate,
+                  std::atomic_uint64_t& calls)
+      : delegate_(std::move(delegate)), calls_(calls) {}
+  ParameterCoverage windCoverage() const override {
+    return delegate_->windCoverage();
+  }
+  ParameterCoverage currentCoverage() const override {
+    return delegate_->currentCoverage();
+  }
+  ParameterCoverage waveCoverage() const override {
+    return delegate_->waveCoverage();
+  }
+  WindSample wind(GeoPoint point, TimePoint time) const override {
+    ++calls_;
+    return delegate_->wind(point, time);
+  }
+  CurrentSample current(GeoPoint point, TimePoint time) const override {
+    ++calls_;
+    return delegate_->current(point, time);
+  }
+  WaveSample waves(GeoPoint point, TimePoint time) const override {
+    ++calls_;
+    return delegate_->waves(point, time);
+  }
+  std::string identity() const override { return delegate_->identity(); }
+
+private:
+  std::shared_ptr<const WeatherProvider> delegate_;
+  std::atomic_uint64_t& calls_;
+};
+
+class CountingClimatology final : public ClimatologyProvider {
+public:
+  CountingClimatology(std::shared_ptr<const ClimatologyProvider> delegate,
+                      std::atomic_uint64_t& calls)
+      : delegate_(std::move(delegate)), calls_(calls) {}
+  ParameterCoverage coverage() const override { return delegate_->coverage(); }
+  WindSample wind(GeoPoint point, TimePoint time) const override {
+    ++calls_;
+    return delegate_->wind(point, time);
+  }
+  std::string identity() const override { return delegate_->identity(); }
+
+private:
+  std::shared_ptr<const ClimatologyProvider> delegate_;
+  std::atomic_uint64_t& calls_;
+};
+
 class VariableWeather final : public WeatherProvider {
 public:
   explicit VariableWeather(TimePoint epoch, bool tidal)
@@ -149,6 +204,19 @@ int main(int argc, char** argv) {
         r.options.timeStep = Duration{21600};
         r.options.headingStepDegrees = 20;
       }
+    } else if (name == "pacific6h" || name == "pacific-variable6h") {
+      // Santa Cruz to Oahu geometry (about 2,077 NM direct), using the same
+      // synthetic provider and polar for every engine. This deliberately
+      // excludes chart prewarm, network fetches and host GRIB brokerage.
+      r.start = {36.96, -122.02};
+      r.destination = {21.42, -157.79};
+      r.options.timeStep = Duration{21600};
+      r.options.headingStepDegrees = 20;
+      r.limits.maximumGeneratedStates = 4000000;
+      r.limits.maximumRetainedStates = 280000;
+      r.limits.maximumGraphLabels = 120000;
+      if (name == "pacific-variable6h")
+        env.grib = std::make_shared<VariableWeather>(r.departure, false);
     } else if (name == "dateline") {
       r.start = {-20, 179};
       r.destination = {-20, -178};
@@ -217,14 +285,40 @@ int main(int argc, char** argv) {
       r.environment.climatology = ClimatologyFallbackPolicy::AllowWithWarning;
       r.environment.climatologyAcknowledged = true;
     } else if (name != "coastal" && name != "tiny-budget" &&
-               name != "low-memory")
+               name != "weather-budget" && name != "low-memory")
       throw std::runtime_error("unknown fixture");
+    std::atomic_uint64_t providerCalls{};
+    env.performance = std::make_shared<PolarPerformanceModel>(r.vessel);
+    env.grib = std::make_shared<CountingWeather>(env.grib, providerCalls);
+    if (env.climatology)
+      env.climatology =
+          std::make_shared<CountingClimatology>(env.climatology, providerCalls);
     RoutingResult result;
-    std::uint64_t memory = 0, weather = 0;
+    std::uint64_t memory = 0, weather = 0, lineageNodes = 0;
     const auto begin = std::chrono::steady_clock::now();
     if (engine == "main") result = RoutingEngine{}.route(r, env);
 #ifndef MAIN_BASELINE_ONLY
-    else {
+#ifdef HAS_ORIGINAL_ENGINE
+    else if (engine == "original")
+      result = original_routing::Engine{}.route(r, env);
+#endif
+    else if (engine == "alternative") {
+      AlternativeRoutingOptions options;
+      if (name == "ocean6h" || name == "pacific6h" ||
+          name == "pacific-variable6h")
+        options.timeStep = r.options.timeStep;
+      if (name == "tiny-budget") {
+        options.maximumGeneratedStates = 1;
+        expected = false;
+      }
+      if (name == "weather-budget") {
+        options.maximumWeatherSamples = 1;
+        expected = false;
+      }
+      auto alternative = AlternativeRoutingEngine{}.route(r, env, options);
+      lineageNodes = alternative.alternative.lineageNodesAllocated;
+      result = std::move(alternative.route);
+    } else if (engine == "quick") {
       QuickRoutingOptions options;
       if (argc > 3)
         options.memoryBudgetMiB = static_cast<unsigned>(std::stoul(argv[3]));
@@ -232,16 +326,18 @@ int main(int argc, char** argv) {
         options.maximumGeneratedStates = 1;
         expected = false;
       }
+      if (name == "weather-budget")
+        throw std::runtime_error("weather-budget is Alternative-only");
       if (name == "low-memory") options.memoryBudgetMiB = 1;
       auto quick = QuickRoutingEngine{}.route(r, env, options);
       memory = quick.quick.peakSearchBytes;
-      weather = quick.quick.weatherCalls;
       result = std::move(quick.route);
-    }
+    } else throw std::runtime_error("unknown engine");
 #endif
     const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                         std::chrono::steady_clock::now() - begin)
                         .count();
+    weather = providerCalls.load();
     const bool complete = result.validation.passed && !result.legs.empty();
     bool independentlyValid = false;
     if (complete) {
@@ -266,8 +362,10 @@ int main(int argc, char** argv) {
               << ",\"elapsed_ms\":" << ms
               << ",\"passage_seconds\":" << result.metrics.elapsed.count()
               << ",\"distance_nm\":" << result.metrics.distanceNm
+              << ",\"direct_distance_nm\":" << distanceNm(r.start, r.destination)
               << ",\"generated\":" << result.diagnostics.generatedStates
               << ",\"tracked_search_bytes\":" << memory
+              << ",\"lineage_nodes\":" << lineageNodes
               << ",\"weather_calls\":" << weather
               << ",\"fingerprint\":" << std::quoted(std::to_string(hash))
               << ",\"message\":" << std::quoted(result.message) << "}\n";

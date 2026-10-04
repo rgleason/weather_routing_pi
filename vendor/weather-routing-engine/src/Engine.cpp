@@ -2873,9 +2873,175 @@ RoutingPreflightResult RoutingEngine::preflight(
   return result;
 }
 
+RoutingResult ProfessionalEngine::route(
+    const RoutingRequest& request,
+    const RoutingEnvironment& environment) const {
+  return route(request, environment, nullptr);
+}
+
+RoutingResult ProfessionalEngine::route(
+    const RoutingRequest& request, const RoutingEnvironment& environment,
+    const RoutingResult* quickIncumbent) const {
+  const bool quickComplete =
+      quickIncumbent &&
+      (quickIncumbent->status == RoutingStatus::Complete ||
+       quickIncumbent->status == RoutingStatus::CompleteUsingReverseRecovery ||
+       quickIncumbent->status == RoutingStatus::CompleteUsingFrontierRecovery ||
+       quickIncumbent->status == RoutingStatus::CompleteUsingGraphFallback) &&
+      quickIncumbent->validation.passed && !quickIncumbent->legs.empty() &&
+      quickIncumbent->legs.front().startTime == request.departure &&
+      distanceNm(quickIncumbent->legs.front().start, request.start) < 0.05 &&
+      distanceNm(quickIncumbent->legs.back().end, request.destination) < 0.05;
+
+  RoutingRequest adaptive = request;
+  const double passageNm = distanceNm(request.start, request.destination);
+  double bestGainKnots = 0.0;
+  double selectedOffsetNm = 0.0;
+  unsigned selectedSamples = 0;
+  // This tiny weather survey estimates velocity made good along plausible
+  // offshore lanes before the expensive forward fan starts. It is evidence
+  // for search ordering only: every resulting motion and route still passes
+  // Professional's ordinary constraints and independent replay.
+  const bool fastestObjective =
+      request.objective.kind == ObjectiveKind::Fastest ||
+      request.objective.kind == ObjectiveKind::FastestUnderSafetyLimits ||
+      request.objective.kind == ObjectiveKind::RobustFastest;
+  if (passageNm >= 400.0 && fastestObjective && environment.grib) {
+    PolarPerformanceModel fallbackPerformance(request.vessel);
+    const VesselPerformanceModel& performance = environment.performance
+        ? *environment.performance : fallbackPerformance;
+    const double directBearing =
+        initialBearingDegrees(request.start, request.destination);
+    const std::array<double, 3> fractions{0.2, 0.5, 0.8};
+    const auto score = [&](GeoPoint point, TimePoint time) {
+      const WindSample wind = environment.grib->wind(point, time);
+      if (!wind.available) return std::numeric_limits<double>::quiet_NaN();
+      const WaveSample waves = request.environment.useWaves
+          ? environment.grib->waves(point, time) : WaveSample{};
+      const double bearing = initialBearingDegrees(point, request.destination);
+      const double windKnots = vectorMagnitudeKnots(wind.velocity);
+      double best = -std::numeric_limits<double>::infinity();
+      const int surveyAngle = std::clamp(
+          static_cast<int>(std::floor(
+              request.options.maximumSearchAngleDegrees)), 0, 90);
+      for (int angle = -surveyAngle; angle <= surveyAngle; angle += 15) {
+        const double heading = normalizeHeading(bearing + angle);
+        const double twa = trueWindAngleDegrees(wind.velocity, heading);
+        for (const PerformanceCandidate& candidate :
+             performance.candidatesAt(point, time, windKnots, twa, waves,
+                                      PropulsionMode::Sail, Duration{})) {
+          if (candidate.valid && candidate.speedThroughWaterKnots > 0.0)
+            best = std::max(best, candidate.speedThroughWaterKnots *
+                std::cos(angle * std::numbers::pi / 180.0));
+        }
+      }
+      return std::isfinite(best) ? best
+          : std::numeric_limits<double>::quiet_NaN();
+    };
+    std::array<GeoPoint, 3> centerPoints;
+    std::array<TimePoint, 3> times;
+    std::array<double, 3> centerScores;
+    for (std::size_t i = 0; i < fractions.size(); ++i) {
+      centerPoints[i] = destinationPoint(
+          request.start, directBearing, passageNm * fractions[i]);
+      times[i] = request.departure + Duration{static_cast<std::int64_t>(
+          std::llround(passageNm * fractions[i] / 5.0 * 3600.0))};
+      centerScores[i] = score(centerPoints[i], times[i]);
+    }
+    for (double offsetNm : {80.0, 160.0}) {
+      for (double side : {-1.0, 1.0}) {
+        double gain = 0.0;
+        double center = 0.0;
+        unsigned samples = 0;
+        for (std::size_t i = 0; i < fractions.size(); ++i) {
+          if (!std::isfinite(centerScores[i])) continue;
+          const GeoPoint lane = destinationPoint(
+              centerPoints[i], directBearing + side * 90.0, offsetNm);
+          const double laneScore = score(lane, times[i]);
+          if (!std::isfinite(laneScore)) continue;
+          gain += laneScore - centerScores[i];
+          center += centerScores[i];
+          ++samples;
+        }
+        if (samples < 2) continue;
+        const double meanGain = gain / samples;
+        const double meanCenter = center / samples;
+        if (meanGain >= std::max(0.4, meanCenter * 0.08) &&
+            meanGain > bestGainKnots) {
+          bestGainKnots = meanGain;
+          selectedOffsetNm = offsetNm;
+          selectedSamples = samples;
+        }
+      }
+    }
+    if (selectedOffsetNm > 0.0) {
+      // The sparse fringe reaches the surveyed lane without retaining its
+      // entire width on every layer. A full-width Pacific trial added over
+      // two million shoreline checks for less than four minutes' passage gain.
+      const double suggestedCoreNm = std::ceil(
+          (selectedOffsetNm + 5.0) / 15.0) * 10.0;
+      adaptive.options.graphCorridorWidthNm = std::max(
+          adaptive.options.graphCorridorWidthNm,
+          std::min(180.0, suggestedCoreNm));
+    }
+  }
+  // A Quick incumbent guarantees a valid result. Spend only the first
+  // Professional tier trying to improve it; reserve the full requested
+  // recovery ladder for passages that Quick could not solve.
+  RoutingResult result = quickComplete
+      ? RoutingEngine{}.routeThroughEffortTier(adaptive, environment, 100)
+      : RoutingEngine{}.route(adaptive, environment);
+  if (result.status == RoutingStatus::Cancelled)
+    return result;
+  std::ostringstream survey;
+  survey << "Professional weather scout: passage_nm=" << passageNm
+         << " lane_offset_nm=" << selectedOffsetNm
+         << " mean_vmg_gain_kn=" << bestGainKnots
+         << " samples=" << selectedSamples
+         << " initial_core_nm=" << adaptive.options.graphCorridorWidthNm;
+  const bool professionalComplete =
+      (result.status == RoutingStatus::Complete ||
+       result.status == RoutingStatus::CompleteUsingReverseRecovery ||
+       result.status == RoutingStatus::CompleteUsingFrontierRecovery ||
+       result.status == RoutingStatus::CompleteUsingGraphFallback) &&
+      result.validation.passed;
+  const bool selectQuick = quickComplete &&
+      (!professionalComplete ||
+       quickIncumbent->metrics.elapsed <= result.metrics.elapsed);
+  std::ostringstream comparison;
+  comparison << "Professional comparison: quick="
+             << (quickIncumbent ? toString(quickIncumbent->status) : "not_run")
+             << " quick_passage_s="
+             << (quickComplete ? quickIncumbent->metrics.elapsed.count() : -1)
+             << " professional=" << toString(result.status)
+             << " professional_passage_s="
+             << (professionalComplete ? result.metrics.elapsed.count() : -1);
+  RoutingResult selected = selectQuick ? *quickIncumbent
+                                       : std::move(result);
+  selected.diagnostics.stageStopReasons.insert(
+      selected.diagnostics.stageStopReasons.begin(), survey.str());
+  selected.diagnostics.stageStopReasons.insert(
+      selected.diagnostics.stageStopReasons.begin(), comparison.str());
+  selected.diagnostics.stageStopReasons.insert(
+      selected.diagnostics.stageStopReasons.begin(),
+      "Professional Quick incumbent: " +
+          std::string(quickComplete ? "validated" : "unavailable") +
+          "; Professional tier cap=" +
+          std::to_string(quickComplete ? 100 :
+              request.options.routingEffortPercent) +
+          "% ; selected=" + (selectQuick ? "Quick" : "Professional"));
+  return selected;
+}
+
 RoutingResult RoutingEngine::route(
     const RoutingRequest& request,
     const RoutingEnvironment& environment) const {
+  return routeThroughEffortTier(request, environment, 400);
+}
+
+RoutingResult RoutingEngine::routeThroughEffortTier(
+    const RoutingRequest& request, const RoutingEnvironment& environment,
+    unsigned maximumEffortTier) const {
   const auto normalizedEffort = [](unsigned effort) {
     if (effort <= 125) return 100U;
     if (effort <= 175) return 150U;
@@ -2909,7 +3075,7 @@ RoutingResult RoutingEngine::route(
   std::uint64_t cumulativeGenerated{};
   RoutingResult last;
   for (const unsigned tier : tiers) {
-    if (tier > selectedEffort) break;
+    if (tier > selectedEffort || tier > maximumEffortTier) break;
     RoutingRequest tierRequest = request;
     tierRequest.options.routingEffortPercent = tier;
     tierRequest.limits.maximumGeneratedStates =

@@ -4,13 +4,13 @@
 
 namespace wr = weather_routing;
 
-TEST(GribTimelineCachePolicy, PreservesHistoricalStandardLimits) {
+TEST(GribTimelineCachePolicy, HistoricalFloorsAlsoRespectLowPhysicalHeadroom) {
   auto main = wr::EvaluateGribTimelineCacheAdmission(512, false, 1024, 64);
-  EXPECT_TRUE(main.approved);
-  EXPECT_EQ(main.effective_mib, 512);
+  EXPECT_FALSE(main.approved);
+  EXPECT_EQ(main.effective_mib, 128);
   auto quick = wr::EvaluateGribTimelineCacheAdmission(64, true, 256, 64);
-  EXPECT_TRUE(quick.approved);
-  EXPECT_EQ(quick.effective_mib, 64);
+  EXPECT_FALSE(quick.approved);
+  EXPECT_EQ(quick.effective_mib, 32);
 }
 
 TEST(GribTimelineCachePolicy, TwoGiBCacheRequiresEightGiBAvailable) {
@@ -86,7 +86,9 @@ TEST(GribTimelineCachePolicy, ReducedAllowancesRespectReserveAndRequest) {
       for (std::uint64_t available : {0U, 1024U, 3000U, 5120U, 8192U, 65536U}) {
         const auto admission = wr::EvaluateGribTimelineCacheAdmission(requested, quick, available, 64);
         EXPECT_LE(admission.effective_mib, admission.requested_mib);
-        if (admission.effective_mib > wr::GribTimelineCacheFallbackMiB(quick, 64)) {
+        if (available && available < wr::kGribTimelineCacheBaseReserveMiB) {
+          EXPECT_LE(admission.effective_mib, std::max<std::uint64_t>(16, available / 8));
+        } else if (admission.effective_mib > wr::GribTimelineCacheFallbackMiB(quick, 64)) {
           EXPECT_GE(available, wr::kGribTimelineCacheBaseReserveMiB + 3ULL * admission.effective_mib);
         }
       }

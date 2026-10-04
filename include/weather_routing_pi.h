@@ -151,6 +151,11 @@ public:
 
   bool RenderOverlay(wxDC& dc, PlugIn_ViewPort* vp);
   bool RenderGLOverlay(wxGLContext* pcontext, PlugIn_ViewPort* vp);
+#ifdef __OCPN__ANDROID__
+  bool MouseEventHook(wxMouseEvent& event) override;
+  PlugIn_ViewPort m_androidViewport{};
+  bool m_androidViewportValid{false};
+#endif
 
   void SetDefaults();
 

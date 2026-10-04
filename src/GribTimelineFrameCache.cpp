@@ -55,7 +55,7 @@ GribTimelineCacheAdmission GribTimelineFrameCache::Configure(
                           2ULL * effective_mib_;
   // A reduced allowance may still exceed the historical floor and needs the
   // same runtime guard as a fully admitted request.
-  runtime_guard_enabled_ = effective_mib_ > standard_mib_;
+  runtime_guard_enabled_ = true;
   configured_ = true;
   next_memory_check_milliseconds_ = 0;
   cache_.SetMaximumWeight(MiBToBytes(effective_mib_));
@@ -102,9 +102,8 @@ void GribTimelineFrameCache::ApplyRuntimeMemoryGuard() {
   if (now < next_memory_check_milliseconds_) return;
   next_memory_check_milliseconds_ = now + 1000;
 
-  const std::uint64_t available_bytes = AvailablePhysicalMemoryBytes();
-  if (!available_bytes) return;
-  const std::uint64_t available_mib = available_bytes / kMiB;
+  const std::uint64_t available_mib = AvailablePhysicalMemoryMiB();
+  if (!available_mib) return;
   const std::uint64_t current_mib = (cache_.TotalWeight() + kMiB - 1) / kMiB;
   const std::uint64_t growable_mib =
       available_mib > required_reserve_mib_
@@ -112,8 +111,11 @@ void GribTimelineFrameCache::ApplyRuntimeMemoryGuard() {
           : 0;
   const std::uint64_t safe_mib = std::min<std::uint64_t>(
       effective_mib_, current_mib + growable_mib);
-  const int guarded_mib = static_cast<int>(std::max<std::uint64_t>(
+  int guarded_mib = static_cast<int>(std::max<std::uint64_t>(
       standard_mib_, safe_mib));
+  guarded_mib = std::min(guarded_mib, current_limit_mib_);
+  if (available_mib < kGribTimelineCacheBaseReserveMiB)
+    guarded_mib = PressureCacheLimitMiB(current_limit_mib_, available_mib);
   if (guarded_mib != current_limit_mib_) {
     wxLogMessage(
         "WR_GRIB_TIMELINE_CACHE_GUARD previous_limit_mib=%d "

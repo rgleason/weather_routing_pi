@@ -57,6 +57,7 @@ set(TEST_SRC
     HeadlessRouteMonitor_tests.cpp
     KeyedRequestCache_tests.cpp
     GribTimelineCachePolicy_tests.cpp
+    DeviceMemoryPolicy_tests.cpp
     OceanPrewarmPolicy_tests.cpp
     ReachabilityPrewarmPolicy_tests.cpp
     RouteDisplayPolicy_tests.cpp
@@ -65,9 +66,12 @@ set(TEST_SRC
     Utilities_tests.cpp
     MultiLegRouteOutput_tests.cpp
     RouteSimplifier_tests.cpp
+    DirectLegCourseSolver_tests.cpp
     StabilityCorridor_tests.cpp
     StabilityCorridorLifecycle_tests.cpp
     RoutingEngineSettings_tests.cpp
+    RoutingEngineSequence_tests.cpp
+    RouteComfort_tests.cpp
     RoutingScenarioJson_tests.cpp
     DepartureScheduler_tests.cpp
     RoutingQualityPolicy_tests.cpp
@@ -77,6 +81,8 @@ set(TEST_SRC
     ConstraintTime_tests.cpp
     SunCalculator_tests.cpp
     TimeZoneDisplay_tests.cpp
+    GpxRouteTime_tests.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/src/navobj_util.cpp
     ModernNativeEngine_tests.cpp
     OriginalEngine_tests.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/vendor/original-routing-engine/src/Engine.cpp
@@ -84,6 +90,7 @@ set(TEST_SRC
     ArrivalPlanner_tests.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/AppendOnlyCache.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/ChartSafetyCache.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/src/SystemMemory.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/ChartSafetyHost.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/ChartSafetyAtlas.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/ChartHazardEvaluator.cpp
@@ -109,6 +116,7 @@ set(TEST_SRC
     ${WEATHER_ROUTING_ENGINE_DIR}/src/ArrivalPlanner.cpp
     ${WEATHER_ROUTING_ENGINE_DIR}/src/Engine.cpp
     ${WEATHER_ROUTING_ENGINE_DIR}/src/QuickEngine.cpp
+    ${WEATHER_ROUTING_ENGINE_DIR}/src/AlternativeEngine.cpp
     ${WEATHER_ROUTING_ENGINE_DIR}/src/Validator.cpp
     ${WEATHER_ROUTING_ENGINE_DIR}/src/Ensemble.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/zuFile.cpp
@@ -160,6 +168,7 @@ set(TEST_SRC
            ocpn::api
            ocpn::libtess2
            ocpn::tinyxml
+           ocpn::pugixml
            # ocpn::dc-utils
            # ocpn::jsonlib
            # ocpn::api_wx32
@@ -171,7 +180,7 @@ set(TEST_SRC
            ocpn::jsonlib
    )
 
-   if(WIN32)
+   if(WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 4)
        # zlib1.lib is an import library. Keep its matching x86 DLL beside the
        # x86 test executable so GoogleTest discovery cannot select an
        # unrelated zlib1.dll from the executor PATH.
@@ -179,6 +188,13 @@ set(TEST_SRC
            COMMAND ${CMAKE_COMMAND} -E copy_if_different
                "${WEATHER_ROUTING_SOURCE_DIR}/opencpn-libs/zlib/win/zlib1.dll"
                "$<TARGET_FILE_DIR:weather_routing_pi_tests>"
+       )
+   endif()
+
+   if(WIN32)
+       # GoogleTest DLLs are built for the selected architecture. Both Win32
+       # and x64 discovery need them beside the test executable.
+       add_custom_command(TARGET weather_routing_pi_tests POST_BUILD
            COMMAND ${CMAKE_COMMAND} -E copy_if_different
                "$<TARGET_FILE:GTest::gtest>"
                "$<TARGET_FILE:GTest::gtest_main>"

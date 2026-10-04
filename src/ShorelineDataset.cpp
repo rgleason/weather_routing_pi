@@ -3,9 +3,12 @@
 // cache implementation is independent of the host's GSHHS crossing
 // implementation.
 #include "ShorelineDataset.h"
+#include "DeviceMemoryPolicy.h"
+#include "SystemMemory.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
@@ -182,6 +185,8 @@ struct ShorelineDataset::Impl {
   std::array<std::uint32_t, 64800> offsets{};
   int version = 0;
   std::size_t size = 0, budget = 0, used = 0;
+  std::size_t tile_limit = 0;
+  std::chrono::steady_clock::time_point next_memory_check{};
   mutable std::mutex mutex;
   std::string error;
   std::list<int> lru;
@@ -191,7 +196,7 @@ struct ShorelineDataset::Impl {
   };
   std::unordered_map<int, Entry> cache;
   Impl(const std::filesystem::path& path, std::size_t bytes)
-      : file(path, std::ios::binary), budget(bytes) {
+      : file(path, std::ios::binary), budget(bytes), tile_limit(bytes) {
     if (!file)
       throw std::runtime_error("Shoreline dataset is missing or unreadable");
     size = static_cast<std::size_t>(std::filesystem::file_size(path));
@@ -209,6 +214,22 @@ struct ShorelineDataset::Impl {
     }
   }
   std::shared_ptr<Tile> Get(int x, int y) {
+    const auto now = std::chrono::steady_clock::now();
+    if (now >= next_memory_check) {
+      next_memory_check = now + std::chrono::seconds(1);
+      const auto available = AvailablePhysicalMemoryMiB();
+      if (available) {
+        const auto allowance = static_cast<std::size_t>(
+            PressureCacheLimitMiB(256, available, 16)) * 1024 * 1024;
+        budget = std::min(budget, allowance);
+        while (used > budget && !lru.empty()) {
+          int old = lru.back();
+          used -= cache.at(old).tile->bytes;
+          cache.erase(old);
+          lru.pop_back();
+        }
+      }
+    }
     const int key = x * 180 + y;
     auto found = cache.find(key);
     if (found != cache.end()) {
@@ -220,7 +241,7 @@ struct ShorelineDataset::Impl {
       using Value = typename std::decay_t<decltype(values)>::value_type;
       if (capacity <= values.capacity()) return;
       const auto extra = (capacity - values.capacity()) * sizeof(Value);
-      if (tile->bytes > budget || extra > budget - tile->bytes)
+      if (tile->bytes > tile_limit || extra > tile_limit - tile->bytes)
         throw ShorelineQueryError(
             "Shoreline tile exceeds cache limit. Increase the shoreline tile "
             "cache in View / Shoreline data.");
@@ -294,8 +315,11 @@ struct ShorelineDataset::Impl {
           }
       }
     }
-    if (tile->bytes > budget)
+    if (tile->bytes > tile_limit)
       throw std::runtime_error("Shoreline tile exceeds cache budget");
+    // A valid tile larger than pressure retention can still serve this query.
+    // Keep the original allocation bound and never omit geometry to save RAM.
+    if (tile->bytes > budget) return tile;
     while (used + tile->bytes > budget && !lru.empty()) {
       int old = lru.back();
       used -= cache.at(old).tile->bytes;

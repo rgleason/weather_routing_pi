@@ -31,6 +31,10 @@ public:
   StatisticsDialog(wxWindow* parent);
   void SetRouteMapOverlays(std::list<RouteMapOverlay*> routemapoverlays);
   void SetRunTime(wxTimeSpan RunTime);
+#ifdef __OCPN__ANDROID__
+private:
+  wxStaticText* m_androidSearchStatus{nullptr};
+#endif
 };
 
 #endif

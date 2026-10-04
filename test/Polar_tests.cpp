@@ -19,6 +19,12 @@
 
 #include <gtest/gtest.h>
 #include <Polar.h>
+#include <wx/filename.h>
+#include <fstream>
+#include <iterator>
+#include <vector>
+#include <bzlib.h>
+#include <zlib.h>
 
 class PolarTest: public ::testing::Test {
 protected:
@@ -57,6 +63,82 @@ TEST_F(PolarTest, OpenFailed) {
   EXPECT_EQ(success, false);
 }
 
+TEST_F(PolarTest, OpensCompressedPolarsWithLineReader) {
+  std::ifstream source(m_testPolarFileName.ToStdString(), std::ios::binary);
+  ASSERT_TRUE(source);
+  const std::string contents(std::istreambuf_iterator<char>{source}, {});
+  ASSERT_FALSE(contents.empty());
+
+  const wxString base = wxFileName::CreateTempFileName("wr-polar-compressed-");
+  ASSERT_FALSE(base.empty());
+  wxRemoveFile(base);
+
+  const wxString gzipPath = base + ".pol.gz";
+  {
+    gzFile gzip = gzopen(gzipPath.utf8_str(), "wb");
+    ASSERT_NE(gzip, nullptr);
+    ASSERT_EQ(gzwrite(gzip, contents.data(), contents.size()),
+              static_cast<int>(contents.size()));
+    ASSERT_EQ(gzclose(gzip), Z_OK);
+  }
+
+  const wxString bzipPath = base + ".pol.bz2";
+  {
+    std::vector<char> input(contents.begin(), contents.end());
+    unsigned int packedLength = static_cast<unsigned int>(input.size() * 1.01 + 601);
+    std::vector<char> packed(packedLength);
+    ASSERT_EQ(BZ2_bzBuffToBuffCompress(packed.data(), &packedLength,
+                                      input.data(), input.size(), 9, 0, 30),
+              BZ_OK);
+    std::ofstream out(bzipPath.ToStdString(), std::ios::binary);
+    ASSERT_TRUE(out);
+    out.write(packed.data(), packedLength);
+  }
+
+  for (const wxString& path : {gzipPath, bzipPath}) {
+    // Create the fixture using zlib's portable narrow API, then rename it
+    // so the reader must handle a Unicode filename on Windows as well.
+    const wxString unicodePath = path + wxString::FromUTF8("-\xc3\xa9-\xe8\x88\xb9") +
+        (path == gzipPath ? ".gz" : ".bz2");
+    SCOPED_TRACE(std::string(unicodePath.utf8_str()));
+    ASSERT_TRUE(wxRenameFile(path, unicodePath));
+    Polar loaded;
+    wxString message;
+    ASSERT_TRUE(loaded.Open(unicodePath, message)) << message;
+    PolarSpeedStatus status;
+    EXPECT_NEAR(loaded.Speed(10, 10, &status, false), 1.3, 1e-6);
+    wxRemoveFile(unicodePath);
+  }
+}
+
+TEST_F(PolarTest, EmptyDimensionsCannotTruncateAnExistingPolar) {
+  const wxString file = wxFileName::CreateTempFileName("wr-polar-save-");
+  ASSERT_FALSE(file.IsEmpty());
+  {
+    std::ofstream out(file.ToStdString());
+    out << "existing polar must survive";
+  }
+  for (bool noWind : {false, true}) {
+    Polar empty;
+    empty.AddDegreeStep(45);
+    empty.AddWindSpeed(10);
+    if (noWind) empty.RemoveWindSpeed(0);
+    else empty.RemoveDegreeStep(0);
+    EXPECT_FALSE(empty.Save(file));
+    PolarSpeedStatus status;
+    EXPECT_TRUE(std::isnan(empty.Speed(45, 10, &status, false)));
+    EXPECT_EQ(status, POLAR_SPEED_NO_POLAR_DATA);
+    for (float value : empty.GetVMGTrueWind(10).values)
+      EXPECT_TRUE(std::isnan(value));
+    for (float value : empty.GetVMGApparentWind(10).values)
+      EXPECT_TRUE(std::isnan(value));
+    std::ifstream in(file.ToStdString());
+    EXPECT_EQ(std::string(std::istreambuf_iterator<char>(in), {}),
+              "existing polar must survive");
+  }
+  wxRemoveFile(file);
+}
+
 TEST_F(PolarTest, ClosestVWiBasic) {
   int VW1i, VW2i;
   m_polar.ClosestVWi(10, VW1i, VW2i);
@@ -70,6 +152,76 @@ TEST_F(PolarTest, SpeedBasic) {
   
   double speed = m_polar.Speed(10, 10, &status, false);
   EXPECT_NEAR(speed, 1.3, 1e-6);
+}
+
+TEST(PolarWindRangeTest, LightWindExampleCannotInventFastStrongWindSpeeds) {
+  Polar polar;
+  wxString message;
+  ASSERT_TRUE(polar.Open(
+      wxString(WEATHER_ROUTING_SOURCE_DIR) +
+          "/data/polars/Example/Example-0-10.pol", message));
+  PolarSpeedStatus status;
+  // Previously the 9--10 knot slope produced 13.88 knots at 18.2 knots
+  // of wind (333 miles/day), despite this being a light-wind sail table.
+  EXPECT_NEAR(polar.Speed(60.0, 18.2, &status, false), 6.5, 1e-6);
+  EXPECT_EQ(status, POLAR_SPEED_SUCCESS);
+  EXPECT_TRUE(std::isnan(polar.Speed(60.0, 18.2, &status, true)));
+  EXPECT_EQ(status, POLAR_SPEED_WIND_TOO_STRONG);
+}
+
+TEST(PolarWindRangeTest, PermittedLightWindFallbackTapersToZero) {
+  Polar polar;
+  wxString message;
+  ASSERT_TRUE(polar.Open(
+      wxString(WEATHER_ROUTING_SOURCE_DIR) +
+          "/data/polars/Example/Example-6-24.pol", message));
+  PolarSpeedStatus status;
+  EXPECT_NEAR(polar.Speed(60.0, 3.0, &status, false), 2.85, 1e-6);
+  EXPECT_NEAR(polar.Speed(60.0, 0.0, &status, false), 0.0, 1e-6);
+  EXPECT_NEAR(polar.Speed(20.0, 3.0, nullptr, false, true),
+              0.5 * polar.Speed(20.0, 6.0, nullptr, false, true), 1e-6);
+  EXPECT_TRUE(std::isnan(polar.Speed(60.0, 3.0, &status, true)));
+  EXPECT_EQ(status, POLAR_SPEED_WIND_TOO_LIGHT);
+}
+
+TEST(PolarWindRangeTest, ClimatologyExamplesOfferOnlySailsWithinWindRange) {
+  const char* names[] = {"Example-0-10.pol", "Example-6-24.pol",
+                         "Example-15-30.pol", "Example-24-60.pol"};
+  int usable = 0;
+  double fastest = 0.0;
+  for (const char* name : names) {
+    Polar polar;
+    wxString message;
+    ASSERT_TRUE(polar.Open(wxString(WEATHER_ROUTING_SOURCE_DIR) +
+                              "/data/polars/Example/" + name, message));
+    const double speed = polar.Speed(60.0, 18.2, nullptr, true, true);
+    if (!std::isfinite(speed)) continue;
+    ++usable;
+    fastest = std::max(fastest, speed);
+  }
+  EXPECT_EQ(usable, 2);
+  EXPECT_NEAR(fastest, 7.912, 1e-6);
+}
+
+TEST(PolarWindRangeTest, IntermediateAndEndpointSpeedsRemainUnchanged) {
+  Polar polar;
+  wxString message;
+  ASSERT_TRUE(polar.Open(
+      wxString(WEATHER_ROUTING_SOURCE_DIR) +
+          "/data/polars/Example/Example-15-30.pol", message));
+  EXPECT_NEAR(polar.Speed(60.0, 15.0, nullptr, true), 7.4, 1e-6);
+  EXPECT_NEAR(polar.Speed(60.0, 18.2, nullptr, true), 7.912, 1e-6);
+  EXPECT_NEAR(polar.Speed(60.0, 30.0, nullptr, true), 8.7, 1e-6);
+  EXPECT_NEAR(polar.Speed(60.0, 50.0, nullptr, false), 8.7, 1e-6);
+}
+
+TEST(PolarWindRangeTest, ExplicitZeroWindPoweredPolarIsPreserved) {
+  Polar polar;
+  wxString message;
+  ASSERT_TRUE(polar.Open(wxString(TESTDATADIR) +
+                            "/polars/ZeroWindPowered_test.pol", message));
+  EXPECT_NEAR(polar.Speed(90.0, 0.0, nullptr, true), 5.5, 1e-6);
+  EXPECT_NEAR(polar.Speed(90.0, 0.0, nullptr, false), 5.5, 1e-6);
 }
 
 TEST_F(PolarTest, SpeedAtApparentWindDirectionBasic) {

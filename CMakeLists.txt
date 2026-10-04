@@ -19,7 +19,7 @@
 # - xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx,                                       *
 # - xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx                                       *
 # -----------------------------------------------------------------------------
-# Frontend2 Author: Jon Gough Testplugin(TP) v1.0.363.0 08/09/2026 DD/MM/YYYY
+# Frontend2 Author: Jon Gough Testplugin(TP) v1.0.341.0 30/04/2025 DD/MM/YYYY
 # format buildCI:yes useODAPI:no validateJSON:no
 # ---------------------------------------------------------------------------
 ## -- When changing this file do NOT change the order of the sections.    -- ##
@@ -42,7 +42,7 @@ option(WEATHER_ROUTING_XWEATHER_IDENTITY
 unset(_xweather_identity_default)
 
 # define minimum cmake version
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.10)
 if(COMMAND cmake_policy)
   if (POLICY CMP0043)
     cmake_policy(SET CMP0043 NEW)
@@ -87,14 +87,12 @@ set(PACKAGE_CONTACT "Sean d'Epagnier; Weather Routing Plugin Team")
 set(SHORT_DESCRIPTION
     "Advanced weather routing with departure and arrival planning.")
 set(LONG_DESCRIPTION
-    "WeatherRouting offers Quick, Standard and Professional engines with independent saved settings and explicit search presets. Quick uses hardened contour routing with independent chronological validation. Standard provides bounded adaptive search; Professional adds broader recovery methods. All support plugin-managed GSHHG shorelines; optional chart-backed safety requires a compatible host.")
+    "WeatherRouting offers Auto, Quick, Standard, Professional and All (slow), with independent saved engine settings and explicit search presets. Auto falls back through Quick and Standard to Professional up to 400% effort. All compares four engines, including the internal Alternative engine, and can add bounded comfort alternatives for each departure. A retained-route comparison table and slider balance passage time against discomfort exposure while preserving the worst known leg. Wind-only ranking is enabled by default and remembered. Extra comfort limits never reduce the ordinary engines' budgets; All initially selects the earliest validated arrival. Quick uses hardened contour routing with independent chronological validation. Standard provides bounded adaptive search; Professional keeps a validated Quick candidate and searches for a faster route with broader recovery methods. All support plugin-managed GSHHG shorelines; optional chart-backed safety requires a compatible host.")
 
 set(VERSION_MAJOR "1")
-set(VERSION_MINOR "18")
-set(VERSION_PATCH "11")
+set(VERSION_MINOR "23")
+set(VERSION_PATCH "0")
 set(VERSION_TWEAK "0")
-
-# Paul this stuff shouldn't be here really, gets too confusing. Make a cmake/shoreline.cmake and then link that.
 # Keep all five approved source archives for verification and regression tests.
 # Packages ship only Crude, Low and Intermediate; High and Full are optional
 # checksum-verified downloads shared by both plugin identities.
@@ -115,12 +113,27 @@ foreach(_archive IN LISTS _shoreline_archives)
   endif()
 endforeach()
 unset(_shoreline_archives)
-set(VERSION_DATE  "28/09/2026") # DD/MM/YYYY format
+set(VERSION_DATE  "02/10/2026") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov511")
 
 set(OCPN_API_VERSION_MAJOR "1")
-set(OCPN_API_VERSION_MINOR "22")
-set(TP_COMMENT "  * RelWithDebInfo using CI")
+set(OCPN_API_VERSION_MINOR "21")
+# Header selection is independent of the minimum host API. Both builds retain
+# the opencpn_plugin_121 base class and advertise API 1.21 to older hosts.
+set(_wr_api_headers "1.21")
+if(DEFINED ENV{WEATHER_ROUTING_API_HEADER_VERSION})
+  set(_wr_api_headers "$ENV{WEATHER_ROUTING_API_HEADER_VERSION}")
+endif()
+set(WEATHER_ROUTING_API_HEADER_VERSION "${_wr_api_headers}" CACHE STRING
+    "Stock OpenCPN headers used for compatibility validation: 1.21 or 1.22")
+set_property(CACHE WEATHER_ROUTING_API_HEADER_VERSION PROPERTY STRINGS "1.21" "1.22")
+if(NOT WEATHER_ROUTING_API_HEADER_VERSION MATCHES "^1\\.(21|22)$")
+  message(FATAL_ERROR "WEATHER_ROUTING_API_HEADER_VERSION must be 1.21 or 1.22")
+endif()
+string(REGEX REPLACE "^1\\." "" WEATHER_ROUTING_API_HEADER_MINOR
+       "${WEATHER_ROUTING_API_HEADER_VERSION}")
+unset(_wr_api_headers)
+set(TP_COMMENT "  * Release using CI")
 
 set(PARENT "opencpn")
 
@@ -135,29 +148,17 @@ set(ALPHA "alpha") #Standard Repos
 
 # Set if  Cloudsmith Base Repository name does not match your Git Repository name.
 #set (CLOUDSMITH_BASE_REPOSITORY "${GIT_REPOSITORY_NAME}")
-#set (CLOUDSMITH_BASE_REPOSITORY "opencpn-plugins")
-#set(CLOUDSMITH_BASE_REPOSITORY "weather_routing")
-#set(CLOUDSMITH_USER "opencpn")
-
-
-# Paul, this isn't deploying to 
-#   opencpn/weather-routing-alpha
-#   opencpn/weather-routing-beta
-#   opencpn/weather-routing-prod
-# as it should.  See the 3 SET above.
-# I've tried several things here.
-
+#set (CLOUDSMITH_BASE_REPOSITORY "opencpn-plugins")  # Ricks's customization
+set(CLOUDSMITH_BASE_REPOSITORY "weather-routing")
 if(WEATHER_ROUTING_XWEATHER_IDENTITY)
-   set(PLUGIN_GIT_REPOSITORY "pob220/xweather_routing_pi")
+  set(PLUGIN_GIT_REPOSITORY "pob220/xweather_routing_pi")
 else()
-   set(CLOUDSMITH_USER "opencpn")
-   set(CLOUDSMITH_BASE_REPOSITORY "weather-routing")
-    # Keep validation independent of the OpenCPN publishing repositories.  Alpha
-    # publication remains a separate, explicitly approved later step.
-    # Ricks's customization
-    # set(PLUGIN_GIT_REPOSITORY "opencpn/weather-routing")
-    # set(PLUGIN_GIT_REPOSITORY "rick-gleason/weather_routing")
+  set(PLUGIN_GIT_REPOSITORY "pob220/weather_routing_pi")
 endif()
+
+# Keep validation independent of the OpenCPN publishing repositories.  Alpha
+# publication remains a separate, explicitly approved later step.
+set(CLOUDSMITH_USER "opencpn")
 
 set(XML_INFO_URL "https://github.com/${PLUGIN_GIT_REPOSITORY}")
 set(XML_SUMMARY ${SHORT_DESCRIPTION})
@@ -191,7 +192,7 @@ message(STATUS "${CMLOC}USE_GL: ${USE_GL}")
 
 if ("${CMAKE_BUILD_TYPE}" STREQUAL "")
   set(CMAKE_BUILD_TYPE
-      "RelWithDebInfo"
+      "Release"
       CACHE STRING "Choose the type of build" FORCE
   )
 endif ("${CMAKE_BUILD_TYPE}" STREQUAL "")
@@ -287,6 +288,7 @@ SET(SRCS
             src/StabilityRouteAdapter.cpp
             src/StabilityCorridorLifecycle.cpp
             src/RoutingTablePanel.cpp
+            src/RouteComparisonDialog.cpp
             src/Utilities.cpp
             src/LineBufferOverlay.cpp
             src/PolygonRegion.cpp
@@ -311,12 +313,17 @@ SET(SRCS
             vendor/weather-routing-engine/src/EnvironmentResolver.cpp
             vendor/weather-routing-engine/src/Engine.cpp
             vendor/weather-routing-engine/src/QuickEngine.cpp
+            vendor/weather-routing-engine/src/AlternativeEngine.cpp
             vendor/original-routing-engine/src/Engine.cpp
             vendor/original-routing-engine/src/Contour.cpp
             vendor/weather-routing-engine/src/Validator.cpp
             vendor/weather-routing-engine/src/Ensemble.cpp
             src/engine/native/OpenCpnAdapter.cpp
 )
+
+if(QT_ANDROID)
+  list(APPEND SRCS src/AndroidWeatherRouting.cpp)
+endif()
 
 SET (HDRS
             include/AppendOnlyCache.h
@@ -331,6 +338,13 @@ SET (HDRS
             include/ProcessAddressSpace.h
             include/GribTimelineCachePolicy.h
             include/SystemMemory.h
+            include/DeviceMemoryPolicy.h
+            include/DirectLegCourseSolver.h
+            include/RoutingTimePersistence.h
+            include/WeatherRoutingBrowser.h
+            include/WeatherRoutingFileDialog.h
+            include/WeatherRoutingMessageDialog.h
+            include/WeatherRoutingProgressDialog.h
             include/GribTimelineFrameCache.h
             include/AddressSpaceMonitor.h
             include/ChartSafetyDefaults.h
@@ -358,6 +372,9 @@ SET (HDRS
             include/ChartSafetyAtlas.h
             include/RouteMap.h
             include/RouteMapOverlay.h
+            include/RouteComfort.h
+            include/RetainedRouteCandidate.h
+            include/RouteComparisonDialog.h
             include/DepartureScheduler.h
             include/RoutingQualityPolicy.h
             include/RoutingFootprint.h
@@ -456,8 +473,21 @@ if (NOT OCPN_FLATPAK_CONFIG)
     add_library(ocpn::api ALIAS OCPN_API_LOCAL)
     target_include_directories(OCPN_API_LOCAL INTERFACE
       "${OCPN_IN_TREE_SOURCE_DIR}/include")
-  elseif (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/opencpn-libs/api-${OCPN_API_VERSION_MINOR}/CMakeLists.txt")
-    add_subdirectory(opencpn-libs/api-${OCPN_API_VERSION_MINOR})
+  elseif (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/opencpn-libs/api-${WEATHER_ROUTING_API_HEADER_MINOR}/CMakeLists.txt")
+    if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+      if(NOT EXISTS "${WEATHER_ROUTING_WINDOWS_IMPORT_LIBRARY}")
+        message(FATAL_ERROR "Windows x64 requires WEATHER_ROUTING_WINDOWS_IMPORT_LIBRARY from the matching AMD64 host")
+      endif()
+      add_library(OCPN_API_LOCAL INTERFACE)
+      add_library(ocpn::api ALIAS OCPN_API_LOCAL)
+      target_include_directories(OCPN_API_LOCAL INTERFACE
+        "${CMAKE_CURRENT_SOURCE_DIR}/opencpn-libs/api-${WEATHER_ROUTING_API_HEADER_MINOR}")
+      target_link_libraries(OCPN_API_LOCAL INTERFACE
+        "${WEATHER_ROUTING_WINDOWS_IMPORT_LIBRARY}")
+      target_compile_definitions(OCPN_API_LOCAL INTERFACE UNICODE)
+    else()
+      add_subdirectory(opencpn-libs/api-${WEATHER_ROUTING_API_HEADER_MINOR})
+    endif()
     # The enhanced chart-safety service is optional and resolved dynamically.
     # Stock API headers intentionally do not declare its ABI-only structures,
     # so make the plugin-local declarations available to every target in this
@@ -498,19 +528,24 @@ if (NOT OCPN_FLATPAK_CONFIG)
   add_subdirectory(opencpn-libs/bzip2)
   target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::bzip2)
 
-  add_subdirectory(opencpn-libs/zlib)
+  if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+    if(NOT EXISTS "${WEATHER_ROUTING_WINDOWS_ZLIB_LIBRARY}")
+      message(FATAL_ERROR "Windows x64 requires WEATHER_ROUTING_WINDOWS_ZLIB_LIBRARY from the matching AMD64 SDK")
+    endif()
+    add_library(WR_ZLIB INTERFACE)
+    add_library(ocpn::zlib ALIAS WR_ZLIB)
+    target_include_directories(WR_ZLIB INTERFACE
+      "${CMAKE_CURRENT_SOURCE_DIR}/opencpn-libs/zlib/include")
+    target_link_libraries(WR_ZLIB INTERFACE "${WEATHER_ROUTING_WINDOWS_ZLIB_LIBRARY}")
+  else()
+    add_subdirectory(opencpn-libs/zlib)
+  endif()
   target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::zlib)
 
   add_subdirectory(opencpn-libs/libtess2)
   target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::libtess2)
 
 endif(NOT OCPN_FLATPAK_CONFIG)
-
-# Guarantees zlib is linked
-# find_package(ZLIB REQUIRED)
-# target_link_libraries(${PACKAGE_NAME} PRIVATE ZLIB::ZLIB)
-
-
 
 add_definitions(-DTIXML_USE_STL)
 
