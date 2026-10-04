@@ -1,6 +1,6 @@
 # Weather Routing integration branch
 
-See [1.18.4 changes](docs/release-1.18.4.md) and [Quick, Standard and Professional settings](docs/quick-routing.md).
+See [1.25 changes](docs/release-1.25.0.md) and [Quick, Standard and Professional settings](docs/quick-routing.md).
 
 The optional hardened-OpenCPN planning-provider boundary is documented in
 [docs/external_control_provider_preview_b.md](docs/external_control_provider_preview_b.md).
@@ -42,6 +42,12 @@ Route checking also requires the compatible chart-safety host. It checks the
 rhumb-line legs between the route's existing waypoints using authoritative
 chart queries, independently of the routing engines. Depth is at chart datum;
 entering zero disables depth checks, and the report states this explicitly.
+Android retains the established Plan / Routes / Results / Tools workspace.
+Tools → Route management → Check this route opens the same read-only checker
+through a touch route picker, with stacked settings, scrollable findings and
+persistent Close/Back actions. Stock OpenCPN Android lacks the optional chart
+safety service and reports that checking is unavailable; ordinary routing and
+its GSHHG land checks remain available.
 The checker does not evaluate traffic rules, restricted-area conditions,
 bridge clearance or tide height. Reports become outdated when the route,
 chart selection or chart identity changes. This v1.25 release does not include

@@ -13,6 +13,7 @@ class wxTextCtrl;
 class wxStaticText;
 class wxButton;
 class wxCheckBox;
+class wxChoice;
 class piDC;
 class weather_routing_pi;
 
@@ -37,6 +38,7 @@ private:
                 wxString& route_name, wxString& error) const;
   bool ValidateSnapshot();
   void WriteTestOutput();
+  void LayoutReport();
   weather_routing_pi& plugin_;
   wxString route_guid_, route_name_;
   std::string identity_;
@@ -51,5 +53,9 @@ private:
   long long next_validation_ms_{0};
   wxString test_output_, test_action_;
   bool test_written_{false}, test_action_done_{false};
+#ifdef __OCPN__ANDROID__
+  wxChoice* android_findings_{nullptr};
+  wxStaticText* android_details_{nullptr};
+#endif
 };
 #endif

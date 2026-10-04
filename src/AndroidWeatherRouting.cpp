@@ -23,6 +23,7 @@
 
 #include "WeatherRoutingWxCompat.h"
 #include "AndroidDialogHeader.h"
+#include "weather_routing_pi.h"
 
 namespace {
 
@@ -125,7 +126,7 @@ wxString TabletRouteTiming(const RouteMapConfiguration& configuration,
                           "%Y-%m-%d %H:%M");
 }
 
-wxString ChooseTabletOpenCPNRoute(wxWindow* parent) {
+wxString ChooseTabletOpenCPNRoute(wxWindow* parent, bool checking = false) {
   wxArrayString guids, names;
   for (const auto& guid : GetRouteGUIDArray()) {
     auto route = GetRoute_Plugin(guid);
@@ -142,7 +143,8 @@ wxString ChooseTabletOpenCPNRoute(wxWindow* parent) {
   wxDialog dialog(parent, wxID_ANY, _("OpenCPN routes"));
   auto* content = new wxBoxSizer(wxVERTICAL);
   auto* label = new wxStaticText(&dialog, wxID_ANY,
-      _("Choose the OpenCPN route to use. Its waypoints will be retained."));
+      checking ? _("Choose the OpenCPN route to check. Its waypoints will not be changed.")
+               : _("Choose the OpenCPN route to use. Its waypoints will be retained."));
   content->Add(label, 0, wxEXPAND | wxALL, 16);
   auto* picker = new wxChoice(&dialog, wxID_ANY, wxDefaultPosition, wxDefaultSize, names);
   picker->SetSelection(0);
@@ -154,7 +156,7 @@ wxString ChooseTabletOpenCPNRoute(wxWindow* parent) {
   auto* header = WR_AddAndroidDoneHeader(&dialog, _("OpenCPN routes"), [&]() {
     dialog.EndModal(wxID_CANCEL);
   }, _("Cancel"));
-  auto* use = new wxButton(header, wxID_ANY, _("Use route"));
+  auto* use = new wxButton(header, wxID_ANY, checking ? _("Check route") : _("Use route"));
   StyleTabletButton(use, true);
   use->SetMinSize(wxSize(170, 72));
   header->GetSizer()->Insert(1, use, 0, wxALL, 8);
@@ -470,6 +472,10 @@ wxWindow* WeatherRouting::BuildAndroidWorkspace(wxBoxSizer* root) {
           _("Delete all saved positions?"))},
   });
   addActions(tools, toolsContent, _("Route management"), {
+      {_("Check this route"), [this]() {
+        const wxString guid = ChooseTabletOpenCPNRoute(this, true);
+        if (!guid.IsEmpty()) GetPlugin().CheckExistingRoute(guid);
+      }},
       {_("Use OpenCPN route"), [this]() {
         wxString guid = ChooseTabletOpenCPNRoute(this);
         if (!guid.IsEmpty()) AddRoute(guid);

@@ -226,6 +226,10 @@ public:
   }
 
   wxWindow* GetParentWindow() { return m_parent_window; }
+  /** Same read-only action as the native route menu, for the touch workspace. */
+  void CheckExistingRoute(const wxString& route_guid) {
+    StartRouteSafetyCheck(route_guid);
+  }
 
 #ifdef __WXMSW__
   AddressSpaceMonitor& GetAddressSpaceMonitor() {
