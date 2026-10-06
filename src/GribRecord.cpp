@@ -19,16 +19,13 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  * \file
  * \implements \ref GribRecord.h
  */
-#include "wx/wxprec.h"
-
-#ifndef WX_PRECOMP
-#include "wx/wx.h"
-#endif  // precompiled headers
-
 #include <stdlib.h>
 #include <cstring>  // memcpy
 #include <vector>
 #include <algorithm>
+#include <memory>
+#include <limits>
+#include <stdexcept>
 
 #include <cstdio>
 #include <cstdlib>
@@ -37,6 +34,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 // #include <QDateTime>
 
 #include "GribRecord.h"
+
+static constexpr double kPi = 3.141592653589793238462643383279502884;
 
 // interpolate two angles in range +- 180 or +-PI, with resulting angle in the
 // same range
@@ -61,8 +60,8 @@ GribRecord::GribRecord()
   IsDuplicated = false;
   eof = false;
   dataKey.clear();
-  strRefDate[0] = '\0';
-  strCurDate[0] = '\0';
+  std::memset(strRefDate, 0, sizeof(strRefDate));
+  std::memset(strCurDate, 0, sizeof(strCurDate));
   dataCenterModel = 0;
   m_bfilled = false;
   editionNumber = 0;
@@ -108,152 +107,8 @@ void GribRecord::print() {
 //-------------------------------------------------------------------------------
 // Copy constructor (deep copy)
 //-------------------------------------------------------------------------------
-GribRecord::GribRecord(const GribRecord& rec)
-    : GribRecord() {  // initialize members, then deep-copy arrays
+void GribRecord::copyMetadata(const GribRecord& rec) {
   // copy simple/scalar members
-  id = rec.id;
-  ok = rec.ok;
-  knownData = rec.knownData;
-  waveData = rec.waveData;
-  IsDuplicated = true;  // as per original semantics
-  eof = rec.eof;
-  dataKey = rec.dataKey;
-  std::memcpy(strRefDate, rec.strRefDate, sizeof(strRefDate));
-  std::memcpy(strCurDate, rec.strCurDate, sizeof(strCurDate));
-  dataCenterModel = rec.dataCenterModel;
-  m_bfilled = rec.m_bfilled;
-  editionNumber = rec.editionNumber;
-  idCenter = rec.idCenter;
-  idModel = rec.idModel;
-  idGrid = rec.idGrid;
-  dataType = rec.dataType;
-  levelType = rec.levelType;
-  levelValue = rec.levelValue;
-  hasBMS = rec.hasBMS;
-  refyear = rec.refyear;
-  refmonth = rec.refmonth;
-  refday = rec.refday;
-  refhour = rec.refhour;
-  refminute = rec.refminute;
-  periodP1 = rec.periodP1;
-  periodP2 = rec.periodP2;
-  timeRange = rec.timeRange;
-  periodsec = rec.periodsec;
-  refDate = rec.refDate;
-  curDate = rec.curDate;
-  NV = rec.NV;
-  PV = rec.PV;
-  gridType = rec.gridType;
-  Ni = rec.Ni;
-  Nj = rec.Nj;
-  La1 = rec.La1;
-  Lo1 = rec.Lo1;
-  La2 = rec.La2;
-  Lo2 = rec.Lo2;
-  latMin = rec.latMin;
-  lonMin = rec.lonMin;
-  latMax = rec.latMax;
-  lonMax = rec.lonMax;
-  Di = rec.Di;
-  Dj = rec.Dj;
-  resolFlags = rec.resolFlags;
-  scanFlags = rec.scanFlags;
-  hasDiDj = rec.hasDiDj;
-  isEarthSpheric = rec.isEarthSpheric;
-  isUeastVnorth = rec.isUeastVnorth;
-  isScanIpositive = rec.isScanIpositive;
-  isScanJpositive = rec.isScanJpositive;
-  isAdjacentI = rec.isAdjacentI;
-  BMSsize = rec.BMSsize;
-
-  // Insert diagnostic here: log the allocation size we are about to request.
-  // This must be non-allocating and platform-safe.
-#if defined(_WIN32) || defined(_WIN64)
-  {
-    // compute bytes (guard against crazy Ni/Nj values)
-    size_t elems =
-        (rec.Ni > 0 && rec.Nj > 0) ? static_cast<size_t>(rec.Ni) * rec.Nj : 0;
-    size_t allocBytes = elems * sizeof(double);
-    char dbgmsg[192];
-    _snprintf_s(
-        dbgmsg, sizeof(dbgmsg), _TRUNCATE,
-        "GribRecord copy ctor: Ni=%u Nj=%u BMSsize=%u elems=%zu bytes=%zu\n",
-        static_cast<unsigned int>(rec.Ni), static_cast<unsigned int>(rec.Nj),
-        static_cast<unsigned int>(rec.BMSsize), elems, allocBytes);
-    OutputDebugStringA(dbgmsg);
-  }
-#else
-  {
-    size_t elems =
-        (rec.Ni > 0 && rec.Nj > 0) ? static_cast<size_t>(rec.Ni) * rec.Nj : 0;
-    size_t allocBytes = elems * sizeof(double);
-    char dbgmsg[192];
-    snprintf(
-        dbgmsg, sizeof(dbgmsg),
-        "GribRecord copy ctor: Ni=%u Nj=%u BMSsize=%u elems=%zu bytes=%zu\n",
-        static_cast<unsigned int>(rec.Ni), static_cast<unsigned int>(rec.Nj),
-        static_cast<unsigned int>(rec.BMSsize), elems, allocBytes);
-    fprintf(stderr, "%s", dbgmsg);
-  }
-#endif
-
-  // Deep-copy data array if present
-  if (rec.data != nullptr && rec.Ni > 0 && rec.Nj > 0) {
-    zuint n = rec.Ni * rec.Nj;
-    // allocate; if allocation fails it will throw std::bad_alloc (no SEH catch)
-    data = new double[n];
-    // memcpy may raise an access violation (SEH) if rec.data is invalid.
-    // Do not catch(...) here; catching SEH leads to rethrow with no C++ type
-    // info.
-    std::memcpy(data, rec.data, n * sizeof(double));
-  } else {
-    data = nullptr;
-  }
-
-  // Deep-copy BMSbits if present
-  if (rec.BMSbits != nullptr && rec.BMSsize > 0) {
-    try {
-      BMSbits = new zuchar[rec.BMSsize];
-      std::memcpy(BMSbits, rec.BMSbits, rec.BMSsize);
-    } catch (const std::bad_alloc&) {
-      // Clean-up any previously allocated C++ heap objects and propagate the
-      // C++ exception.
-      delete[] data;
-      data = nullptr;
-      BMSbits = nullptr;
-      throw;
-    }
-  } else {
-    BMSbits = nullptr;
-  }
-}
-
-
-//-------------------------------------------------------------------------------
-// Move constructor
-//-------------------------------------------------------------------------------
-GribRecord::GribRecord(GribRecord &&other) noexcept
-    : GribRecord() {
-  // Steal resources
-  swap(other);
-  // leave other in a safe-to-destroy state
-  other.data = nullptr;
-  other.BMSbits = nullptr;
-  other.BMSsize = 0;
-  other.Ni = other.Nj = 0;
-  other.IsDuplicated = false;
-}
-
-//-------------------------------------------------------------------------------
-/* Copy assignment: allocate copies first, then replace existing pointers.
-   This provides strong exception safety: if allocation fails, the object is
-   unchanged.
-*/
-//-------------------------------------------------------------------------------
-GribRecord &GribRecord::operator=(const GribRecord &rec) {
-  if (this == &rec) return *this;
-
-  // Copy scalar fields first (those that don't depend on allocations)
   id = rec.id;
   ok = rec.ok;
   knownData = rec.knownData;
@@ -307,32 +162,57 @@ GribRecord &GribRecord::operator=(const GribRecord &rec) {
   isScanIpositive = rec.isScanIpositive;
   isScanJpositive = rec.isScanJpositive;
   isAdjacentI = rec.isAdjacentI;
+  BMSsize = rec.BMSsize;
 
-  // Allocate new arrays before touching existing ones to keep strong exception
-  // safety.
-  double *newData = nullptr;
-  zuchar *newBMS = nullptr;
-  zuint newBMSsize = rec.BMSsize;
+ }
 
-  if (rec.data != nullptr && rec.Ni > 0 && rec.Nj > 0) {
-    zuint n = rec.Ni * rec.Nj;
-    newData = new double[n];
-    std::memcpy(newData, rec.data, n * sizeof(double));
+GribRecord::GribRecord(const GribRecord& rec) : GribRecord() {
+  copyMetadata(rec);
+  IsDuplicated = true;
+  const std::size_t n = rec.data ? rec.dataCount() : 0;
+  if (rec.data && !n)
+    throw std::length_error("Invalid GRIB grid dimensions");
+  std::unique_ptr<double[]> values;
+  std::unique_ptr<zuchar[]> bitmap;
+  if (n) {
+    values.reset(new double[n]);
+    std::memcpy(values.get(), rec.data, n * sizeof(double));
   }
-
-  if (rec.BMSbits != nullptr && rec.BMSsize > 0) {
-    newBMS = new zuchar[rec.BMSsize];
-    std::memcpy(newBMS, rec.BMSbits, rec.BMSsize);
+  if (rec.BMSbits && rec.BMSsize) {
+    bitmap.reset(new zuchar[rec.BMSsize]);
+    std::memcpy(bitmap.get(), rec.BMSbits, rec.BMSsize);
   }
+  data = values.release();
+  BMSbits = bitmap.release();
+}
 
-  // Replace existing buffers
-  delete[] data;
-  delete[] BMSbits;
+//-------------------------------------------------------------------------------
+// Move constructor
+//-------------------------------------------------------------------------------
+GribRecord::GribRecord(GribRecord &&other) noexcept
+    : GribRecord() {
+  // Steal resources
+  swap(other);
+  // leave other in a safe-to-destroy state
+  other.data = nullptr;
+  other.BMSbits = nullptr;
+  other.BMSsize = 0;
+  other.Ni = other.Nj = 0;
+  other.IsDuplicated = false;
+}
 
-  data = newData;
-  BMSbits = newBMS;
-  BMSsize = newBMSsize;
-
+//-------------------------------------------------------------------------------
+/* Copy assignment: allocate copies first, then replace existing pointers.
+   This provides strong exception safety: if allocation fails, the object is
+   unchanged.
+*/
+//-------------------------------------------------------------------------------
+GribRecord &GribRecord::operator=(const GribRecord &rec) {
+  if (this != &rec) {
+    GribRecord copy(rec);
+    copy.IsDuplicated = rec.IsDuplicated;
+    swap(copy);
+  }
   return *this;
 }
 
@@ -497,7 +377,6 @@ GribRecord::~GribRecord() {
 }
 
 //-------------------------------------------------------------------------------
-// (rest of implementation unchanged)...
 //-------------------------------------------------------------------------------
 
 bool GribRecord::GetInterpolatedParameters(
@@ -505,22 +384,26 @@ bool GribRecord::GetInterpolatedParameters(
     double &La2, double &Lo2, double &Di, double &Dj, int &im1, int &jm1,
     int &im2, int &jm2, int &Ni, int &Nj, int &rec1offi, int &rec1offj,
     int &rec2offi, int &rec2offj) {
-  if (!rec1.isOk() || !rec2.isOk()) return false;
+  if (!rec1.isOk() || !rec2.isOk() || !rec1.validGrid() || !rec2.validGrid())
+    return false;
+  // This aligned-grid routine historically supports eastward grids. Reversed
+  // longitude grids can still be queried spatially; reject them here safely.
+  if (rec1.Di <= 0 || rec2.Di <= 0) return false;
 
   /* make sure Dj both have same sign */
   if (rec1.getDj() * rec2.getDj() <= 0) return false;
 
-  Di = wxMax(rec1.getDi(), rec2.getDi());
-  Dj = rec1.getDj() > 0 ? wxMax(rec1.getDj(), rec2.getDj())
-                        : wxMin(rec1.getDj(), rec2.getDj());
+  Di = std::max(rec1.getDi(), rec2.getDi());
+  Dj = rec1.getDj() > 0 ? std::max(rec1.getDj(), rec2.getDj())
+                        : std::min(rec1.getDj(), rec2.getDj());
 
   /* get overlapping region */
   if (Dj > 0)
-    La1 = wxMax(rec1.La1, rec2.La1), La2 = wxMin(rec1.La2, rec2.La2);
+    La1 = std::max(rec1.La1, rec2.La1), La2 = std::min(rec1.La2, rec2.La2);
   else
-    La1 = wxMin(rec1.La1, rec2.La1), La2 = wxMax(rec1.La2, rec2.La2);
+    La1 = std::min(rec1.La1, rec2.La1), La2 = std::max(rec1.La2, rec2.La2);
 
-  Lo1 = wxMax(rec1.Lo1, rec2.Lo1), Lo2 = wxMin(rec1.Lo2, rec2.Lo2);
+  Lo1 = std::max(rec1.Lo1, rec2.Lo1), Lo2 = std::min(rec1.Lo2, rec2.Lo2);
 
   // align gribs on integer boundaries
   int i, j;
@@ -531,20 +414,30 @@ bool GribRecord::GetInterpolatedParameters(
   double rec1offdj = 0., rec2offdj = 0.;
 
   double iiters = rec2.Di / rec1.Di;
+  const double iratio = std::max(iiters, 1.0 / iiters);
+  const double jratio = std::max(std::abs(rec2.Dj / rec1.Dj),
+                                std::abs(rec1.Dj / rec2.Dj));
+  if (!std::isfinite(iratio) || !std::isfinite(jratio) ||
+      iratio > std::numeric_limits<int>::max() ||
+      jratio > std::numeric_limits<int>::max() ||
+      std::abs(iratio - std::round(iratio)) > 1e-8 ||
+      std::abs(jratio - std::round(jratio)) > 1e-8)
+    return false;
   if (iiters < 1) {
     iiters = 1 / iiters;
     im1 = 1, im2 = iiters;
   } else
     im1 = iiters, im2 = 1;
 
-  for (i = 0; i < iiters; i++) {
+  const int ilimit = static_cast<int>(std::min(iiters, double(std::max(rec1.Ni,rec2.Ni))));
+  for (i = 0; i < ilimit; i++) {
     rec1offdi = (Lo1 - rec1.Lo1) / rec1.Di;
     rec2offdi = (Lo1 - rec2.Lo1) / rec2.Di;
     if (rec1offdi == floor(rec1offdi) && rec2offdi == floor(rec2offdi)) break;
 
-    Lo1 += wxMin(rec1.Di, rec2.Di);
+    Lo1 += std::min(rec1.Di, rec2.Di);
   }
-  if (i == iiters)  // failed to align, would need spacial interpolation to work
+  if (i == ilimit)  // failed to align, would need spacial interpolation to work
     return false;
 
   double jiters = rec2.Dj / rec1.Dj;
@@ -554,32 +447,202 @@ bool GribRecord::GetInterpolatedParameters(
   } else
     jm1 = jiters, jm2 = 1;
 
-  for (j = 0; j < jiters; j++) {
+  const int jlimit = static_cast<int>(std::min(jiters, double(std::max(rec1.Nj,rec2.Nj))));
+  for (j = 0; j < jlimit; j++) {
     rec1offdj = (La1 - rec1.La1) / rec1.Dj;
     rec2offdj = (La1 - rec2.La1) / rec2.Dj;
     if (rec1offdj == floor(rec1offdj) && rec2offdj == floor(rec2offdj)) break;
 
-    La1 += Dj < 0 ? wxMax(rec1.getDj(), rec2.getDj())
-                  : wxMin(rec1.getDj(), rec2.getDj());
+    La1 += Dj < 0 ? std::max(rec1.getDj(), rec2.getDj())
+                  : std::min(rec1.getDj(), rec2.getDj());
   }
-  if (j == jiters)  // failed to align
+  if (j == jlimit)  // failed to align
     return false;
 
   /* no overlap */
   if (La1 * Dj > La2 * Dj || Lo1 > Lo2) return false;
 
   /* compute integer sizes for data array */
-  Ni = (Lo2 - Lo1) / Di + 1, Nj = (La2 - La1) / Dj + 1;
+  const double nx = (Lo2 - Lo1) / Di + 1;
+  const double ny = (La2 - La1) / Dj + 1;
+  const double limit = std::numeric_limits<int>::max();
+  if (!std::isfinite(nx) || !std::isfinite(ny) || nx < 1 || ny < 1 ||
+      nx > limit || ny > limit || nx * ny > limit)
+    return false;
+  Ni = static_cast<int>(nx); Nj = static_cast<int>(ny);
 
   /* back-compute final La2 and Lo2 to fit this integer boundary */
   Lo2 = Lo1 + (Ni - 1) * Di, La2 = La1 + (Nj - 1) * Dj;
 
+  if (!std::isfinite(rec1offdi) || !std::isfinite(rec2offdi) ||
+      !std::isfinite(rec1offdj) || !std::isfinite(rec2offdj) ||
+      rec1offdi < 0 || rec2offdi < 0 || rec1offdj < 0 || rec2offdj < 0 ||
+      rec1offdi > limit || rec2offdi > limit ||
+      rec1offdj > limit || rec2offdj > limit) return false;
   rec1offi = rec1offdi, rec2offi = rec2offdi;
   rec1offj = rec1offdj, rec2offj = rec2offdj;
 
-  if (!rec1.data || !rec2.data) return false;
+  // Validate the last sampled point before either inner loop. All later
+  // index arithmetic fits int because each complete grid fits that range.
+  if (std::uint64_t(rec1offi) + std::uint64_t(Ni - 1) * im1 >= rec1.Ni ||
+      std::uint64_t(rec2offi) + std::uint64_t(Ni - 1) * im2 >= rec2.Ni ||
+      std::uint64_t(rec1offj) + std::uint64_t(Nj - 1) * jm1 >= rec1.Nj ||
+      std::uint64_t(rec2offj) + std::uint64_t(Nj - 1) * jm2 >= rec2.Nj)
+    return false;
 
   return true;
+}
+
+bool GribRecord::GetSpatialInterpolationGrid(
+    const GribRecord &rec1, const GribRecord &rec2, double &La1, double &Lo1,
+    double &La2, double &Lo2, double &Di, double &Dj, int &Ni, int &Nj) {
+  if (!rec1.isOk() || !rec2.isOk() || !rec1.validGrid() || !rec2.validGrid() ||
+      rec1.getDj() * rec2.getDj() <= 0)
+    return false;
+
+  Di = std::max(std::abs(rec1.getDi()), std::abs(rec2.getDi()));
+  const double absDj =
+      std::max(std::abs(rec1.getDj()), std::abs(rec2.getDj()));
+  if (Di <= 0.0 || absDj <= 0.0) return false;
+  Dj = rec1.getDj() > 0.0 ? absDj : -absDj;
+
+  const double lonMin = std::max(rec1.getLonMin(), rec2.getLonMin());
+  const double lonMax = std::min(rec1.getLonMax(), rec2.getLonMax());
+  const double latMin = std::max(rec1.getLatMin(), rec2.getLatMin());
+  const double latMax = std::min(rec1.getLatMax(), rec2.getLatMax());
+  if (lonMin > lonMax || latMin > latMax) return false;
+
+  const double nx = std::floor((lonMax - lonMin) / Di + 1e-9) + 1;
+  const double ny = std::floor((latMax - latMin) / std::abs(Dj) + 1e-9) + 1;
+  const double limit = std::numeric_limits<int>::max();
+  if (!std::isfinite(nx) || !std::isfinite(ny) || nx < 1 || ny < 1 ||
+      nx > limit || ny > limit || nx * ny > limit ||
+      nx * ny > std::min(rec1.dataCount(), rec2.dataCount())) return false;
+  Ni = static_cast<int>(nx); Nj = static_cast<int>(ny);
+  Lo1 = lonMin; Lo2 = Lo1 + (Ni - 1) * Di;
+  La1 = Dj > 0 ? latMin : latMax; La2 = La1 + (Nj - 1) * Dj;
+  return Ni > 0 && Nj > 0;
+}
+
+GribRecord *GribRecord::SpatiallyInterpolatedRecord(
+    const GribRecord &rec1, const GribRecord &rec2, double d, bool dir) {
+  double La1, Lo1, La2, Lo2, Di, Dj;
+  int Ni, Nj;
+  if (!GetSpatialInterpolationGrid(rec1, rec2, La1, Lo1, La2, Lo2, Di, Dj,
+                                   Ni, Nj))
+    return nullptr;
+
+  std::unique_ptr<double[]> owner(new double[Ni * Nj]);
+  double* values = owner.get();
+  for (int j = 0; j < Nj; ++j) {
+    const double lat = La1 + j * Dj;
+    for (int i = 0; i < Ni; ++i) {
+      const double lon = Lo1 + i * Di;
+      const double first = rec1.getInterpolatedValue(lon, lat, true, dir);
+      const double second = rec2.getInterpolatedValue(lon, lat, true, dir);
+      const int index = j * Ni + i;
+      if (first == GRIB_NOTDEF || second == GRIB_NOTDEF) {
+        values[index] = GRIB_NOTDEF;
+      } else if (dir) {
+        values[index] = interp_angle(first, second, d, 180.0);
+      } else {
+        values[index] = (1.0 - d) * first + d * second;
+      }
+    }
+  }
+
+  std::unique_ptr<GribRecord> result(new GribRecord);
+  result->copyMetadata(rec1);
+  result->Di = Di;
+  result->Dj = Dj;
+  result->Ni = Ni;
+  result->Nj = Nj;
+  result->La1 = La1;
+  result->La2 = La2;
+  result->Lo1 = Lo1;
+  result->Lo2 = Lo2;
+  result->latMin = std::min(La1, La2);
+  result->latMax = std::max(La1, La2);
+  result->lonMin = Lo1;
+  result->lonMax = Lo2;
+  result->data = owner.release();
+  result->BMSsize = 0;
+  result->hasBMS = false;
+  result->BMSbits = nullptr;
+  result->m_bfilled = false;
+  return result.release();
+}
+
+GribRecord *GribRecord::SpatiallyInterpolated2DRecord(
+    GribRecord *&rety, const GribRecord &rec1x, const GribRecord &rec1y,
+    const GribRecord &rec2x, const GribRecord &rec2y, double d) {
+  rety = nullptr;
+  if (!std::isfinite(d) || !rec1x.sameGrid(rec1y) || !rec2x.sameGrid(rec2y) ||
+      !rec1y.validGrid() || !rec2y.validGrid()) return nullptr;
+  double La1, Lo1, La2, Lo2, Di, Dj;
+  int Ni, Nj;
+  if (!GetSpatialInterpolationGrid(rec1x, rec2x, La1, Lo1, La2, Lo2, Di, Dj,
+                                   Ni, Nj) ||
+      !rec1y.isOk() || !rec2y.isOk())
+    return nullptr;
+
+  std::unique_ptr<double[]> ownerX(new double[Ni * Nj]);
+  std::unique_ptr<double[]> ownerY(new double[Ni * Nj]);
+  double* valuesX = ownerX.get(); double* valuesY = ownerY.get();
+  for (int j = 0; j < Nj; ++j) {
+    const double lat = La1 + j * Dj;
+    for (int i = 0; i < Ni; ++i) {
+      const double lon = Lo1 + i * Di;
+      const double firstX = rec1x.getInterpolatedValue(lon, lat, true);
+      const double firstY = rec1y.getInterpolatedValue(lon, lat, true);
+      const double secondX = rec2x.getInterpolatedValue(lon, lat, true);
+      const double secondY = rec2y.getInterpolatedValue(lon, lat, true);
+      const int index = j * Ni + i;
+      if (firstX == GRIB_NOTDEF || firstY == GRIB_NOTDEF ||
+          secondX == GRIB_NOTDEF || secondY == GRIB_NOTDEF) {
+        valuesX[index] = valuesY[index] = GRIB_NOTDEF;
+        continue;
+      }
+      const double firstMagnitude = std::hypot(firstX, firstY);
+      const double secondMagnitude = std::hypot(secondX, secondY);
+      const double magnitude =
+          (1.0 - d) * firstMagnitude + d * secondMagnitude;
+      double firstAngle = std::atan2(firstY, firstX);
+      double secondAngle = std::atan2(secondY, secondX);
+      if (firstAngle - secondAngle > kPi)
+        firstAngle -= 2.0 * kPi;
+      else if (secondAngle - firstAngle > kPi)
+        secondAngle -= 2.0 * kPi;
+      const double angle = (1.0 - d) * firstAngle + d * secondAngle;
+      valuesX[index] = magnitude * std::cos(angle);
+      valuesY[index] = magnitude * std::sin(angle);
+    }
+  }
+
+  std::unique_ptr<GribRecord> resultX(new GribRecord), resultY(new GribRecord);
+  resultX->copyMetadata(rec1x); resultY->copyMetadata(rec1y);
+  for (GribRecord *result : {resultX.get(), resultY.get()}) {
+    result->Di = Di;
+    result->Dj = Dj;
+    result->Ni = Ni;
+    result->Nj = Nj;
+    result->La1 = La1;
+    result->La2 = La2;
+    result->Lo1 = Lo1;
+    result->Lo2 = Lo2;
+    result->latMin = std::min(La1, La2);
+    result->latMax = std::max(La1, La2);
+    result->lonMin = Lo1;
+    result->lonMax = Lo2;
+    result->BMSsize = 0;
+    result->hasBMS = false;
+    result->BMSbits = nullptr;
+    result->m_bfilled = false;
+  }
+  resultX->data = ownerX.release();
+  resultY->data = ownerY.release();
+  rety = resultY.release();
+  return resultX.release();
 }
 
 //-------------------------------------------------------------------------------
@@ -588,24 +651,28 @@ bool GribRecord::GetInterpolatedParameters(
 GribRecord *GribRecord::InterpolatedRecord(const GribRecord &rec1,
                                            const GribRecord &rec2, double d,
                                            bool dir) {
+  if (!std::isfinite(d)) return nullptr;
   double La1, Lo1, La2, Lo2, Di, Dj;
   int im1, jm1, im2, jm2;
   int Ni, Nj, rec1offi, rec1offj, rec2offi, rec2offj;
   if (!GetInterpolatedParameters(rec1, rec2, La1, Lo1, La2, Lo2, Di, Dj, im1,
                                  jm1, im2, jm2, Ni, Nj, rec1offi, rec1offj,
                                  rec2offi, rec2offj))
-    return nullptr;
+    return SpatiallyInterpolatedRecord(rec1, rec2, d, dir);
 
   // recopie les champs de bits
   int size = Ni * Nj;
-  double *data = new double[size];
+  std::unique_ptr<double[]> values(new double[size]);
+  double* data = values.get();
 
-  zuchar *BMSbits = nullptr;
-  if (rec1.BMSbits != nullptr && rec2.BMSbits != nullptr)
-    BMSbits = new zuchar[(Ni * Nj - 1) / 8 + 1]();
+  const unsigned bitmapSize = (size + 7u) / 8u;
+  const bool hasBitmap = rec1.hasBMS || rec2.hasBMS;
+  std::unique_ptr<zuchar[]> bitmap(hasBitmap ? new zuchar[bitmapSize]() : nullptr);
+  zuchar* BMSbits = bitmap.get();
 
-  for (int i = 0; i < Ni; i++)
-    for (int j = 0; j < Nj; j++) {
+  // Traverse the row-major arrays contiguously.
+  for (int j = 0; j < Nj; j++)
+    for (int i = 0; i < Ni; i++) {
       int in = j * Ni + i;
       int i1 = (j * jm1 + rec1offj) * rec1.Ni + i * im1 + rec1offi;
       int i2 = (j * jm2 + rec2offj) * rec2.Ni + i * im2 + rec2offi;
@@ -620,19 +687,21 @@ GribRecord *GribRecord::InterpolatedRecord(const GribRecord &rec1,
       }
 
       if (BMSbits) {
-        int b1 = rec1.BMSbits[i1 >> 3] & 1 << (i1 & 7);
-        int b2 = rec2.BMSbits[i2 >> 3] & 1 << (i2 & 7);
+        const bool b1 = rec1.hasValue(i * im1 + rec1offi, j * jm1 + rec1offj);
+        const bool b2 = rec2.hasValue(i * im2 + rec2offi, j * jm2 + rec2offj);
         if (b1 && b2)
-          BMSbits[in >> 3] |= 1 << (in & 7);
-        else
-          BMSbits[in >> 3] &= ~(1 << (in & 7));
+          BMSbits[in >> 3] |= 128u >> (in & 7);
+        else {
+          BMSbits[in >> 3] &= ~(128u >> (in & 7));
+          data[in] = GRIB_NOTDEF;
+        }
       }
     }
 
   /* should maybe update strCurDate ? */
 
-  GribRecord *ret = new GribRecord;
-  *ret = rec1;
+  std::unique_ptr<GribRecord> ret(new GribRecord);
+  ret->copyMetadata(rec1);
 
   ret->Di = Di, ret->Dj = Dj;
   ret->Ni = Ni, ret->Nj = Nj;
@@ -640,15 +709,18 @@ GribRecord *GribRecord::InterpolatedRecord(const GribRecord &rec1,
   ret->La1 = La1, ret->La2 = La2;
   ret->Lo1 = Lo1, ret->Lo2 = Lo2;
 
-  ret->data = data;
-  ret->BMSbits = BMSbits;
+  ret->data = values.release();
+  ret->BMSbits = bitmap.release();
+  ret->BMSsize = hasBitmap ? bitmapSize : 0;
+  ret->hasBMS = hasBitmap;
+  ret->isAdjacentI = true;
 
-  ret->latMin = wxMin(La1, La2), ret->latMax = wxMax(La1, La2);
+  ret->latMin = std::min(La1, La2), ret->latMax = std::max(La1, La2);
   ret->lonMin = Lo1, ret->lonMax = Lo2;
 
   ret->m_bfilled = false;
 
-  return ret;
+  return ret.release();
 }
 
 /* for interpolation for x and y records, we must do them together because
@@ -661,32 +733,29 @@ GribRecord *GribRecord::Interpolated2DRecord(
   int im1, jm1, im2, jm2;
   int Ni, Nj, rec1offi, rec1offj, rec2offi, rec2offj;
 
-  rety = 0;
+  rety = nullptr;
+  if (!std::isfinite(d) || !rec1x.sameGrid(rec1y) || !rec2x.sameGrid(rec2y) ||
+      !rec1y.validGrid() || !rec2y.validGrid() || !rec1y.ok || !rec2y.ok)
+    return nullptr;
   if (!GetInterpolatedParameters(rec1x, rec2x, La1, Lo1, La2, Lo2, Di, Dj, im1,
                                  jm1, im2, jm2, Ni, Nj, rec1offi, rec1offj,
                                  rec2offi, rec2offj))
-    return nullptr;
+    return SpatiallyInterpolated2DRecord(rety, rec1x, rec1y, rec2x, rec2y, d);
 
-  if (!rec1y.data || !rec2y.data || !rec1y.isOk() || !rec2y.isOk() ||
-      rec1x.Di != rec1y.Di || rec1x.Dj != rec1y.Dj || rec2x.Di != rec2y.Di ||
-      rec2x.Dj != rec2y.Dj || rec1x.Ni != rec1y.Ni || rec1x.Nj != rec1y.Nj ||
-      rec2x.Ni != rec2y.Ni || rec2x.Nj != rec2y.Nj) {
-    // could also make sure lat and lon min/max are the same...
-    // copy first
-    rety = new GribRecord(rec1y);
-
-    return new GribRecord(rec1x);
-  }
   // recopie les champs de bits
   int size = Ni * Nj;
-  double *datax = new double[size], *datay = new double[size];
-  for (int i = 0; i < Ni; i++) {
-    for (int j = 0; j < Nj; j++) {
+  std::unique_ptr<double[]> valuesX(new double[size]);
+  std::unique_ptr<double[]> valuesY(new double[size]);
+  double* datax = valuesX.get(); double* datay = valuesY.get();
+  // Traverse all four input arrays and both outputs contiguously.
+  for (int j = 0; j < Nj; j++) {
+    for (int i = 0; i < Ni; i++) {
       int in = j * Ni + i;
       int i1 = (j * jm1 + rec1offj) * rec1x.Ni + i * im1 + rec1offi;
       int i2 = (j * jm2 + rec2offj) * rec2x.Ni + i * im2 + rec2offi;
       double data1x = rec1x.data[i1], data1y = rec1y.data[i1];
       double data2x = rec2x.data[i2], data2y = rec2y.data[i2];
+      // Decoders already expand missing bitmap cells into GRIB_NOTDEF.
       if (data1x == GRIB_NOTDEF || data1y == GRIB_NOTDEF ||
           data2x == GRIB_NOTDEF || data2y == GRIB_NOTDEF) {
         datax[in] = GRIB_NOTDEF;
@@ -698,10 +767,10 @@ GribRecord *GribRecord::Interpolated2DRecord(
 
         double data1a = atan2(data1y, data1x);
         double data2a = atan2(data2y, data2x);
-        if (data1a - data2a > M_PI)
-          data1a -= 2 * M_PI;
-        else if (data2a - data1a > M_PI)
-          data2a -= 2 * M_PI;
+        if (data1a - data2a > kPi)
+          data1a -= 2 * kPi;
+        else if (data2a - data1a > kPi)
+          data2a -= 2 * kPi;
         double dataa = (1 - d) * data1a + d * data2a;
 
         datax[in] = datam * cos(dataa);
@@ -712,9 +781,8 @@ GribRecord *GribRecord::Interpolated2DRecord(
 
   /* should maybe update strCurDate ? */
 
-  GribRecord *ret = new GribRecord;
-
-  *ret = rec1x;
+  std::unique_ptr<GribRecord> ret(new GribRecord);
+  ret->copyMetadata(rec1x);
 
   ret->Di = Di, ret->Dj = Dj;
   ret->Ni = Ni, ret->Nj = Nj;
@@ -722,21 +790,24 @@ GribRecord *GribRecord::Interpolated2DRecord(
   ret->La1 = La1, ret->La2 = La2;
   ret->Lo1 = Lo1, ret->Lo2 = Lo2;
 
-  ret->data = datax;
+  ret->data = valuesX.release();
+  ret->BMSsize = 0;
   ret->BMSbits = nullptr;
   ret->hasBMS = false;  // I don't think wind or current ever use BMS correct?
 
-  ret->latMin = wxMin(La1, La2), ret->latMax = wxMax(La1, La2);
+  ret->latMin = std::min(La1, La2), ret->latMax = std::max(La1, La2);
   ret->lonMin = Lo1, ret->lonMax = Lo2;
 
-  rety = new GribRecord;
-  *rety = *ret;
-  rety->dataType = rec1y.dataType;
-  rety->data = datay;
-  rety->BMSbits = nullptr;
-  rety->hasBMS = false;
+  std::unique_ptr<GribRecord> y(new GribRecord);
+  y->copyMetadata(*ret);
+  y->dataType = rec1y.dataType;
+  y->dataKey = makeKey(y->dataType, y->levelType, y->levelValue);
+  y->data = valuesY.release();
+  y->BMSbits = nullptr;
+  y->hasBMS = false;
+  rety = y.release();
 
-  return ret;
+  return ret.release();
 }
 
 GribRecord *GribRecord::MagnitudeRecord(const GribRecord &rec1,
@@ -745,7 +816,7 @@ GribRecord *GribRecord::MagnitudeRecord(const GribRecord &rec1,
 
   /* generate a record which is the combined magnitude of two records */
   if (rec1.data && rec2.data && rec1.Ni == rec2.Ni && rec1.Nj == rec2.Nj) {
-    int size = rec1.Ni * rec1.Nj;
+    const std::size_t size = rec1.dataCount();
     for (int i = 0; i < size; i++)
       if (rec1.data[i] == GRIB_NOTDEF || rec2.data[i] == GRIB_NOTDEF)
         rec->data[i] = GRIB_NOTDEF;
@@ -767,15 +838,16 @@ GribRecord *GribRecord::MagnitudeRecord(const GribRecord &rec1,
 }
 
 void GribRecord::Polar2UV(GribRecord *pDIR, GribRecord *pSPEED) {
+  if (!pDIR || !pSPEED) return;
   if (pDIR->data && pSPEED->data && pDIR->Ni == pSPEED->Ni &&
       pDIR->Nj == pSPEED->Nj) {
-    int size = pDIR->Ni * pDIR->Nj;
+    const std::size_t size = pDIR->dataCount();
     for (int i = 0; i < size; i++) {
       if (pDIR->data[i] != GRIB_NOTDEF && pSPEED->data[i] != GRIB_NOTDEF) {
         double dir = pDIR->data[i];
         double speed = pSPEED->data[i];
-        pDIR->data[i] = -speed * sin(dir * M_PI / 180.);
-        pSPEED->data[i] = -speed * cos(dir * M_PI / 180.);
+        pDIR->data[i] = -speed * sin(dir * kPi / 180.);
+        pSPEED->data[i] = -speed * cos(dir * kPi / 180.);
       }
     }
     if (pDIR->dataType == GRB_WIND_DIR) {
@@ -796,14 +868,14 @@ void GribRecord::Substract(const GribRecord &rec, bool pos) {
 
   if (Ni != rec.Ni || Nj != rec.Nj) return;
 
-  zuint size = Ni * Nj;
+  const std::size_t size = dataCount();
   for (zuint i = 0; i < size; i++) {
     if (rec.data[i] == GRIB_NOTDEF) continue;
     if (data[i] == GRIB_NOTDEF) {
       data[i] = -rec.data[i];
       if (BMSbits != 0) {
-        if (BMSsize > i) {
-          BMSbits[i >> 3] |= 1 << (i & 7);
+        if (BMSsize > (i >> 3)) {
+          BMSbits[i >> 3] |= 128u >> (i & 7);
         }
       }
     } else
@@ -834,12 +906,12 @@ void GribRecord::Average(const GribRecord &rec) {
 
   if (getPeriodP1() != rec.getPeriodP1()) return;
 
-  double d2 = getPeriodP2() - getPeriodP1();
-  double d1 = rec.getPeriodP2() - rec.getPeriodP1();
+  double d2 = double(periodP2) - periodP1;
+  double d1 = double(rec.periodP2) - rec.periodP1;
 
   if (d2 <= d1) return;
 
-  zuint size = Ni * Nj;
+  const std::size_t size = dataCount();
   double diff = d2 - d1;
   for (zuint i = 0; i < size; i++) {
     if (rec.data[i] == GRIB_NOTDEF) continue;
@@ -855,16 +927,10 @@ void GribRecord::setDataType(const zuchar t) {
   dataKey = makeKey(dataType, levelType, levelValue);
 }
 //------------------------------------------------------------------------------
-std::string GribRecord::makeKey(
-    int dataType, int levelType,
-    int levelValue) {  // Make data type key  sample:'11-100-850'
-                       //  char ktmp[32];
-  //  wxSnprintf((wxChar *)ktmp, 32, "%d-%d-%d", dataType, levelType,
-  //  levelValue); return std::string(ktmp);
-
-  wxString k;
-  k.Printf(_T("%d-%d-%d"), dataType, levelType, levelValue);
-  return std::string(k.mb_str());
+std::string GribRecord::makeKey(int dataType, int levelType, int levelValue) {
+  char key[64];
+  std::snprintf(key, sizeof(key), "%d-%d-%d", dataType, levelType, levelValue);
+  return std::string(key);
 }
 //-----------------------------------------
 // GribRecord::~GribRecord() {
@@ -883,7 +949,7 @@ std::string GribRecord::makeKey(
 
 //-------------------------------------------------------------------------------
 void GribRecord::multiplyAllData(double k) {
-  if (data == 0 || !isOk()) return;
+  if (data == 0 || !isOk() || !dataCount()) return;
 
   for (zuint j = 0; j < Nj; j++) {
     for (zuint i = 0; i < Ni; i++) {
@@ -897,16 +963,16 @@ void GribRecord::multiplyAllData(double k) {
 //----------------------------------------------
 void GribRecord::setRecordCurrentDate(time_t t) {
   curDate = t;
-
-  struct tm *date = gmtime(&t);
-
-  zuint year = date->tm_year + 1900;
-  zuint month = date->tm_mon + 1;
-  zuint day = date->tm_mday;
-  zuint hour = date->tm_hour;
-  zuint minute = date->tm_min;
-  sprintf(strCurDate, "%04d-%02d-%02d %02d:%02d", year, month, day, hour,
-          minute);
+  struct tm date;
+#ifdef _WIN32
+  const bool valid = gmtime_s(&date, &t) == 0;
+#else
+  const bool valid = gmtime_r(&t, &date) != nullptr;
+#endif
+  if (!valid) { strCurDate[0] = '\0'; return; }
+  std::snprintf(strCurDate, sizeof(strCurDate), "%04d-%02d-%02d %02d:%02d",
+                date.tm_year + 1900, date.tm_mon + 1, date.tm_mday,
+                date.tm_hour, date.tm_min);
 }
 
 //----------------------------------------------
@@ -916,31 +982,20 @@ static bool isleapyear(zuint y) {
 
 time_t GribRecord::makeDate(zuint year, zuint month, zuint day, zuint hour,
                             zuint min, zuint sec) {
-  if (year < 1970 || year > 2200 || month < 1 || month > 12 || day < 1)
-    return -1;
-  time_t r = 0;
-
-  // TODO : optimize (precomputed data)
-  for (zuint y = 1970; y < year; y++) {
-    r += 365 * 24 * 3600;
-    if (isleapyear(y)) r += 24 * 3600;
-  }
-  for (zuint m = 1; m < month; m++) {
-    if (m == 2) {
-      r += 28 * 24 * 3600;
-      if (isleapyear(year)) r += 24 * 3600;
-    } else if (m == 1 || m == 3 || m == 5 || m == 7 || m == 8 || m == 10 ||
-               m == 12) {
-      r += 31 * 24 * 3600;
-    } else {
-      r += 30 * 24 * 3600;
-    }
-  }
-  r += (day - 1) * 24 * 3600;
-  r += hour * 3600;
-  r += min * 60;
-  r += sec;
-  return r;
+  static const unsigned monthDays[] = {31,28,31,30,31,30,31,31,30,31,30,31};
+  static const unsigned daysBeforeMonth[] = {0,31,59,90,120,151,181,212,243,273,304,334};
+  if (year < 1970 || year > 2200 || month < 1 || month > 12 || day < 1 ||
+      day > monthDays[month-1] + (month == 2 && isleapyear(year)) ||
+      hour > 23 || min > 59) return time_t(-1);
+  // The GRIB readers pass the whole forecast offset in sec, not just a
+  // clock second. Keep that established calling convention.
+  const unsigned y = year - 1;
+  const unsigned leapDays = y/4 - y/100 + y/400 - (1969/4 - 1969/100 + 1969/400);
+  const std::uint64_t days = std::uint64_t(year - 1970) * 365 + leapDays +
+      daysBeforeMonth[month-1] + (month > 2 && isleapyear(year)) + day - 1;
+  const std::uint64_t seconds = days * 86400 + hour * 3600 + min * 60 + sec;
+  if (seconds > std::uint64_t(std::numeric_limits<time_t>::max())) return time_t(-1);
+  return static_cast<time_t>(seconds);
 }
 
 //===============================================================================================
@@ -948,29 +1003,37 @@ time_t GribRecord::makeDate(zuint year, zuint month, zuint day, zuint hour,
 double GribRecord::getInterpolatedValue(double px, double py,
                                         bool numericalInterpolation,
                                         bool dir) const {
-  if (!ok || Di == 0 || Dj == 0) return GRIB_NOTDEF;
+  // The finite grid-coordinate checks below validate the query and spacing
+  // before conversion. Only ownership/count need checking here.
+  if (!ok || !data || !dataCount()) return GRIB_NOTDEF;
 
-  if (!isPointInMap(px, py)) {
-    px += 360.0;  // tour du monde à droite ?
-    if (!isPointInMap(px, py)) {
-      px -= 2 * 360.0;  // tour du monde à gauche ?
-      if (!isPointInMap(px, py)) {
-        return GRIB_NOTDEF;
-      }
+  // Validate in grid coordinates once. The common interior path needs no
+  // longitude seam calculation or repeated geographic coverage checks.
+  if (!isYInMap(py)) return GRIB_NOTDEF;
+  double pi = (px - Lo1) / Di;
+  const double pj = (py - La1) / Dj;
+  bool wraps = false;
+  if (!(pi >= 0 && pi <= Ni - 1.0)) {
+    wraps = std::abs(std::abs(Di) * Ni - 360.0) <= 1e-7;
+    if (!(wraps && pi >= 0 && pi <= Ni)) {
+      pi = (px + 360.0 - Lo1) / Di;
+      if (!(pi >= 0 && pi < Ni))
+        pi = (px - 360.0 - Lo1) / Di;
     }
+    if (wraps && pi == Ni) pi = 0;
+    if (!wraps && pi > Ni - 1.0) return GRIB_NOTDEF;
   }
-  double pi, pj;  // coord. in grid unit
-  pi = (px - Lo1) / Di;
-  pj = (py - La1) / Dj;
+  // Ordered bounds comparisons also reject NaN and infinity before casts.
+  if (!(pi >= 0 && pi < Ni && pj >= 0 && pj < Nj)) return GRIB_NOTDEF;
+  int i0 = static_cast<int>(pi);  // point 00
+  int j0 = static_cast<int>(pj);
 
-  // 00 10      point is in a square
-  // 01 11
-  int i0 = (int)pi;  // point 00
-  int j0 = (int)pj;
+  unsigned int i1 = i0 + 1, j1 = j0 + 1;
 
-  unsigned int i1 = pi + 1, j1 = pj + 1;
-
-  if (i1 >= Ni) i1 = i0;
+  if (i1 >= Ni) {
+    wraps = std::abs(std::abs(Di) * Ni - 360.0) <= 1e-7;
+    i1 = wraps ? 0 : i0;
+  }
 
   if (j1 >= Nj) j1 = j0;
 
@@ -982,28 +1045,13 @@ double GribRecord::getInterpolatedValue(double px, double py,
     if (dx >= 0.5) i0 = i1;
     if (dy >= 0.5) j0 = j1;
 
-    return getValue(i0, j0);
+    return getValue(i0,j0);
   }
 
-  //     bool h00,h01,h10,h11;
-  //     int nbval = 0;     // how many values in grid ?
-  //     if ((h00=isDefined(i0, j0)))
-  //         nbval ++;
-  //     if ((h10=isDefined(i1, j0)))
-  //         nbval ++;
-  //     if ((h01=isDefined(i0, j1)))
-  //         nbval ++;
-  //     if ((h11=isDefined(i1, j1)))
-  //         nbval ++;
-
-  int nbval = 0;  // how many values in grid ?
-  if (getValue(i0, j0) != GRIB_NOTDEF) nbval++;
-  if (getValue(i1, j0) != GRIB_NOTDEF) nbval++;
-  if (getValue(i0, j1) != GRIB_NOTDEF) nbval++;
-  if (getValue(i1, j1) != GRIB_NOTDEF) nbval++;
-
-  if (nbval < 3) return GRIB_NOTDEF;
-
+  // Both GRIB decoders expand missing bitmap cells to GRIB_NOTDEF.
+  // Read that canonical data representation, avoiding a second bitmap scan.
+  const double x00 = getValue(i0, j0), x01 = getValue(i0, j1);
+  const double x10 = getValue(i1, j0), x11 = getValue(i1, j1);
   dx = (3.0 - 2.0 * dx) * dx * dx;  // pseudo hermite interpolation
   dy = (3.0 - 2.0 * dy) * dy * dy;
 
@@ -1013,11 +1061,8 @@ double GribRecord::getInterpolatedValue(double px, double py,
   //   xc
   // kx = distance(xa,x)
   // ky = distance(xa,y)
-  if (nbval == 4) {
-    double x00 = getValue(i0, j0);
-    double x01 = getValue(i0, j1);
-    double x10 = getValue(i1, j0);
-    double x11 = getValue(i1, j1);
+  if (x00 != GRIB_NOTDEF && x01 != GRIB_NOTDEF &&
+      x10 != GRIB_NOTDEF && x11 != GRIB_NOTDEF) {
     if (!dir) {
       double x1 = (1.0 - dx) * x00 + dx * x10;
       double x2 = (1.0 - dx) * x01 + dx * x11;
@@ -1029,36 +1074,40 @@ double GribRecord::getInterpolatedValue(double px, double py,
     }
   }
 
+  const int nbval = (x00 != GRIB_NOTDEF) + (x01 != GRIB_NOTDEF) +
+                    (x10 != GRIB_NOTDEF) + (x11 != GRIB_NOTDEF);
+  if (nbval < 3) return GRIB_NOTDEF;
+
   // interpolation with only three points is too hazardous for angles
   if (dir) return GRIB_NOTDEF;
 
   // here nbval==3, check the corner without data
-  if (getValue(i0, j0) == GRIB_NOTDEF) {
+  if (x00 == GRIB_NOTDEF) {
     // printf("! h00  %f %f\n", dx,dy);
-    xa = getValue(i1, j1);  // A = point 11
-    xb = getValue(i0, j1);  // B = point 01
-    xc = getValue(i1, j0);  // C = point 10
+    xa = x11;  // A = point 11
+    xb = x01;  // B = point 01
+    xc = x10;  // C = point 10
     kx = 1 - dx;
     ky = 1 - dy;
-  } else if (getValue(i0, j1) == GRIB_NOTDEF) {
+  } else if (x01 == GRIB_NOTDEF) {
     // printf("! h01  %f %f\n", dx,dy);
-    xa = getValue(i1, j0);  // A = point 10
-    xb = getValue(i1, j1);  // B = point 11
-    xc = getValue(i0, j0);  // C = point 00
+    xa = x10;  // A = point 10
+    xb = x11;  // B = point 11
+    xc = x00;  // C = point 00
     kx = dy;
     ky = 1 - dx;
-  } else if (getValue(i1, j0) == GRIB_NOTDEF) {
+  } else if (x10 == GRIB_NOTDEF) {
     // printf("! h10  %f %f\n", dx,dy);
-    xa = getValue(i0, j1);  // A = point 01
-    xb = getValue(i0, j0);  // B = point 00
-    xc = getValue(i1, j1);  // C = point 11
+    xa = x01;  // A = point 01
+    xb = x00;  // B = point 00
+    xc = x11;  // C = point 11
     kx = 1 - dy;
     ky = dx;
   } else {
     // printf("! h11  %f %f\n", dx,dy);
-    xa = getValue(i0, j0);  // A = point 00
-    xb = getValue(i1, j0);  // B = point 10
-    xc = getValue(i0, j1);  // C = point 01
+    xa = x00;  // A = point 00
+    xb = x10;  // B = point 10
+    xc = x01;  // C = point 01
     kx = dx;
     ky = dy;
   }
@@ -1082,28 +1131,36 @@ bool GribRecord::getInterpolatedValues(double &M, double &A,
                                        double py, bool numericalInterpolation) {
   if (!GRX || !GRY) return false;
 
-  if (!GRX->ok || !GRY->ok || GRX->Di == 0 || GRX->Dj == 0) return false;
+  if (!GRX->ok || !GRY->ok || !GRX->data || !GRY->data ||
+      !GRX->dataCount() || !GRX->sameGrid(*GRY))
+    return false;
 
-  if (!GRX->isPointInMap(px, py) || !GRY->isPointInMap(px, py)) {
-    px += 360.0;  // tour du monde à droite ?
-    if (!GRX->isPointInMap(px, py) || !GRY->isPointInMap(px, py)) {
-      px -= 2 * 360.0;  // tour du monde à gauche ?
-      if (!GRX->isPointInMap(px, py) || !GRY->isPointInMap(px, py)) {
-        return false;
-      }
+  // Validate in grid coordinates once. The common interior path needs no
+  // longitude seam calculation or repeated geographic coverage checks.
+  if (!GRX->isYInMap(py)) return false;
+  double pi = (px - GRX->Lo1) / GRX->Di;
+  const double pj = (py - GRX->La1) / GRX->Dj;
+  bool wraps = false;
+  if (!(pi >= 0 && pi <= GRX->Ni - 1.0)) {
+    wraps = std::abs(std::abs(GRX->Di) * GRX->Ni - 360.0) <= 1e-7;
+    if (!(wraps && pi >= 0 && pi <= GRX->Ni)) {
+      pi = (px + 360.0 - GRX->Lo1) / GRX->Di;
+      if (!(pi >= 0 && pi < GRX->Ni))
+        pi = (px - 360.0 - GRX->Lo1) / GRX->Di;
     }
+    if (wraps && pi == GRX->Ni) pi = 0;
+    if (!wraps && pi > GRX->Ni - 1.0) return false;
   }
-  double pi, pj;  // coord. in grid unit
-  pi = (px - GRX->Lo1) / GRX->Di;
-  pj = (py - GRX->La1) / GRX->Dj;
+  // Ordered bounds comparisons also reject NaN and infinity before casts.
+  if (!(pi >= 0 && pi < GRX->Ni && pj >= 0 && pj < GRX->Nj)) return false;
+  int i0 = static_cast<int>(pi);  // point 00
+  int j0 = static_cast<int>(pj);
 
-  // 00 10      point is in a square
-  // 01 11
-  int i0 = (int)pi;  // point 00
-  int j0 = (int)pj;
-
-  unsigned int i1 = pi + 1, j1 = pj + 1;
-  if (i1 >= GRX->Ni) i1 = i0;
+  unsigned int i1 = i0 + 1, j1 = j0 + 1;
+  if (i1 >= GRX->Ni) {
+    wraps = std::abs(std::abs(GRX->Di) * GRX->Ni - 360.0) <= 1e-7;
+    i1 = wraps ? 0 : i0;
+  }
 
   if (j1 >= GRX->Nj) j1 = j0;
 
@@ -1116,41 +1173,22 @@ bool GribRecord::getInterpolatedValues(double &M, double &A,
     if (dx >= 0.5) i0 = i1;
     if (dy >= 0.5) j0 = j1;
 
-    vx = GRX->getValue(i0, j0);
-    vy = GRY->getValue(i0, j0);
+    vx = GRX->getValue(i0,j0);
+    vy = GRY->getValue(i0,j0);
     if (vx == GRIB_NOTDEF || vy == GRIB_NOTDEF) return false;
 
     M = sqrt(vx * vx + vy * vy);
-    A = atan2(-vx, -vy) * 180 / M_PI;
+    A = atan2(-vx, -vy) * 180 / kPi;
     return true;
   }
 
-  //     bool h00,h01,h10,h11;
-  //     int nbval = 0;     // how many values in grid ?
-  //     if ((h00=GRX->isDefined(i0, j0) && GRX->isDefined(i0, j0)))
-  //         nbval ++;
-  //     if ((h10=GRX->isDefined(i1, j0) && GRY->isDefined(i1, j0)))
-  //         nbval ++;
-  //     if ((h01=GRX->isDefined(i0, j1) && GRY->isDefined(i0, j1)))
-  //         nbval ++;
-  //     if ((h11=GRX->isDefined(i1, j1) && GRY->isDefined(i1, j1)))
-  //         nbval ++;
-
-  int nbval = 0;  // how many values in grid ?
-  if (GRY->getValue(i0, j0) != GRIB_NOTDEF) nbval++;
-  if (GRY->getValue(i1, j0) != GRIB_NOTDEF) nbval++;
-  if (GRY->getValue(i0, j1) != GRIB_NOTDEF) nbval++;
-  if (GRY->getValue(i1, j1) != GRIB_NOTDEF) nbval++;
-
-  if (nbval <= 3) return false;
-
-  nbval = 0;  // how many values in grid ?
-  if (GRX->getValue(i0, j0) != GRIB_NOTDEF) nbval++;
-  if (GRX->getValue(i1, j0) != GRIB_NOTDEF) nbval++;
-  if (GRX->getValue(i0, j1) != GRIB_NOTDEF) nbval++;
-  if (GRX->getValue(i1, j1) != GRIB_NOTDEF) nbval++;
-
-  if (nbval <= 3) return false;
+  const double x00x = GRX->getValue(i0, j0), x00y = GRY->getValue(i0, j0);
+  const double x01x = GRX->getValue(i0, j1), x01y = GRY->getValue(i0, j1);
+  const double x10x = GRX->getValue(i1, j0), x10y = GRY->getValue(i1, j0);
+  const double x11x = GRX->getValue(i1, j1), x11y = GRY->getValue(i1, j1);
+  if (x00x == GRIB_NOTDEF || x01x == GRIB_NOTDEF || x10x == GRIB_NOTDEF ||
+      x11x == GRIB_NOTDEF || x00y == GRIB_NOTDEF || x01y == GRIB_NOTDEF ||
+      x10y == GRIB_NOTDEF || x11y == GRIB_NOTDEF) return false;
 
   dx = (3.0 - 2.0 * dx) * dx * dx;  // pseudo hermite interpolation
   dy = (3.0 - 2.0 * dy) * dy * dy;
@@ -1160,28 +1198,24 @@ bool GribRecord::getInterpolatedValues(double &M, double &A,
   //   xc
   // kx = distance(xa,x)
   // ky = distance(xa,y)
-  if (nbval == 4) {
-    double x00x = GRX->getValue(i0, j0), x00y = GRY->getValue(i0, j0);
+  {
     double x00m = sqrt(x00x * x00x + x00y * x00y), x00a = atan2(x00x, x00y);
 
-    double x01x = GRX->getValue(i0, j1), x01y = GRY->getValue(i0, j1);
     double x01m = sqrt(x01x * x01x + x01y * x01y), x01a = atan2(x01x, x01y);
 
-    double x10x = GRX->getValue(i1, j0), x10y = GRY->getValue(i1, j0);
     double x10m = sqrt(x10x * x10x + x10y * x10y), x10a = atan2(x10x, x10y);
 
-    double x11x = GRX->getValue(i1, j1), x11y = GRY->getValue(i1, j1);
     double x11m = sqrt(x11x * x11x + x11y * x11y), x11a = atan2(x11x, x11y);
 
     double x0m = (1 - dx) * x00m + dx * x10m,
-           x0a = interp_angle(x00a, x10a, dx, M_PI);
+           x0a = interp_angle(x00a, x10a, dx, kPi);
 
     double x1m = (1 - dx) * x01m + dx * x11m,
-           x1a = interp_angle(x01a, x11a, dx, M_PI);
+           x1a = interp_angle(x01a, x11a, dx, kPi);
 
     M = (1 - dy) * x0m + dy * x1m;
-    A = interp_angle(x0a, x1a, dy, M_PI);
-    A *= 180 / M_PI;  // degrees
+    A = interp_angle(x0a, x1a, dy, kPi);
+    A *= 180 / kPi;  // degrees
     A += 180;
 
     return true;

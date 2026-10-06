@@ -38,6 +38,11 @@ public:
                                    const RoutingEnvironment& environment) const;
   RoutingResult route(const RoutingRequest& request,
                       const RoutingEnvironment& environment) const;
+  // Keep the request's selected resource scale, but stop cumulative retries
+  // after this tier. Used when a validated incumbent already exists.
+  RoutingResult routeThroughEffortTier(
+      const RoutingRequest& request, const RoutingEnvironment& environment,
+      unsigned maximumEffortTier) const;
   RoutingResult routeEnsemble(
       const RoutingRequest& request,
       std::span<const RoutingEnvironment> members) const;
@@ -45,6 +50,18 @@ public:
 private:
   RoutingResult routeMember(const RoutingRequest& request,
                             const RoutingEnvironment& environment) const;
+};
+
+// Professional retains the established recovery and validation pipeline,
+// selects an offshore corridor and can keep an independently validated Quick
+// route as an incumbent. RoutingEngine remains its internal recovery solver.
+class ProfessionalEngine {
+public:
+  RoutingResult route(const RoutingRequest& request,
+                      const RoutingEnvironment& environment) const;
+  RoutingResult route(const RoutingRequest& request,
+                      const RoutingEnvironment& environment,
+                      const RoutingResult* quickIncumbent) const;
 };
 
 std::string toString(RoutingStatus status);

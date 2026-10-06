@@ -223,6 +223,23 @@ public:
   wr::RoutingStatus missingStatus{wr::RoutingStatus::NoFeasibleRoute};
   unsigned candidatesTried{};
   double largestStepNm{2};
+  bool coastalDepartureLeeway{};
+  bool coastalDestinationLeeway{};
+  struct BridgeCacheEntry {
+    wr::GeoPoint start, target;
+    wr::TimePoint time{};
+    unsigned profile{};
+    std::size_t prefixLength{};
+    double angle{}, fuel{}, previousTrueWindAngle{};
+    bool prior{};
+    wr::Duration modeDuration{}, motorTime{};
+    wr::PropulsionMode previousMode{};
+    wr::Tack previousTack{};
+    wr::Duration allowance{};
+    std::vector<Motion> motions;
+  };
+  std::vector<BridgeCacheEntry> interimBridgeCache;
+  unsigned interimBridgeCalls{}, interimBridgesThisCandidate{};
   original_routing::VisualizationSampler visualizationSampler;
   Search(const wr::RoutingRequest& r, const wr::RoutingEnvironment& e,
          const Options& o)
@@ -379,8 +396,43 @@ public:
     arena.checkpoint();
     if (!environment.landAndBoundaries) return false;
     ++result.diagnostics.landChecks;
-    const bool forbidden = environment.landAndBoundaries->segmentForbiddenAt(
+    bool forbidden = environment.landAndBoundaries->segmentForbiddenAt(
         a, b, t, request.constraints.landSafetyMarginNm);
+    if (forbidden && options.allowCoastalEndpointLeeway &&
+        request.constraints.landSafetyMarginNm > 0.0) {
+      const double margin = request.constraints.landSafetyMarginNm;
+      const double radius = std::max(0.5, margin * 1.5);
+      const double startClearance =
+          environment.landAndBoundaries->distanceToForbiddenNm(a);
+      if (wr::distanceNm(a, request.start) <= radius + 1e-6 &&
+          startClearance + 1e-6 < margin &&
+          !environment.landAndBoundaries->segmentForbiddenAt(a, b, t, 0.0)) {
+        const double endClearance =
+            environment.landAndBoundaries->distanceToForbiddenNm(b);
+        if (endClearance + 1e-6 >= startClearance) {
+          forbidden = false;
+          coastalDepartureLeeway = true;
+        }
+      }
+      if (forbidden &&
+          wr::distanceNm(b, request.destination) <= radius + 1e-6 &&
+          wr::distanceNm(b, request.destination) + 1e-6 <
+              wr::distanceNm(a, request.destination)) {
+        const double chord = wr::distanceNm(a, b);
+        const wr::GeoPoint ingressStart = chord <= radius
+            ? a
+            : wr::destinationPoint(a, wr::initialBearingDegrees(a, b),
+                                   chord - radius);
+        if ((chord <= radius ||
+             !environment.landAndBoundaries->segmentForbiddenAt(
+                 a, ingressStart, t, margin)) &&
+            !environment.landAndBoundaries->segmentForbiddenAt(
+                ingressStart, b, t, 0.0)) {
+          forbidden = false;
+          coastalDestinationLeeway = true;
+        }
+      }
+    }
     if (forbidden) ++result.diagnostics.landRejections;
     return forbidden;
   }
@@ -677,19 +729,208 @@ public:
       return std::vector<Motion>{*leg};
     return dogleg(s, target, allowance);
   }
+  // A contour vertex is only a proposed location. When its direct and
+  // two-leg reconstruction fail, Professional may solve this short gap with
+  // Professional's full motion and recovery pipeline. The bridge is accepted
+  // only if the complete prefix passes independent chronological replay.
+  std::optional<std::vector<Motion>> interimBridge(
+      const State& s, wr::GeoPoint target, wr::Duration allowance,
+      const std::vector<wr::RouteLeg>& prefix) {
+    if (!options.allowProfessionalInterimBridge || prefix.empty() ||
+        interimBridgesThisCandidate >= 4 ||
+        wr::distanceNm(s.point, target) > 30.0)
+      return {};
+    for (const auto& cached : interimBridgeCache) {
+      if (cached.time != s.time || cached.profile != s.profile ||
+          cached.prefixLength != prefix.size() ||
+          cached.angle != s.angle || cached.fuel != s.fuel ||
+          cached.prior != s.prior ||
+          cached.modeDuration != s.modeDuration ||
+          cached.motorTime != s.motorTime ||
+          cached.previousMode != prefix.back().propulsionMode ||
+          cached.previousTack != prefix.back().tack ||
+          cached.previousTrueWindAngle !=
+              prefix.back().trueWindAngleDegrees ||
+          cached.allowance != allowance ||
+          wr::distanceNm(cached.start, s.point) > 0.0001 ||
+          wr::distanceNm(cached.target, target) > 0.0001)
+        continue;
+      if (cached.motions.empty()) return {};
+      ++interimBridgesThisCandidate;
+      return cached.motions;
+    }
+    if (interimBridgeCalls >= 8) return {};
+    ++interimBridgeCalls;
+    BridgeCacheEntry cached;
+    cached.start = s.point;
+    cached.target = target;
+    cached.time = s.time;
+    cached.profile = s.profile;
+    cached.prefixLength = prefix.size();
+    cached.angle = s.angle;
+    cached.fuel = s.fuel;
+    cached.prior = s.prior;
+    cached.modeDuration = s.modeDuration;
+    cached.motorTime = s.motorTime;
+    cached.previousMode = prefix.back().propulsionMode;
+    cached.previousTack = prefix.back().tack;
+    cached.previousTrueWindAngle = prefix.back().trueWindAngleDegrees;
+    cached.allowance = allowance;
+    const auto rememberFailure = [&]() -> std::optional<std::vector<Motion>> {
+      interimBridgeCache.push_back(std::move(cached));
+      return {};
+    };
+
+    wr::RoutingRequest bridge = request;
+    bridge.start = s.point;
+    bridge.destination = target;
+    bridge.departure = s.time;
+    bridge.progress = {};
+    bridge.options.timeStep =
+        std::min(bridge.options.timeStep, wr::Duration{3600});
+    bridge.options.headingStepDegrees =
+        std::min(bridge.options.headingStepDegrees, 5.0);
+    bridge.options.routingEffortPercent = 100;
+    const auto remaining =
+        request.departure + request.limits.maximumRouteDuration - s.time;
+    bridge.limits.maximumRouteDuration = std::min(allowance, remaining);
+    if (bridge.limits.maximumRouteDuration <= wr::Duration::zero())
+      return rememberFailure();
+    bridge.limits.maximumExplorationDistanceNm =
+        std::max(50.0, wr::distanceNm(s.point, target) * 4.0);
+    bridge.limits.maximumGeneratedStates =
+        std::min<std::uint64_t>(bridge.limits.maximumGeneratedStates, 200000);
+    bridge.limits.maximumForwardGeneratedStates =
+        std::min<std::uint64_t>(bridge.limits.maximumForwardGeneratedStates,
+                                120000);
+    bridge.limits.maximumFrontierRecoveryGeneratedStates =
+        std::min<std::uint64_t>(
+            bridge.limits.maximumFrontierRecoveryGeneratedStates, 40000);
+    bridge.limits.maximumGraphGeneratedStates =
+        std::min<std::uint64_t>(bridge.limits.maximumGraphGeneratedStates,
+                                40000);
+    bridge.limits.maximumRetainedStates =
+        std::min<std::uint64_t>(bridge.limits.maximumRetainedStates, 50000);
+    bridge.limits.maximumGraphLabels =
+        std::min<std::uint64_t>(bridge.limits.maximumGraphLabels, 50000);
+    if (bridge.vessel.propulsion.maximumMotorTime) {
+      if (s.motorTime >= *bridge.vessel.propulsion.maximumMotorTime)
+        return rememberFailure();
+      *bridge.vessel.propulsion.maximumMotorTime -= s.motorTime;
+    }
+    if (bridge.vessel.propulsion.maximumFuelLitres) {
+      if (s.fuel >= *bridge.vessel.propulsion.maximumFuelLitres)
+        return rememberFailure();
+      *bridge.vessel.propulsion.maximumFuelLitres -= s.fuel;
+    }
+    const auto local = wr::RoutingEngine{}.route(bridge, environment);
+    const bool complete =
+        local.status == wr::RoutingStatus::Complete ||
+        local.status == wr::RoutingStatus::CompleteUsingReverseRecovery ||
+        local.status == wr::RoutingStatus::CompleteUsingFrontierRecovery ||
+        local.status == wr::RoutingStatus::CompleteUsingGraphFallback;
+    if (!complete || !local.validation.passed || local.legs.empty() ||
+        local.legs.front().startTime != s.time ||
+        wr::distanceNm(local.legs.front().start, s.point) > 0.001 ||
+        wr::distanceNm(local.legs.back().end, target) > 0.001 ||
+        local.legs.back().endTime - s.time > allowance)
+      return rememberFailure();
+
+    State cursor = s;
+    std::vector<wr::RouteLeg> joined = prefix;
+    for (std::size_t i = 0; i < local.legs.size(); ++i) {
+      wr::RouteLeg leg = local.legs[i];
+      if (i == 0 && !leg.stationaryWait) {
+        const auto& previous = prefix.back();
+        leg.propulsionTransition =
+            previous.propulsionMode != leg.propulsionMode;
+        if (previous.propulsionMode == wr::PropulsionMode::Sail &&
+            leg.propulsionMode == wr::PropulsionMode::Sail &&
+            previous.tack != wr::Tack::Unknown &&
+            leg.tack != wr::Tack::Unknown && previous.tack != leg.tack) {
+          const double oldAngle = previous.tack == wr::Tack::Port
+              ? -previous.trueWindAngleDegrees
+              : previous.trueWindAngleDegrees;
+          const double newAngle = leg.tack == wr::Tack::Port
+              ? -leg.trueWindAngleDegrees : leg.trueWindAngleDegrees;
+          leg.tackTransition = std::abs(oldAngle - newAngle) < 180.0;
+          leg.gybeTransition = !leg.tackTransition;
+        }
+      }
+      Motion motion;
+      motion.leg = leg;
+      motion.motorTime = cursor.motorTime;
+      motion.fuel = cursor.fuel + leg.estimatedFuelLitres;
+      if (leg.stationaryWait) {
+        motion.profile = cursor.profile;
+        motion.angle = cursor.angle;
+      } else {
+        wr::PerformanceCandidate identity;
+        identity.mode = leg.propulsionMode;
+        identity.role = leg.profileRole;
+        identity.profileIdentity = leg.profileIdentity;
+        identity.sailPlan = leg.sailPlan;
+        motion.profile = profile(identity);
+        motion.angle = leg.tack == wr::Tack::Port
+            ? -leg.trueWindAngleDegrees : leg.trueWindAngleDegrees;
+        const auto duration = leg.endTime - leg.startTime;
+        motion.modeDuration =
+            cursor.prior && profiles[cursor.profile].mode == leg.propulsionMode
+                ? cursor.modeDuration + duration : duration;
+        if (leg.propulsionMode != wr::PropulsionMode::Sail)
+          motion.motorTime += duration;
+      }
+      joined.push_back(leg);
+      cached.motions.push_back(std::move(motion));
+      cursor = after(cached.motions.back());
+    }
+    const auto validated = wr::RouteValidator{}.validatePrefix(
+        request, environment, *environment.performance, joined);
+    if (!validated.passed) {
+      // A different candidate can reach the same state through a distinct
+      // prefix. Its full chronological replay may succeed even if this one
+      // does not, so do not cache a prefix-specific rejection.
+      return {};
+    }
+    if (result.diagnostics.stageStopReasons.size() < 8)
+      result.diagnostics.stageStopReasons.push_back(
+          "Professional Quick interim bridge: " +
+          std::to_string(prefix.size()) + " prior legs, " +
+          std::to_string(local.legs.size()) + " bridge legs, " +
+          std::to_string(local.metrics.elapsed.count()) + " seconds, solver=" +
+          wr::toString(local.solverPath));
+    ++interimBridgesThisCandidate;
+    interimBridgeCache.push_back(std::move(cached));
+    return interimBridgeCache.back().motions;
+  }
   bool candidate(Trace* end) {
     if (candidatesTried >= options.maximumValidatedCandidates) return false;
     ++candidatesTried;
+    interimBridgesThisCandidate = 0;
     std::vector<Trace*> chain;
     for (auto p = end; p && p->parent; p = p->parent) chain.push_back(p);
     std::reverse(chain.begin(), chain.end());
+    if (request.progress)
+      request.progress({wr::RoutingProgressStage::Validation, candidatesTried,
+                        options.maximumValidatedCandidates,
+                        result.diagnostics.generatedStates, arena.traces.count,
+                        result.diagnostics.landChecks,
+                        result.diagnostics.closestApproachNm, 100});
     State s{request.start, request.departure};
     std::vector<wr::RouteLeg> legs;
     for (auto p : chain) {
+      if (request.progress)
+        request.progress({wr::RoutingProgressStage::Validation, candidatesTried,
+                          options.maximumValidatedCandidates,
+                          result.diagnostics.generatedStates, arena.traces.count,
+                          result.diagnostics.landChecks,
+                          result.diagnostics.closestApproachNm, 100});
       const auto hint = (p->time - p->parent->time).count();
-      auto repaired =
-          connect(s, p->point, hint,
-                  wr::Duration(std::max<std::int64_t>(1800, hint * 2 + 1200)));
+      const wr::Duration allowance{
+          std::max<std::int64_t>(1800, hint * 2 + 1200)};
+      auto repaired = connect(s, p->point, hint, allowance);
+      if (!repaired)
+        repaired = interimBridge(s, p->point, allowance, legs);
       if (!repaired) {
         if (result.diagnostics.stageStopReasons.size() < 8)
           result.diagnostics.stageStopReasons.push_back(
@@ -760,6 +1001,16 @@ public:
       result.warnings.push_back({wr::RoutingWarningCode::WaveDataMissing,
                                  "Wave limit could not be checked where "
                                  "missing wave data was explicitly waived"});
+    if (options.allowCoastalEndpointLeeway && coastalDepartureLeeway)
+      result.warnings.push_back({
+          wr::RoutingWarningCode::CoastalEndpointLeeway,
+          "Departure is inside the configured shore buffer; the validated "
+          "route moves away from shore without crossing land"});
+    if (options.allowCoastalEndpointLeeway && coastalDestinationLeeway)
+      result.warnings.push_back({
+          wr::RoutingWarningCode::CoastalEndpointLeeway,
+          "Destination is inside the configured shore buffer; the validated "
+          "route approaches it without crossing land"});
     result.status = wr::RoutingStatus::Complete;
     result.diagnostics.closestApproachNm = 0;
     result.diagnostics.completedEffortPercent = 100;
@@ -901,10 +1152,12 @@ public:
             auto* parent = p->trace;
             while (parent && trace.route.size() < 256) {
               trace.route.push_back(parent->point);
+              trace.times.push_back(parent->time);
               parent = parent->parent;
             }
             if (!parent) {
               std::reverse(trace.route.begin(), trace.route.end());
+              std::reverse(trace.times.begin(), trace.times.end());
               layer.traces.push_back(std::move(trace));
               --traces;
             }
@@ -936,7 +1189,8 @@ public:
       result.message = "destination is on land";
       return result;
     }
-    if (request.constraints.landSafetyMarginNm > 0 &&
+    if (!options.allowCoastalEndpointLeeway &&
+        request.constraints.landSafetyMarginNm > 0 &&
         environment.landAndBoundaries) {
       if (land(request.start, request.start, request.departure)) {
         result.status = wr::RoutingStatus::InvalidStart;

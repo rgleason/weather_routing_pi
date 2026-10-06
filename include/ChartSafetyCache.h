@@ -207,6 +207,7 @@ private:
   std::string last_error_;
   int requested_ram_mib_;
   int effective_ram_mib_;
+  std::int64_t next_memory_check_milliseconds_{0};
   bool persistent_enabled_;
   int maximum_disk_mib_;
   bool configured_;

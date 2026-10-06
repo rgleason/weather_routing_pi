@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "TimeZoneDisplay.h"
+#include "RoutingTimePersistence.h"
 
 namespace {
 
@@ -13,6 +14,40 @@ wxDateTime Utc(int year, wxDateTime::Month month, int day, int hour,
 }
 
 }  // namespace
+
+TEST(RoutingTimePersistence, DepartureAndArrivalRetainInstantsAfterXmlRoundTrip) {
+  TiXmlElement route("Configuration");
+  const auto departure = Utc(2026, wxDateTime::Sep, 26, 11, 25);
+  const auto arrival = Utc(2026, wxDateTime::Sep, 26, 17, 45);
+  weather_routing::WriteRoutingTime(route, departure,
+      "StartDate", "StartTime", "StartTimeUnixSeconds");
+  weather_routing::WriteRoutingTime(route, arrival,
+      "PlannedArrivalDate", "PlannedArrivalTime", "PlannedArrivalUnixSeconds");
+  TiXmlPrinter printer;
+  route.Accept(&printer);
+  TiXmlDocument reopened;
+  reopened.Parse(printer.CStr());
+  ASSERT_FALSE(reopened.Error());
+  ASSERT_NE(reopened.RootElement(), nullptr);
+  EXPECT_EQ(weather_routing::ReadRoutingTime(*reopened.RootElement(),
+      "StartDate", "StartTime", "StartTimeUnixSeconds", wxDateTime()).GetTicks(),
+      departure.GetTicks());
+  EXPECT_EQ(weather_routing::ReadRoutingTime(*reopened.RootElement(),
+      "PlannedArrivalDate", "PlannedArrivalTime", "PlannedArrivalUnixSeconds",
+      wxDateTime()).GetTicks(), arrival.GetTicks());
+}
+
+TEST(RoutingTimePersistence, ExplicitInstantSurvivesDifferentLocalClockFields) {
+  TiXmlElement route("Configuration");
+  const auto departure = Utc(2026, wxDateTime::Sep, 26, 11, 25);
+  weather_routing::WriteRoutingTime(route, departure,
+      "StartDate", "StartTime", "StartTimeUnixSeconds");
+  // A file may move between computers with different system timezones.
+  route.SetAttribute("StartTime", "03:25:00");
+  EXPECT_EQ(weather_routing::ReadRoutingTime(route,
+      "StartDate", "StartTime", "StartTimeUnixSeconds", wxDateTime()).GetTicks(),
+      departure.GetTicks());
+}
 
 TEST(TimeZoneDisplay, LondonUsesGmtInWinterAndBstInSummer) {
   if (!marine_time::IsTimeZoneAvailable("Europe/London")) GTEST_SKIP();

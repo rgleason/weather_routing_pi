@@ -95,6 +95,13 @@ private:
   void SaveColumnVisibility() const;
   void ApplyColumnVisibility();
   void UpdateSummary(const std::list<PlotData>& plotData);
+#ifdef __OCPN__ANDROID__
+  void RefreshAndroidLegs();
+  void ShowAndroidLeg(int row);
+  wxChoice* m_androidLegPicker{nullptr};
+  wxScrolledWindow* m_androidLegDetails{nullptr};
+  wxBoxSizer* m_androidLegFields{nullptr};
+#endif
 
   /**
    * Helper function to format and display sail plan information

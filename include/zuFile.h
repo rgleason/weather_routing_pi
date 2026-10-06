@@ -15,7 +15,27 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ***********************************************************************/
-
+/**
+ * \file
+ * Unified Compressed File Access System.
+ *
+ * Provides a consistent interface for reading both compressed and uncompressed
+ * GRIB files with support for:
+ * - Uncompressed files
+ * - GZIP compression (.gz)
+ * - BZIP2 compression (.bz2)
+ *
+ * Features:
+ * - Transparent compression detection
+ * - Unified file operations (open, read, seek, tell)
+ * - Large file support
+ * - Buffered reading for performance
+ * - Error handling and validation
+ *
+ * This system allows the GRIB plugin to work seamlessly with compressed
+ * weather data files while handling the complexities of different compression
+ * formats internally.
+ */
 #ifndef ZU_FILE_H
 #define ZU_FILE_H
 
@@ -30,12 +50,8 @@ extern "C" {
 #include <stdlib.h>
 #include <ctype.h>
 
-#include "zlib.h"
-#ifdef __ANDROID__
-#define BZ_OK 0
-#else
+#include <zlib.h>
 #include <bzlib.h>
-#endif
 
 #define ZU_COMPRESS_AUTO -1
 #define ZU_COMPRESS_NONE 0
@@ -55,19 +71,28 @@ typedef struct {
   FILE* faux;  // auxiliary file for bzip
 } ZUFILE;
 
-ZUFILE* zu_open(const char* fname, const char* mode,
-                int type = ZU_COMPRESS_AUTO);
+#ifdef __cplusplus
+ZUFILE* zu_open(const char* fname, const char* mode, int type = ZU_COMPRESS_AUTO);
+#else
+ZUFILE* zu_open(const char* fname, const char* mode, int type);
+#endif
 int zu_close(ZUFILE* f);
 
 int zu_can_read_file(const char* fname);
 
+// Returns bytes read, zero at EOF, or -1 for an invalid request/read error.
+// len must fit int; failure never subtracts from the logical file position.
 int zu_read(ZUFILE* f, void* buf, long len);
 
+// Read one text line, including a trailing newline when it fits.
+// Retained for Weather Routing polar files.
 char* zu_gets(ZUFILE* f, char* buf, int len);
 
 long zu_tell(ZUFILE* f);
 
-int zu_seek(ZUFILE* f, long offset, int whence);  // TODO: whence=SEEK_END
+// SEEK_SET/SEEK_CUR only. Negative relative offsets rewind compressed streams.
+// Returns 0 on success and -1 on failure; SEEK_END remains unsupported.
+int zu_seek(ZUFILE* f, long offset, int whence);
 
 void zu_rewind(ZUFILE* f);
 
@@ -78,6 +103,13 @@ int zu_bzSeekForward(ZUFILE* f, unsigned long nbytes);
 
 #ifdef __cplusplus
 }
+
+#include <wx/string.h>
+
+// Unicode-safe entry point used by xGRIB. The legacy narrow-path API above is
+// retained for source compatibility with the original zyGrib reader.
+ZUFILE* zu_open_wx(const wxString& fname, const char* mode,
+                   int type = ZU_COMPRESS_AUTO);
 #endif
 
 #endif

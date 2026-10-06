@@ -8,3 +8,10 @@ temp
 tmp
 master.zip
 OCPNAndroidCommon*
+.android-ci/
+.windows64/
+.windows86-host/
+build_android_arm64_codex/
+/build-android/
+/build-desktop/
+artifacts/

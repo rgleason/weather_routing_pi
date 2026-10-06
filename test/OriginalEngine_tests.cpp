@@ -81,6 +81,23 @@ TEST(OriginalEngine, DisplayIsBoundedAndDoesNotChangeAcceptedRoute) {
   EXPECT_FALSE(a.visualization.isochrones.empty());
   EXPECT_LE(a.visualization.isochrones.size(), 128U);
   EXPECT_TRUE(b.visualization.isochrones.empty());
+  std::size_t inspected = 0;
+  for (const auto& layer : a.visualization.isochrones)
+    for (const auto& trace : layer.traces) {
+      ASSERT_EQ(trace.times.size(), trace.route.size());
+      ASSERT_FALSE(trace.times.empty());
+      // Compare epoch ticks so GoogleTest does not instantiate the chrono
+      // std::format printer, which needs macOS 13.3 with recent Apple libc++.
+      EXPECT_EQ(trace.times.front().time_since_epoch().count(),
+                request().departure.time_since_epoch().count());
+      EXPECT_LE(trace.times.back().time_since_epoch().count(),
+                layer.time.time_since_epoch().count());
+      for (std::size_t i = 1; i < trace.times.size(); ++i)
+        EXPECT_GT(trace.times[i].time_since_epoch().count(),
+                  trace.times[i - 1].time_since_epoch().count());
+      ++inspected;
+    }
+  EXPECT_GT(inspected, 0U);
 }
 TEST(OriginalEngine, VisualizationSamplesTheEntireVoyageWithinBound) {
   original_routing::VisualizationSampler sampler;
@@ -121,6 +138,56 @@ TEST(OriginalEngine, ConcurrentRequestsKeepBoatProvidersIndependent) {
   ASSERT_EQ(result.status, wr::RoutingStatus::Complete);
   ASSERT_EQ(slow.status, wr::RoutingStatus::Complete);
   EXPECT_GT(slow.metrics.elapsed.count(), result.metrics.elapsed.count() * 1.9);
+}
+
+struct EndpointBufferProvider final : wr::LandAndBoundaryProvider {
+  wr::GeoPoint start, destination;
+  bool actualLand{};
+  bool pointForbidden(wr::GeoPoint point) const override {
+    return actualLand && wr::distanceNm(point, destination) < 0.3;
+  }
+  bool segmentForbidden(wr::GeoPoint a, wr::GeoPoint b,
+                        double margin) const override {
+    if (actualLand && wr::distanceNm(b, destination) < 0.3) return true;
+    return margin > 0.0 &&
+           (wr::distanceNm(a, start) < 0.5 ||
+            wr::distanceNm(b, start) < 0.5 ||
+            wr::distanceNm(a, destination) < 0.5 ||
+            wr::distanceNm(b, destination) < 0.5);
+  }
+  double distanceToForbiddenNm(wr::GeoPoint point) const override {
+    return (wr::distanceNm(point, start) < 0.5 ||
+            wr::distanceNm(point, destination) < 0.5) ? 0.1 : 10.0;
+  }
+  std::string identity() const override { return "endpoint-buffer-test"; }
+};
+
+TEST(OriginalEngine, ProfessionalCoastalLeewayIsScopedAndValidated) {
+  auto r = request();
+  r.start = {-20.0, -130.0};
+  r.destination = {-20.0, -129.8};
+  r.constraints.landSafetyMarginNm = 0.4;
+  auto e = environment();
+  auto coast = std::make_shared<EndpointBufferProvider>();
+  coast->start = r.start;
+  coast->destination = r.destination;
+  e.landAndBoundaries = coast;
+  EXPECT_EQ(original_routing::Engine{}.route(r, e).status,
+            wr::RoutingStatus::InvalidStart);
+  original_routing::Options options;
+  options.allowCoastalEndpointLeeway = true;
+  const auto result = original_routing::Engine{}.route(r, e, options);
+  ASSERT_EQ(result.status, wr::RoutingStatus::Complete) << result.message;
+  ASSERT_TRUE(result.validation.passed);
+  EXPECT_LT(wr::distanceNm(result.legs.back().end, r.destination), 0.003);
+  const auto coastalWarning = [](const wr::RoutingWarning& warning) {
+    return warning.code == wr::RoutingWarningCode::CoastalEndpointLeeway;
+  };
+  EXPECT_EQ(std::count_if(result.warnings.begin(), result.warnings.end(),
+                          coastalWarning), 2);
+  coast->actualLand = true;
+  EXPECT_EQ(original_routing::Engine{}.route(r, e, options).status,
+            wr::RoutingStatus::InvalidDestination);
 }
 
 // Use the actual first-install polar: unlike ConstantBoat it does not supply

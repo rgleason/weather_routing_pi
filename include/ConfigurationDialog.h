@@ -55,6 +55,10 @@ public:
   ~ConfigurationDialog();
 
   void EditBoat();
+#ifdef __OCPN__ANDROID__
+  void ShowAndroidSection(size_t section);
+  void SetAndroidEndpoint(bool start, const wxString& name);
+#endif
   /**
    * Updates the configuration dialog with settings from given route
    * configurations
@@ -94,6 +98,7 @@ public:
 
 protected:
   void OnValueChange(wxEvent& event) {
+    if (m_bBlockUpdate) return;
     m_edited_controls.push_back(event.GetEventObject());
   }
   void OnChartSafetyChanged(wxCommandEvent& event);
@@ -126,11 +131,13 @@ protected:
   void OnUpdateIntegratorRungeKutta(wxCommandEvent& event);
 
   void EnableSpin(wxMouseEvent& event) {
-    wxDynamicCast(event.GetEventObject(), wxSpinCtrl)->Enable();
+    if (auto* spin = wxDynamicCast(event.GetEventObject(), wxSpinCtrl))
+      spin->Enable();
     event.Skip();
   }
   void EnableSpinDouble(wxMouseEvent& event) {
-    wxDynamicCast(event.GetEventObject(), wxSpinCtrlDouble)->Enable();
+    if (auto* spin = wxDynamicCast(event.GetEventObject(), wxSpinCtrlDouble))
+      spin->Enable();
     event.Skip();
   }
   void OnStartFromBoat(wxCommandEvent& event);
@@ -151,6 +158,12 @@ protected:
   void OnClose(wxCommandEvent& event) { Hide(); }
 
 private:
+#ifdef __OCPN__ANDROID__
+  wxStaticText* m_androidMemoryStatus{nullptr};
+  wxStaticText* m_androidBoatName{nullptr};
+  void UpdateAndroidMemoryStatus();
+  void UpdateAndroidBoatName();
+#endif
   void UpdateCycloneControls();
   void UpdateEngineControls();
   bool HandleEngineEdit(wxObject* control);
@@ -160,6 +173,7 @@ private:
 
   WeatherRouting& m_WeatherRouting;
   bool m_bBlockUpdate;
+  bool m_endpointLocked = false;
   std::vector<int> m_shorelineChoiceResolutions;
 
   std::vector<wxObject*> m_edited_controls;

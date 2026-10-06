@@ -11,6 +11,7 @@
 
 #include "engine/native/CoordinateNormalization.h"
 #include "engine/native/WeatherCoverage.h"
+#include "original_routing/Engine.h"
 #include "supercpn/weather_routing/Engine.h"
 #include "supercpn/weather_routing/QuickEngine.h"
 
@@ -664,6 +665,134 @@ TEST(ModernNativeEngine, RoutesIrishSeaDeterministically) {
   }
   ASSERT_FALSE(first.legs.empty());
   EXPECT_EQ(first.legs.back().end, TestRequest().destination);
+}
+
+TEST(ModernNativeEngine, ProfessionalMatchesLegacyOnShortPassage) {
+  const auto request = TestRequest();
+  const auto professional = RoutingEngine{}.route(request, TestEnvironment());
+  const auto upgradedProfessional = ProfessionalEngine{}.route(request, TestEnvironment());
+
+  ASSERT_TRUE(Successful(professional.status)) << professional.message;
+  ASSERT_TRUE(Successful(upgradedProfessional.status)) << upgradedProfessional.message;
+  EXPECT_TRUE(upgradedProfessional.validation.passed);
+  EXPECT_EQ(upgradedProfessional.status, professional.status);
+  EXPECT_EQ(upgradedProfessional.solverPath, professional.solverPath);
+  EXPECT_EQ(upgradedProfessional.metrics.elapsed, professional.metrics.elapsed);
+  EXPECT_EQ(upgradedProfessional.legs.size(), professional.legs.size());
+  EXPECT_EQ(upgradedProfessional.diagnostics.generatedStates,
+            professional.diagnostics.generatedStates);
+}
+
+TEST(ModernNativeEngine, ProfessionalKeepsQuickRouteWhenRecoveryIsBlocked) {
+  auto request = TestRequest();
+  request.destination = destinationPoint(request.start, 270.0, 8.0);
+  request.limits.maximumRouteDuration = std::chrono::hours{12};
+  request.options.routingEffortPercent = 400;
+  request.options.forceForwardFailureForTesting = true;
+  request.options.forceReverseFailureForTesting = true;
+  request.options.useFrontierRecovery = false;
+  request.options.useGraphFallback = false;
+  auto environment = TestEnvironment();
+  environment.performance =
+      std::make_shared<PolarPerformanceModel>(request.vessel);
+  const auto quick = original_routing::Engine{}.route(
+      request, environment);
+  ASSERT_TRUE(Successful(quick.status))
+      << toString(quick.status) << ": " << quick.message;
+  ASSERT_TRUE(quick.validation.passed);
+  const auto result = ProfessionalEngine{}.route(
+      request, environment, &quick);
+
+  ASSERT_TRUE(Successful(result.status)) << result.message;
+  EXPECT_TRUE(result.validation.passed);
+  EXPECT_EQ(result.solverPath, quick.solverPath);
+  EXPECT_EQ(result.metrics.elapsed, quick.metrics.elapsed);
+  EXPECT_FALSE(result.legs.empty());
+  EXPECT_TRUE(std::any_of(result.diagnostics.stageStopReasons.begin(),
+                          result.diagnostics.stageStopReasons.end(),
+                          [](const std::string& reason) {
+                            return reason.find("Professional tier cap=100%") !=
+                                   std::string::npos;
+                          }));
+}
+
+TEST(ModernNativeEngine, ProfessionalUsesProfessionalWhenQuickFails) {
+  auto request = TestRequest();
+  request.options.routingEffortPercent = 400;
+  request.limits.maximumGeneratedStates *= 4;
+  request.limits.maximumRetainedStates *= 4;
+  request.limits.maximumGraphLabels *= 4;
+  RoutingResult quick;
+  quick.status = RoutingStatus::ResourceLimitReached;
+  const auto result = ProfessionalEngine{}.route(
+      request, TestEnvironment(), &quick);
+
+  ASSERT_TRUE(Successful(result.status)) << result.message;
+  EXPECT_TRUE(result.validation.passed);
+  EXPECT_EQ(result.diagnostics.effortTiersAttempted,
+            std::vector<unsigned>({100U}));
+}
+
+TEST(ModernNativeEngine, ProfessionalRetainsReverseRecoveryWhenQuickFails) {
+  auto request = TestRequest();
+  request.options.forceForwardFailureForTesting = true;
+  request.options.useReverseRecovery = true;
+  request.options.useFrontierRecovery = false;
+  request.options.useGraphFallback = false;
+  request.options.retryStages = 6;
+  request.limits.maximumForwardGeneratedStates = 500000;
+  request.limits.maximumReverseCandidates = 512;
+  request.limits.maximumReverseBridgeAttempts = 4096;
+  RoutingResult failedQuick;
+  failedQuick.status = RoutingStatus::NoFeasibleRoute;
+
+  const auto professional = RoutingEngine{}.route(request, TestEnvironment());
+  const auto upgradedProfessional = ProfessionalEngine{}.route(
+      request, TestEnvironment(), &failedQuick);
+
+  ASSERT_EQ(professional.solverPath, SolverPath::ReverseRecovery);
+  ASSERT_EQ(upgradedProfessional.solverPath, professional.solverPath)
+      << upgradedProfessional.message;
+  EXPECT_TRUE(upgradedProfessional.validation.passed);
+  EXPECT_EQ(upgradedProfessional.metrics.elapsed, professional.metrics.elapsed);
+  EXPECT_EQ(upgradedProfessional.legs.size(), professional.legs.size());
+}
+
+TEST(ModernNativeEngine, ProfessionalRetainsGraphRecoveryWhenQuickFails) {
+  auto request = GraphDetourRequest(5.0);
+  auto boundaries = std::make_shared<MeridianBarrierWithOpenEndsProvider>(
+      (request.start.longitude + request.destination.longitude) / 2.0,
+      (request.start.latitude + request.destination.latitude) / 2.0, 0.03);
+  RoutingResult failedQuick;
+  failedQuick.status = RoutingStatus::NoFeasibleRoute;
+
+  const auto professional = RoutingEngine{}.route(
+      request, GraphDetourEnvironment(boundaries));
+  const auto upgradedProfessional = ProfessionalEngine{}.route(
+      request, GraphDetourEnvironment(boundaries), &failedQuick);
+
+  ASSERT_EQ(professional.solverPath, SolverPath::GraphFallback);
+  ASSERT_EQ(upgradedProfessional.solverPath, professional.solverPath)
+      << upgradedProfessional.message;
+  EXPECT_TRUE(upgradedProfessional.validation.passed);
+  EXPECT_EQ(upgradedProfessional.metrics.elapsed, professional.metrics.elapsed);
+  EXPECT_EQ(upgradedProfessional.legs.size(), professional.legs.size());
+  EXPECT_EQ(upgradedProfessional.diagnostics.graphCorridorWidthsNm,
+            professional.diagnostics.graphCorridorWidthsNm);
+}
+
+TEST(ModernNativeEngine, BoundedRecoveryStopsAfterFirstTier) {
+  auto request = TestRequest();
+  request.options.routingEffortPercent = 400;
+  request.options.forceForwardFailureForTesting = true;
+  request.options.forceReverseFailureForTesting = true;
+  request.options.useFrontierRecovery = false;
+  request.options.useGraphFallback = false;
+  const auto result = RoutingEngine{}.routeThroughEffortTier(
+      request, TestEnvironment(), 100);
+  EXPECT_FALSE(Successful(result.status));
+  EXPECT_EQ(result.diagnostics.effortTiersAttempted,
+            std::vector<unsigned>({100U}));
 }
 
 TEST(ModernNativeEngine,

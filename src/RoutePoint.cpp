@@ -28,6 +28,7 @@
 #include "SunCalculator.h"
 #include "ocpn_plugin.h"
 #include "georef.h"
+#include "DirectLegCourseSolver.h"
 
 WeatherData::WeatherData(RoutePoint* position)
     : lat(position->lat),
@@ -544,38 +545,27 @@ double RoutePoint::PropagateToPoint(double dlat, double dlon,
   // This is a starting point for the iterative solver. It's using the wind
   // direction as an initial guess for which way the boat might be heading, but
   // this gets refined in the do-while loop.
-  double cog = weather_data.twdOverWater;
-  int iters = 0;
   heading = 0;
   int newpolar = polar;
   bool old = configuration.OptimizeTacking;
   if (end) configuration.OptimizeTacking = true;
   BoatData boat_data;
-  do {
-    // (bearing - cog) represents the angle between the destination and the
-    // where the boat is heading in the iterative process.
-    while (bearing - cog > 180) bearing -= 360;
-    while (cog - bearing > 180) bearing += 360;
-
-    heading += bearing - cog;
-    ctw =
-        weather_data.twdOverWater + heading; /* rotated relative to true wind */
-
-    // GetBestPolarAndBoatSpeed adjusts this value for manoeuvre penalties, so
-    // it must not enter that calculation with an indeterminate value.
-    double timeseconds = 0.0;
-
-    if (!boat_data.GetBestPolarAndBoatSpeed(
-            configuration, weather_data, heading, ctw, NAN /*parent_heading*/,
-            data_mask, this->polar, newpolar,
-            timeseconds) ||
-        ++iters == 10  // give up
-    ) {
-      configuration.OptimizeTacking = old;
-      return NAN;
-    }
-  } while ((bearing - cog) > 1e-3);
+  const bool reachable = weather_routing::SolveDirectLegCourse(
+      bearing, weather_data.twdOverWater, heading,
+      [&](double twa, double course_through_water, double& course_over_ground) {
+        ctw = course_through_water;
+        double timeseconds = configuration.UsedDeltaTime > 0
+            ? configuration.UsedDeltaTime : configuration.DeltaTime;
+        if (!boat_data.GetBestPolarAndBoatSpeed(
+                configuration, weather_data, twa, ctw, NAN,
+                data_mask, this->polar, newpolar, timeseconds) ||
+            !std::isfinite(boat_data.sog) || boat_data.sog <= 0)
+          return false;
+        course_over_ground = boat_data.cog;
+        return true;
+      });
   configuration.OptimizeTacking = old;
+  if (!reachable) return NAN;
 
   /* only allow if we fit in the isochron time.  We could optimize this by
   finding the maximum boat speed once, and using that before computing boat
@@ -594,7 +584,7 @@ double RoutePoint::PropagateToPoint(double dlat, double dlon,
   /* landfall test if we are within 60 miles (otherwise it's very slow) */
   if (configuration.DetectLand && dist < 60 &&
       !ConstraintChecker::CheckLandConstraint(configuration, lat, lon, dlat,
-                                              dlon, cog)) {
+                                              dlon, boat_data.cog)) {
     configuration.land_crossing = true;
     return NAN;
   }

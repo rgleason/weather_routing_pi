@@ -149,6 +149,8 @@ std::string toString(SolverPath path) {
   switch (path) {
     case SolverPath::QuickBeam:
       return "quick_beam";
+    case SolverPath::AlternativeSector:
+      return "alternative_sector";
     case SolverPath::None:
       return "none";
     case SolverPath::AdaptiveIsochrone:

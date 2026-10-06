@@ -5388,7 +5388,7 @@
                               <property name="name">m_cRoutingEngine</property>
                               <property name="id">wxID_ANY</property>
                               <property name="permission">protected</property>
-                              <property name="choices">"Quick" "Standard" "Professional"</property>
+                              <property name="choices">"Auto" "Quick" "Standard" "Professional" "All (slow)"</property>
                               <property name="selection">0</property>
                               <event name="OnChoice">OnUpdate</event>
                             </object>
@@ -5402,7 +5402,7 @@
                               <property name="id">wxID_ANY</property>
                               <property name="permission">protected</property>
                               <property name="wrap">430</property>
-                              <property name="label">Quick: fast contour search with independently validated arrival.</property>
+                              <property name="label">Auto: Quick, then Standard, then Professional up to 400% effort; stops at the first validated route.</property>
                             </object>
                           </object>
                         </object></object><object class="sizeritem" expanded="false">

@@ -28,7 +28,11 @@ string(FIND "${delete_body}"
        "m_RoutingTablePanel->SetRouteMap(nullptr)" detach_position)
 string(FIND "${delete_body}"
        "m_RoutingTablePanel->GetRouteMap() == *it" per_route_position)
-string(FIND "${delete_body}" "delete *writ" delete_position)
+string(FIND "${delete_body}" "delete removed" delete_position)
+string(FIND "${delete_body}" "m_WeatherRoutes.erase(writ)" revoke_position)
+if(revoke_position LESS 0 OR revoke_position GREATER delete_position)
+  message(FATAL_ERROR "Route ownership must be revoked before destruction")
+endif()
 if(detach_position LESS 0 OR delete_position LESS 0 OR
    detach_position GREATER delete_position)
   message(FATAL_ERROR
