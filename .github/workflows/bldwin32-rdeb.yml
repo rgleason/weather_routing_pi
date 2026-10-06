@@ -42,28 +42,51 @@ jobs:
       - name: Install gettext tools
         shell: pwsh
         run: |
+          # If cached, skip installation
           if (Test-Path "C:\ProgramData\chocolatey\lib\gettext") {
               Write-Host "Using cached gettext"
           } else {
               choco install gettext -y --no-progress
           }
 
-          # Version-agnostic + SHA256 verification
-          $gettextRoot = Get-ChildItem "C:\ProgramData\chocolatey\lib\gettext" -Directory | Select-Object -First 1
-          $nupkg = Get-ChildItem $gettextRoot.FullName -Filter *.nupkg | Select-Object -First 1
-          $hash = (Get-FileHash $nupkg.FullName -Algorithm SHA256).Hash
-          Write-Host "SHA256(gettext): $hash"
+          # Locate the installer EXE used by Chocolatey (version-agnostic)
+          $installer = Get-ChildItem "C:\ProgramData\chocolatey\lib\gettext" -Recurse -Filter *.exe |
+                       Where-Object { $_.Name -match "gettext.*\.exe" } |
+                       Select-Object -First 1
 
+          if ($installer) {
+              $hash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash
+              Write-Host "SHA256(gettext installer): $hash"
+          } else {
+              Write-Host "WARNING: No gettext installer EXE found for SHA256 verification."
+          }
+
+          # Locate gettext bin directory (version-agnostic)
           $gettextBinCandidates = @(
-              Join-Path $gettextRoot.FullName "tools\bin",
-              Join-Path $gettextRoot.FullName "tools\gettext-iconv\bin",
-              Join-Path $gettextRoot.FullName "bin"
+              "C:\Program Files\gettext-iconv\bin",
+              "C:\Program Files (x86)\gettext-iconv\bin",
+              "C:\ProgramData\chocolatey\lib\gettext\tools\bin",
+              "C:\ProgramData\chocolatey\lib\gettext\tools\gettext-iconv\bin"
           )
-          $gettextBin = $gettextBinCandidates | Where-Object { Test-Path "$_\msgfmt.exe" } | Select-Object -First 1
-          if (-not $gettextBin) { throw "msgfmt.exe not found" }
 
+          $gettextBin = $gettextBinCandidates |
+                        Where-Object { Test-Path "$_\msgfmt.exe" } |
+                        Select-Object -First 1
+
+          if (-not $gettextBin) {
+              throw "msgfmt.exe not found in any known gettext bin directory"
+          }
+
+          Write-Host "Using gettext bin: $gettextBin"
+
+          # Export PATH
           $env:PATH = "$gettextBin;$env:PATH"
           $gettextBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+          # Confirm tools
+          Get-Command msgfmt
+          Get-Command msgmerge
+
 
       - name: Cache vcpkg
         uses: actions/cache@v4
