@@ -1,0 +1,128 @@
+name: build-win32
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'CMakeLists.txt'
+      - 'vcpkg.json'
+      - 'opencpn-libs/**'
+      - '.github/workflows/build-win32.yml'
+      - 'src/**'
+      - 'include/**'
+      - 'data/**'
+  pull_request:
+    paths:
+      - 'CMakeLists.txt'
+      - 'vcpkg.json'
+      - 'opencpn-libs/**'
+      - '.github/workflows/build-win32.yml'
+      - 'src/**'
+      - 'include/**'
+      - 'data/**'
+
+jobs:
+  build-win32:
+    runs-on: windows-2022
+
+    env:
+      VCPKG_TARGET_TRIPLET: x86-windows
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: MSVC dev cmd
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: Win32
+
+      - name: Install gettext tools
+        shell: pwsh
+        run: |
+          choco install gettext -y --no-progress
+          if ($LASTEXITCODE -ne 0) {
+            Start-Sleep -Seconds 10
+            choco install gettext -y --no-progress
+          }
+          if ($LASTEXITCODE -ne 0) { throw "Chocolatey could not install gettext" }
+
+          $gettextBinCandidates = @(
+            "C:\Program Files\gettext-iconv\bin",
+            "C:\Program Files (x86)\gettext-iconv\bin",
+            "C:\ProgramData\chocolatey\lib\gettext\tools\bin",
+            "C:\ProgramData\chocolatey\lib\gettext\tools\gettext-iconv\bin"
+          )
+
+          $gettextBin = $gettextBinCandidates |
+            Where-Object { Test-Path "$_\msgfmt.exe" } |
+            Select-Object -First 1
+
+          if (-not $gettextBin) {
+            throw "msgfmt.exe not found"
+          }
+
+          $env:PATH = "$gettextBin;$env:PATH"
+          $gettextBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Prepare vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          runVcpkgInstall: true
+          vcpkgJsonGlob: vcpkg.json
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -S . -B build-win32 `
+            -G "Visual Studio 17 2022" -A Win32 -T v143 `
+            -DOCPN_TARGET=MSVC `
+            -DVCPKG_TARGET_TRIPLET=x86-windows `
+            -DCMAKE_TOOLCHAIN_FILE="${env:VCPKG_ROOT}\scripts\buildsystems\vcpkg.cmake"
+
+      - name: Build
+        shell: pwsh
+        run: |
+          cmake --build build-win32 --config RelWithDebInfo --target package
+
+      - name: Inject metadata.xml
+        shell: pwsh
+        run: |
+          $pluginRoot = (Get-Location).Path
+          $buildDir = Join-Path $pluginRoot "build-win32"
+          $pluginName = Split-Path $pluginRoot -Leaf
+
+          $xmlFile = Get-ChildItem -Path $buildDir -Filter "$pluginName-*.xml" | Select-Object -First 1
+          $tarball = Get-ChildItem -Path $buildDir -Filter "$pluginName-*.tar.gz" | Select-Object -First 1
+
+          if (-not $xmlFile) { throw "metadata.xml not found" }
+          if (-not $tarball) { throw "tarball not found" }
+
+          $innerTar = Join-Path $buildDir "inner.tar"
+          & gzip -d -c $tarball.FullName > $innerTar
+
+          $repackDir = Join-Path $buildDir "repack"
+          if (Test-Path $repackDir) { Remove-Item -Recurse -Force $repackDir }
+          New-Item -ItemType Directory -Path $repackDir | Out-Null
+          & tar -xf $innerTar -C $repackDir
+
+          Copy-Item $xmlFile.FullName (Join-Path $repackDir "metadata.xml") -Force
+
+          $pluginDir = Get-ChildItem $repackDir | Where-Object { $_.Name -match $pluginName } | Select-Object -First 1
+          if (-not $pluginDir) { throw "Plugin directory not found" }
+
+          $innerName = $tarball.FullName -replace ".gz",""
+          & tar -cf $innerName -C $repackDir metadata.xml $($pluginDir.Name)
+
+          & gzip -c $innerName > $tarball.FullName
+
+          Remove-Item $innerName -Force
+          Remove-Item $innerTar -Force
+          Remove-Item $repackDir -Recurse -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-win32-rdeb-package
+          path: build-win32/**
