@@ -83,8 +83,8 @@ jobs:
             -G "Visual Studio 17 2022" -A x64 -T v143 `
             -DOCPN_TARGET=MSVC `
             -DVCPKG_TARGET_TRIPLET=x64-windows `
-            -DWEATHER_ROUTING_WINDOWS_IMPORT_LIBRARY="opencpn-importlibs/x64/opencpn.lib" `
-            -DWEATHER_ROUTING_WINDOWS_ZLIB_LIBRARY="opencpn-importlibs/x64/zlib.lib" `
+            -DWEATHER_ROUTING_WINDOWS_IMPORT_LIBRARY="${env:GITHUB_WORKSPACE}/opencpn-importlibs/x64/opencpn.lib" `
+            -DWEATHER_ROUTING_WINDOWS_ZLIB_LIBRARY="${env:GITHUB_WORKSPACE}/opencpn-importlibs/x64/zlib.lib" `
             -DCMAKE_TOOLCHAIN_FILE="${env:VCPKG_ROOT}\scripts\buildsystems\vcpkg.cmake"
 
       - name: Build
