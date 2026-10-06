@@ -1,4 +1,4 @@
-name: bldwin32-rdeb
+name: windows-rdeb
 
 on:
   workflow_dispatch:
@@ -6,59 +6,93 @@ on:
   pull_request:
 
 jobs:
-  build-win32:
+  build-windows:
     runs-on: windows-2022
+
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [Win32, x64]
+        triplet: [x86-windows, x64-windows]
+        include:
+          - arch: Win32
+            triplet: x86-windows
+          - arch: x64
+            triplet: x64-windows
+
     env:
-      VCPKG_DEFAULT_TRIPLET: x86-windows
-      VCPKG_TARGET_TRIPLET: x86-windows
+      VCPKG_TARGET_TRIPLET: ${{ matrix.triplet }}
 
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: MSVC dev cmd (x86)
+      - name: MSVC dev cmd
         uses: ilammy/msvc-dev-cmd@v1
         with:
-          arch: x86
+          arch: ${{ matrix.arch }}
+
+      - name: Cache gettext
+        uses: actions/cache@v4
+        with:
+          path: C:\ProgramData\chocolatey\lib\gettext
+          key: gettext-${{ runner.os }}
 
       - name: Install gettext tools
         shell: pwsh
         run: |
-          choco install gettext --version 1.0.0.20260310 -y --no-progress
-          if ($LASTEXITCODE -ne 0) {
-            Start-Sleep -Seconds 10
-            choco install gettext --version 1.0.0.20260310 -y --no-progress
+          if (Test-Path "C:\ProgramData\chocolatey\lib\gettext") {
+              Write-Host "Using cached gettext"
+          } else {
+              choco install gettext -y --no-progress
           }
-          if ($LASTEXITCODE -ne 0) {
-            throw "Chocolatey could not install gettext"
-          }
-          $gettextBin = "C:\Program Files\gettext-iconv\bin"
+
+          # Version-agnostic + SHA256 verification
+          $gettextRoot = Get-ChildItem "C:\ProgramData\chocolatey\lib\gettext" -Directory | Select-Object -First 1
+          $nupkg = Get-ChildItem $gettextRoot.FullName -Filter *.nupkg | Select-Object -First 1
+          $hash = (Get-FileHash $nupkg.FullName -Algorithm SHA256).Hash
+          Write-Host "SHA256(gettext): $hash"
+
+          $gettextBinCandidates = @(
+              Join-Path $gettextRoot.FullName "tools\bin",
+              Join-Path $gettextRoot.FullName "tools\gettext-iconv\bin",
+              Join-Path $gettextRoot.FullName "bin"
+          )
+          $gettextBin = $gettextBinCandidates | Where-Object { Test-Path "$_\msgfmt.exe" } | Select-Object -First 1
+          if (-not $gettextBin) { throw "msgfmt.exe not found" }
+
           $env:PATH = "$gettextBin;$env:PATH"
           $gettextBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          Get-Command msgfmt
-          Get-Command msgmerge
 
-      - name: Prepare vcpkg (x86-windows)
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:\vcpkg\installed
+            C:\vcpkg\packages
+          key: vcpkg-${{ runner.os }}-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json') }}
+
+      - name: Prepare vcpkg
         uses: lukka/run-vcpkg@v11
         with:
-          runVcpkgInstall: false
+          runVcpkgInstall: true
           vcpkgJsonGlob: vcpkg.json
 
-      - name: Configure (CMake, Win32, RelWithDebInfo)
+      - name: Configure
         shell: pwsh
         run: |
           cmake -S . -B build `
-            -G "Visual Studio 17 2022" -A Win32 -T v143 `
+            -G "Visual Studio 17 2022" -A ${{ matrix.arch }} -T v143 `
             -DOCPN_TARGET=MSVC `
-            -DVCPKG_TARGET_TRIPLET=x86-windows `
+            -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} `
             -DCMAKE_TOOLCHAIN_FILE="${env:VCPKG_ROOT}\scripts\buildsystems\vcpkg.cmake"
 
-      - name: Build (RelWithDebInfo)
+      - name: Build
         run: cmake --build build --target package --config RelWithDebInfo
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows-win32-rdeb-package
+          name: windows-${{ matrix.arch }}-rdeb-package
           path: build/**
