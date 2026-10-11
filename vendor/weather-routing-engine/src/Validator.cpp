@@ -1,4 +1,5 @@
 #include "supercpn/weather_routing/Engine.h"
+#include "supercpn/weather_routing/CoastalEndpointPolicy.h"
 
 #include <algorithm>
 #include <cmath>
@@ -37,6 +38,8 @@ void addUsage(EnvironmentalSourceUsage& usage,
     usage.gribWaveDuration += duration;
   else
     usage.missingWaveDuration += duration;
+  if (environment.waves.available && environment.waves.nearbyHeightEstimate)
+    usage.estimatedWaveDuration += duration;
 }
 }  // namespace
 
@@ -47,6 +50,10 @@ RouteValidationResult validateRoute(const RoutingRequest& request,
                                     RoutingDiagnostics* diagnostics,
                                     bool requireDestination) {
   RouteValidationResult result;
+  auto recordEstimatedPolar = [&](const PerformanceCandidate& candidate) {
+    result.estimatedPolarWind = result.estimatedPolarWind ||
+                                candidate.estimatedPolarWind;
+  };
   if (legs.empty()) return fail(std::move(result), "route contains no legs");
   if (environment.landAndBoundaries)
     environment.landAndBoundaries->prepareValidationRoute(
@@ -84,6 +91,7 @@ RouteValidationResult validateRoute(const RoutingRequest& request,
 
   for (std::size_t legIndex = 0; legIndex < legs.size(); ++legIndex) {
     const RouteLeg& leg = legs[legIndex];
+    const bool departureEgressAtLegStart = departureEgress;
     if (leg.endTime <= leg.startTime)
       return fail(std::move(result),
                   "route timestamps are not strictly increasing");
@@ -160,6 +168,8 @@ RouteValidationResult validateRoute(const RoutingRequest& request,
         previousEnvironment = resolved.snapshot;
       }
       previousModeDuration = Duration{};
+      if (departureEgressAtLegStart)
+        result.coastalDepartureEgressLegs = legIndex + 1;
       ++result.acceptedPrefixLegs;
       continue;
     }
@@ -174,13 +184,19 @@ RouteValidationResult validateRoute(const RoutingRequest& request,
           requireDestination && request.constraints.landSafetyMarginNm > 0.0 &&
           legIndex + 1 == legs.size();
       const double destinationIngressRadiusNm =
-          std::max(0.5, request.constraints.landSafetyMarginNm * 1.5);
+          coastalEndpointReachNm(request.constraints.landSafetyMarginNm);
       const double chordSafetyMarginNm =
           departureEgress ? 0.0 : request.constraints.landSafetyMarginNm;
-      bool chordForbidden =
-          environment.landAndBoundaries
-              ->validationSegmentFromKnownSafeForbiddenAt(
-                  leg.start, leg.end, leg.startTime, chordSafetyMarginNm);
+      const auto chordForbiddenAt = [&](GeoPoint a, GeoPoint b, double margin) {
+        return environment.landAndBoundaries
+            ->validationSegmentFromKnownSafeForbiddenAt(a, b, leg.startTime,
+                                                         margin);
+      };
+      bool chordForbidden = departureEgress
+          ? coastalDepartureChordForbidden(request.start, leg.start, leg.end,
+                                           request.constraints.landSafetyMarginNm,
+                                           chordForbiddenAt)
+          : chordForbiddenAt(leg.start, leg.end, chordSafetyMarginNm);
       if (chordForbidden && destinationIngressLeg && !departureEgress) {
         const double chordDistance = distanceNm(leg.start, leg.end);
         const double bearing = initialBearingDegrees(leg.start, leg.end);
@@ -289,6 +305,7 @@ RouteValidationResult validateRoute(const RoutingRequest& request,
       if (!predictorPerformance.valid)
         return fail(std::move(result),
                     "selected propulsion/profile is unavailable during replay");
+      recordEstimatedPolar(predictorPerformance);
       const Vector2 predictorWater =
           speedDirectionToVector(predictorPerformance.speedThroughWaterKnots,
                                  leg.courseThroughWaterDegrees);
@@ -324,8 +341,8 @@ RouteValidationResult validateRoute(const RoutingRequest& request,
       const double tws = vectorMagnitudeKnots(resolved.snapshot.wind.velocity);
       const double twa = trueWindAngleDegrees(resolved.snapshot.wind.velocity,
                                               leg.courseThroughWaterDegrees);
-      if (twa + 1e-9 < request.constraints.minimumTrueWindAngleDegrees ||
-          twa - 1e-9 > request.constraints.maximumTrueWindAngleDegrees)
+      if (!sailingAngleAllowed(request, performance, midpoint, time, tws, twa,
+              resolved.snapshot.waves, leg.propulsionMode, leg.profileRole))
         return fail(std::move(result),
                     "route violates hard true-wind-angle bounds");
       const auto achievable = performance.evaluateAt(
@@ -337,6 +354,7 @@ RouteValidationResult validateRoute(const RoutingRequest& request,
                 << legIndex;
         return fail(std::move(result), message.str());
       }
+      recordEstimatedPolar(achievable);
       if (request.constraints.maximumTrueWindKnots &&
           tws > *request.constraints.maximumTrueWindKnots + 1e-9)
         return fail(std::move(result), "route exceeds hard true-wind limit");
@@ -398,9 +416,14 @@ RouteValidationResult validateRoute(const RoutingRequest& request,
       if (environment.landAndBoundaries) {
         if (diagnostics) ++diagnostics->landChecks;
         if (departureEgress) {
-          if (environment.landAndBoundaries
-                  ->validationSegmentFromKnownSafeForbiddenAt(
-                      replayPoint, next, leg.startTime + elapsed, 0.0))
+          if (coastalDepartureChordForbidden(
+                  request.start, replayPoint, next,
+                  request.constraints.landSafetyMarginNm,
+                  [&](GeoPoint a, GeoPoint b, double margin) {
+                    return environment.landAndBoundaries
+                        ->validationSegmentFromKnownSafeForbiddenAt(
+                            a, b, leg.startTime + elapsed, margin);
+                  }))
             return fail(std::move(result),
                         "forward replay intersects land or an exclusion zone");
           const double nextClearance =
@@ -425,7 +448,7 @@ RouteValidationResult validateRoute(const RoutingRequest& request,
               request.constraints.landSafetyMarginNm > 0.0 &&
               legIndex + 1 == legs.size();
           const double destinationIngressRadiusNm =
-              std::max(0.5, request.constraints.landSafetyMarginNm * 1.5);
+              coastalEndpointReachNm(request.constraints.landSafetyMarginNm);
           const double nextDestinationDistance =
               distanceNm(next, request.destination);
           if (forbidden && finalIngressLeg &&
@@ -477,9 +500,19 @@ RouteValidationResult validateRoute(const RoutingRequest& request,
           departureEgress || destinationIngress
               ? 0.0
               : request.constraints.landSafetyMarginNm;
-      if (environment.landAndBoundaries
-              ->validationSegmentFromKnownSafeForbiddenAt(
-                  replayPoint, leg.end, leg.endTime, reconciliationMarginNm))
+      const auto reconciliationForbidden = [&](GeoPoint a, GeoPoint b,
+                                                double margin) {
+        return environment.landAndBoundaries
+            ->validationSegmentFromKnownSafeForbiddenAt(a, b, leg.endTime,
+                                                         margin);
+      };
+      if (departureEgress
+              ? coastalDepartureChordForbidden(
+                    request.start, replayPoint, leg.end,
+                    request.constraints.landSafetyMarginNm,
+                    reconciliationForbidden)
+              : reconciliationForbidden(replayPoint, leg.end,
+                                         reconciliationMarginNm))
         return fail(
             std::move(result),
             "forward replay endpoint reconciliation intersects land or an "
@@ -492,6 +525,8 @@ RouteValidationResult validateRoute(const RoutingRequest& request,
     if (request.vessel.propulsion.maximumFuelLitres &&
         totalFuel > *request.vessel.propulsion.maximumFuelLitres + 1e-6)
       return fail(std::move(result), "route exceeds fuel limit");
+    if (departureEgressAtLegStart)
+      result.coastalDepartureEgressLegs = legIndex + 1;
     ++result.acceptedPrefixLegs;
   }
   result.passed = true;

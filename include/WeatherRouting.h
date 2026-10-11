@@ -25,6 +25,8 @@
 #include <wx/collpane.h>
 #include <wx/listctrl.h>
 
+wxDECLARE_EVENT(wxEVT_WR_DEPARTURE_DISPLAY_CHANGED, wxCommandEvent);
+
 #include <atomic>
 #include <map>
 #include <cstdint>
@@ -283,6 +285,15 @@ public:
   void OnRightUp(wxMouseEvent& event);
 
   void Reset();
+  void SetRouteVisibility(RouteMapOverlay* route, bool visible,
+                          bool manualChoice = true);
+  void SetDepartureChartDisplay(RouteMapOverlay* route, int mode);
+  void SelectDepartureOnChart(RouteMapOverlay* route, bool userChoice = true,
+                              bool selectMainList = true);
+  RouteMapOverlay* SelectedDepartureOnChart(RouteMapOverlay* route) const;
+  bool CanClearComputedResults(const std::list<RouteMapOverlay*>& routes);
+  bool ClearComputedResults(const std::list<RouteMapOverlay*>& routes);
+  bool RouteComputationActive(RouteMapOverlay* route);
 
   void Render(piDC& dc, PlugIn_ViewPort& vp);
   bool ShowStabilityCorridor(
@@ -524,7 +535,7 @@ private:
   void OnEditPositionClick(wxMouseEvent& event) { OnEditPosition(); }
   void OnWeatherRouteSort(wxListEvent& event);
   void OnWeatherRouteSelected();
-  void OnWeatherRouteSelected(wxListEvent& event) { OnWeatherRouteSelected(); }
+  void OnWeatherRouteSelected(wxListEvent& event);
   void OnWeatherRouteKeyDown(wxListEvent& event);
   void OnWeatherRoutesListLeftDown(wxMouseEvent& event);
   void UpdateComputeState();
@@ -536,6 +547,7 @@ private:
   void OnComputeAll(wxCommandEvent& event);
   void OnStop(wxCommandEvent& event);
   void OnResetAll(wxCommandEvent& event);
+  void OnClearResults(wxCommandEvent& event);
   void OnPositions(wxCommandEvent& event);
   void OnBatch(wxCommandEvent& event);
   void OnEditConfiguration(wxCommandEvent& event) { OnEditConfiguration(); }
@@ -815,6 +827,8 @@ private:
   struct HeadlessRouteTestState;
   void OnHeadlessRouteTestTimer(wxTimerEvent&);
   void CompleteHeadlessSingleRouteTest(bool timedOut, long elapsedMs);
+  bool RunRouteLifecycleContract(RouteMapOverlay* route);
+  bool RunDepartureChartContract(RouteMapOverlay* route);
   void CompleteHeadlessMultiLegTest(bool timedOut, long elapsedMs);
 
   wxTimer m_tHeadlessRouteTest;
@@ -838,6 +852,22 @@ private:
   };
 
   std::map<RouteMapOverlay*, SimplifiedRouteState> m_SimplifiedRoutes;
+
+  struct DepartureChartGroup {
+    std::vector<RouteMapOverlay*> controllers;
+    int mode = RouteMapConfiguration::SELECTED_DEPARTURE;
+    int selectedOffset = 0;
+    bool userInteracted = false;
+    bool completed = false;
+  };
+  std::map<wxString, DepartureChartGroup> m_DepartureChartGroups;
+  bool m_UpdatingDepartureSelection = false;
+  void InitializeDepartureChartGroup(
+      const wxString& id, const std::vector<RouteMapOverlay*>& controllers,
+      int mode, const std::map<int, bool>& previousVisibility = {});
+  void ApplyDepartureChartDisplay(const wxString& id);
+  void NotifyDepartureChartDisplay(const wxString& id);
+  void UpdateDepartureChartCompletion();
 
   struct SimplifiedRouteGroupState {
     bool valid;
@@ -926,6 +956,7 @@ private:
   wxTextCtrl* m_RoutingProgressDetail;
   wxStaticText* m_RoutingProgressTiming;
   wxGauge* m_RoutingProgressGauge;
+  wxButton* m_StopComfortButton{nullptr};
   wxDateTime m_RoutingProgressStartTime;
   wxDateTime m_RoutingProgressStageStartTime;
   wxString m_RoutingProgressCurrentStage;
@@ -976,6 +1007,8 @@ private:
   std::vector<wxButton*> m_androidAnyPositionButtons;
   std::vector<wxButton*> m_androidPickButtons;
   std::vector<wxButton*> m_androidStopButtons;
+  std::vector<wxButton*> m_androidClearResultButtons;
+  std::vector<wxButton*> m_androidClearAllResultButtons;
   wxSimplebook* m_androidBook{nullptr};
   wxStaticText* m_androidPlanStatus{nullptr};
   wxStaticText* m_androidResultStatus{nullptr};

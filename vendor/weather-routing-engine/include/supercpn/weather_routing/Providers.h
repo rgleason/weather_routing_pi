@@ -145,11 +145,18 @@ struct PerformanceCandidate {
   int sailPlan{-1};
   double speedThroughWaterKnots{};
   double fuelLitresPerHour{};
+  bool estimatedPolarWind{};
 };
 
 class VesselPerformanceModel {
 public:
   virtual ~VesselPerformanceModel() = default;
+  // A model must explicitly distinguish usable zero performance from missing
+  // data before motor-only routing may relax sailing-angle restrictions.
+  [[nodiscard]] virtual std::optional<double> bestSailingSpeedAt(
+      GeoPoint, TimePoint, double, const WaveSample&, double, double) const {
+    return {};
+  }
   [[nodiscard]] virtual bool valid(std::string* reason = nullptr) const = 0;
   [[nodiscard]] virtual std::vector<PerformanceCandidate> candidates(
       double trueWindSpeedKnots, double trueWindAngleDegrees,
@@ -183,6 +190,12 @@ struct RoutingEnvironment {
   std::shared_ptr<const VesselPerformanceModel> performance;
   std::string memberIdentity{"deterministic"};
 };
+
+[[nodiscard]] bool sailingAngleAllowed(
+    const RoutingRequest& request, const VesselPerformanceModel& performance,
+    GeoPoint position, TimePoint time, double trueWindSpeedKnots,
+    double trueWindAngleDegrees, const WaveSample& waves,
+    PropulsionMode mode, ProfileRole role);
 
 class OpenWaterProvider final : public LandAndBoundaryProvider {
 public:
@@ -261,6 +274,9 @@ class PolarPerformanceModel final : public VesselPerformanceModel {
 public:
   explicit PolarPerformanceModel(VesselConfiguration configuration);
   bool valid(std::string* reason = nullptr) const override;
+  std::optional<double> bestSailingSpeedAt(
+      GeoPoint, TimePoint, double tws, const WaveSample& waves,
+      double minimumAngle, double maximumAngle) const override;
   std::vector<PerformanceCandidate> candidates(
       double trueWindSpeedKnots, double trueWindAngleDegrees,
       const WaveSample& waves, PropulsionMode previousMode,

@@ -50,6 +50,7 @@ set(TEST_SRC
     AppendOnlyCache_tests.cpp
     ChartSafetyCache_tests.cpp
     ChartSafetyHost_tests.cpp
+    RouteSafetyCheck_tests.cpp
     ChartSafetyAtlas_tests.cpp
     ChartHazardEvaluator_tests.cpp
     ChartSafetyPolicy_tests.cpp
@@ -62,6 +63,8 @@ set(TEST_SRC
     ReachabilityPrewarmPolicy_tests.cpp
     RouteDisplayPolicy_tests.cpp
     Polar_tests.cpp
+    PolarRoutingPolicy_tests.cpp
+    LowWindMotor_tests.cpp
     PolygonRegion_tests.cpp
     Utilities_tests.cpp
     MultiLegRouteOutput_tests.cpp
@@ -83,6 +86,7 @@ set(TEST_SRC
     TimeZoneDisplay_tests.cpp
     GpxRouteTime_tests.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/navobj_util.cpp
+    NearbyWaveHeight_tests.cpp
     ModernNativeEngine_tests.cpp
     OriginalEngine_tests.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/vendor/original-routing-engine/src/Engine.cpp
@@ -92,6 +96,7 @@ set(TEST_SRC
     ${WEATHER_ROUTING_SOURCE_DIR}/src/ChartSafetyCache.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/SystemMemory.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/ChartSafetyHost.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/src/RouteSafetyCheck.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/ChartSafetyAtlas.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/ChartHazardEvaluator.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/georef.cpp

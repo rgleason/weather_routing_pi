@@ -35,6 +35,7 @@ class RouteComparisonDialog : public wxDialog {
   wxChoice* m_AndroidCandidate{};
   wxStaticText* m_AndroidDetails{};
   wxStaticText* m_AndroidNote{};
+  wxStaticText* m_AndroidExplorationHelp{};
   wxButton* m_AndroidShowChart{};
 #endif
   void RunHostContract(bool lifecycle);
@@ -45,7 +46,6 @@ class RouteComparisonDialog : public wxDialog {
   wxListCtrl* m_List{};
   wxSlider* m_Slider{};
   wxCheckBox* m_WindOnly{};
-  wxCheckBox* m_ExploreComfort{};
   wxChoice* m_Order{};
   wxStaticText* m_Summary{};
   bool m_Updating{};

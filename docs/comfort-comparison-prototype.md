@@ -1,17 +1,21 @@
-# xWeatherRouting 1.23 comfort exploration prototype
+# xWeatherRouting 1.24 comfort exploration prototype
 
-This prototype retains completed, validated routes and compares their passage time and whole-route discomfort. All (slow) now also runs a separate bounded search for faster and gentler alternatives, using the same physical motion and independent validation as Standard. Its branch is `prototype/xweather-1.22-comfort`, based on released 1.21 commit `28438ceb86b479ca3c0ab1398695ab07b75c562e`.
+This prototype retains completed validated routes and compares passage time with whole-route discomfort. Optional extra searches now work with Quick, Standard, Professional, Auto and All (slow). The isolated branch is `prototype/xweather-1.24-alternatives`, based on the 1.23 Professional/Android integration commit `8b178de`.
 
 ## Using the prototype
 
-Open the **xWeatherRouting 1.23 Prototype** desktop launcher. This starts a private copy of the API 1.23 chart-safety test OpenCPN, with its own configuration, weather-routing data and plugin library. The private launcher remains available separately. For this development pass, the working wrapper `/home/paul/bin/opencpn-gribmerge` also points to a separate versioned 1.23 installation at the user's request; its desktop entry and other plugin prefixes are unchanged. The original 1.21 plugin is retained for rollback. The existing internal branch and runtime directory names are retained for compatibility with the parallel engine work.
+Open **xWeatherRouting 1.24 Prototype**. It uses the API 1.23 test OpenCPN, a separate profile and a separate plugin prefix in `output/xweather-1.24-prototype`. The working OpenCPN wrapper and installed 1.23 library are unchanged.
 
-1. Load a GRIB, choose a voyage and compute **All (slow)**. Alternatively compute departure candidates, then select a completed member of that departure family.
+In **Configuration > Basic > Routing engine**, select an engine and optionally tick **Search additional fastest / comfort alternatives**. Set **Additional search allowance (%)** and **Maximum additional time (seconds)**. Defaults are 200% and 20 seconds. The ordinary route is secured first; extra computation uses the smaller allowance. For example, a 3-second ordinary calculation at 200% permits 6 additional seconds, limited by the seconds cap. This is separate from Professional's effort setting. Zero in either field disables extra work. Controls and their saved values apply per route and per departure candidate. They are disabled for arrival planning and while computing.
+
+New configurations default to exploration off. Existing All configurations without the new field inherit the previous saved All-exploration preference, keeping the 1.23 behaviour. XML saves all three fields explicitly; last-used defaults remember them for newly created routes. Wind-only ranking remains enabled by default and remembered separately.
+
+1. Load a GRIB, choose a voyage and compute the selected engine with optional exploration enabled. Alternatively compute departure candidates, then select a completed member of that departure family.
 2. Right-click the routing results table and select **Compare Fastest / Comfort...**.
 3. Select any row to put that retained validated route on the chart and update the usual routing table. Sort by passage time, discomfort exposure, average discomfort, worst known leg or another column.
 4. Move the slider to select the lowest exposure within the displayed extra-time allowance. The left endpoint selects the fastest; the right selects the minimum exposure among comparable retained results. Intermediate positions allow a fraction of the time difference between those endpoints. Because the routes are discrete, the chart changes in steps.
 
-Auto retains its stop-at-first-success behaviour. All retains the successful results from Quick, Standard, Alternative and Professional, plus at most four additional validated comfort alternatives for a fixed departure when exploration is enabled. A single suitable result, or a fastest result which is also the least exposed, displays that no trade-off is available. Sorting or slider movement never invokes an engine.
+Auto keeps its normal stop-at-first-success fallback, then optionally explores using that successful engine. Individually selected engines use themselves for extra search. All retains its four original engine results and shares one additional allowance across its successful engines. Up to four extra candidates are retained per departure; fewer, including zero, are possible. A single comparable result, or a fastest result which is also least exposed, displays that no trade-off is available. Sorting or moving the slider never invokes an engine.
 
 ## Metrics and worst leg
 
@@ -36,22 +40,25 @@ Existing hard weather and land limits continue to apply before retention. Changi
 
 ## Bounded comfort exploration
 
-**Search additional comfort alternatives on next All run (slower)** in the comparison dialog defaults to enabled and saves its setting immediately. The dialog can be opened before computation to change this setting. Disabling it and recomputing restores the original four-engine comparison for measuring overhead. It does not start a calculation when toggled.
+The ordinary engine selection, existing safety constraints, effort and recovery behaviour remain unchanged. Extra search starts only after the ordinary result passes engine validation and delivered-chord host checks. Failed normal searches do not spend the comfort allowance and are never restricted by its limits.
 
-For each departure in **All (slow)**, the usual engines run first and preserve their fastest validated result. An extra Standard-based beam search then retains fast, gentle and balanced partial paths in separate selection lanes. It accumulates the same duration-weighted empirical discomfort used by the comparison table and maintains a bounded completed time/exposure Pareto set. This actively explores paths the ordinary fastest search may discard; it is not simply reranking the original four results. The Professional algorithm is not modified.
+Standard uses its existing comfort-aware partial-path selection lanes as well as refined and diversified searches. Quick and Professional use their own solvers for refined searches and detours through weather-ranked intermediate lanes. These deliberate reruns do not alter vessel speed to reward comfort, and do not substitute Standard routes for another engine. They are bounded search heuristics, rather than continuation of every native frontier or proof of a global optimum. Joined detours receive new whole-route metrics and full chronological replay from the original departure, including manoeuvre, fuel and shoreline constraints. Intermediate lanes receive no extra coastal-buffer exemption.
 
-The initial bounds per departure are:
+Bounds per departure are:
 
-- At most four extra candidates, deduplicated against the original results by delivered route fingerprint.
-- At most 50% longer than the original fastest passage, with an absolute allowance of 12 extra hours; the existing maximum passage duration still applies.
-- 50,000 generated states, 2 million counted weather calls, at most 24 candidate validations, and a search-memory budget capped at 64 MiB or the smaller saved Standard budget.
-- A cooperative 20-second search allowance. Provider/service calls and independent or host validation cannot be forcibly interrupted at that deadline, so total added wall time can exceed it.
+- Four extra retained candidates, deduplicated against ordinary results. Dominated extra candidates are discarded; the original results remain available.
+- Passage duration at most 50% longer than each engine's original passage, capped at 12 extra hours and the existing route-duration ceiling.
+- Two million generated states, twelve million counted weather calls and twelve solver attempts. All shares the time and work allowances across successful engines.
+- Existing native memory limits remain; extra Standard search uses at most 64 MiB and retained native state/graph-label ceilings are 32,768.
+- The configured percentage allowance and seconds cap apply to the complete extra phase, including validation. Deadlines are cooperative: an in-flight provider or host call can overrun. Attempts receive smaller slices so one refinement cannot spend the complete allowance before detours are tested.
 
-The search uses the **Rank by wind comfort only** preference snapshotted when each computation starts. Wind-only search ignores waves in its objective but preserves available waves on the delivered legs and in the separate worst-leg metric. Full-condition search cannot score motions without wave height; it never treats missing waves as calm. Existing wind, wave, propulsion, depth, shoreline, boundary and chart constraints still apply in either mode. Every retained extra passes independent route replay and the existing delivered-chord host checks.
+**Stop exploration; keep results** in the progress dialog stops currently active extra phases and preserves the ordinary route and already accepted extras. It does not suppress later queued departures. **Stop all computations** retains its existing whole-operation cancellation behaviour. Expiry, exhausted work, missing data or failed optional attempts preserve the ordinary result.
 
-With departure optimisation and All selected, the extra pass runs independently for every successfully completed departure candidate. It runs in the existing worker, without extra parallel workers. Auto and individually selected engines retain their present behaviour. Internal arrival-deadline probes, scouts and failed departures do not launch extra searches. Cancellation discards the whole operation; exhaustion or failure of the extra search preserves the original validated result and any accepted extras. The comfort bounds never reduce the ordinary engines' existing budgets. A regression host fixture forces the comfort allowance to one weather call and still returns the ordinary fastest route and all four original candidates. All still initially displays the fastest result; the slider and row selection switch between cached alternatives without searching again.
+The comparison's **Rank by wind comfort only** preference is snapshotted at computation start. Available waves remain in the independent worst-known-leg metric and delivered legs. Full-condition comfort candidates require complete wind and wave-height data. Existing hard wind, wave, propulsion, land, boundary and chart constraints still apply in either mode.
 
-The extra candidates are labelled **Standard (comfort: wind)** or **Standard (comfort: wind + waves)**. Headless reports record this search variant, and `WR_COMFORT_SEARCH` logs its elapsed time, work, accepted candidates, duplicates, host rejections, missing-data motions and stop allowance. No more comfortable route is guaranteed: forecast coverage, constraints and bounded pruning can leave the candidate set unchanged.
+Departure optimisation explores each successful departure in its existing worker; it creates no extra workers. Internal arrival-deadline probes, scouts and failed departures do not explore. Candidates remain in memory for the current calculation. The chosen engine still initially displays the fastest validated result; a newly discovered faster extra may become that result. Other extras are inspected through **Compare Fastest / Comfort...**.
+
+Extra rows retain the actual engine provenance and a `comfort-wind` or `comfort-waves` search variant. `WR_COMFORT_SEARCH` reports allowance, elapsed time, attempts, work, validation and accepted results. Additional candidates and improved comfort are not guaranteed.
 
 ## Scope and limitations
 
@@ -63,10 +70,6 @@ The comparison finds the least exposed route **among the retained results**, inc
 
 ## Validation and measurements
 
-The local build includes automated tests for time-weighted exposure, worst-leg retention, contiguous difficult spells, unknown coverage, slider endpoints/intermediate selections, dominance, ties, and validated-result retention with Auto stopping behaviour. The full suite passes 357 tests, including a synthetic rough-weather corridor where exploration discovers a slower, gentler detour, missing-wave policy checks, cancellation, budget exhaustion and independent rejection of unsafe alternatives.
+Native tests cover time-weighted exposure, worst-leg retention, missing coverage, comparison selection, all three individually selectable engines finding gentler alternatives in a rough-weather corridor, independent replay, extra budget exhaustion, soft stop and whole cancellation. Headless scenario parsing checks percentage/seconds limits and explicit enablement.
 
-An isolated real OpenCPN harness compares 1.21 and this prototype with the same compiler, build mode, boat, GRIB and route settings. It exercises Auto, All and a three-departure family, plus a wave-enabled GRIB and a failed departure outside forecast coverage. With exploration disabled, matching runs must preserve the chosen engine and fastest passage time; with exploration enabled the fastest result can improve. The new headless result JSON includes retained geometry, search variant, comfort metrics, coverage and worst-leg details.
-
-GUI handler checks exercise row selection, wind-only toggling, slider positions and sorting; the selected result's plot, ETA and identity must agree. A separate disposable fixture deletes a route with its comparison still open to check safe invalidation. Logs must retain exactly the original four engine attempts despite all the UI selections.
-
-Detailed local results, build logs and test harnesses are in `/home/paul/src/OpenCPN/output/xweather-1.22-prototype`. Small fixtures can measure retention/scoring and chart-switch costs, but do not establish overhead for long passages or chart-aware coastal searches. Compare Holyhead–Mouth of Foyle against 1.21 with identical forecasts/settings before drawing those conclusions.
+Isolated OpenCPN regression cases use the same boat, GRIB and settings for ordinary and optional searches. Results contain retained geometry, actual engine identity, search variant, comfort metrics and coverage. Host GUI contracts exercise configuration event handlers and persistence, soft-stop actions, cached row selection, slider movement, sorting, worst-leg invariance and safe invalidation. Logs and local harnesses are in `output/xweather-1.24-prototype`. Short fixtures demonstrate behaviour, but long coastal/chart-aware passages still require user study before installing this prototype into the working OpenCPN.

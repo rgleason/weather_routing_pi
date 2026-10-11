@@ -19,6 +19,23 @@
 
  #include <gtest/gtest.h>
  #include <Utilities.h>
+ #include <cmath>
+ #include <limits>
+
+  TEST(UtilitiesTests, InvalidAndHugeAnglesDoNotLoop) {
+    for (double angle : {std::numeric_limits<double>::infinity(),
+                         -std::numeric_limits<double>::infinity(),
+                         std::numeric_limits<double>::quiet_NaN()}) {
+      EXPECT_TRUE(std::isnan(heading_resolve(angle)));
+      EXPECT_TRUE(std::isnan(positive_degrees(angle)));
+    }
+    for (double angle : {1e300, -1e300}) {
+      EXPECT_GE(heading_resolve(angle), -180);
+      EXPECT_LT(heading_resolve(angle), 180);
+      EXPECT_GE(positive_degrees(angle), 0);
+      EXPECT_LT(positive_degrees(angle), 360);
+    }
+  }
 
   TEST(UtilitiesTests, deg2radBasic) {
     EXPECT_DOUBLE_EQ(deg2rad(180), M_PI);

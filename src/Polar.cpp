@@ -223,7 +223,6 @@ bool Polar::Open(const wxString& filename, wxString& message) {
   double lastentryW = -1;
   char *token, *saveptr;
   double lastspeed = -1;
-  bool warn_zeros = false;
 
   if (!f) PARSE_ERROR(_("Failed to open."));
 
@@ -291,14 +290,10 @@ bool Polar::Open(const wxString& filename, wxString& message) {
       for (int VWi = 0; VWi < (int)wind_speeds.size(); VWi++) {
         double s = NAN;
         if ((token = strtok_polar(NULL, &saveptr))) {
-          if (!strcmp(token, "0") && !warn_zeros) {
-            PARSE_WARNING(
-                _("Warning: 0 values found in polar.\n"
-                  "These measurements will be interpolated.\n"
-                  "To specify interpolated, leave blank values.\n"
-                  "To specify course as 'invalid' use 0.0 rather than 0\n"));
-            warn_zeros = true;
-          } else if (*token) {
+          // Blank cells are missing measurements. Every numeric zero is an
+          // explicit zero speed, regardless of whether written 0 or 0.0.
+          while (*token == ' ') ++token;
+          if (*token) {
             s = strtod(token, 0);
             if (s < .05) s = 0;
           }
@@ -353,8 +348,8 @@ bool Polar::Save(const wxString& filename) {
     for (unsigned int VWi = vwi0; VWi < wind_speeds.size(); VWi++)
       if (std::isnan(wind_speeds[VWi].orig_speeds[Wi]))
         fprintf(f, ";");
-      else if (wind_speeds[VWi].speeds[Wi] == 0)  // if we actually want zero?
-        fprintf(f, ";0.01");
+      else if (wind_speeds[VWi].speeds[Wi] == 0)
+        fprintf(f, ";0");
       else
         fprintf(f, ";%.5g", wind_speeds[VWi].speeds[Wi]);
     fputs("\n", f);
@@ -467,6 +462,73 @@ bool Polar::VMGAngle(SailingWindSpeed& ws1, SailingWindSpeed& ws2, float VW,
   return true;
 }
 
+double PolarSpeedForRouting(std::vector<Polar>& polars, std::size_t index,
+                            double twa, double tws, PolarSpeedStatus* status,
+                            bool optimize_tacking, bool* estimated) {
+  if (estimated) *estimated = false;
+  if (index >= polars.size() || !std::isfinite(tws) || !std::isfinite(twa)) {
+    if (status) *status = POLAR_SPEED_INVALID_SAIL_CONFIGURATION;
+    return NAN;
+  }
+  Polar& polar = polars[index];
+  if (polar.wind_speeds.empty() || polar.degree_steps.empty()) {
+    if (status) *status = POLAR_SPEED_NO_POLAR_DATA;
+    return NAN;
+  }
+  const double minimum = polar.wind_speeds.front().tws;
+  const double maximum = polar.wind_speeds.back().tws;
+  const bool low = tws >= 0.0 && tws < minimum;
+  const bool high = tws > maximum;
+  bool fallback = false;
+  if (low) {
+    double boatMinimum = minimum;
+    for (const Polar& candidate : polars)
+      if (!candidate.wind_speeds.empty() && !candidate.degree_steps.empty())
+        boatMinimum = std::min(boatMinimum,
+                               static_cast<double>(candidate.wind_speeds.front().tws));
+    fallback = polar.lowWindPolicy == LowWindPolicy::Taper ||
+        (polar.lowWindPolicy == LowWindPolicy::Automatic &&
+         minimum == boatMinimum && tws < boatMinimum);
+  } else if (high) {
+    fallback = polar.highWindPolicy == HighWindPolicy::Hold ||
+        (polar.highWindPolicy == HighWindPolicy::Automatic && polars.size() == 1);
+  }
+  const double speed = polar.Speed(twa, tws, status, !fallback, optimize_tacking);
+  if (estimated) *estimated = fallback && std::isfinite(speed) && speed > 0.0;
+  return std::isfinite(speed) ? std::min(speed, polar.MaximumSpeed()) : speed;
+}
+
+std::optional<double> BestSailingSpeedForRouting(
+    std::vector<Polar>& polars, double tws, double minimumAngle,
+    double maximumAngle, double upwindEfficiency,
+    double downwindEfficiency, double nightEfficiency) {
+  if (!std::isfinite(tws) || tws < 0 || !std::isfinite(minimumAngle) ||
+      !std::isfinite(maximumAngle) || minimumAngle < 0 || maximumAngle > 180 ||
+      minimumAngle > maximumAngle || !std::isfinite(upwindEfficiency) ||
+      !std::isfinite(downwindEfficiency) || !std::isfinite(nightEfficiency) ||
+      upwindEfficiency < 0 || downwindEfficiency < 0 || nightEfficiency < 0)
+    return {};
+  std::optional<double> best;
+  for (std::size_t index = 0; index < polars.size(); ++index) {
+    const auto consider = [&](double angle) {
+      if (angle < minimumAngle || angle > maximumAngle) return;
+      const double raw = PolarSpeedForRouting(polars, index, angle, tws);
+      if (!std::isfinite(raw) || raw < 0) return;
+      const double speed = std::min(polars[index].MaximumSpeed(), raw *
+          (angle <= 90 ? upwindEfficiency : downwindEfficiency) * nightEfficiency);
+      if (!best || speed > *best) best = speed;
+    };
+    consider(minimumAngle);
+    consider(maximumAngle);
+    consider(90);
+    consider(std::nextafter(90.0, 180.0));
+    // Interpolation is linear between polar angle rows. Its maximum is at
+    // a row or a clipped boundary, including fractional-angle rows.
+    for (double angle : polars[index].degree_steps) consider(angle);
+  }
+  return best;
+}
+
 double Polar::Speed(double twa, double tws, PolarSpeedStatus* status,
                     bool bound, bool optimize_tacking) {
   // Initialize error code to success
@@ -519,6 +581,11 @@ double Polar::Speed(double twa, double tws, PolarSpeedStatus* status,
   }
 
   unsigned int W1i = degree_step_index[(int)floor(twa)];
+  // The degree lookup is indexed by whole degrees. A fractional angle just
+  // beyond a table row must use the following interval, including when the
+  // row itself has a fractional angle or an authoritative zero speed.
+  while (W1i + 1 < degree_steps.size() && twa >= degree_steps[W1i + 1])
+    ++W1i;
   unsigned int W2i = W1i + 1;
   if (W2i > degree_steps.size() - 1) W2i = W1i;
 
@@ -800,6 +867,11 @@ void Polar::UpdateSpeeds() {
 
   while (InterpolateSpeeds());
 
+  m_maximumSpeed = 0.0;
+  for (const auto& wind : wind_speeds)
+    for (double speed : wind.orig_speeds)
+      if (std::isfinite(speed)) m_maximumSpeed = std::max(m_maximumSpeed, speed);
+
   // add invalid speed in 0 wind in all directions, if not specified
 #if 0
     if(wind_speeds[0].VW > 0) {
@@ -1037,12 +1109,15 @@ float BoatSpeedFromMeasurements(const std::list<PolarMeasurement>& measurements,
 }
 
 void Polar::Generate(const std::list<PolarMeasurement>& measurements) {
+  m_maximumSpeed = 0.0;
   for (unsigned int Wi = 0; Wi < degree_steps.size(); Wi++) {
     double W = degree_steps[Wi];
     for (unsigned int VWi = 0; VWi < wind_speeds.size(); VWi++) {
       double VW = wind_speeds[VWi].tws;
       wind_speeds[VWi].speeds[Wi] =
           BoatSpeedFromMeasurements(measurements, W, VW);
+      const double speed = wind_speeds[VWi].speeds[Wi];
+      if (std::isfinite(speed)) m_maximumSpeed = std::max(m_maximumSpeed, speed);
     }
   }
 }

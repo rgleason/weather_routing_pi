@@ -6,7 +6,7 @@
 #include <utility>
 #include <string>
 #include "RoutingEngineSettings.h"
-#include "supercpn/weather_routing/Types.h"
+#include "supercpn/weather_routing/Engine.h"
 
 namespace weather_routing::native {
 // Alternative is deliberately internal: it has no persisted/UI engine
@@ -75,6 +75,7 @@ supercpn::weather_routing::RoutingResult RunRoutingEngineSequence(
   wr::RoutingResult best, last;
   bool haveBest = false;
   std::string failures;
+  std::vector<wr::RoutingAttemptFailure> attempts;
   constexpr std::array engines{SequenceEngine::Original, SequenceEngine::Quick,
                                SequenceEngine::Alternative,
                                SequenceEngine::Main};
@@ -105,9 +106,14 @@ supercpn::weather_routing::RoutingResult RunRoutingEngineSequence(
       }
     } else {
       if (!failures.empty()) failures += "; ";
-      failures +=
-          std::string(SequenceEngineTitle(engine)) + ": " +
-          (last.message.empty() ? "no validated complete route" : last.message);
+      std::string detail = last.message.empty() ? "no validated complete route" : last.message;
+      if (last.status == wr::RoutingStatus::WaveDataRequired)
+        detail = "Required wave-height coverage is unavailable for this route and time";
+      else if (engine == SequenceEngine::Quick && detail.find("Quick search did not find") == 0)
+        detail = "Search allowance exhausted before finding a validated route";
+      attempts.push_back({SequenceEngineTitle(engine), last.status, detail});
+      failures += std::string(SequenceEngineTitle(engine)) + ": [" +
+          wr::toString(last.status) + "] " + detail;
       if (last.status == wr::RoutingStatus::Complete ||
           last.status == wr::RoutingStatus::CompleteUsingReverseRecovery ||
           last.status == wr::RoutingStatus::CompleteUsingFrontierRecovery ||
@@ -116,7 +122,8 @@ supercpn::weather_routing::RoutingResult RunRoutingEngineSequence(
     }
   }
   if (haveBest) return best;
-  last.message = failures;
+  last.attemptFailures = std::move(attempts);
+  last.message = "No validated route found with the selected settings.\n" + failures;
   return last;
 }
 }  // namespace weather_routing::native

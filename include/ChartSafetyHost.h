@@ -64,6 +64,10 @@ using PrewarmProgressCallback =
 bool CheckSegment(double lat1, double lon1, double lat2, double lon2,
                   const PlugInSegmentSafetyOptions* options,
                   PlugInSegmentSafetyResult* result);
+/** Main-thread route review, bypassing the worker's coarse cached masks. */
+bool ReviewSegment(double lat1, double lon1, double lat2, double lon2,
+                   const PlugInSegmentSafetyOptions* options,
+                   PlugInSegmentSafetyResult* result);
 bool PrewarmHazardSnapshot(double min_lat, double min_lon, double max_lat,
                            double max_lon, int enable_fast_path,
                            int shadow_compare,

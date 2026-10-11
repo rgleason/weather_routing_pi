@@ -319,7 +319,10 @@ ConfigurationDialog::ConfigurationDialog(WeatherRouting& weatherrouting)
   m_sSafetyMarginLand->SetToolTip(
       detect_land_note + _("\n\nSpecify a minimum distance in nautical miles "
                            "to maintain from land during routing "
-                           "calculations."));
+                           "calculations. Coastal departure/arrival access is "
+                           "local: at most twice this margin from the "
+                           "endpoint (minimum 0.5 NM, maximum 2 NM). Land and "
+                           "minimum-depth checks still apply there."));
   m_sMinimumDepthMeters->SetToolTip(
       _("Reject chart-aware routes through water charted shallower than this "
         "depth in metres. Zero disables the depth constraint. A positive "
@@ -367,15 +370,31 @@ ConfigurationDialog::ConfigurationDialog(WeatherRouting& weatherrouting)
   m_cTimeZone->Enable(false);
   UpdateRoutingTimeModeControls();
 
+  m_cDepartureChartDisplay->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) {
+    if (m_bBlockUpdate) return;
+    const int mode = m_cDepartureChartDisplay->GetSelection();
+    if (mode == wxNOT_FOUND) return;
+    for (auto* route : m_WeatherRouting.CurrentRouteMaps())
+      m_WeatherRouting.SetDepartureChartDisplay(route, mode);
+    RefreshDepartureChartDisplayControls();
+  });
+
 #ifdef __OCPN__ANDROID__
   // Route settings keep the shared immediate-save behaviour. Done commits any
   // text still being edited by Qt before returning to the workspace.
   WR_AddAndroidDoneHeader(this, _("Route setup"), [this]() {
     // wxQt does not always emit a spin update when a value is typed with the
     // Android keyboard. Commit the visible editor values before closing.
-    for (auto* spin : GetHandle()->findChildren<QAbstractSpinBox*>())
+    bool typedSpinValue = false;
+    for (auto* spin : GetHandle()->findChildren<QAbstractSpinBox*>()) {
+      if (auto* editor = spin->findChild<QLineEdit*>())
+        typedSpinValue |= editor->isModified();
       spin->interpretText();
-    Update();
+    }
+    // Display choices use their own presentation setter. An unchanged Done
+    // must not apply all hidden controls (including rounded/clamped values)
+    // and invalidate an already computed departure candidate.
+    if (typedSpinValue || !m_edited_controls.empty()) Update();
     Hide();
   });
   auto* navigation = new wxPanel(this, wxID_ANY);
@@ -444,6 +463,7 @@ ConfigurationDialog::ConfigurationDialog(WeatherRouting& weatherrouting)
   m_cbUseOptimalAngles->SetMinSize(WR_FromDIP(this, wxSize(310, 40)));
   m_cbInvertedRegions->SetMinSize(WR_FromDIP(this, wxSize(300, 40)));
   m_cbAnchoring->SetMinSize(WR_FromDIP(this, wxSize(240, 40)));
+  m_cbRequireWaveCoverage->SetMinSize(WR_FromDIP(this, wxSize(340, 40)));
   m_cRoutingEffortPercent->Clear();
   for (const wxString& label : {_("100% / Standard"), _("150% / Extended"),
                                 _("200% / Thorough"), _("400% / Exhaustive")})
@@ -723,6 +743,26 @@ void ConfigurationDialog::OnRoutingTimeMode(wxCommandEvent& event) {
   Update();
 }
 
+void ConfigurationDialog::RefreshDepartureChartDisplayControls() {
+  const auto routes = m_WeatherRouting.CurrentRouteMaps();
+  int mode = wxNOT_FOUND;
+  bool first = true;
+  bool enabled = !routes.empty();
+  for (auto* route : routes) {
+    const auto configuration = route->GetConfiguration();
+    if (first) mode = configuration.DepartureTimeOptimizationChartDisplay;
+    else if (mode != configuration.DepartureTimeOptimizationChartDisplay)
+      mode = wxNOT_FOUND;
+    first = false;
+    enabled &= configuration.TimeMode ==
+                   RouteMapConfiguration::ROUTE_BY_DEPARTURE_TIME &&
+               (configuration.DepartureTimeOptimizationEnabled ||
+                configuration.DepartureTimeOptimizationCandidate);
+  }
+  m_cDepartureChartDisplay->SetSelection(mode);
+  m_cDepartureChartDisplay->Enable(enabled);
+}
+
 void ConfigurationDialog::UpdateRoutingTimeModeControls() {
   const bool arrival = m_rbRouteByArrivalTime->GetValue();
   m_staticTextPlannedTime->SetLabel(
@@ -747,6 +787,8 @@ void ConfigurationDialog::UpdateRoutingTimeModeControls() {
 
   m_cbDepartureTimeOptimizationEnabled->Enable(!arrival);
   if (arrival) m_cbDepartureTimeOptimizationEnabled->SetValue(true);
+  m_cDepartureChartDisplay->Enable(
+      !arrival && m_cbDepartureTimeOptimizationEnabled->IsChecked());
   m_staticTextDepartureRange->SetLabel(
 #ifdef __OCPN__ANDROID__
       arrival ? _("Search before arrival") : _("Departure window +/-"));
@@ -1004,6 +1046,11 @@ void ConfigurationDialog::SetConfigurations(
   m_cTimeZone->Enable(m_cbUseLocalTimeZone->GetValue());
   SET_CHECKBOX(UseCurrentTime);
   SET_CHECKBOX(DepartureTimeOptimizationEnabled);
+  int chartDisplay = it->DepartureTimeOptimizationChartDisplay;
+  for (const auto& configuration : configurations)
+    if (configuration.DepartureTimeOptimizationChartDisplay != chartDisplay)
+      chartDisplay = wxNOT_FOUND;
+  m_cDepartureChartDisplay->SetSelection(chartDisplay);
   if (routeByArrival) {
     m_cbUseCurrentTime->SetValue(false);
     m_cbDepartureTimeOptimizationEnabled->SetValue(true);
@@ -1189,10 +1236,14 @@ void ConfigurationDialog::SetConfigurations(
   SET_CHECKBOX(DetectBoundary);
   SET_CHECKBOX(Currents);
   SET_CHECKBOX(OptimizeTacking);
+  SET_CHECKBOX(ExploreComfortAlternatives);
+  SET_SPIN(ComfortAdditionalPercent);
+  SET_SPIN(ComfortMaximumSeconds);
 
   SET_CHECKBOX(InvertedRegions);
   SET_CHECKBOX(UseReverseReachabilityRecovery);
   SET_CHECKBOX(Anchoring);
+  SET_CHECKBOX(RequireWaveCoverage);
 
   SET_CHECKBOX(UseGrib);
   SET_CONTROL(ClimatologyType, m_cClimatologyType, SetSelection, int, -1);
@@ -1209,6 +1260,7 @@ void ConfigurationDialog::SetConfigurations(
   m_cEnginePreset->SetMinSize(wxSize(220, 72));
 #endif
   RefreshEnginePresetStatus();
+  RefreshDepartureChartDisplayControls();
   m_bBlockUpdate = false;
 }
 
@@ -1302,10 +1354,11 @@ bool ConfigurationDialog::HandleEngineEdit(wxObject* control) {
   const bool quickField = control == m_sQuickOffshoreStepMinutes ||
       control == m_sQuickHeadingStepDegrees || control == m_sQuickMaximumSearchAngle;
   if (!mainField && !quickField && control != m_cRoutingEngine &&
-      control != m_sQuickMemoryBudgetMiB &&
-      control != m_sMainGribTimelineCacheMiB &&
-      control != m_sQuickGribTimelineCacheMiB &&
-      control != m_cShorelineResolution) return false;
+      control != m_sQuickMemoryBudgetMiB && control != m_cbExploreComfortAlternatives &&
+      control != m_sComfortAdditionalPercent && control != m_sComfortMaximumSeconds &&
+      control != m_sMainGribTimelineCacheMiB && control != m_sQuickGribTimelineCacheMiB &&
+      control != m_cShorelineResolution)
+    return false;
   if (m_bBlockUpdate) return true;
   // Engine edits must not round-trip unrelated controls: some old controls
   // display rounded percentages or mixed values. Keep their exact saved data.
@@ -1327,6 +1380,13 @@ bool ConfigurationDialog::HandleEngineEdit(wxObject* control) {
       config.shoreline_description.clear();
       config.shoreline_error.clear();
     }
+    if (control == m_cbExploreComfortAlternatives &&
+        m_cbExploreComfortAlternatives->Get3StateValue() != wxCHK_UNDETERMINED)
+      config.ExploreComfortAlternatives = m_cbExploreComfortAlternatives->IsChecked();
+    if (control == m_sComfortAdditionalPercent)
+      config.ComfortAdditionalPercent = std::clamp(m_sComfortAdditionalPercent->GetValue(), 0, 400);
+    if (control == m_sComfortMaximumSeconds)
+      config.ComfortMaximumSeconds = std::clamp(m_sComfortMaximumSeconds->GetValue(), 0, 3600);
     if (control == m_cRoutingEngine) {
       if (m_cRoutingEngine->GetSelection() == wxNOT_FOUND) continue;
       config.EngineSettings.engine = weather_routing::EngineFromSelection(m_cRoutingEngine->GetSelection());
@@ -1394,6 +1454,12 @@ void ConfigurationDialog::UpdateEngineControls() {
   bool running = false;
   for (auto* route : m_WeatherRouting.CurrentRouteMaps(false)) running |= route->Running();
   m_cRoutingEngine->Enable(!running);
+  const bool departureMode = m_rbRouteByDepartureTime->GetValue();
+  m_cbExploreComfortAlternatives->Enable(!running && departureMode);
+  m_sComfortAdditionalPercent->Enable(!running && departureMode &&
+                                      m_cbExploreComfortAlternatives->IsChecked());
+  m_sComfortMaximumSeconds->Enable(!running && departureMode &&
+                                   m_cbExploreComfortAlternatives->IsChecked());
   const bool chartAuthoritative = m_WeatherRouting.HasEnhancedChartSafety() &&
       m_cbUseExperimentalChartSafety->GetValue() && m_cbEnforceExperimentalChartSafety->GetValue();
   int shoreline = wxNOT_FOUND;
@@ -1894,6 +1960,7 @@ void ConfigurationDialog::Update() {
     GET_CHECKBOX(InvertedRegions);
     GET_CHECKBOX(UseReverseReachabilityRecovery);
     GET_CHECKBOX(Anchoring);
+    GET_CHECKBOX(RequireWaveCoverage);
     if (configuration.EngineSettings.engine != weather_routing::RoutingEngine::Auto &&
         (NO_EDITED_CONTROLS ||
          std::find(m_edited_controls.begin(), m_edited_controls.end(),
@@ -1982,4 +2049,60 @@ void ConfigurationDialog::Update() {
 
   // Schedule auto-save to persist any configuration changes
   m_WeatherRouting.ScheduleAutoSave();
+}
+
+// Invoked only by an explicit disposable headless scenario in the host.
+bool ConfigurationDialog::RunComfortHostContract() {
+  auto routes = m_WeatherRouting.CurrentRouteMaps(false);
+  if (routes.size() != 1 || routes.front()->Running()) return false;
+  const auto saved = routes.front()->GetConfiguration();
+  SetConfigurations({saved});
+  const auto checkbox = [&](bool value) {
+    m_cbExploreComfortAlternatives->SetValue(value);
+    wxCommandEvent event(wxEVT_CHECKBOX, m_cbExploreComfortAlternatives->GetId());
+    event.SetEventObject(m_cbExploreComfortAlternatives);
+    m_cbExploreComfortAlternatives->GetEventHandler()->ProcessEvent(event);
+  };
+  const auto spin = [&](wxSpinCtrl* control, int value) {
+    control->SetValue(value);
+    wxSpinEvent event(wxEVT_SPINCTRL, control->GetId());
+    event.SetEventObject(control);
+    control->GetEventHandler()->ProcessEvent(event);
+  };
+  checkbox(false);
+  bool passed = !routes.front()->GetConfiguration().ExploreComfortAlternatives &&
+                !m_sComfortAdditionalPercent->IsEnabled();
+  checkbox(true);
+  spin(m_sComfortAdditionalPercent, 400);
+  spin(m_sComfortMaximumSeconds, 3);
+  const auto changed = routes.front()->GetConfiguration();
+  passed = passed && changed.ExploreComfortAlternatives &&
+           changed.ComfortAdditionalPercent == 400 && changed.ComfortMaximumSeconds == 3 &&
+           m_sComfortAdditionalPercent->IsEnabled();
+  passed = passed && changed.StartTime == saved.StartTime && changed.DeltaTime == saved.DeltaTime &&
+           changed.MaxSwellMeters == saved.MaxSwellMeters &&
+           changed.RequireWaveCoverage == saved.RequireWaveCoverage &&
+           changed.EngineSettings.engine == saved.EngineSettings.engine;
+  SetConfigurations({changed});
+  passed = passed && m_cbExploreComfortAlternatives->IsChecked() &&
+           m_sComfortAdditionalPercent->GetValue() == 400 &&
+           m_sComfortMaximumSeconds->GetValue() == 3;
+  if (auto* config = GetOCPNConfigObject()) {
+    passed =
+        passed &&
+        config->ReadBool("/PlugIns/WeatherRouting/LastUsedConfiguration/ExploreComfortAlternatives",
+                         false) &&
+        config->ReadLong("/PlugIns/WeatherRouting/LastUsedConfiguration/ComfortAdditionalPercent",
+                         0) == 400 &&
+        config->ReadLong("/PlugIns/WeatherRouting/LastUsedConfiguration/ComfortMaximumSeconds",
+                         0) == 3;
+  } else
+    passed = false;
+  checkbox(saved.ExploreComfortAlternatives);
+  spin(m_sComfortAdditionalPercent, saved.ComfortAdditionalPercent);
+  spin(m_sComfortMaximumSeconds, saved.ComfortMaximumSeconds);
+  Show();
+  Raise();
+  wxLogMessage("WR_COMFORT_CONFIGURATION_CONTRACT passed=%d", passed ? 1 : 0);
+  return passed;
 }

@@ -12,6 +12,80 @@ a certain time.  By merging the results of many calculations,
 it is possible to form a map determining routes
 to any given location within the map.
 
+<h3>Validated coastal departures (1.29.2)</h3>
+<p>Professional retains the bounded coastal departure allowance when it
+selects a contour route. The final chart checks use the same departure prefix
+established by independent chronological validation. Actual land, drying
+areas and the minimum depth remain checked, with the full safety margin
+required beyond the local departure prefix.</p>
+
+<h3>Motoring when sailing performance is insufficient (1.29)</h3>
+<p><b>Motor if boat speed is below</b> uses the STW threshold you set for that
+route. If the best usable sailing STW across the permitted sailing angles and
+available polars is below that threshold, motor-only routing may use other
+headings, including directly into the wind, at your configured motor speed.
+The check uses actual sailing STW, not reduced progress from tacking or speed
+over ground. Sailing efficiency settings are included.</p>
+<p>Sailing and motor-sailing retain their sailing-angle limits. When sufficient
+sailing performance exists, motor-only legs also retain those limits. The
+condition is checked throughout each leg and again during final validation.
+Chart, depth, weather, boundary and propulsion limits continue to apply.
+Missing or rejected polar performance does not count as zero sailing speed.</p>
+
+<h3>Polar wind range policies (1.28.1)</h3>
+<p>Boat &rarr; Polars provides separate choices for wind below and above each
+polar's supplied range. Below the range, <b>Taper to zero</b> scales the first
+column's speed towards zero at zero wind. Above the range, <b>Hold final
+speeds</b> uses the final column at the current wind angle. <b>Reject</b> keeps
+that end of the range as a strict operating limit.</p>
+<p><b>Automatic</b> tapers below the boat's lowest supplied wind data using
+only its lowest-wind tables. For a single polar, it holds the final column
+above the supplied range. For multiple polars, their upper wind ranges remain
+strict. Use Reject for a single sail with an operating limit, or choose Hold
+final speeds explicitly for a general boat table in a multi-polar boat.</p>
+<p>Blank cells are missing measurements and may be interpolated when there
+is enough neighbouring data; unresolved blanks remain unavailable. Numeric
+zeros, including both <b>0</b> and <b>0.0</b>, mean zero direct sailing speed.
+Supplied zero speeds, declines in speed and in-range interpolation are
+preserved. Tacking optimisation can use another sailing angle to make progress
+along a course that cannot be sailed directly. Sailing speed through water is
+capped at the selected polar's maximum recorded speed, including after
+efficiency adjustments; configured motor speed is separate. Current can make
+speed over ground higher. Forecast wind is never capped: weather limits still
+use its actual value. Completed routes identify estimated polar performance
+when their chronological validation uses an out-of-range wind estimate.</p>
+
+<h3>Route visibility and computed results (1.28)</h3>
+<p>The eye in the route list controls whether that route is visible on the
+chart. Selecting a hidden route lets you inspect its settings and results
+without showing its course, isochrones or other route overlays. On Android,
+use the <b>Visible on chart</b> checkbox.</p>
+<p>Departure optimisation has a <b>Show on chart</b> choice in Configuration
+and in its Results window. <b>Selected departure</b> (the default) shows just
+the highlighted departure, including all legs of a multi-leg candidate.
+It initially shows the nominal departure and selects the fastest completed
+candidate when the run finishes, unless you have inspected another candidate.
+<b>All departures</b> shows the whole group. <b>Manual</b> keeps your individual
+eye choices; clicking an eye automatically switches that group to Manual.
+Highlighting candidates in Manual does not change their visibility. These
+choices leave unrelated routes alone and never recompute or clear results.
+Repeating the same single-leg departure sweep in Manual preserves the eye
+choices for matching departure times.</p>
+<p>On Android, choose <b>Show on chart</b> in Plan &rarr; Time or in the
+Departure comparison sheet. A route card's <b>Visible on chart</b> checkbox
+switches that group to Manual. The <b>Show on chart</b> button opens the chart
+while retaining the Selected or All choice. Changing the display and pressing
+Done keeps completed results.</p>
+<p>Starting a computation shows the route by default. You can hide it while
+it computes; completion keeps your visibility choice. Hiding is immediate
+and reversible and keeps the computed results in memory.</p>
+<p><b>Clear computed results</b> releases the selected routes' courses, search
+contours and result data, preserving their settings for recomputation.
+<b>Clear all computed results</b> does this for every route, including filtered
+routes. Stop a route before clearing its results. You can clear a finished
+route while another route computes. Clearing is separate from hiding and
+does not remove routes or tracks already saved to OpenCPN.</p>
+
 <h3>Routing engines (1.18.4)</h3>
 <p>Basic offers <b>Quick</b> (Hardened Original contour search),
 <b>Standard</b> (the former Quick engine), and <b>Professional</b> (the former
@@ -21,9 +95,11 @@ defaults keep their algorithm and numerical settings after upgrading.</p>
 Advanced shows the selected engine's controls. Reset engine to preset previews
 an Apply/Cancel action and preserves safety, weather, boat and memory settings.</p>
 <p>Quick requires a real endpoint connection and independent chronological
-validation. Missing currents fail when currents are enabled; missing waves
-fail when a GRIB-based Max Swell limit is active. Supply the data or deliberately
-disable the unwanted constraint (Max Swell zero disables that limit). Quick
+validation. Missing currents fail when currents are enabled. All engines apply
+the same wave-height policy: direct data first, then bounded local estimates
+without crossing land. Larger gaps and times outside wave coverage remain
+unknown and are reported. Enable <b>Require wave coverage</b> to reject unknown
+wave heights. A zero maximum wave height disables the ceiling. Quick
 does not silently waive the configured shoreline margin at either endpoint.
 Isochrones and route-to-cursor traces are approximate search previews, not
 validated sailing tracks. No engine guarantees an optimal route or navigation
@@ -70,7 +146,9 @@ as the computation proceeds.  Once a computation is completed, the
 course and position of the boat as it sails along the computed route
 can be viewed during grib playback.
 
-<p>Wind data is required; if no Current or Swell data is available, they are assumed to be zero.
+<p>Wind data is required. Current fallback follows the configured policy.
+Missing wave height is unknown, never calm zero. The result and route report
+identify incomplete wave coverage and local wave-height estimates.</p>
 
 <h3>Configuration Options</h3>
 
@@ -103,16 +181,23 @@ can be viewed during grib playback.
     to possibly reach the destination.  This case can occur when routing around islands,
     or occasionally when routing near a high pressure system. Normally this should be disabled,
     and extra computations are avoided.  NOTE: this mode has bugs</li>
-  <li><b>Anchoring</b>  In some cases, it may be preferable to anchor (assuming it
-    isn't too deep) rather than continue to navigate if there is a contrary current which
-    is swifter than the boat can travel.  This allows the route to reach the destination sooner
-    by sitting in place until the current abades.</li>
+  <li><b>Anchoring</b> Enables bounded stationary waits in all modern engines,
+    up to six hours in total. Their duration and UTC positions/times are reported
+    and included in passage time. This assumes anchoring is possible; assess
+    depth, shelter, holding and anchoring suitability yourself. With Anchoring
+    disabled, the boat cannot implicitly hold position against a current.</li>
+  <li><b>Require wave coverage</b> Rejects routes with unknown wave heights.
+    Small local gaps can use the highest suitable nearby cell, within one grid
+    neighbourhood and 15 NM, without crossing land. These are reported estimates,
+    not guaranteed upper bounds. No spatial or temporal extrapolation is used.</li>
   <li><b>Max Diverted Course</b> Maximum course error to continue toward destination.  Not all possible courses will be considered and therefore the most optimal route may not be found.  This usually (but not in all cases) is obvious when the optimal route is sometimes near the edge of the graph.  Using a reasonable value can greatly speeds the rate of computation.</li>
   <li><b>Max Course Angle</b> Like Max Diverted Course, except the search range is based from the starting position to the destination.  Normally should be set to 180.</li>
   <li><b>Max Search Angle</b> This specifies how much the boat course can change between propagations.  A value of 180 gives the maximum flexibility of boat movement, but increases the computation time.  A minimum of 90 is usually needed for tacking, a value of 120 is recommended with strong currents.  Smaller values (60 or less) can give very fast results, but should be used with care, as if the other settings are not appropriate, an inaccurate graph will result.  For example, if tacking is needed at any time, then in this case, all courses (0-360) must be specified as degree steps and "optimize tacking" should be enabled.
   <li><b>Max True Wind Knots</b> Do not navigate in areas with more true wind than this value.</li>
   <li><b>Max Apparent Wind Knots</b> Do not navigate in areas with more apparent wind than this value.  This should be set to a high value (ie: 100) if not used to avoid extra calculations.</li>
-  <li><b>Max Swell Meters</b> Do not attempt to navigate in areas with more wave average height than this value.</li>
+  <li><b>Max wave height</b> Maximum significant height of combined wind sea and swell,
+    in metres. The ceiling applies to direct and locally estimated heights;
+    unknown sections remain unchecked unless Require wave coverage is enabled.</li>
   <li><b>Max Latitude</b> Do not navigate above (or below in the southern hemisphere) this latitude.</li>
   <li><b>Max # of Tacks</b> Does not attempt to tack more than this number of times.  Currently it tacks as much as it likes initially, then stops tacking at the limit, therefore if a very low number or an even/odd mis-match is given, a very sub-optimal track may be produced.  For this reason a value of -1 (unlimited tacks) is recomended</li>
   <li><b>Tacking Time</b> Penalty for course change from one tack to the other in seconds.  This is normally irrelevant for ocean passages, but could be useful for routes in tight quarters  Setting to 0 avoids extra calculations. </li>

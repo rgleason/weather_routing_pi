@@ -160,6 +160,28 @@ bool LoadRoutingScenarioJson(const wxString& path,
 
   const Json::Value& route = root["route"];
   if (route.isObject()) {
+    if (route.isMember("comfortAlternatives")) {
+      const auto& extra = route["comfortAlternatives"];
+      if (!extra.isObject() || !extra["enabled"].isBool() ||
+          (extra.isMember("additionalPercent") &&
+           (!extra["additionalPercent"].isInt() || extra["additionalPercent"].asInt() < 0 ||
+            extra["additionalPercent"].asInt() > 400)) ||
+          (extra.isMember("maximumSeconds") &&
+           (!extra["maximumSeconds"].isInt() || extra["maximumSeconds"].asInt() < 0 ||
+            extra["maximumSeconds"].asInt() > 3600))) {
+        error =
+            "comfortAlternatives requires enabled:boolean, additionalPercent:0..400 and "
+            "maximumSeconds:0..3600";
+        return false;
+      }
+      scenario.route.hasComfortAlternatives = true;
+      scenario.route.comfortAlternativesEnabled = extra["enabled"].asBool();
+      if (extra.isMember("additionalPercent"))
+        scenario.route.comfortAdditionalPercent = extra["additionalPercent"].asInt();
+      if (extra.isMember("maximumSeconds"))
+        scenario.route.comfortMaximumSeconds = extra["maximumSeconds"].asInt();
+    }
+
     if (route.isMember("routingEngine")) {
       scenario.route.routingEngine = JsonString(route, "routingEngine");
       scenario.route.hasRoutingEngine = true;
@@ -273,6 +295,14 @@ bool LoadRoutingScenarioJson(const wxString& path,
       }
       scenario.route.maxSwellMeters = double_value;
       scenario.route.hasMaxSwellMeters = true;
+    }
+    if (JsonBool(route, "requireWaveCoverage", bool_value)) {
+      scenario.route.requireWaveCoverage = bool_value;
+      scenario.route.hasRequireWaveCoverage = true;
+    }
+    if (JsonBool(route, "anchoring", bool_value)) {
+      scenario.route.anchoring = bool_value;
+      scenario.route.hasAnchoring = true;
     }
     if (JsonBool(route, "optimizeTacking", bool_value)) {
       scenario.route.optimizeTacking = bool_value;
@@ -418,6 +448,8 @@ bool SaveRoutingResultJson(const wxString& path,
     AddOptionalLong(value, "elapsed", candidate.elapsedSeconds);
     AddOptionalDouble(value, "distanceNm", candidate.distanceNm);
     value["finalSafety"] = candidate.finalSafety.ToUTF8().data();
+    if (!candidate.coverageNotes.IsEmpty())
+      value["coverageNotes"] = candidate.coverageNotes.ToUTF8().data();
     if (!candidate.failureReason.IsEmpty())
       value["failureReason"] = candidate.failureReason.ToUTF8().data();
     value["offsetMinutes"] = candidate.offsetMinutes;

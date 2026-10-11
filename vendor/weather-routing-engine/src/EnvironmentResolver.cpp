@@ -81,23 +81,26 @@ ResolvedEnvironment resolveEnvironment(const RoutingRequest& request,
 
   if (request.environment.useWaves && environment.grib)
     result.snapshot.waves = environment.grib->waves(position, time);
-  if (request.constraints.maximumWaveHeightMetres &&
-      !result.snapshot.waves.available) {
+  if (request.environment.useWaves && !result.snapshot.waves.available) {
     const bool allowed =
-        request.environment.missingWaves !=
-            MissingWavePolicy::DisallowWhenConstrained &&
+        (request.environment.missingWaves !=
+            MissingWavePolicy::DisallowWhenConstrained ||
+         !request.constraints.maximumWaveHeightMetres) &&
         (request.environment.missingWaves !=
              MissingWavePolicy::RequireExplicitAcknowledgement ||
          request.environment.missingWavesAcknowledged);
     if (!allowed) {
       result.failureStatus = RoutingStatus::WaveDataRequired;
       result.failureReason =
-          "wave constraint is active but no authorised wave data exists";
+          "Required wave coverage is unavailable at this route position and time";
       return result;
     }
     result.warnings.push_back(
         warning(RoutingWarningCode::WaveDataMissing,
-                "wave data is unavailable and was explicitly waived"));
+                "Wave height is unknown here; the wave ceiling cannot be checked"));
+  } else if (result.snapshot.waves.nearbyHeightEstimate) {
+    result.warnings.push_back(warning(RoutingWarningCode::WaveHeightEstimated,
+        "Wave height estimated using the maximum of nearby connected-water cells"));
   }
   return result;
 }

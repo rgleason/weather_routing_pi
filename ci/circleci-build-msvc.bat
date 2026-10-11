@@ -28,6 +28,21 @@ if errorlevel 1 exit /b 1
 where msgmerge
 if errorlevel 1 exit /b 1
 
+rem Runner images do not consistently expose a standalone CMake. Probe both
+rem the standard installation and Visual Studio's bundled tools before
+rem installing the pinned fallback on this disposable build machine.
+set "PATH=C:\Program Files\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;%PATH%"
+where cmake >nul 2>&1
+if errorlevel 1 (
+  choco install cmake --version 3.31.8 -y --no-progress
+  if errorlevel 1 exit /b 1
+  call refreshenv
+  if errorlevel 1 exit /b 1
+  set "PATH=C:\Program Files\CMake\bin;%PATH%"
+)
+cmake --version
+if errorlevel 1 exit /b 1
+
 set wx_vers="wx%WX_VER%"
 echo Building %wx_vers%
 echo Building with %MSVC_VERSION%

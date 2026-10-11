@@ -1,6 +1,7 @@
 import importlib.util
 import io
 import json
+import re
 from pathlib import Path
 import tarfile
 import tempfile
@@ -59,6 +60,12 @@ class AlphaArtifacts(unittest.TestCase):
         directory, _, _ = self.pair("trixie", plugin="WeatherRouting")
         with self.assertRaisesRegex(ValueError, "Wrong plugin name"):
             prepare.inspect_pair(directory)
+
+    def test_catalogue_summary_matches_build_and_fits_schema(self):
+        cmake = (Path(__file__).parents[2] / "CMakeLists.txt").read_text()
+        summaries = re.findall(r'set\(SHORT_DESCRIPTION\s+"([^"]+)"\)', cmake)
+        self.assertIn(prepare.SUMMARY, summaries)
+        self.assertLessEqual(len(prepare.SUMMARY), 72)
 
     def test_rejects_mismatched_catalogue_target(self):
         directory, _, metadata = self.pair("flatpak-aarch64")

@@ -74,6 +74,7 @@ struct WaveSample {
   double directionFromDegrees{};
   double periodSeconds{};
   EnvironmentalSourceMetadata metadata;
+  bool nearbyHeightEstimate{};
 };
 
 struct EnvironmentalSnapshot {
@@ -110,6 +111,7 @@ struct EnvironmentalSourceUsage {
   Duration currentAssumedZeroDuration{};
   Duration gribWaveDuration{};
   Duration missingWaveDuration{};
+  Duration estimatedWaveDuration{};
 };
 
 enum class PropulsionMode { Sail, MotorSail, Motor };
@@ -310,11 +312,28 @@ public:
       : flag_(std::move(flag)) {}
   void cancel() const { flag_->store(true, std::memory_order_relaxed); }
   [[nodiscard]] bool cancelled() const {
-    return flag_->load(std::memory_order_relaxed);
+    return flag_->load(std::memory_order_relaxed) ||
+        extraStopped() ||
+        (deadline_ && std::chrono::steady_clock::now() >= *deadline_);
+  }
+  // A bounded child never cancels its parent when its allowance expires.
+  [[nodiscard]] CancellationToken bounded(
+      std::chrono::steady_clock::time_point deadline,
+      std::shared_ptr<std::atomic_bool> stop) const {
+    auto child = *this;
+    if (!child.deadline_ || deadline < *child.deadline_) child.deadline_ = deadline;
+    if (stop) child.extraStops_.push_back(std::move(stop));
+    return child;
   }
 
 private:
   std::shared_ptr<std::atomic_bool> flag_;
+  bool extraStopped() const {
+    for (const auto& flag : extraStops_) if (flag->load(std::memory_order_relaxed)) return true;
+    return false;
+  }
+  std::vector<std::shared_ptr<std::atomic_bool>> extraStops_;
+  std::optional<std::chrono::steady_clock::time_point> deadline_;
 };
 
 enum class RoutingProgressStage {
@@ -376,6 +395,7 @@ enum class RoutingWarningCode {
   CurrentAssumedZero,
   CurrentCoverageIncomplete,
   WaveDataMissing,
+  WaveHeightEstimated,
   WaveCoverageIncomplete,
   EstimatedPolar,
   SearchPruned,
@@ -556,9 +576,13 @@ struct RouteValidationResult {
   bool passed{};
   std::string failureReason;
   std::size_t acceptedPrefixLegs{};
+  // Leading legs whose chronological replay starts inside the departure
+  // buffer. Delivery must retain this independently validated allowance.
+  std::size_t coastalDepartureEgressLegs{};
   std::uint64_t samples{};
   EnvironmentalSourceUsage environment;
   std::vector<EnvironmentalSourceTransition> sourceTransitions;
+  bool estimatedPolarWind{};
 };
 
 struct PruningDiagnostics {
@@ -637,6 +661,12 @@ struct EnsembleMetrics {
   std::vector<EnsembleMemberResult> members;
 };
 
+struct RoutingAttemptFailure {
+  std::string engine;
+  RoutingStatus status{RoutingStatus::InternalError};
+  std::string detail;
+};
+
 struct RoutingResult {
   RoutingStatus status{RoutingStatus::InternalError};
   std::vector<RouteLeg> legs;
@@ -654,6 +684,7 @@ struct RoutingResult {
   // Optional client-side solver provenance, retained by arrival planning.
   std::string engineIdentity;
   std::string searchVariant;
+  std::vector<RoutingAttemptFailure> attemptFailures;
 };
 
 }  // namespace supercpn::weather_routing

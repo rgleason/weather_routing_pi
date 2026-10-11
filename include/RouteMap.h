@@ -288,8 +288,11 @@ struct RouteMapConfiguration {
   };
 
   weather_routing::RoutingEngineSettings EngineSettings;
-  // Snapshotted from global comparison preferences on the main thread.
-  bool ExploreComfortAlternatives{true};
+  // Saved per-route optional search controls.
+  bool ExploreComfortAlternatives{false};
+  int ComfortAdditionalPercent{200};
+  int ComfortMaximumSeconds{20};
+  // Snapshotted from comparison preferences on the main thread.
   bool ComfortExplorationWindOnly{true};
   bool IsQuick() const {
     return EngineSettings.engine == weather_routing::RoutingEngine::Quick;
@@ -358,6 +361,13 @@ struct RouteMapConfiguration {
   bool UseCurrentTime;
   /** If true, compute a batch of routes around StartTime. */
   bool DepartureTimeOptimizationEnabled;
+  enum DepartureChartDisplay {
+    SELECTED_DEPARTURE = 0,
+    ALL_DEPARTURES = 1,
+    MANUAL_DEPARTURES = 2
+  };
+  /** Presentation only: changing this must preserve computed results. */
+  int DepartureTimeOptimizationChartDisplay;
   /** Minutes before and after StartTime to test. */
   int DepartureTimeOptimizationRangeMinutes;
   /** Minutes between candidate departure times. */
@@ -447,13 +457,12 @@ struct RouteMapConfiguration {
   double MaxApparentWindKnots;
 
   /**
-   * The calculated route will avoid swells larger than this value in meters.
-   *
-   * If the grib data does not contain swell information, the maximum swell
-   * value is ignored. If there is no route within the maximum swell value, the
-   * route calculation will fail.
+   * Maximum significant wave height (combined wind sea and swell), meters.
+   * Applied to known and bounded local estimated heights. Unknown coverage
+   * is reported, or rejected when RequireWaveCoverage is enabled.
    */
   double MaxSwellMeters;
+  bool RequireWaveCoverage{false};
 
   /**
    * The calculated route will not go beyond this latitude, as an absolute
@@ -1113,6 +1122,12 @@ public:
     Lock();
     m_Configuration = o;
     m_bValid = m_Configuration.Update();
+    Unlock();
+  }
+  void SetDepartureChartDisplayMode(int mode) {
+    Lock();
+    // Presentation changes must not re-resolve live boat/waypoint positions.
+    m_Configuration.DepartureTimeOptimizationChartDisplay = mode;
     Unlock();
   }
   RouteMapConfiguration GetConfiguration() {

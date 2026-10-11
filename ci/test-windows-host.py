@@ -116,11 +116,17 @@ def test(host, archive_path, output, source):
         result = json.loads(result_path.read_text())
         if code != 0 or result.get('status') != 'complete':
             raise RuntimeError(f'Host route failed: exit={code}; result={result}')
+        lifecycle = env.get('WR_HEADLESS_LIFECYCLE_CONTRACT') == '1'
+        if lifecycle:
+            lifecycle_log = log.read_text(encoding='utf-8', errors='replace')
+            if 'WR_ROUTE_LIFECYCLE recompute_cycles=3 result=passed' not in lifecycle_log:
+                raise RuntimeError('Route visibility and clearing lifecycle did not complete')
         (output / 'acceptance.json').write_text(json.dumps({
             'host': full_version, 'host_build_date': build_date,
             'isolated_portable_profile': True,
             'package': archive_path.name, 'result_status': result['status'],
             'minimum_api': '1.21', 'exit_code': code,
+            'route_lifecycle_checked': lifecycle,
         }, indent=2) + '\n')
         print('Genuine upstream host loaded the packaged plugin and completed its route', flush=True)
     finally:

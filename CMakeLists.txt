@@ -85,13 +85,13 @@ else()
 endif()
 set(PACKAGE_CONTACT "Sean d'Epagnier; Weather Routing Plugin Team")
 set(SHORT_DESCRIPTION
-    "Advanced weather routing with departure and arrival planning.")
+    "Weather routing, faster optional chart awareness and route checks.")
 set(LONG_DESCRIPTION
-    "WeatherRouting offers Auto, Quick, Standard, Professional and All (slow), with independent saved engine settings and explicit search presets. Auto falls back through Quick and Standard to Professional up to 400% effort. All compares four engines, including the internal Alternative engine, and can add bounded comfort alternatives for each departure. A retained-route comparison table and slider balance passage time against discomfort exposure while preserving the worst known leg. Wind-only ranking is enabled by default and remembered. Extra comfort limits never reduce the ordinary engines' budgets; All initially selects the earliest validated arrival. Quick uses hardened contour routing with independent chronological validation. Standard provides bounded adaptive search; Professional keeps a validated Quick candidate and searches for a faster route with broader recovery methods. All support plugin-managed GSHHG shorelines; optional chart-backed safety requires a compatible host.")
+    "Motoring follows the configured STW threshold: when the best usable sailing performance is below it, motor-only routing can use headings outside sailing-angle limits, including directly into wind. Sailing, motor-sailing and stronger-wind motoring retain those limits; other safety checks still apply. Consistent route visibility: the eye hides all route overlays even when selected, and hidden computations stay hidden at completion. Clear computed results releases courses, contours and result data while preserving route settings for recomputation. Departure optimisation can show only the selected departure, all departures or a manually chosen subset, with matching chart and eye state and no recomputation. Improved optional chart-awareness performance with a compatible enhanced host; stock OpenCPN retains ordinary weather routing and GSHHG land avoidance. Check existing OpenCPN routes for charted land, drying areas, hazards, clearance and optional minimum depth without altering their waypoints. A per-leg report and chart markers distinguish hazards from unavailable coverage or depth; cancellation produces a partial report and route or chart changes invalidate results. Chart checks require a compatible host. WeatherRouting offers Auto, Quick, Standard, Professional and All (slow), with independent saved engine settings and explicit search presets. Auto falls back through Quick and Standard to Professional up to 400% effort. All compares four engines, including the internal Alternative engine, and shares a bounded extra-search allowance across successful engines. Optional fastest/comfort alternatives also work with individual engines and Auto, with saved percentage and seconds limits. A retained-route comparison table and slider balance passage time against discomfort exposure while preserving the worst known leg. Wind-only ranking is enabled by default and remembered. Extra comfort limits never reduce the ordinary engines' budgets; All initially selects the earliest validated arrival. Quick uses hardened contour routing with independent chronological validation. Standard provides bounded adaptive search; Professional keeps a validated Quick candidate and searches for a faster route with broader recovery methods. All support plugin-managed GSHHG shorelines; optional chart-backed safety requires a compatible host.")
 
 set(VERSION_MAJOR "1")
-set(VERSION_MINOR "23")
-set(VERSION_PATCH "0")
+set(VERSION_MINOR "29")
+set(VERSION_PATCH "2")
 set(VERSION_TWEAK "0")
 # Keep all five approved source archives for verification and regression tests.
 # Packages ship only Crude, Low and Intermediate; High and Full are optional
@@ -113,7 +113,7 @@ foreach(_archive IN LISTS _shoreline_archives)
   endif()
 endforeach()
 unset(_shoreline_archives)
-set(VERSION_DATE  "02/10/2026") # DD/MM/YYYY format
+set(VERSION_DATE  "11/10/2026") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov511")
 
 set(OCPN_API_VERSION_MAJOR "1")
@@ -256,6 +256,8 @@ SET(SRCS
             src/ChartSafetyAtlas.cpp
             src/ChartHazardEvaluator.cpp
             src/ChartSafetyHost.cpp
+            src/RouteSafetyCheck.cpp
+            src/RouteSafetyDialog.cpp
             src/OceanPrewarmPolicy.cpp
             src/ReachabilityPrewarmPolicy.cpp
             src/ExternalPlanningProvider.cpp
@@ -304,6 +306,8 @@ SET(SRCS
             src/Position.cpp
             src/IsoRoute.cpp
             src/headless/HeadlessRouteRunner.cpp
+            src/headless/RouteLifecycleContract.cpp
+            src/DepartureChartDisplay.cpp
             src/headless/RoutingScenarioJson.cpp
             src/engine/StabilityCorridorCalculator.cpp
             vendor/weather-routing-engine/src/ArrivalPlanner.cpp
@@ -330,6 +334,8 @@ SET (HDRS
             include/ChartSafetyCache.h
             include/ChartHazardEvaluator.h
             include/ChartSafetyHost.h
+            include/RouteSafetyCheck.h
+            include/RouteSafetyDialog.h
             include/headless/HeadlessRouteMonitor.h
             include/OptionalChartSafetyApi.h
             include/OceanPrewarmPolicy.h
@@ -561,6 +567,8 @@ add_definitions(-DTIXML_USE_STL)
 # Needed for android builds
 if (QT_ANDROID)
   include_directories(BEFORE ${qt_android_include})
+  target_link_options(${PACKAGE_NAME} PRIVATE
+    "-Wl,-z,max-page-size=16384" "-Wl,-z,common-page-size=16384")
 endif (QT_ANDROID)
 
 ## Needed for all builds Do not change - needed to build app -------------##

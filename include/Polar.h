@@ -21,6 +21,7 @@
 #define _WEATHER_ROUTING_POLAR_H_
 
 #include <vector>
+#include <optional>
 #include "PolygonRegion.h"
 #include <wx/wx.h>
 
@@ -120,6 +121,12 @@ enum PolarSpeedStatus {
   /** Invalid sail configuration. */
   POLAR_SPEED_INVALID_SAIL_CONFIGURATION
 };
+
+// Automatic treats a single table as a general boat polar. Multiple tables
+// retain sail operating ranges; only their lowest-wind tables may taper below
+// the entire boat's supplied range. Explicit choices override these defaults.
+enum class LowWindPolicy { Automatic, Strict, Taper };
+enum class HighWindPolicy { Automatic, Strict, Hold };
 
 class Polar {
 public:
@@ -456,8 +463,16 @@ public:
 
   // Crossover region configuration
   double m_crossoverpercentage;
+  LowWindPolicy lowWindPolicy{LowWindPolicy::Automatic};
+  HighWindPolicy highWindPolicy{HighWindPolicy::Automatic};
+  double MaximumSpeed() const { return m_maximumSpeed; }
 
 private:
+  double m_maximumSpeed{0.0};
+  friend double PolarSpeedForRouting(std::vector<Polar>&, std::size_t, double,
+      double, PolarSpeedStatus*, bool, bool*);
+  friend std::optional<double> BestSailingSpeedForRouting(std::vector<Polar>&,
+      double, double, double, double, double, double);
   friend class EditPolarDialog;
   friend class BoatDialog;
   friend class Boat;
@@ -579,5 +594,20 @@ private:
   std::vector<double> degree_steps;
   unsigned int degree_step_index[DEGREES];
 };
+
+// Shared by every routing engine, sail selection and chronological validation.
+// Interpolation within supplied data and explicit zero entries stay unchanged.
+double PolarSpeedForRouting(std::vector<Polar>& polars, std::size_t index,
+                            double twa, double tws,
+                            PolarSpeedStatus* status = nullptr,
+                            bool optimize_tacking = false,
+                            bool* estimated = nullptr);
+
+// Actual sailing STW over the permitted angles, without projected tacking VMG.
+// Unknown performance stays unknown; an explicit zero is usable calm data.
+std::optional<double> BestSailingSpeedForRouting(
+    std::vector<Polar>& polars, double tws, double minimumAngle,
+    double maximumAngle, double upwindEfficiency = 1.0,
+    double downwindEfficiency = 1.0, double nightEfficiency = 1.0);
 
 #endif
