@@ -1023,6 +1023,12 @@ public:
         result.diagnostics.stageStopReasons.push_back(validation.failureReason);
       return false;
     }
+    // Professional can retain this contour route as its incumbent. Preserve
+    // the departure prefix established by independent dense replay so the
+    // final host/plotting gate applies the same bounded coastal policy.
+    for (std::size_t i = 0; i < legs.size(); ++i)
+      legs[i].coastalDepartureEgress =
+          i < validation.coastalDepartureEgressLegs;
     result.legs = std::move(legs);
     result.validation = std::move(validation);
     result.environment = result.validation.environment;
