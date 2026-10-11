@@ -198,7 +198,9 @@ public:
                                             double lat, double lon,
                                             double dlat, double dlon,
                                             double cog,
-                                            wxString* failure_reason = nullptr);
+                                            wxString* failure_reason = nullptr,
+                                            bool coastal_departure_egress = false,
+                                            bool coastal_destination_ingress = false);
 
   static bool CheckMaxTrueWindConstraint(RouteMapConfiguration& configuration,
                                          double twsOverWater,

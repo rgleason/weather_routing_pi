@@ -22,6 +22,7 @@
 #include "ConstraintChecker.h"
 #include "ChartSafetyHost.h"
 #include "ChartSafetyPolicy.h"
+#include "supercpn/weather_routing/CoastalEndpointPolicy.h"
 #include "WeatherDataProvider.h"
 #include "RouteMap.h"
 #include "Utilities.h"
@@ -354,18 +355,17 @@ bool SegmentTouchesEndpointMarginZone(RouteMapConfiguration* configuration,
       endpoint_coordinate_tolerance_nm,
       configuration->chart_safety_end_endpoint_reach_nm);
 
-  ll_gc_ll_reverse(configuration->StartLat, configuration->StartLon, lat1,
-                   lon1, &bearing, &dist_nm);
-  if (dist_nm <= start_reach) return true;
-  ll_gc_ll_reverse(configuration->StartLat, configuration->StartLon, lat2,
-                   lon2, &bearing, &dist_nm);
-  if (dist_nm <= start_reach) return true;
-  ll_gc_ll_reverse(configuration->EndLat, configuration->EndLon, lat1, lon1,
-                   &bearing, &dist_nm);
-  if (dist_nm <= end_reach) return true;
-  ll_gc_ll_reverse(configuration->EndLat, configuration->EndLon, lat2, lon2,
-                   &bearing, &dist_nm);
-  return dist_nm <= end_reach;
+  const double maximum_reach =
+      supercpn::weather_routing::coastalEndpointReachNm(safety_margin_nm);
+  const auto inside = [&](double origin_lat, double origin_lon, double reach) {
+    const double bound = wxMin(reach, maximum_reach);
+    ll_gc_ll_reverse(origin_lat, origin_lon, lat1, lon1, &bearing, &dist_nm);
+    if (dist_nm > bound) return false;
+    ll_gc_ll_reverse(origin_lat, origin_lon, lat2, lon2, &bearing, &dist_nm);
+    return dist_nm <= bound;
+  };
+  return inside(configuration->StartLat, configuration->StartLon, start_reach) ||
+         inside(configuration->EndLat, configuration->EndLon, end_reach);
 }
 
 void RecordMissingChartSafetyData(RouteMapConfiguration* configuration,
@@ -924,7 +924,42 @@ bool ConstraintChecker::CheckLandConstraint(
 
 bool ConstraintChecker::CheckFinalRouteLandConstraint(
     RouteMapConfiguration& configuration, double lat, double lon, double dlat1,
-    double dlon1, double cog, wxString* failure_reason) {
+    double dlon1, double cog, wxString* failure_reason,
+    bool coastal_departure_egress, bool coastal_destination_ingress) {
+  if (configuration.DetectLand &&
+      (coastal_departure_egress || coastal_destination_ingress) &&
+      configuration.SafetyMarginLand > 0.0) {
+    namespace wr = supercpn::weather_routing;
+    const auto checkPart = [&](wr::GeoPoint a, wr::GeoPoint b, double margin) {
+      RouteMapConfiguration segment = configuration;
+      segment.SafetyMarginLand = margin;
+      // Check each bounded part through the normal final gate. Depth and
+      // authoritative chart requirements are deliberately retained.
+      return !CheckFinalRouteLandConstraint(
+          segment, a.latitude, a.longitude, b.latitude, b.longitude, cog,
+          failure_reason);
+    };
+    const auto checkArrival = [&](wr::GeoPoint a, wr::GeoPoint b, double margin) {
+      const wr::GeoPoint destination{configuration.EndLat, configuration.EndLon};
+      if (!coastal_destination_ingress ||
+          wr::distanceNm(b, destination) > 1e-6)
+        return checkPart(a, b, margin);
+      // Check backwards to partition only the local arrival suffix; the
+      // callback restores the delivered route's direction. The intervening
+      // passage still requires the full margin, even on a single long leg.
+      return wr::coastalDepartureChordForbidden(
+          destination, b, a, margin,
+          [&](wr::GeoPoint from, wr::GeoPoint to, double standOff) {
+            return checkPart(to, from, standOff);
+          });
+    };
+    if (coastal_departure_egress)
+      return !wr::coastalDepartureChordForbidden(
+          {configuration.StartLat, configuration.StartLon}, {lat, lon},
+          {dlat1, dlon1}, configuration.SafetyMarginLand, checkArrival);
+    return !checkArrival({lat, lon}, {dlat1, dlon1},
+                         configuration.SafetyMarginLand);
+  }
   if (configuration.DetectLand) {
     double ndlon1 = dlon1;
     if (ndlon1 > 360) {

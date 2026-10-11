@@ -63,6 +63,7 @@ struct RoutingCandidateResult {
   double distanceNm;
   wxString finalSafety;
   wxString failureReason;
+  wxString coverageNotes;
   int offsetMinutes;
   bool reverseRecoveryUsed;
   wxString reverseRecoveryStatus;

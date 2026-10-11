@@ -99,6 +99,16 @@ wxString Boat::OpenXML(wxString filename, bool shortcut) {
       polar.m_crossoverpercentage =
           AttributeDouble(e, "CrossOverPercentage", 0.2) / 100.0;
 
+      const wxString low = wxString::FromUTF8(e->Attribute("LowWindPolicy"));
+      const wxString high = wxString::FromUTF8(e->Attribute("HighWindPolicy"));
+      if ((!low.empty() && low != "automatic" && low != "strict" && low != "taper") ||
+          (!high.empty() && high != "automatic" && high != "strict" && high != "hold"))
+        return _("Invalid polar wind policy in boat file.");
+      polar.lowWindPolicy = low == "strict" ? LowWindPolicy::Strict :
+          low == "taper" ? LowWindPolicy::Taper : LowWindPolicy::Automatic;
+      polar.highWindPolicy = high == "strict" ? HighWindPolicy::Strict :
+          high == "hold" ? HighWindPolicy::Hold : HighWindPolicy::Automatic;
+
       Polars.push_back(polar);
     }
   }
@@ -153,6 +163,10 @@ wxString Boat::SaveXML(wxString filename) {
 
     e->SetDoubleAttribute("CrossOverPercentage",
                           100.0 * polar.m_crossoverpercentage);
+    e->SetAttribute("LowWindPolicy", polar.lowWindPolicy == LowWindPolicy::Strict
+        ? "strict" : polar.lowWindPolicy == LowWindPolicy::Taper ? "taper" : "automatic");
+    e->SetAttribute("HighWindPolicy", polar.highWindPolicy == HighWindPolicy::Strict
+        ? "strict" : polar.highWindPolicy == HighWindPolicy::Hold ? "hold" : "automatic");
 
     root->LinkEndChild(e);
   }
@@ -183,11 +197,11 @@ bool Boat::FastestPolar(int p, float H, float VW) {
   const float maxVW = 40;
   if (VW == 0 || VW == maxVW) return false;
   PolarSpeedStatus error;
-  double speed = Polars[p].Speed(H, VW, &error, true) *
+  double speed = PolarSpeedForRouting(Polars, p, H, VW, &error) *
                  (1 + Polars[p].m_crossoverpercentage);
   for (int i = 0; i < (int)Polars.size(); i++) {
     if (i == p) continue;
-    if (Polars[i].Speed(H, VW, &error, true) > speed) return false;
+    if (PolarSpeedForRouting(Polars, i, H, VW, &error) > speed) return false;
   }
 
   return speed > 0;
@@ -400,152 +414,35 @@ void Boat::GenerateSegments(float H, float VW, float step, bool q[4],
 int Boat::FindBestPolarForCondition(int curpolar, double tws, double twa,
                                     double swell, bool optimize_tacking,
                                     PolarSpeedStatus* status) {
-  // First, try with the current polar. If it's still valid, we can use it.
-  if (curpolar >= 0 && Polars[curpolar].InsideCrossOverContour(
-                           twa, tws, optimize_tacking, status))
+  // Keep supplied crossover decisions when they are still valid under the
+  // shared wind policies. Saved contours must not bypass an explicit limit.
+  auto usable = [&](int index) {
+    const double speed = PolarSpeedForRouting(Polars, index, twa, tws, status,
+                                              optimize_tacking);
+    return std::isfinite(speed) && speed > 0.0;
+  };
+  if (curpolar >= 0 && curpolar < static_cast<int>(Polars.size()) &&
+      usable(curpolar) && Polars[curpolar].InsideCrossOverContour(
+          twa, tws, optimize_tacking, status))
     return curpolar;
-
-  // The current polar must change; select the first polar we can use
-  for (int i = 0; i < (int)Polars.size(); i++)
-    if (i != curpolar &&
+  for (int i = 0; i < static_cast<int>(Polars.size()); ++i)
+    if (i != curpolar && usable(i) &&
         Polars[i].InsideCrossOverContour(twa, tws, optimize_tacking, status))
       return i;
 
-  // If we've reached here, no polar was found using standard checks.
-  // However, this does not mean there is no sail configuration that can be
-  // used. Examples of such cases are when the wind is too light or the angle is
-  // too low or too high. In these cases, we try to find the best available
-  // polar.
-
-  PolarSpeedStatus initialStatus = status ? *status : POLAR_SPEED_SUCCESS;
-
-  // Second attempt: Find the best compromise
-  int bestPolar = -1;
-  double bestScore = -1;
-
-  // Second pass: find the best compromise based on the specific condition
-  for (int i = 0; i < (int)Polars.size(); i++) {
-    Polar& polar = Polars[i];
-
-    // Skip polars with no data
-    if (polar.degree_steps.empty() || polar.wind_speeds.empty()) continue;
-
-    // Get min and max values for this polar
-    double minWindSpeed = polar.wind_speeds[0].tws;
-    double maxWindSpeed = polar.wind_speeds[polar.wind_speeds.size() - 1].tws;
-    double minAngle = polar.degree_steps[0];
-    double maxAngle = polar.degree_steps[polar.degree_steps.size() - 1];
-
-    // Check if this polar is valid for specific conditions
-    bool headingInRange = (twa >= minAngle && twa <= maxAngle);
-    bool windInRange = (tws >= minWindSpeed && tws <= maxWindSpeed);
-
-    // Calculate score based on the specific condition
-    double score = 0.0;
-    bool isCompatible = false;
-
-    switch (initialStatus) {
-      case POLAR_SPEED_WIND_TOO_LIGHT: {
-        // Check if heading is in range for this polar
-        if (!headingInRange) {
-          continue;  // Skip polars that don't cover our heading
-        }
-
-        // Calculate score based on how close minimum wind is to our actual wind
-        double windRatio = tws / minWindSpeed;
-        score = windRatio;  // Higher score as we get closer to minimum wind
-
-        // We're looking for polars with wind range closest to our current wind
-        isCompatible = true;
-        break;
-      }
-
-      case POLAR_SPEED_ANGLE_TOO_LOW: {
-        // For upwind sailing (heading too close to wind)
-        if (!windInRange) {
-          continue;  // Skip polars that don't cover our wind speed
-        }
-
-        // Score based on how close this polar can get to the wind (lower min
-        // angle is better)
-        score =
-            1.0 -
-            (minAngle /
-             45.0);  // Highest score for polars that can sail closest to wind
-
-        // If we're trying to sail closer than this polar's minimum angle
-        double angleDiff = std::abs(twa - minAngle);
-        if (twa < minAngle) {
-          // Extra points for polars whose min angle is closest to our desired
-          // heading
-          score += 0.5 * (1.0 - (angleDiff / 45.0));
-        } else {
-          // If our heading is within range, this is ideal
-          score += 0.5;
-        }
-
-        isCompatible = true;
-        break;
-      }
-
-      case POLAR_SPEED_ANGLE_TOO_HIGH: {
-        // For downwind sailing (heading too far downwind)
-        if (!windInRange) {
-          continue;  // Skip polars that don't cover our wind speed
-        }
-
-        // Score based on how far downwind this polar can go (higher max angle
-        // is better)
-        score =
-            maxAngle /
-            180.0;  // Highest score for polars that can sail furthest downwind
-
-        // If we're trying to sail wider than this polar's maximum angle
-        double angleDiff = std::abs(twa - maxAngle);
-        if (twa > maxAngle) {
-          // Extra points for polars whose max angle is closest to our desired
-          // heading
-          score += 0.5 * (1.0 - (angleDiff / 45.0));
-        } else {
-          // If our heading is within range, this is ideal
-          score += 0.5;
-        }
-
-        isCompatible = true;
-        break;
-      }
-
-      default: {
-        // For other cases, use standard contour check with specific status
-        PolarSpeedStatus polarStatus;
-        if (polar.InsideCrossOverContour(twa, tws, optimize_tacking,
-                                         &polarStatus)) {
-          isCompatible = true;
-          score = 1.0;
-        } else if (polarStatus == initialStatus) {
-          // If polar fails for the same reason as our initial status,
-          // it's at least compatible with the type of problem we're trying to
-          // solve
-          isCompatible = true;
-          score = 0.5;
-        }
-        break;
-      }
-    }
-
-    if (!isCompatible) continue;
-
-    // Prefer the current polar if it's suitable (with a slight bonus)
-    if (i == curpolar) {
-      score *= 1.1;
-    }
-
-    // Select the polar with the best score
-    if (score > bestScore) {
-      bestScore = score;
-      bestPolar = i;
+  // Outside generated contours, consider only policy-permitted speeds.
+  // No angular extrapolation or gap between sail operating ranges is added.
+  int best = -1;
+  double bestSpeed = 0.0;
+  for (int i = 0; i < static_cast<int>(Polars.size()); ++i) {
+    double speed = PolarSpeedForRouting(Polars, i, twa, tws, status,
+                                        optimize_tacking);
+    if (i == curpolar) speed *= 1.0 + Polars[i].m_crossoverpercentage;
+    if (std::isfinite(speed) && speed > bestSpeed) {
+      best = i;
+      bestSpeed = speed;
     }
   }
-  // Return the best compromise polar (or -1 if none found)
-  return bestPolar;
+  if (best >= 0 && status) *status = POLAR_SPEED_SUCCESS;
+  return best;
 }

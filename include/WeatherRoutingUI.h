@@ -88,6 +88,8 @@ protected:
   wxMenuItem* m_mCompute;
   wxMenuItem* m_mComputeAll;
   wxMenuItem* m_mStop;
+  wxMenuItem* m_mClearResults;
+  wxMenuItem* m_mClearAllResults;
   /** Menu item to save weather routing as a track in OpenCPN core. */
   wxMenuItem* m_mSaveAsTrack;
   /** Menu item to save weather routing as a route in OpenCPN core. */
@@ -109,6 +111,8 @@ protected:
   wxMenuItem* m_mDelete1;
   wxMenuItem* m_mGoTo1;
   wxMenuItem* m_mStop1;
+  wxMenuItem* m_mClearResults1;
+  wxMenuItem* m_mClearAllResults1;
   wxMenuItem* m_mBatch1;
   wxMenu* m_menu1;
 
@@ -182,6 +186,7 @@ protected:
   virtual void OnComputeAll(wxCommandEvent& event) { event.Skip(); }
   virtual void OnStop(wxCommandEvent& event) { event.Skip(); }
   virtual void OnResetAll(wxCommandEvent& event) { event.Skip(); }
+  virtual void OnClearResults(wxCommandEvent& event) { event.Skip(); }
   /** Callback invoked when user clicks "Save as Track" menu item. */
   virtual void OnSaveAsTrack(wxCommandEvent& event) { event.Skip(); }
   /** Callback invoked when user clicks "Save as Route" menu item. */
@@ -420,6 +425,7 @@ protected:
    */
   wxButton* m_bCurrentTime;
   wxCheckBox* m_cbDepartureTimeOptimizationEnabled;
+  wxChoice* m_cDepartureChartDisplay;
   wxStaticText* m_staticTextDepartureRange;
   wxSpinCtrl* m_sDepartureTimeOptimizationRangeHours;
   wxStaticText* m_staticTextDepartureRangeHours;
@@ -472,6 +478,9 @@ protected:
   wxCheckBox* m_cbEnforceExperimentalChartSafety;
   wxCheckBox* m_cbDetectBoundary;
   wxCheckBox* m_cbOptimizeTacking;
+  wxCheckBox* m_cbExploreComfortAlternatives;
+  wxSpinCtrl* m_sComfortAdditionalPercent;
+  wxSpinCtrl* m_sComfortMaximumSeconds;
   wxCheckBox* m_cbAllowDataDeficient;
   wxButton* m_bOK;
   wxScrolledWindow* m_pAdvanced;
@@ -493,6 +502,7 @@ protected:
   wxStaticText* m_staticText130;
   wxCheckBox* m_cbInvertedRegions;
   wxCheckBox* m_cbAnchoring;
+  wxCheckBox* m_cbRequireWaveCoverage;
   wxChoice* m_cRoutingEffortPercent;
   wxSpinCtrl* m_sDepartureTimeOptimizationConcurrentRoutes;
   wxSpinCtrl* m_sChartSafetyRamCacheMiB;

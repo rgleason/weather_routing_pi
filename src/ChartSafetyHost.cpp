@@ -21,6 +21,7 @@
 #include <vector>
 
 #include <wx/log.h>
+#include <wx/thread.h>
 
 #include "ChartHazardEvaluator.h"
 #include "ChartSafetyCache.h"
@@ -617,6 +618,28 @@ bool CheckSegment(double lat1, double lon1, double lat2, double lon2,
     samples += result->segment_sample_count;
   }
   result->segment_sample_count = samples;
+  return true;
+}
+
+bool ReviewSegment(double lat1, double lon1, double lat2, double lon2,
+                   const PlugInSegmentSafetyOptions* options,
+                   PlugInSegmentSafetyResult* result) {
+  if (!wxThread::IsMain() || !g_host.available || !options || !result)
+    return false;
+  auto review_options = *options;
+  review_options.struct_size = sizeof(review_options);
+  review_options.allow_gshhs_fallback = 0;
+  review_options.force_authoritative_fine_validation = 1;
+  const auto parts = weather_routing::SplitChartSegment(lat1, lon1, lat2, lon2);
+  if (!parts.count) return false;
+  for (unsigned i = 0; i < parts.count; ++i) {
+    const auto& part = parts.segments[i];
+    if (!g_host.check(part.lat1, part.lon1, part.lat2, part.lon2,
+                      &review_options, result)) return false;
+    if (result->hit_sample_count > 0)
+      result->hit_sample_lon = weather_routing::CanonicalChartLongitude(result->hit_sample_lon);
+    if (result->status != PI_SEGMENT_SAFETY_SAFE) return true;
+  }
   return true;
 }
 

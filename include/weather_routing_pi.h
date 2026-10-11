@@ -81,6 +81,7 @@
 #include "qtstylesheet.h"
 
 #include <wx/eventfilter.h>
+#include <wx/weakref.h>
 
 /* make some warnings go away */
 #ifdef MIN
@@ -106,6 +107,7 @@
 #include <vector>
 
 class ExternalPlanningProvider;
+class RouteSafetyDialog;
 
 //----------------------------------------------------------------------------------------------------------
 //    The PlugIn Class Definition
@@ -151,8 +153,8 @@ public:
 
   bool RenderOverlay(wxDC& dc, PlugIn_ViewPort* vp);
   bool RenderGLOverlay(wxGLContext* pcontext, PlugIn_ViewPort* vp);
-#ifdef __OCPN__ANDROID__
   bool MouseEventHook(wxMouseEvent& event) override;
+#ifdef __OCPN__ANDROID__
   PlugIn_ViewPort m_androidViewport{};
   bool m_androidViewportValid{false};
 #endif
@@ -224,6 +226,10 @@ public:
   }
 
   wxWindow* GetParentWindow() { return m_parent_window; }
+  /** Same read-only action as the native route menu, for the touch workspace. */
+  void CheckExistingRoute(const wxString& route_guid) {
+    StartRouteSafetyCheck(route_guid);
+  }
 
 #ifdef __WXMSW__
   AddressSpaceMonitor& GetAddressSpaceMonitor() {
@@ -243,6 +249,10 @@ private:
   void RequestOcpnDrawSetting();
   void NewWR();
   void MaybeStartHeadlessRouteTest();
+  void StartRouteSafetyCheck(const wxString& route_guid,
+                            const wxString& test_output = wxEmptyString,
+                            const wxString& test_action = wxEmptyString,
+                            double test_depth = -1, double test_margin = -1);
   void ScheduleChartSafetyAtlas(bool rebuild_plan, int delay_ms = 1000);
   void OnChartSafetyAtlasTimer(wxTimerEvent&);
   void ResetChartSafetyAtlasPlan();
@@ -282,6 +292,11 @@ private:
       m_chart_safety_atlas_inspection;
   weather_routing::ChartSafetyCache m_chart_safety_cache;
   std::unique_ptr<ExternalPlanningProvider> m_external_planning_provider;
+  wxTimer* m_headless_route_test_starter{nullptr};
+  wxWeakRef<RouteSafetyDialog> m_route_safety_dialog;
+  PlugIn_ViewPort m_route_check_viewport{};
+  bool m_route_check_viewport_valid{false};
+  bool m_route_check_marker_mouse_down{false};
 
   wxFileConfig* m_pconfig;
   wxWindow* m_parent_window;
@@ -295,6 +310,7 @@ private:
   int m_waypoint_menu_id;
   int m_route_menu_id;
   int m_route_multileg_menu_id;
+  int m_route_check_menu_id{-1};
 
   wxTimer m_tCursorLatLon;
   wxTimer m_chart_safety_atlas_timer;

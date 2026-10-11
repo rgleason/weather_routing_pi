@@ -125,7 +125,10 @@ void ReportDialog::SetRouteMapOverlays(
        it != routemapoverlays.end(); it++) {
     page += _T("<p>");
     if (!(*it)->ReachedDestination()) {
-      page += _("Destination not yet reached.") + _T("<br>");
+      wxString reason = (*it)->GetFailureReason();
+      reason.Replace("&", "&amp;"); reason.Replace("<", "&lt;"); reason.Replace(">", "&gt;");
+      reason.Replace("\n", "<br>");
+      page += _("Destination not yet reached.") + _T("<br>") + reason;
       continue;
     }
 
@@ -145,6 +148,12 @@ void ReportDialog::SetRouteMapOverlays(
       page += _("Duration ") +
               ((*it)->EndTime() - (*it)->StartTime()).Format() + _T("<dt>");
     }
+    wxString coverageNotes = (*it)->ModernNativeCoverageNotes();
+    coverageNotes.Replace("&", "&amp;");
+    coverageNotes.Replace("<", "&lt;");
+    coverageNotes.Replace(">", "&gt;");
+    coverageNotes.Replace("\n", "<br>");
+    if (!coverageNotes.empty()) page += "<p><b>" + coverageNotes + "</b></p>";
     page += _T("<p>");
     double distance =
         DistGreatCircle_Plugin(c.StartLat, c.StartLon, c.EndLat, c.EndLon);
@@ -179,7 +188,7 @@ void ReportDialog::SetRouteMapOverlays(
     ;
 
     const double averageSwell = (*it)->RouteInfo(RouteMapOverlay::AVGSWELL);
-    page += _("Average Swell") + wxString(_T(": ")) +
+    page += _("Average wave height") + wxString(_T(": ")) +
             (std::isfinite(averageSwell)
                  ? wxString::Format(_T("%.1f "), averageSwell) + _("meters")
                  : _("Unavailable")) + _T("<dt>");

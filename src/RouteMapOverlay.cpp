@@ -137,7 +137,7 @@ void* RouteMapOverlayThread::Entry() {
 
 RouteMapOverlay::RouteMapOverlay()
     : m_UpdateOverlay(true),
-      m_bEndRouteVisible(false),
+      m_bEndRouteVisible(true),
       m_Thread(nullptr),
       m_bUpdatingDestination(false),
       last_cursor_lat(0),
@@ -213,6 +213,8 @@ bool RouteMapOverlay::Start(wxString& error) {
 
   Lock();
   m_ModernProgress.Begin();
+  m_ComfortStop->store(false);
+  m_ExploringComfort.store(false);
   m_RetainedCandidates.clear();
   m_SelectedRetainedCandidateId.clear();
   Unlock();
@@ -363,6 +365,14 @@ bool RouteMapOverlay::GetModernNativeProgress(wxString& stage,
   return true;
 }
 
+bool RouteMapOverlay::UsesEstimatedPolarPerformance() {
+  if (!Finished() || !ReachedDestination()) return false;
+  if (UsesModernNativeResult()) return m_ModernNativeEstimatedPolar;
+  for (const PlotData& point : GetPlotData(false))
+    if (point.data_mask & Position::POLAR_WIND_ESTIMATED) return true;
+  return false;
+}
+
 void RouteMapOverlay::InstallModernNativeResult(
     const supercpn::weather_routing::RoutingResult& result) {
   namespace wr = supercpn::weather_routing;
@@ -373,12 +383,50 @@ void RouteMapOverlay::InstallModernNativeResult(
       result.status == wr::RoutingStatus::CompleteUsingGraphFallback;
   const bool resourceExhausted = ResourceExhausted();
   const bool complete = resultComplete && !resourceExhausted;
+  m_ModernNativeEstimatedPolar = complete &&
+      (result.validation.estimatedPolarWind ||
+       std::any_of(result.warnings.begin(), result.warnings.end(),
+          [](const wr::RoutingWarning& warning) {
+            return warning.code == wr::RoutingWarningCode::EstimatedPolar;
+          }));
   const bool coastalEndpointLeeway = complete &&
       std::any_of(result.warnings.begin(), result.warnings.end(),
                   [](const wr::RoutingWarning& warning) {
                     return warning.code ==
                            wr::RoutingWarningCode::CoastalEndpointLeeway;
                   });
+  m_ModernNativeMissingWaves = complete && result.validation.environment.missingWaveDuration.count() > 0;
+  m_ModernNativeEstimatedWaves = complete && result.validation.environment.estimatedWaveDuration.count() > 0;
+  m_ModernNativeAnchoringWaits = complete && result.metrics.waitingTime.count() > 0;
+  m_ModernNativeCoverageNotes.clear();
+  if (m_ModernNativeMissingWaves) {
+    m_ModernNativeCoverageNotes = result.validation.environment.gribWaveDuration.count() == 0
+        ? _("No usable wave-height data along this route. Wave heights are unknown and the wave ceiling could not be checked.")
+        : _("Wave coverage is incomplete along this route. The wave ceiling was checked where height data or local estimates were available; other sections remain unchecked.");
+  }
+  if (m_ModernNativeEstimatedWaves) {
+    if (!m_ModernNativeCoverageNotes.empty()) m_ModernNativeCoverageNotes += "\n";
+    m_ModernNativeCoverageNotes += _("Some wave heights are estimated using the maximum of nearby connected-water cells within 15 NM. These estimates are not a guaranteed upper bound.");
+  }
+  if (m_ModernNativeAnchoringWaits) {
+    if (!m_ModernNativeCoverageNotes.empty()) m_ModernNativeCoverageNotes += "\n";
+    m_ModernNativeCoverageNotes += wxString::Format(_("Anchoring assumed: %lld minutes of stationary waiting, included in total passage time. Verify anchoring suitability at each position."),
+        static_cast<long long>(result.metrics.waitingTime.count() / 60));
+    for (std::size_t i = 0; i < result.legs.size(); ++i) {
+      const auto& leg = result.legs[i];
+      if (!leg.stationaryWait) continue;
+      auto endTime = leg.endTime;
+      while (i + 1 < result.legs.size() && result.legs[i + 1].stationaryWait &&
+          result.legs[i + 1].start == leg.start && result.legs[i + 1].startTime == endTime)
+        endTime = result.legs[++i].endTime;
+      auto start = wxDateTime(static_cast<time_t>(leg.startTime.time_since_epoch().count()));
+      auto end = wxDateTime(static_cast<time_t>(endTime.time_since_epoch().count()));
+      m_ModernNativeCoverageNotes += wxString::Format("\n%.5f, %.5f: %s to %s UTC",
+          leg.start.latitude, leg.start.longitude,
+          start.Format("%Y-%m-%d %H:%M", wxDateTime::UTC),
+          end.Format("%Y-%m-%d %H:%M", wxDateTime::UTC));
+    }
+  }
   if (complete && result.validation.passed && !result.legs.empty() &&
       m_RetainedCandidates.empty())
     m_RetainedCandidates.push_back(weather_routing::RetainRouteCandidate(
@@ -404,7 +452,7 @@ void RouteMapOverlay::InstallModernNativeResult(
     wxString reason = complete ? wxString()
                               : wxString::FromUTF8(result.message.c_str());
 #ifdef __OCPN__ANDROID__
-    if (!complete) {
+    if (!complete && result.attemptFailures.empty()) {
       switch (result.status) {
         case wr::RoutingStatus::WindForecastRequired:
           reason = _("Wind forecast does not cover this route and time. Load suitable weather in xGRIB or enable climatology wind fallback.");
@@ -413,7 +461,7 @@ void RouteMapOverlay::InstallModernNativeResult(
           reason = _("Current data are required. Load a forecast with currents or turn off currents in Weather settings.");
           break;
         case wr::RoutingStatus::WaveDataRequired:
-          reason = _("Wave data are required. Load a wave forecast or remove the wave limit in Weather settings.");
+          reason = _("Required wave coverage is unavailable. Load a wave forecast covering the route and time, or turn off Require wave coverage to proceed with a coverage warning.");
           break;
         case wr::RoutingStatus::InvalidPolar:
           reason = _("Select a valid sailing polar in Boat settings before computing this route.");
@@ -886,6 +934,7 @@ static double GetPlatformScaleFactor() {
 void RouteMapOverlay::Render(wxDateTime time, SettingsDialog& settingsdialog,
                              piDC& dc, PlugIn_ViewPort& vp, bool justendroute,
                              RoutePoint* positionOnRoute) {
+  if (!m_bEndRouteVisible) return;
   dc.SetPen(*wxBLACK);                // reset pen
   dc.SetBrush(*wxTRANSPARENT_BRUSH);  // reset brush
   if (!justendroute) {
@@ -1495,6 +1544,7 @@ void RouteMapOverlay::RenderWindBarbsOnRoute(piDC& dc, PlugIn_ViewPort& vp,
 }
 
 void RouteMapOverlay::RenderWindBarbs(piDC& dc, PlugIn_ViewPort& vp) {
+  if (!m_bEndRouteVisible) return;
   if (origin.size() < 2)  // no map to work with
     return;
 
@@ -1687,6 +1737,7 @@ void RouteMapOverlay::RenderWindBarbs(piDC& dc, PlugIn_ViewPort& vp) {
 }
 
 void RouteMapOverlay::RenderCurrent(piDC& dc, PlugIn_ViewPort& vp) {
+  if (!m_bEndRouteVisible) return;
   if (origin.size() < 2)  // no map to work with
     return;
 
@@ -2292,27 +2343,43 @@ int RouteMapOverlay::Cyclones(int* months) {
   return cyclones;
 }
 
+bool RouteMapOverlay::HasComputedResults() {
+  return Finished() || !GetDiagnosticError().IsEmpty() || !origin.empty() ||
+         m_UsesModernNativeResult || !m_RetainedCandidates.empty();
+}
+
 void RouteMapOverlay::Clear() {
-  m_RetainedCandidates.clear();
+  decltype(m_RetainedCandidates)().swap(m_RetainedCandidates);
   m_SelectedRetainedCandidateId.clear();
   if (m_UsesModernNativeResult) {
     for (Position* position : m_ModernRoutePositions) delete position;
     for (Position* position : m_ModernCursorRoutePositions) delete position;
-    m_ModernRoutePositions.clear();
-    m_ModernCursorRoutePositions.clear();
-    m_ModernIsochrones.clear();
+    decltype(m_ModernRoutePositions)().swap(m_ModernRoutePositions);
+    decltype(m_ModernCursorRoutePositions)().swap(m_ModernCursorRoutePositions);
+    decltype(m_ModernIsochrones)().swap(m_ModernIsochrones);
     m_ModernCursorLayer = std::numeric_limits<std::size_t>::max();
     m_ModernCursorTrace = std::numeric_limits<std::size_t>::max();
     destination_position = nullptr;
     m_UsesModernNativeResult = false;
+    m_ModernNativeCoverageNotes.clear();
+    m_ModernNativeMissingWaves = m_ModernNativeEstimatedWaves = m_ModernNativeAnchoringWaits = false;
+  } else {
+    delete destination_position;
   }
   RouteMap::Clear();
+  destination_position = nullptr;
+  m_EndTime = wxInvalidDateTime;
   last_cursor_position = nullptr;
   last_destination_position = nullptr;
   clear_destination_plotdata = false;
   // clear_cursor_plotdata = false;
   last_cursor_plotdata.clear();
   last_destination_plotdata.clear();
+  wind_barb_cache.Clear();
+  wind_barb_route_cache.Clear();
+  climatology_wind_barb_route_cache.Clear();
+  current_cache.Clear();
+  wind_barb_cache_origin_size = current_cache_origin_size = 0;
   m_ModernProgress.Begin();
   m_UpdateOverlay = true;
 }
@@ -2403,6 +2470,8 @@ void RouteMapOverlay::UpdateCursorPosition() {
 }
 
 bool RouteMapOverlay::SetCursorLatLon(double lat, double lon) {
+  if (!std::isfinite(lat) || !std::isfinite(lon) || fabs(lat) > 90)
+    return false;
   Position* p = last_cursor_position;
   last_cursor_lat = lat;
   last_cursor_lon = lon;
@@ -2518,11 +2587,14 @@ bool RouteMapOverlay::ValidatePlottedDestinationRouteLand(
       }
       wxString failure_reason;
       RouteMapConfiguration segment_configuration = validationConfiguration;
-      if (m_UsesModernNativeResult && previous_leg_coastal_egress)
-        segment_configuration.SafetyMarginLand = 0.0;
       if (!ConstraintChecker::CheckFinalRouteLandConstraint(
               segment_configuration, prev_lat, prev_lon, it->lat, it->lon,
-              bearing, &failure_reason)) {
+              bearing, &failure_reason,
+              m_UsesModernNativeResult && previous_leg_coastal_egress,
+              m_UsesModernNativeResult &&
+                  std::abs(it->lat - configuration.EndLat) < 1e-8 &&
+                  std::abs(std::remainder(it->lon - configuration.EndLon,
+                                          360.0)) < 1e-8)) {
         configuration.land_crossing = true;
         if (failure_reason.IsEmpty())
           failure_reason = _("Chart land crossing in final route");
@@ -2575,11 +2647,11 @@ bool RouteMapOverlay::ValidatePlottedDestinationRouteLand(
     }
     wxString failure_reason;
     RouteMapConfiguration segment_configuration = validationConfiguration;
-    if (m_UsesModernNativeResult && previous_leg_coastal_egress)
-      segment_configuration.SafetyMarginLand = 0.0;
     if (!ConstraintChecker::CheckFinalRouteLandConstraint(
             segment_configuration, prev_lat, prev_lon, configuration.EndLat,
-            configuration.EndLon, bearing, &failure_reason)) {
+            configuration.EndLon, bearing, &failure_reason,
+            m_UsesModernNativeResult && previous_leg_coastal_egress,
+            m_UsesModernNativeResult)) {
       configuration.land_crossing = true;
       if (failure_reason.IsEmpty())
         failure_reason = _("Chart land crossing in final route");

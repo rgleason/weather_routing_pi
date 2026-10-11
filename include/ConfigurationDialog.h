@@ -78,6 +78,7 @@ public:
    */
   void SetConfigurations(std::list<RouteMapConfiguration> configuration);
   void Update();
+  bool RunComfortHostContract();
 
   void AddSource(wxString name);
   void RemoveSource(wxString name);
@@ -93,6 +94,7 @@ public:
    * and its persisted settings have been loaded.
    */
   void RefreshTimeZoneControls();
+  void RefreshDepartureChartDisplayControls();
 
   wxDateTime m_GribTimelineTime;
 

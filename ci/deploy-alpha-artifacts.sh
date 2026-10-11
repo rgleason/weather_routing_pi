@@ -17,7 +17,7 @@ from pathlib import Path
 
 for item in json.loads(Path("alpha-publication/uploads.json").read_text()):
     subprocess.run([
-        "cloudsmith", "push", "raw", "--republish", "--no-wait-for-sync",
+        "cloudsmith", "push", "raw", "--no-republish", "--no-wait-for-sync",
         "--name", item["name"], "--version", item["version"],
         "--summary", "xWeatherRouting OpenCPN Alpha preview",
         "pob220/xweather-routing-alpha-oss", item["file"],

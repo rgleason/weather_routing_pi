@@ -229,3 +229,22 @@ TEST(RoutingEngineSequenceIntegration,
   }
 }
 }  // namespace
+
+TEST(RoutingEngineSequence, FailureHeadlineSummarisesEveryAttemptHonestly) {
+  const auto result = native::RunRoutingEngineSequence(RoutingEngine::Auto, {}, [](auto engine) {
+    auto result = Failure(engine == SequenceEngine::Original ? wr::RoutingStatus::InvalidStart
+        : engine == SequenceEngine::Quick ? wr::RoutingStatus::SearchIncomplete
+        : wr::RoutingStatus::ResourceLimitReached);
+    result.message = engine == SequenceEngine::Quick
+        ? "Quick search did not find a validated route within its allowance; try the main engine"
+        : "fixture reason";
+    return result;
+  });
+  EXPECT_EQ(result.message.find("No validated route found with the selected settings."), 0U);
+  EXPECT_EQ(result.attemptFailures.size(), 3U);
+  EXPECT_EQ(result.attemptFailures[1].engine, "Standard");
+  EXPECT_EQ(result.attemptFailures[2].status, wr::RoutingStatus::ResourceLimitReached);
+  EXPECT_EQ(result.message.find("try the main engine"), std::string::npos);
+  EXPECT_NE(result.message.find("invalid_start"), std::string::npos);
+  EXPECT_NE(result.message.find("resource_limit"), std::string::npos);
+}

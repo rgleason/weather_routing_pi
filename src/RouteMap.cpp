@@ -151,6 +151,7 @@ RouteMapConfiguration::RouteMapConfiguration()
       ArrivalPlanningScheduleMarginSeconds(0),
       UseCurrentTime(false),
       DepartureTimeOptimizationEnabled(false),
+      DepartureTimeOptimizationChartDisplay(SELECTED_DEPARTURE),
       DepartureTimeOptimizationRangeMinutes(360),
       DepartureTimeOptimizationStepMinutes(60),
       DepartureTimeOptimizationConcurrentRoutes(0),

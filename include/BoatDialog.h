@@ -38,6 +38,9 @@ public:
   wxString m_boatpath;
 
 private:
+  wxChoice* m_lowWindPolicy{nullptr};
+  wxChoice* m_highWindPolicy{nullptr};
+  void BuildWindPolicyControls();
   void OnMouseEventsPolarPlot(wxMouseEvent& event);
 
   void OnPaintPlot(wxPaintEvent& event);

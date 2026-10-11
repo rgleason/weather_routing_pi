@@ -166,6 +166,7 @@ BoatDialog::BoatDialog(WeatherRouting& weatherrouting)
     value->SetMinSize(wxSize(180, 52));
   m_sVMGWindSpeed->SetMaxSize(wxSize(-1, -1));
   m_sVMGWindSpeed->SetMinSize(wxSize(180, 72));
+  BuildWindPolicyControls();
   WR_StyleAndroidControls(this);
   WR_AddAndroidDoneHeader(this, _("Boat and polars"), [this]() {
     wxCommandEvent event;
@@ -175,8 +176,57 @@ BoatDialog::BoatDialog(WeatherRouting& weatherrouting)
   WR_WrapAndroidText(polarNote, polarNote->GetLabel(), wxGetDisplaySize().x - 90);
 #else
   // hack to adjust items
+  BuildWindPolicyControls();
   SetSize(wxSize(w, h));
 #endif
+}
+
+void BoatDialog::BuildWindPolicyControls() {
+  auto* panel = new wxPanel(m_panel21, wxID_ANY);
+  auto* controls = new wxBoxSizer(wxVERTICAL);
+  controls->Add(new wxStaticText(panel, wxID_ANY, _("Below polar wind range")),
+                0, wxEXPAND | wxALL, 4);
+  m_lowWindPolicy = new wxChoice(panel, wxID_ANY);
+  for (const wxString& label : {_("Automatic"), _("Reject"), _("Taper to zero")})
+    m_lowWindPolicy->Append(label);
+  controls->Add(m_lowWindPolicy, 0, wxEXPAND | wxALL, 4);
+  controls->Add(new wxStaticText(panel, wxID_ANY, _("Above polar wind range")),
+                0, wxEXPAND | wxALL, 4);
+  m_highWindPolicy = new wxChoice(panel, wxID_ANY);
+  for (const wxString& label : {_("Automatic"), _("Reject"), _("Hold final speeds")})
+    m_highWindPolicy->Append(label);
+  controls->Add(m_highWindPolicy, 0, wxEXPAND | wxALL, 4);
+  auto* note = new wxStaticText(panel, wxID_ANY,
+      _("Automatic tapers below the boat's lowest wind data. A single polar holds its final speeds in stronger winds; multiple polars keep their upper wind limits."));
+#ifdef __OCPN__ANDROID__
+  const wxString text = note->GetLabel();
+  WR_WrapAndroidText(note, text, wxGetDisplaySize().x - 90);
+  note->Bind(wxEVT_SIZE, [note, text, width = 0](wxSizeEvent& event) mutable {
+    if (event.GetSize().x > 0 && event.GetSize().x != width) {
+      width = event.GetSize().x;
+      WR_WrapAndroidText(note, text, width);
+    }
+    event.Skip();
+  });
+#else
+  note->Wrap(300);
+#endif
+  controls->Add(note, 0, wxEXPAND | wxALL, 4);
+  panel->SetSizer(controls);
+  m_panel21->GetSizer()->Add(panel, 0, wxEXPAND | wxALL, 8);
+  m_lowWindPolicy->Enable(false);
+  m_highWindPolicy->Enable(false);
+  auto changed = [this](wxCommandEvent&) {
+    const int index = SelectedPolar();
+    if (index < 0) return;
+    m_Boat.Polars[index].lowWindPolicy =
+        static_cast<LowWindPolicy>(m_lowWindPolicy->GetSelection());
+    m_Boat.Polars[index].highWindPolicy =
+        static_cast<HighWindPolicy>(m_highWindPolicy->GetSelection());
+    GenerateCrossOverChart();
+  };
+  m_lowWindPolicy->Bind(wxEVT_CHOICE, changed);
+  m_highWindPolicy->Bind(wxEVT_CHOICE, changed);
 }
 
 BoatDialog::~BoatDialog() {
@@ -929,6 +979,12 @@ void BoatDialog::OnPolarSelected() {
   // not needed if modal    m_EditPolarDialog.SetPolarIndex(i);
 
   m_sOverlapPercentage->Enable(i != -1);
+  m_lowWindPolicy->Enable(i != -1);
+  m_highWindPolicy->Enable(i != -1);
+  m_lowWindPolicy->SetSelection(i < 0 ? 0 :
+      static_cast<int>(m_Boat.Polars[i].lowWindPolicy));
+  m_highWindPolicy->SetSelection(i < 0 ? 0 :
+      static_cast<int>(m_Boat.Polars[i].highWindPolicy));
   if (i != -1)
     m_sOverlapPercentage->SetValue(m_Boat.Polars[i].m_crossoverpercentage *
                                    100);

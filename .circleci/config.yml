@@ -148,6 +148,7 @@ jobs:
       MSVC_VERSION: "2022"
       WX_VER: "32"
       WEATHER_ROUTING_CI_XWEATHER: << pipeline.parameters.build_xweather_identity >>
+      WR_HEADLESS_LIFECYCLE_CONTRACT: "1"
     steps:
       - checkout
       - run:
@@ -176,6 +177,7 @@ jobs:
     environment:
       WEATHER_ROUTING_API_HEADER_VERSION: << parameters.api_headers >>
       WEATHER_ROUTING_CI_XWEATHER: << pipeline.parameters.build_xweather_identity >>
+      WR_HEADLESS_LIFECYCLE_CONTRACT: "1"
     steps:
       - checkout
       - restore_cache:

@@ -1,4 +1,5 @@
 #include "supercpn/weather_routing/Engine.h"
+#include "supercpn/weather_routing/CoastalEndpointPolicy.h"
 
 #include <algorithm>
 #include <array>
@@ -273,13 +274,16 @@ bool hardEnvironmentConstraints(const RoutingRequest& request,
 
 bool hardMotionConstraints(const RoutingRequest& request,
                            const EnvironmentalSnapshot& environment,
-                           double heading, double speedThroughWater) {
+                           double heading, const PerformanceCandidate& candidate,
+                           const VesselPerformanceModel& performance,
+                           GeoPoint position, TimePoint time) {
   const double twa = trueWindAngleDegrees(environment.wind.velocity, heading);
-  if (twa + 1e-9 < request.constraints.minimumTrueWindAngleDegrees ||
-      twa - 1e-9 > request.constraints.maximumTrueWindAngleDegrees)
+  if (!sailingAngleAllowed(request, performance, position, time,
+          vectorMagnitudeKnots(environment.wind.velocity), twa,
+          environment.waves, candidate.mode, candidate.role))
     return false;
   if (request.constraints.maximumApparentWindKnots) {
-    const Vector2 boat = speedDirectionToVector(speedThroughWater, heading);
+    const Vector2 boat = speedDirectionToVector(candidate.speedThroughWaterKnots, heading);
     const Vector2 apparent{
         environment.wind.velocity.eastKnots - boat.eastKnots,
         environment.wind.velocity.northKnots - boat.northKnots};
@@ -417,7 +421,8 @@ std::optional<MotionReplay> integrateMotion(
     if (!startPerformance.valid ||
         !hardEnvironmentConstraints(request, predictorResolved.snapshot) ||
         !hardMotionConstraints(request, predictorResolved.snapshot, heading,
-                               startPerformance.speedThroughWaterKnots))
+                               startPerformance, performanceModel, replay.end,
+                               movingStart + elapsed))
       return {};
 
     const Vector2 startWater = speedDirectionToVector(
@@ -455,7 +460,8 @@ std::optional<MotionReplay> integrateMotion(
     if (!midpointPerformance.valid ||
         !hardEnvironmentConstraints(request, midpointResolved.snapshot) ||
         !hardMotionConstraints(request, midpointResolved.snapshot, heading,
-                               midpointPerformance.speedThroughWaterKnots))
+                               midpointPerformance, performanceModel, midpoint,
+                               movingStart + elapsed + Duration{slice.count() / 2}))
       return {};
 
     const Vector2 water = speedDirectionToVector(
@@ -512,17 +518,21 @@ bool nodeMotionForbidden(const RoutingRequest& request,
       distanceNm(node.position, request.destination) <= 1e-6 &&
       request.constraints.landSafetyMarginNm > 0.0;
   const double destinationIngressRadiusNm =
-      std::max(0.5, request.constraints.landSafetyMarginNm * 1.5);
+      coastalEndpointReachNm(request.constraints.landSafetyMarginNm);
   const double margin = searchLandMarginNm(request);
   bool ingressStarted = false;
   double priorDestinationDistance =
       distanceNm(node.incomingLeg.start, request.destination);
   for (const auto& segment : node.incomingMotionSegments) {
     ++diagnostics.landChecks;
-    bool forbidden =
-        environment.landAndBoundaries->segmentFromKnownSafeForbiddenAt(
-            segment.start, segment.end, segment.startTime,
-            departureEgress || ingressStarted ? 0.0 : margin);
+    const auto forbiddenAt = [&](GeoPoint a, GeoPoint b, double standOff) {
+      return environment.landAndBoundaries->segmentFromKnownSafeForbiddenAt(
+          a, b, segment.startTime, standOff);
+    };
+    bool forbidden = departureEgress
+        ? coastalDepartureChordForbidden(request.start, segment.start,
+                                         segment.end, margin, forbiddenAt)
+        : forbiddenAt(segment.start, segment.end, ingressStarted ? 0.0 : margin);
     if (forbidden && destinationIngress && !departureEgress &&
         !ingressStarted) {
       const double nextDistance = distanceNm(segment.end, request.destination);
@@ -571,11 +581,15 @@ bool nodeMotionForbidden(const RoutingRequest& request,
   // chord, while chronological replay follows the integrated slices above.
   // Both geometries must therefore be safe before the state is admitted.
   ++diagnostics.landChecks;
-  bool chordForbidden =
-      environment.landAndBoundaries->segmentFromKnownSafeForbiddenAt(
-          node.incomingLeg.start, node.incomingLeg.end,
-          node.incomingLeg.startTime,
-          chordStartsInDepartureEgress ? 0.0 : margin);
+  const auto chordForbiddenAt = [&](GeoPoint a, GeoPoint b, double standOff) {
+    return environment.landAndBoundaries->segmentFromKnownSafeForbiddenAt(
+        a, b, node.incomingLeg.startTime, standOff);
+  };
+  bool chordForbidden = chordStartsInDepartureEgress
+      ? coastalDepartureChordForbidden(request.start, node.incomingLeg.start,
+                                       node.incomingLeg.end, margin,
+                                       chordForbiddenAt)
+      : chordForbiddenAt(node.incomingLeg.start, node.incomingLeg.end, margin);
   if (chordForbidden && destinationIngress &&
       !chordStartsInDepartureEgress) {
     const double chordDistance =
@@ -782,7 +796,7 @@ std::vector<Node> propagate(const RoutingRequest& request,
   std::vector<Node> result;
   for (const auto& performance : performances) {
     if (!hardMotionConstraints(request, resolved.snapshot, heading,
-                               performance.speedThroughWaterKnots)) {
+                               performance, performanceModel, from.position, from.time)) {
       ++diagnostics.constraintRejections;
       continue;
     }
@@ -2649,6 +2663,8 @@ void calculateResultSummaries(RoutingResult& result) {
       result.environment.gribWaveDuration += duration;
     else
       result.environment.missingWaveDuration += duration;
+    if (leg.waves.available && leg.waves.nearbyHeightEstimate)
+      result.environment.estimatedWaveDuration += duration;
     EnvironmentalSnapshot current;
     current.wind = {true, {}, leg.windSource};
     current.current = {true, {}, leg.currentSource};
@@ -2847,10 +2863,10 @@ RoutingPreflightResult RoutingEngine::preflight(
     result.coverage.current = environment.xtdCurrent->coverage();
   }
 
-  if (request.constraints.maximumWaveHeightMetres &&
-      !coversRoute(result.coverage.waves)) {
+  if (request.environment.useWaves && !coversRoute(result.coverage.waves)) {
     result.coverage.waveWaiverNeeded = true;
-    if (request.environment.missingWaves ==
+    if (request.constraints.maximumWaveHeightMetres &&
+        request.environment.missingWaves ==
         MissingWavePolicy::DisallowWhenConstrained)
       result.requiredActions.push_back(
           RequiredUserAction::ConfirmRoutingWithoutWaveData);
@@ -2862,7 +2878,7 @@ RoutingPreflightResult RoutingEngine::preflight(
     else
       result.warnings.push_back(
           {RoutingWarningCode::WaveDataMissing,
-           "wave constraint data is unavailable and explicitly waived"});
+           "Wave coverage is unavailable; unchecked areas will be reported"});
   }
   if (request.constraints.minimumDepthMetres &&
       (!environment.landAndBoundaries ||
@@ -2871,6 +2887,14 @@ RoutingPreflightResult RoutingEngine::preflight(
     result.requiredActions.push_back(RequiredUserAction::LoadDepthData);
   result.canRoute = result.requiredActions.empty();
   return result;
+}
+
+void summariseDeliveredRoute(RoutingResult& result) {
+  result.metrics = {};
+  result.environment = {};
+  result.sourceTransitions.clear();
+  result.warnings.clear();
+  calculateResultSummaries(result);
 }
 
 RoutingResult ProfessionalEngine::route(

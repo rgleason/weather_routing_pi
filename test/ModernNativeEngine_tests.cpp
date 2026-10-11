@@ -9,11 +9,14 @@
 #include <string>
 #include <vector>
 
+#include "engine/native/ComfortAlternatives.h"
 #include "engine/native/CoordinateNormalization.h"
 #include "engine/native/WeatherCoverage.h"
 #include "original_routing/Engine.h"
 #include "supercpn/weather_routing/Engine.h"
+#include "supercpn/weather_routing/CoastalEndpointPolicy.h"
 #include "supercpn/weather_routing/QuickEngine.h"
+#include "supercpn/weather_routing/AlternativeEngine.h"
 
 namespace {
 using namespace supercpn::weather_routing;
@@ -1643,6 +1646,7 @@ TEST(QuickNativeEngine, RejectsInvalidBudgetWithoutSearching) {
   }
 }
 
+
 }  // namespace
 
 TEST(ModernNativeWeatherCoverage, IntersectsWindComponentsAndNormalizesLongitude) {
@@ -1688,4 +1692,611 @@ TEST(ModernNativeEngine, RejectsUncoveredDestinationBeforeGeneratingSearchStates
   EXPECT_EQ(result.status, RoutingStatus::WindForecastRequired);
   EXPECT_NE(result.message.find("route endpoints"), std::string::npos);
   EXPECT_EQ(result.diagnostics.generatedStates, 0u);
+}
+
+namespace {
+namespace alternatives = weather_routing::native;
+class RoughLaneWeather final : public WeatherProvider {
+ public:
+  bool wavesAvailable{true};
+  std::shared_ptr<UniformWeatherProvider> weather{TestWeather()};
+  ParameterCoverage windCoverage() const override { return weather->windCoverage(); }
+  ParameterCoverage currentCoverage() const override { return weather->currentCoverage(); }
+  ParameterCoverage waveCoverage() const override {
+    return wavesAvailable ? weather->waveCoverage() : ParameterCoverage{};
+  }
+  WindSample wind(GeoPoint p, TimePoint t) const override {
+    auto sample = weather->wind(p, t);
+    sample.velocity = speedDirectionToVector(std::abs(p.latitude) < 0.006 ? 30.0 : 14.0, 180.0);
+    return sample;
+  }
+  CurrentSample current(GeoPoint p, TimePoint t) const override { return weather->current(p, t); }
+  WaveSample waves(GeoPoint p, TimePoint t) const override {
+    return wavesAvailable ? weather->waves(p, t) : WaveSample{};
+  }
+  std::string identity() const override { return "rough-central-lane"; }
+};
+RoutingRequest AlternativesRequest() {
+  auto request = TestRequest();
+  request.start = {0, 0};
+  request.destination = {0, .2};
+  request.options.timeStep = std::chrono::minutes{20};
+  request.options.headingStepDegrees = 10;
+  request.options.minimumTimeStep = std::chrono::minutes{5};
+  request.options.destinationToleranceNm = .05;
+  request.options.useGraphFallback = false;
+  request.options.useFrontierRecovery = false;
+  request.options.useReverseRecovery = false;
+  request.vessel.tackPenalty = {};
+  request.vessel.gybePenalty = {};
+  request.limits.maximumRouteDuration = std::chrono::hours{8};
+  return request;
+}
+RoutingEnvironment AlternativesEnvironment(const RoutingRequest& request) {
+  auto env = TestEnvironment();
+  env.grib = std::make_shared<RoughLaneWeather>();
+  env.performance = std::make_shared<ConstantSpeedPerformance>();
+  return env;
+}
+alternatives::ComfortSolve AlternativeSolver(int engine, bool windOnly = true) {
+  return [engine, windOnly](const RoutingRequest& request, const RoutingEnvironment& env,
+                            bool directed) {
+    std::vector<RoutingResult> results;
+    if (engine == 0)
+      results.push_back(original_routing::Engine{}.route(request, env));
+    else if (engine == 2)
+      results.push_back(ProfessionalEngine{}.route(request, env));
+    else {
+      QuickRoutingOptions options;
+      options.offshoreStep = request.options.timeStep;
+      options.headingStepDegrees = request.options.headingStepDegrees;
+      options.maximumGeneratedStates = request.limits.maximumGeneratedStates;
+      if (directed) {
+        options.comfortWeight = 1;
+        options.comfortWindOnly = windOnly;
+        options.maximumValidatedCandidates = 24;
+      }
+      auto result = QuickRoutingEngine{}.route(request, env, options);
+      results = std::move(result.alternatives);
+      if (results.empty())
+        results.push_back(std::move(result.route));
+      else
+        results.front().diagnostics = result.route.diagnostics;
+    }
+    return results;
+  };
+}
+TEST(ComfortAlternatives, RelativeAllowanceHasAnIndependentSecondsCeiling) {
+  alternatives::ComfortSearchOptions options;
+  options.additionalPercent = 400;
+  options.maximumSeconds = 20;
+  EXPECT_EQ(alternatives::ComfortAllowance(std::chrono::seconds{3}, options),
+            std::chrono::seconds{12});
+  EXPECT_EQ(alternatives::ComfortAllowance(std::chrono::seconds{30}, options),
+            std::chrono::seconds{20});
+  options.additionalPercent = 0;
+  EXPECT_EQ(alternatives::ComfortAllowance(std::chrono::seconds{30}, options).count(), 0);
+}
+TEST(ComfortAlternatives, NestedDeadlineAndStopDoNotCancelTheParent) {
+  CancellationToken parent;
+  auto stop = std::make_shared<std::atomic_bool>(false);
+  auto work = std::make_shared<std::atomic_bool>(false);
+  auto child = parent.bounded(std::chrono::steady_clock::now() + std::chrono::hours{1}, stop)
+                   .bounded(std::chrono::steady_clock::now() + std::chrono::hours{1}, work);
+  stop->store(true);
+  EXPECT_TRUE(child.cancelled());
+  EXPECT_FALSE(parent.cancelled());
+  stop->store(false);
+  work->store(true);
+  EXPECT_TRUE(child.cancelled());
+  EXPECT_FALSE(parent.cancelled());
+  auto expired = parent.bounded(std::chrono::steady_clock::now(), {});
+  EXPECT_TRUE(expired.cancelled());
+  EXPECT_FALSE(parent.cancelled());
+  parent.cancel();
+  EXPECT_TRUE(child.cancelled());
+}
+class AllEngineAlternatives : public testing::TestWithParam<int> {};
+TEST_P(AllEngineAlternatives, SameEngineExplorationFindsAndRevalidatesGentlerRoutes) {
+  auto request = AlternativesRequest();
+  auto env = AlternativesEnvironment(request);
+  auto solver = AlternativeSolver(GetParam());
+  auto first = solver(request, env, false);
+  ASSERT_FALSE(first.empty());
+  auto baseline = first.front();
+  ASSERT_TRUE(alternatives::AcceptedRoute(baseline)) << baseline.message;
+  const auto saved = baseline.legs.size();
+  alternatives::ComfortSearchOptions options;
+  // This checks route quality and replay, not runner throughput. Native
+  // Windows runners need more than four seconds to complete the same search.
+  // Allowance arithmetic, exhaustion and cancellation have separate tests.
+  options.maximumSeconds = 30;
+  options.additionalPercent = 400;
+  options.nativeComfortLanes = GetParam() == 1;
+  auto report = alternatives::ExploreComfortAlternatives(
+      request, env, baseline, std::chrono::seconds{10}, options, solver,
+      [](const auto&) { return true; }, std::make_shared<std::atomic_bool>(false));
+  ASSERT_FALSE(report.alternatives.empty())
+      << "engine=" << GetParam() << " attempts=" << report.attempts
+      << " rejected=" << report.rejected << " missing=" << report.missing
+      << " exhausted=" << report.exhausted << " weather=" << report.weatherCalls
+      << " generated=" << report.generated;
+  EXPECT_EQ(baseline.legs.size(), saved);
+  bool gentler = false;
+  for (const auto& route : report.alternatives) {
+    EXPECT_TRUE(RouteValidator{}.validate(request, env, *env.performance, route.legs).passed);
+    EXPECT_LE(route.metrics.elapsed, baseline.metrics.elapsed + baseline.metrics.elapsed / 2);
+    gentler = gentler || routeDiscomfortSeconds(route.legs, true) <
+                             routeDiscomfortSeconds(baseline.legs, true) * .9;
+  }
+  EXPECT_TRUE(gentler);
+  EXPECT_LE(report.alternatives.size(), 4U);
+}
+INSTANTIATE_TEST_SUITE_P(QuickStandardProfessional, AllEngineAlternatives,
+                         testing::Values(0, 1, 2));
+TEST(ComfortAlternatives, ExhaustedWorkAndExplicitStopPreserveTheBaseline) {
+  auto request = AlternativesRequest();
+  auto env = AlternativesEnvironment(request);
+  auto solver = AlternativeSolver(1);
+  const auto baseline = solver(request, env, false).front();
+  ASSERT_TRUE(alternatives::AcceptedRoute(baseline));
+  auto stop = std::make_shared<std::atomic_bool>(false);
+  alternatives::ComfortSearchOptions options;
+  options.maximumWeatherCalls = 1;
+  auto report = alternatives::ExploreComfortAlternatives(
+      request, env, baseline, std::chrono::seconds{1}, options, solver,
+      [](const auto&) { return true; }, stop);
+  EXPECT_TRUE(report.exhausted);
+  EXPECT_TRUE(report.alternatives.empty());
+  EXPECT_TRUE(alternatives::AcceptedRoute(baseline));
+  stop->store(true);
+  options.maximumWeatherCalls = 2000000;
+  report = alternatives::ExploreComfortAlternatives(
+      request, env, baseline, std::chrono::seconds{1}, options, solver,
+      [](const auto&) { return true; }, stop);
+  EXPECT_TRUE(report.stopped);
+  EXPECT_FALSE(report.cancelled);
+  EXPECT_TRUE(report.alternatives.empty());
+  EXPECT_TRUE(alternatives::AcceptedRoute(baseline));
+}
+TEST(ComfortAlternatives, MissingWavesNeverProduceFullConditionCandidates) {
+  auto request = AlternativesRequest();
+  auto env = AlternativesEnvironment(request);
+  auto weather = std::make_shared<RoughLaneWeather>();
+  weather->wavesAvailable = false;
+  env.grib = weather;
+  auto solver = AlternativeSolver(1);
+  const auto baseline = solver(request, env, false).front();
+  ASSERT_TRUE(alternatives::AcceptedRoute(baseline));
+  alternatives::ComfortSearchOptions options;
+  options.windOnly = false;
+  options.maximumSeconds = 1;
+  auto report = alternatives::ExploreComfortAlternatives(
+      request, env, baseline, std::chrono::seconds{1}, options, solver,
+      [](const auto&) { return true; }, std::make_shared<std::atomic_bool>(false));
+  EXPECT_TRUE(report.alternatives.empty());
+  EXPECT_GT(report.missing, 0U);
+}
+TEST(ComfortAlternatives, HostRejectionsCannotBecomeRetainedCandidates) {
+  auto request = AlternativesRequest();
+  auto env = AlternativesEnvironment(request);
+  auto solver = AlternativeSolver(1);
+  const auto baseline = solver(request, env, false).front();
+  ASSERT_TRUE(alternatives::AcceptedRoute(baseline));
+  alternatives::ComfortSearchOptions options;
+  options.maximumSeconds = 1;
+  auto report = alternatives::ExploreComfortAlternatives(
+      request, env, baseline, std::chrono::seconds{1}, options, solver,
+      [](const auto&) { return false; }, std::make_shared<std::atomic_bool>(false));
+  EXPECT_TRUE(report.alternatives.empty());
+  EXPECT_GT(report.rejected, 0U);
+}
+TEST(ComfortAlternatives, FailedBaselineNeverSpendsExplorationBudget) {
+  auto request = AlternativesRequest();
+  auto env = AlternativesEnvironment(request);
+  RoutingResult failed;
+  unsigned calls = 0;
+  alternatives::ComfortSearchOptions options;
+  auto report = alternatives::ExploreComfortAlternatives(
+      request, env, failed, std::chrono::seconds{1}, options,
+      [&](const auto&, const auto&, bool) {
+        ++calls;
+        return std::vector<RoutingResult>{};
+      },
+      [](const auto&) { return true; }, std::make_shared<std::atomic_bool>(false));
+  EXPECT_EQ(calls, 0U);
+  EXPECT_TRUE(report.alternatives.empty());
+}
+TEST(ComfortAlternatives, SoftStopKeepsValidatedExtrasButWholeCancellationDiscardsThem) {
+  for (bool whole : {false, true}) {
+    auto request = AlternativesRequest();
+    auto env = AlternativesEnvironment(request);
+    auto solver = AlternativeSolver(1);
+    const auto baseline = solver(request, env, false).front();
+    ASSERT_TRUE(alternatives::AcceptedRoute(baseline));
+    auto stop = std::make_shared<std::atomic_bool>(false);
+    alternatives::ComfortSearchOptions options;
+    options.maximumSeconds = 1;
+    const auto report = alternatives::ExploreComfortAlternatives(
+        request, env, baseline, std::chrono::seconds{1}, options, solver,
+        [&](const auto&) {
+          if (whole)
+            request.cancellation.cancel();
+          else
+            stop->store(true);
+          return true;
+        },
+        stop);
+    EXPECT_EQ(report.cancelled, whole);
+    EXPECT_EQ(report.stopped, !whole);
+    EXPECT_EQ(report.alternatives.empty(), whole);
+    EXPECT_TRUE(alternatives::AcceptedRoute(baseline));
+  }
+}
+TEST(ComfortAlternatives, ThrowingSolverStopsUnaccountedWorkAndPreservesBaseline) {
+  auto request = AlternativesRequest();
+  auto env = AlternativesEnvironment(request);
+  const auto baseline = AlternativeSolver(1)(request, env, false).front();
+  ASSERT_TRUE(alternatives::AcceptedRoute(baseline));
+  unsigned calls = 0;
+  alternatives::ComfortSearchOptions options;
+  const auto report = alternatives::ExploreComfortAlternatives(
+      request, env, baseline, std::chrono::seconds{1}, options,
+      [&](const auto&, const auto&, bool) -> std::vector<RoutingResult> {
+        ++calls;
+        throw std::runtime_error("optional solver failed after spending work");
+      },
+      [](const auto&) { return true; }, std::make_shared<std::atomic_bool>(false));
+  EXPECT_EQ(calls, 1U);
+  EXPECT_TRUE(report.exhausted);
+  EXPECT_FALSE(report.cancelled);
+  EXPECT_TRUE(report.alternatives.empty());
+  EXPECT_TRUE(alternatives::AcceptedRoute(baseline));
+}
+// Mirrors the OpenCPN adapter's binary inside/clear result. It cannot provide
+// genuine clearance progress, so the engine must independently bound access.
+class BinaryCoastalMarginProvider final : public LandAndBoundaryProvider {
+public:
+  explicit BinaryCoastalMarginProvider(GeoPoint start,
+                                      double clearAfterNm = 100.0)
+      : start_(start), clearAfterNm_(clearAfterNm) {}
+  bool pointForbidden(GeoPoint) const override { return false; }
+  bool segmentForbidden(GeoPoint a, GeoPoint b, double margin) const override {
+    if (margin <= 0.0) { ++zeroChecks; return rejectZeroMargin; }
+    ++fullChecks;
+    return distanceNm(start_, a) < clearAfterNm_ - 1e-6 ||
+           distanceNm(start_, b) < clearAfterNm_ - 1e-6;
+  }
+  double distanceToForbiddenNm(GeoPoint p) const override {
+    return distanceNm(start_, p) < clearAfterNm_ - 1e-6
+        ? 0.0 : std::numeric_limits<double>::infinity();
+  }
+  std::string identity() const override { return "binary-coastal-margin"; }
+  std::optional<double> depthMetres(GeoPoint) const override { return depth; }
+  mutable unsigned zeroChecks{}, fullChecks{};
+  bool rejectZeroMargin{};
+  double depth{10.0};
+private:
+  GeoPoint start_;
+  double clearAfterNm_;
+};
+
+static std::vector<RouteLeg> ConstantEastwardLegs(const RoutingRequest& request,
+                                               unsigned count) {
+  std::vector<RouteLeg> legs;
+  GeoPoint point = request.start;
+  TimePoint time = request.departure;
+  for (unsigned i = 0; i < count; ++i) {
+    RouteLeg leg;
+    leg.start = point;
+    leg.end = destinationPoint(point, 90.0, 2.0 / 3.0);
+    leg.startTime = time;
+    leg.endTime = time + std::chrono::minutes{5};
+    leg.headingDegrees = leg.courseThroughWaterDegrees =
+        leg.courseOverGroundDegrees = 90.0;
+    leg.speedThroughWaterKnots = leg.speedOverGroundKnots = 8.0;
+    leg.profileIdentity = "constant";
+    leg.integrationMaximumSlice = std::chrono::minutes{5};
+    leg.coastalDepartureEgress = true; // deliberately cannot be trusted
+    legs.push_back(leg);
+    point = leg.end;
+    time = leg.endTime;
+  }
+  return legs;
+}
+
+TEST(CoastalEndpointPolicy, ReachIsLocalAndDisabledWithoutMargin) {
+  EXPECT_DOUBLE_EQ(coastalEndpointReachNm(0.0), 0.0);
+  EXPECT_DOUBLE_EQ(coastalEndpointReachNm(0.1), 0.5);
+  EXPECT_DOUBLE_EQ(coastalEndpointReachNm(0.4), 0.8);
+  EXPECT_DOUBLE_EQ(coastalEndpointReachNm(1.0), 2.0);
+  EXPECT_DOUBLE_EQ(coastalEndpointReachNm(50.0), 2.0);
+}
+
+TEST(CoastalEndpointPolicy, ForgedLongEgressChordNeedsFullMarginOutsideReach) {
+  const GeoPoint origin{53.34, -4.62};
+  auto boundaries = BinaryCoastalMarginProvider(origin);
+  EXPECT_TRUE(coastalDepartureChordForbidden(
+      origin, origin, destinationPoint(origin, 90.0, 12.0), 1.0,
+      [&](GeoPoint a, GeoPoint b, double margin) {
+        return boundaries.segmentForbidden(a, b, margin);
+      }));
+  EXPECT_GT(boundaries.fullChecks, 0U);
+}
+
+TEST(CoastalEndpointPolicy, LocalAccessNeverWaivesActualHazards) {
+  const GeoPoint origin{53.34, -4.62};
+  auto boundaries = BinaryCoastalMarginProvider(origin);
+  boundaries.rejectZeroMargin = true;
+  EXPECT_TRUE(coastalDepartureChordForbidden(
+      origin, origin, destinationPoint(origin, 90.0, 0.25), 1.0,
+      [&](GeoPoint a, GeoPoint b, double margin) {
+        return boundaries.segmentForbidden(a, b, margin);
+      }));
+}
+
+TEST(CoastalEndpointPolicy, LocalArrivalCannotWaiveTheOffshorePrefix) {
+  const GeoPoint destination{53.34, -4.62};
+  auto boundaries = BinaryCoastalMarginProvider(destination);
+  const GeoPoint offshore = destinationPoint(destination, 90.0, 12.0);
+  // Arrival uses the same partition backwards, restoring the callback's
+  // original route direction. The offshore prefix must still be rejected.
+  EXPECT_TRUE(coastalDepartureChordForbidden(
+      destination, destination, offshore, 1.0,
+      [&](GeoPoint a, GeoPoint b, double margin) {
+        return boundaries.segmentForbidden(b, a, margin);
+      }));
+  EXPECT_GT(boundaries.fullChecks, 0U);
+}
+
+TEST(ModernNativeEngine, BinaryClearanceCannotValidateTwelveMilesOfCoastalEgress) {
+  auto request = TestRequest();
+  request.constraints.landSafetyMarginNm = 1.0;
+  auto legs = ConstantEastwardLegs(request, 18);
+  request.destination = legs.back().end;
+  auto boundaries = std::make_shared<BinaryCoastalMarginProvider>(request.start);
+  const auto validation = RouteValidator{}.validate(
+      request, TestEnvironment(boundaries), ConstantSpeedPerformance{}, legs);
+  EXPECT_FALSE(validation.passed);
+  EXPECT_GT(boundaries->fullChecks, 0U);
+  EXPECT_LT(validation.acceptedPrefixLegs, legs.size());
+}
+
+TEST(ModernNativeEngine, LocalBinaryEgressResumesFullMarginForOffshorePassage) {
+  auto request = TestRequest();
+  request.constraints.landSafetyMarginNm = 1.0;
+  auto legs = ConstantEastwardLegs(request, 18);
+  request.destination = legs.back().end;
+  auto boundaries =
+      std::make_shared<BinaryCoastalMarginProvider>(request.start, 0.5);
+  const auto validation = RouteValidator{}.validate(
+      request, TestEnvironment(boundaries), ConstantSpeedPerformance{}, legs);
+  EXPECT_TRUE(validation.passed) << validation.failureReason;
+  EXPECT_GT(boundaries->fullChecks, 0U);
+}
+
+TEST(ModernNativeEngine, LocalCoastalAccessStillRequiresThreeMetresDepth) {
+  auto request = TestRequest();
+  request.constraints.landSafetyMarginNm = 1.0;
+  request.constraints.minimumDepthMetres = 3.0;
+  auto legs = ConstantEastwardLegs(request, 1);
+  request.destination = legs.back().end;
+  auto boundaries =
+      std::make_shared<BinaryCoastalMarginProvider>(request.start, 0.5);
+  boundaries->depth = 2.0;
+  const auto shallow = RouteValidator{}.validate(
+      request, TestEnvironment(boundaries), ConstantSpeedPerformance{}, legs);
+  EXPECT_FALSE(shallow.passed);
+  EXPECT_NE(shallow.failureReason.find("depth"), std::string::npos);
+  boundaries->depth = 3.0;
+  const auto deep = RouteValidator{}.validate(
+      request, TestEnvironment(boundaries), ConstantSpeedPerformance{}, legs);
+  EXPECT_TRUE(deep.passed) << deep.failureReason;
+}
+
+TEST(ModernNativeEngine, DeliveredLongCoastalChordCannotBorrowDepartureWaiver) {
+  auto request = TestRequest();
+  request.constraints.landSafetyMarginNm = 1.0;
+  auto legs = ConstantEastwardLegs(request, 18);
+  RouteLeg chord = legs.front();
+  chord.end = legs.back().end;
+  chord.endTime = legs.back().endTime;
+  request.destination = chord.end;
+  auto boundaries = std::make_shared<BinaryCoastalMarginProvider>(request.start);
+  const auto validation = RouteValidator{}.validate(
+      request, TestEnvironment(boundaries), ConstantSpeedPerformance{},
+      std::span<const RouteLeg>(&chord, 1));
+  EXPECT_FALSE(validation.passed);
+  EXPECT_EQ(validation.acceptedPrefixLegs, 0U);
+  EXPECT_GT(boundaries->fullChecks, 0U);
+}
+
+class CoastalEngineClearance : public testing::TestWithParam<int> {};
+TEST_P(CoastalEngineClearance, BinaryMarginCannotProduceCoastFollowingSuccess) {
+  auto request = AlternativesRequest();
+  request.constraints.landSafetyMarginNm = 1.0;
+  request.limits.maximumGeneratedStates = 3000;
+  request.limits.maximumRetainedStates = 1000;
+  request.limits.maximumCoastalEndpointGeneratedStates = 500;
+  request.options.retryStages = 1;
+  auto boundaries = std::make_shared<BinaryCoastalMarginProvider>(request.start);
+  auto environment = TestEnvironment(boundaries);
+  environment.performance = std::make_shared<ConstantSpeedPerformance>();
+  RoutingResult result;
+  switch (GetParam()) {
+    case 0: {
+      original_routing::Options options;
+      options.allowCoastalEndpointLeeway = true;
+      result = original_routing::Engine{}.route(request, environment, options);
+      break;
+    }
+    case 1:
+      result = QuickRoutingEngine{}.route(request, environment).route;
+      break;
+    case 2:
+      result = ProfessionalEngine{}.route(request, environment);
+      break;
+    case 3: {
+      AlternativeRoutingOptions options;
+      options.maximumGeneratedStates = 3000;
+      result = AlternativeRoutingEngine{}.route(request, environment, options).route;
+      break;
+    }
+  }
+  EXPECT_FALSE(Successful(result.status)) << result.message;
+  EXPECT_FALSE(result.validation.passed);
+  EXPECT_GT(boundaries->fullChecks, 0U);
+}
+INSTANTIATE_TEST_SUITE_P(AllFourSolvers, CoastalEngineClearance,
+                        testing::Values(0, 1, 2, 3));
+
+}  // namespace
+
+TEST(CoastalEndpointPolicy, BoundedAccessCanReachClearWaterAtOnePointSevenMiles) {
+  const GeoPoint origin{53.34, -4.62};
+  auto boundaries = BinaryCoastalMarginProvider(origin, 1.7);
+  EXPECT_FALSE(coastalDepartureChordForbidden(
+      origin, origin, destinationPoint(origin, 90.0, 2.5), 1.0,
+      [&](GeoPoint a, GeoPoint b, double margin) {
+        return boundaries.segmentForbidden(a, b, margin);
+      }));
+  EXPECT_GT(boundaries.zeroChecks, 0U);
+  EXPECT_GT(boundaries.fullChecks, 0U);
+}
+
+TEST(ModernNativeEngine, BinaryDepartureEstablishesFullMarginAfterOnePointSevenMiles) {
+  auto request = TestRequest();
+  request.constraints.landSafetyMarginNm = 1.0;
+  request.constraints.minimumDepthMetres = 3.0;
+  auto legs = ConstantEastwardLegs(request, 18);
+  request.destination = legs.back().end;
+  auto boundaries =
+      std::make_shared<BinaryCoastalMarginProvider>(request.start, 1.7);
+  const auto validation = RouteValidator{}.validate(
+      request, TestEnvironment(boundaries), ConstantSpeedPerformance{}, legs);
+  EXPECT_TRUE(validation.passed) << validation.failureReason;
+  EXPECT_GT(boundaries->fullChecks, 0U);
+}
+
+TEST(ModernNativeEngine, BinaryArrivalHasBoundedOnePointSevenMileIngress) {
+  auto request = TestRequest();
+  request.constraints.landSafetyMarginNm = 1.0;
+  request.constraints.minimumDepthMetres = 3.0;
+  auto legs = ConstantEastwardLegs(request, 18);
+  request.destination = legs.back().end;
+  // A final explicit connection contains the complete local arrival suffix.
+  auto arrival = legs[15];
+  arrival.end = legs.back().end;
+  arrival.endTime = legs.back().endTime;
+  legs.resize(15);
+  legs.push_back(arrival);
+  for (auto& leg : legs) leg.coastalDepartureEgress = false;
+  auto boundaries =
+      std::make_shared<BinaryCoastalMarginProvider>(request.destination, 1.7);
+  const auto validation = RouteValidator{}.validate(
+      request, TestEnvironment(boundaries), ConstantSpeedPerformance{}, legs);
+  EXPECT_TRUE(validation.passed) << validation.failureReason;
+  EXPECT_GT(boundaries->fullChecks, 0U);
+}
+
+TEST(CoastalEndpointPolicy, AccessCannotGrowPastTwoMilesWhenClearWaterIsFurtherAway) {
+  const GeoPoint origin{53.34, -4.62};
+  auto boundaries = BinaryCoastalMarginProvider(origin, 2.2);
+  EXPECT_TRUE(coastalDepartureChordForbidden(
+      origin, origin, destinationPoint(origin, 90.0, 3.0), 1.0,
+      [&](GeoPoint a, GeoPoint b, double margin) {
+        return boundaries.segmentForbidden(a, b, margin);
+      }));
+  EXPECT_GT(boundaries.fullChecks, 0U);
+}
+
+TEST(ModernNativeEngine, DisabledAnchoringCannotInventStationaryHold) {
+  auto request = TestRequest();
+  request.options.allowWaiting = false;
+  request.options.useReverseRecovery = false;
+  request.options.useGraphFallback = false;
+  auto environment = TestEnvironment();
+  environment.performance = std::make_shared<TimeGatePerformance>(
+      request.departure + std::chrono::hours{1});
+  const auto result = RoutingEngine{}.route(request, environment);
+  EXPECT_FALSE(Successful(result.status));
+  EXPECT_EQ(result.diagnostics.waitStates, 0U);
+  EXPECT_TRUE(std::none_of(result.legs.begin(), result.legs.end(),
+      [](const auto& leg) { return leg.stationaryWait; }));
+}
+
+namespace {
+class WaveGapWeather final : public WeatherProvider {
+public:
+  enum Kind { None, Direct, Estimate, SpatialGap, TemporalGap, Excessive };
+  explicit WaveGapWeather(Kind kind) : kind_(kind) {}
+  ParameterCoverage windCoverage() const override { return {true, {}, {}, {-180,-90,180,90}, "wave-test"}; }
+  ParameterCoverage currentCoverage() const override { return {}; }
+  ParameterCoverage waveCoverage() const override { auto c=windCoverage(); c.available=kind_ != None; return c; }
+  WindSample wind(GeoPoint, TimePoint) const override {
+    WindSample w; w.available=true; w.velocity={0,-15};
+    w.metadata.source=EnvironmentalSource::GribForecast; return w;
+  }
+  CurrentSample current(GeoPoint, TimePoint) const override { return {}; }
+  WaveSample waves(GeoPoint p, TimePoint t) const override {
+    if (kind_ == None || (kind_ == SpatialGap && p.longitude > 0.025) ||
+        (kind_ == TemporalGap && t > TestTime()+std::chrono::minutes{15})) return {};
+    WaveSample w; w.available=true; w.significantHeightMetres=kind_==Excessive ? 4 : 1;
+    w.periodSeconds=std::numeric_limits<double>::quiet_NaN();
+    w.directionFromDegrees=std::numeric_limits<double>::quiet_NaN();
+    w.nearbyHeightEstimate=kind_==Estimate;
+    w.metadata.source=EnvironmentalSource::GribForecast; return w;
+  }
+  std::string identity() const override { return "wave-test"; }
+private: Kind kind_;
+};
+RoutingRequest WaveRequest(bool required) {
+  auto r=TestRequest(); r.start={0,0}; r.destination={0,0.05};
+  r.environment.useCurrent=false; r.environment.useWaves=true;
+  r.environment.missingWaves=required ? MissingWavePolicy::RequireExplicitAcknowledgement : MissingWavePolicy::AllowWithWarning;
+  r.environment.missingWavesAcknowledged=!required;
+  r.constraints.maximumWaveHeightMetres=2;
+  r.options.allowWaiting=false; r.options.timeStep=std::chrono::minutes{10};
+  r.options.destinationToleranceNm=.02;
+  r.limits.maximumRouteDuration=std::chrono::hours{2}; return r;
+}
+RoutingResult WaveRoute(int engine, WaveGapWeather::Kind kind, bool required) {
+  auto r=WaveRequest(required); auto e=TestEnvironment();
+  e.grib=std::make_shared<WaveGapWeather>(kind);
+  e.performance=std::make_shared<PolarPerformanceModel>(r.vessel);
+  if (engine==0) return original_routing::Engine{}.route(r,e);
+  if (engine==1) return QuickRoutingEngine{}.route(r,e).route;
+  return RoutingEngine{}.route(r,e);
+}
+TEST(WaveCoveragePolicy, EveryEngineAllowsUnknownWithWarningOrRejectsWhenRequired) {
+  for (int engine=0; engine<3; ++engine) for (auto kind : {WaveGapWeather::None, WaveGapWeather::SpatialGap, WaveGapWeather::TemporalGap}) {
+    SCOPED_TRACE(std::to_string(engine)+"/"+std::to_string(kind));
+    const auto allowed=WaveRoute(engine,kind,false);
+    ASSERT_TRUE(Successful(allowed.status)) << allowed.message;
+    EXPECT_GT(allowed.validation.environment.missingWaveDuration.count(),0);
+    const auto required=WaveRoute(engine,kind,true);
+    EXPECT_FALSE(Successful(required.status));
+  }
+}
+TEST(WaveCoveragePolicy, EveryEngineEnforcesCeilingAndRecordsLocalEstimates) {
+  for (int engine=0; engine<3; ++engine) {
+    SCOPED_TRACE(engine);
+    const auto direct=WaveRoute(engine,WaveGapWeather::Direct,true);
+    ASSERT_TRUE(Successful(direct.status)) << direct.message;
+    EXPECT_EQ(direct.validation.environment.missingWaveDuration.count(),0);
+    EXPECT_EQ(direct.validation.environment.estimatedWaveDuration.count(),0);
+    const auto estimated=WaveRoute(engine,WaveGapWeather::Estimate,true);
+    ASSERT_TRUE(Successful(estimated.status)) << estimated.message;
+    EXPECT_GT(estimated.validation.environment.estimatedWaveDuration.count(),0);
+    EXPECT_FALSE(Successful(WaveRoute(engine,WaveGapWeather::Excessive,false).status));
+  }
+}
+}
+TEST(WaveCoveragePolicy, RequireCoverageStillAppliesWithoutHeightCeiling) {
+  auto r=WaveRequest(true); r.constraints.maximumWaveHeightMetres.reset();
+  auto e=TestEnvironment(); e.grib=std::make_shared<WaveGapWeather>(WaveGapWeather::None);
+  e.performance=std::make_shared<PolarPerformanceModel>(r.vessel);
+  EXPECT_EQ(original_routing::Engine{}.route(r,e).status, RoutingStatus::WaveDataRequired);
+  EXPECT_EQ(QuickRoutingEngine{}.route(r,e).route.status, RoutingStatus::WaveDataRequired);
+  EXPECT_EQ(RoutingEngine{}.route(r,e).status, RoutingStatus::WaveDataRequired);
 }

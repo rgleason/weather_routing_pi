@@ -64,6 +64,9 @@ public:
                       const RoutingResult* quickIncumbent) const;
 };
 
+// Recompute all delivered metrics and source durations after joining validated legs.
+void summariseDeliveredRoute(RoutingResult& result);
+
 std::string toString(RoutingStatus status);
 std::string toString(SolverPath path);
 std::string toString(PropulsionMode mode);

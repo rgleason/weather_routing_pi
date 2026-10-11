@@ -139,12 +139,15 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
                            wxEmptyString, wxITEM_NORMAL);
   m_mConfiguration->Append(m_mStop);
 
-  wxMenuItem* m_mResetAll;
-  m_mResetAll =
+  m_mClearResults = new wxMenuItem(m_mConfiguration, wxID_ANY,
+      _("Clear computed results"),
+      _("Release selected routing results; keep their settings for recomputation."));
+  m_mConfiguration->Append(m_mClearResults);
+  m_mClearAllResults =
       new wxMenuItem(m_mConfiguration, wxID_ANY,
-                     wxString(_("&Reset All")) + wxT('\t') + wxT("Ctrl+R"),
-                     wxEmptyString, wxITEM_NORMAL);
-  m_mConfiguration->Append(m_mResetAll);
+                     wxString(_("Clear all computed results")) + wxT('\t') + wxT("Ctrl+R"),
+                     _("Release all routing results; keep route settings."), wxITEM_NORMAL);
+  m_mConfiguration->Append(m_mClearAllResults);
 
   m_mConfiguration->AppendSeparator();
 
@@ -314,12 +317,15 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
                              wxEmptyString, wxITEM_NORMAL);
   m_mContextMenu->Append(m_mBatch1);
 
-  wxMenuItem* m_mResetAll1;
-  m_mResetAll1 =
+  m_mClearResults1 = new wxMenuItem(m_mContextMenu, wxID_ANY,
+      _("Clear computed results"),
+      _("Release selected routing results; keep their settings for recomputation."));
+  m_mContextMenu->Append(m_mClearResults1);
+  m_mClearAllResults1 =
       new wxMenuItem(m_mContextMenu, wxID_ANY,
-                     wxString(_("&Reset All")) + wxT('\t') + wxT("Ctrl+R"),
-                     wxEmptyString, wxITEM_NORMAL);
-  m_mContextMenu->Append(m_mResetAll1);
+                     wxString(_("Clear all computed results")) + wxT('\t') + wxT("Ctrl+R"),
+                     _("Release all routing results; keep route settings."), wxITEM_NORMAL);
+  m_mContextMenu->Append(m_mClearAllResults1);
 
   m_menu1 = new wxMenu();
   wxMenuItem* m_menu1Item =
@@ -427,7 +433,10 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
                          this, m_mStop->GetId());
   m_mConfiguration->Bind(wxEVT_COMMAND_MENU_SELECTED,
                          wxCommandEventHandler(WeatherRoutingBase::OnResetAll),
-                         this, m_mResetAll->GetId());
+      this, m_mClearAllResults->GetId());
+  m_mConfiguration->Bind(wxEVT_COMMAND_MENU_SELECTED,
+      wxCommandEventHandler(WeatherRoutingBase::OnClearResults),
+      this, m_mClearResults->GetId());
   m_mConfiguration->Bind(
       wxEVT_COMMAND_MENU_SELECTED,
       wxCommandEventHandler(WeatherRoutingBase::OnSaveAsTrack), this,
@@ -520,7 +529,10 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
                        m_mBatch1->GetId());
   m_mContextMenu->Bind(wxEVT_COMMAND_MENU_SELECTED,
                        wxCommandEventHandler(WeatherRoutingBase::OnResetAll),
-                       this, m_mResetAll1->GetId());
+                       this, m_mClearAllResults1->GetId());
+  m_mContextMenu->Bind(wxEVT_COMMAND_MENU_SELECTED,
+      wxCommandEventHandler(WeatherRoutingBase::OnClearResults),
+      this, m_mClearResults1->GetId());
   m_menu1->Bind(wxEVT_COMMAND_MENU_SELECTED,
                 wxCommandEventHandler(WeatherRoutingBase::OnSettings), this,
                 m_mSettings1->GetId());
@@ -1367,7 +1379,33 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   m_cbDepartureTimeOptimizationEnabled->SetToolTip(_(
       "Compute this route for alternative departure times around the selected "
       "start time."));
-  fgSizer60->Add(m_cbDepartureTimeOptimizationEnabled, 0, wxALL, 5);
+  wxBoxSizer* departureDisplaySizer = new wxBoxSizer(
+#ifdef __OCPN__ANDROID__
+      wxVERTICAL
+#else
+      wxHORIZONTAL
+#endif
+  );
+  departureDisplaySizer->Add(m_cbDepartureTimeOptimizationEnabled, 0,
+                             wxALL | wxALIGN_CENTER_VERTICAL, 5);
+  wxBoxSizer* displayChoiceSizer = new wxBoxSizer(wxHORIZONTAL);
+  displayChoiceSizer->Add(new wxStaticText(sbStart->GetStaticBox(), wxID_ANY,
+                                          _("Show on chart")),
+                          0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
+  m_cDepartureChartDisplay = new wxChoice(sbStart->GetStaticBox(), wxID_ANY);
+  m_cDepartureChartDisplay->SetName("DepartureChartDisplay");
+  m_cDepartureChartDisplay->Append(_("Selected departure"));
+  m_cDepartureChartDisplay->Append(_("All departures"));
+  m_cDepartureChartDisplay->Append(_("Manual"));
+  m_cDepartureChartDisplay->SetSelection(0);
+  m_cDepartureChartDisplay->SetToolTip(_(
+      "Selected departure follows the highlighted candidate. All departures "
+      "shows the whole optimisation group. Manual keeps your individual eye "
+      "choices. Changing this preserves computed results."));
+  displayChoiceSizer->Add(m_cDepartureChartDisplay, 1,
+                          wxALL | wxALIGN_CENTER_VERTICAL, 5);
+  departureDisplaySizer->Add(displayChoiceSizer, 1, wxEXPAND);
+  fgSizer60->Add(departureDisplaySizer, 0, wxEXPAND);
 
   wxFlexGridSizer* fgSizerDepartureOptimization;
   fgSizerDepartureOptimization = new wxFlexGridSizer(0, 4, 0, 0);
@@ -1585,7 +1623,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   fgSizer110->Add(m_staticText1282, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
   m_staticText27 = new wxStaticText(sbConstraints->GetStaticBox(), wxID_ANY,
-                                    _("Max Swell") /* MaxSwellMeters */,
+                                    _("Max wave height") /* MaxSwellMeters */,
                                     wxDefaultPosition, wxDefaultSize, 0);
   m_staticText27->Wrap(-1);
   fgSizer110->Add(m_staticText27, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
@@ -1595,9 +1633,9 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
       wxSize(140, -1), wxSP_ARROW_KEYS, 0. /* min */, 100. /* max */,
       0. /* initial */, 0.1 /* inc */);
   m_sMaxSwellMeters->SetToolTip(
-      _("Maximum swell height to allow during routing.\nRoutes with swell "
-        "heights above this value will be avoided. Set 0 to disable this limit. "
-        "Quick requires wave data whenever this limit is enabled."));
+      _("Maximum significant wave height (combined sea and swell). Set 0 to disable the limit. "
+        "Missing wave heights remain unknown and are reported; enable Require wave coverage "
+        "to reject routes with unknown wave heights."));
   m_sMaxSwellMeters->SetMaxSize(wxSize(140, -1));
 
   fgSizer110->Add(m_sMaxSwellMeters, 1,
@@ -1669,6 +1707,39 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
       _("Auto: Quick, then Standard, then Professional up to 400% effort; stops at the first validated route."));
   m_tRoutingEngineDescription->Wrap(430);
   engineBox->Add(m_tRoutingEngineDescription, 0, wxALL | wxEXPAND, 5);
+  m_cbExploreComfortAlternatives = new wxCheckBox(engineBox->GetStaticBox(), wxID_ANY,
+#ifdef __OCPN__ANDROID__
+      _("Find fastest / comfort alternatives"), wxDefaultPosition, wxDefaultSize, wxCHK_3STATE);
+#else
+      _("Search additional fastest / comfort alternatives"), wxDefaultPosition, wxDefaultSize, wxCHK_3STATE);
+#endif
+  m_cbExploreComfortAlternatives->SetToolTip(_("Find and preserve the normal validated route first, then explore alternatives using the selected engine. Auto explores with its successful engine. Extra limits never restrict finding the first route."));
+  engineBox->Add(m_cbExploreComfortAlternatives, 0, wxALL | wxEXPAND, 5);
+  auto* comfortControls = new wxFlexGridSizer(0, 2, 4, 6);
+  comfortControls->Add(new wxStaticText(engineBox->GetStaticBox(), wxID_ANY, _("Additional search allowance (%)")), 0, wxALIGN_CENTER_VERTICAL);
+  m_sComfortAdditionalPercent = new wxSpinCtrl(engineBox->GetStaticBox(), wxID_ANY, "200", wxDefaultPosition, wxSize(120,-1), wxSP_ARROW_KEYS, 0, 400, 200);
+  m_sComfortAdditionalPercent->SetToolTip(_("Extra computation time as a percentage of the normal route computation. 200% permits twice that time after the valid route is secured. Separate from Professional effort."));
+  comfortControls->Add(m_sComfortAdditionalPercent, 0);
+  comfortControls->Add(new wxStaticText(engineBox->GetStaticBox(), wxID_ANY, _("Maximum additional time (seconds)")), 0, wxALIGN_CENTER_VERTICAL);
+  m_sComfortMaximumSeconds = new wxSpinCtrl(engineBox->GetStaticBox(), wxID_ANY, "20", wxDefaultPosition, wxSize(120,-1), wxSP_ARROW_KEYS, 0, 3600, 20);
+  m_sComfortMaximumSeconds->SetToolTip(_("Use the smaller of the percentage allowance and this cap, per departure. Stop further search work at the deadline; an in-flight provider call can overrun. Zero disables extras."));
+  comfortControls->Add(m_sComfortMaximumSeconds, 0);
+  engineBox->Add(comfortControls, 0, wxALL, 5);
+#ifdef __OCPN__ANDROID__
+  // Keep editable allowances and their explanations readable in portrait and
+  // with the soft keyboard open. The existing Engine page owns these controls.
+  comfortControls->SetCols(1);
+  m_sComfortAdditionalPercent->SetMinSize(wxSize(300, 72));
+  m_sComfortMaximumSeconds->SetMinSize(wxSize(300, 72));
+  const wxString comfortHelpText = _("Keep the normal valid route first, then search for up to four useful alternatives. Auto uses the engine that found that route. Extra search time is the smaller of the percentage allowance and the seconds cap, per departure. 200% allows twice the original computation time after success. Zero disables extras. These limits never restrict finding the first route.");
+  auto* comfortHelp = new wxStaticText(engineBox->GetStaticBox(), wxID_ANY, comfortHelpText);
+  engineBox->Add(comfortHelp, 0, wxALL | wxEXPAND, 5);
+#endif
+  m_cbExploreComfortAlternatives->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent& event) { OnUpdate(event); });
+  m_sComfortAdditionalPercent->Bind(wxEVT_SPINCTRL, [this](wxSpinEvent& event) { OnUpdateSpin(event); });
+  m_sComfortMaximumSeconds->Bind(wxEVT_SPINCTRL, [this](wxSpinEvent& event) { OnUpdateSpin(event); });
+  m_sComfortAdditionalPercent->Bind(wxEVT_TEXT, [this](wxCommandEvent& event) { OnUpdate(event); });
+  m_sComfortMaximumSeconds->Bind(wxEVT_TEXT, [this](wxCommandEvent& event) { OnUpdate(event); });
   fgSizer112->Add(engineBox, 0, wxEXPAND | wxALL, 5);
 
   wxStaticBoxSizer* sbOptions;
@@ -2264,14 +2335,15 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   m_cbAnchoring =
       new wxCheckBox(sbOptions1->GetStaticBox(), wxID_ANY, _("Anchoring"),
                      wxDefaultPosition, wxDefaultSize, wxCHK_3STATE);
-  m_cbAnchoring->SetToolTip(
-      _("When enabled, allows the boat to remain stationary (anchor) during "
-        "routing calculations. This can create routes with strategic waiting "
-        "periods for better weather conditions."));
-  m_cbAnchoring->SetToolTip(
-      _("When enabled, allows the boat to remain stationary (anchor) during "
-        "routing calculations. This can create routes with strategic waiting "
-        "periods when facing strong currents."));
+  m_cbAnchoring->SetToolTip(_("Allow stationary waits of up to six hours in total. Waiting time and positions "
+      "are included in the route report. This assumes the boat can safely anchor there; "
+      "the routing calculation does not establish anchoring suitability."));
+  m_cbRequireWaveCoverage = new wxCheckBox(sbOptions1->GetStaticBox(), wxID_ANY,
+      _("Require wave coverage"), wxDefaultPosition, wxDefaultSize, wxCHK_3STATE);
+  m_cbRequireWaveCoverage->SetToolTip(_("Reject routes with unknown wave heights. Small local gaps may use "
+      "the maximum of nearby cells within 15 NM without crossing land, reported as estimated. "
+      "Larger gaps and times outside wave coverage remain unknown."));
+  fgSizer1121->Add(m_cbRequireWaveCoverage, 0, wxALL, 5);
   fgSizer1121->Add(m_cbAnchoring, 0, wxALL, 5);
 
   fgSizer113->Add(fgSizer1121, 1, wxEXPAND, 5);
@@ -2614,7 +2686,9 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
       sbMotor->GetStaticBox(), wxID_ANY, _("Motor if boat speed is below"));
   m_cbUseMotor->SetToolTip(_(
       "Enable motor when Speed Through Water (STW) falls below the specified "
-      "threshold. This does not change the configured course-angle limits."));
+      "threshold. When the best usable sailing STW is below this threshold, "
+      "motor-only routing may use headings outside the sailing-angle limits. "
+      "Chart, depth and weather limits still apply."));
   sbMotor->Add(m_cbUseMotor, 0, wxALL, 5);
 
   wxStaticText* motorThresholdLabel = new wxStaticText(
@@ -2925,6 +2999,11 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
     text.Replace("\n", " ");
     WR_WrapAndroidText(m_tRoutingEngineDescription, text,
         wxMax(200, GetClientSize().x - 100));
+    event.Skip();
+  });
+  enginePage->Bind(wxEVT_SIZE, [this, comfortHelp, comfortHelpText](wxSizeEvent& event) {
+    WR_WrapAndroidText(comfortHelp, comfortHelpText,
+        wxMax(200, GetClientSize().x - 120));
     event.Skip();
   });
   m_notebook7->SetSelection(0);
@@ -3388,6 +3467,9 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
       wxEVT_COMMAND_CHECKBOX_CLICKED,
       wxCommandEventHandler(ConfigurationDialogBase::OnUpdate), NULL, this);
   m_cbAnchoring->Connect(
+      wxEVT_COMMAND_CHECKBOX_CLICKED,
+      wxCommandEventHandler(ConfigurationDialogBase::OnUpdate), NULL, this);
+  m_cbRequireWaveCoverage->Connect(
       wxEVT_COMMAND_CHECKBOX_CLICKED,
       wxCommandEventHandler(ConfigurationDialogBase::OnUpdate), NULL, this);
   m_cbUseReverseReachabilityRecovery->Connect(
@@ -4076,6 +4158,9 @@ ConfigurationDialogBase::~ConfigurationDialogBase() {
       wxEVT_COMMAND_CHECKBOX_CLICKED,
       wxCommandEventHandler(ConfigurationDialogBase::OnUpdate), NULL, this);
   m_cbAnchoring->Disconnect(
+      wxEVT_COMMAND_CHECKBOX_CLICKED,
+      wxCommandEventHandler(ConfigurationDialogBase::OnUpdate), NULL, this);
+  m_cbRequireWaveCoverage->Disconnect(
       wxEVT_COMMAND_CHECKBOX_CLICKED,
       wxCommandEventHandler(ConfigurationDialogBase::OnUpdate), NULL, this);
   m_cIntegrator->Disconnect(

@@ -1,6 +1,9 @@
 # Weather Routing integration branch
 
-See [1.18.4 changes](docs/release-1.18.4.md) and [Quick, Standard and Professional settings](docs/quick-routing.md).
+See [the 1.29.1 integration summary](docs/integration-1.29.1.md),
+[1.29.1 changes](docs/release-1.29.1.md),
+[stock-host compatibility](docs/release-1.27.0.md) and
+[Quick, Standard and Professional settings](docs/quick-routing.md).
 
 The optional hardened-OpenCPN planning-provider boundary is documented in
 [docs/external_control_provider_preview_b.md](docs/external_control_provider_preview_b.md).
@@ -14,6 +17,20 @@ xWeatherRouting branch.
 
 The plugin currently provides:
 
+- consistent wave-height checks and coverage warnings across routing engines,
+  optional required wave coverage, and explicit anchoring waits with locations
+  and durations in the route report;
+- threshold-based motoring when sailing performance is insufficient, bounded
+  polar wind policies, reversible route visibility, explicit result clearing
+  and selected/all/manual departure display modes;
+- a read-only **Check this route** action in the OpenCPN route context menu
+  (v1.25). It reports land crossings, drying areas, charted hazards, land
+  clearance, optional minimum charted depth and unavailable chart/depth data.
+  Findings appear in a per-leg report and as temporary chart markers. Click
+  a marker to select its report entry, or select an entry and choose
+  **Show selected finding**. **Recheck** uses the latest route and chart state;
+  closing the report removes its markers. Cancellation leaves an explicitly
+  partial report. The checked route and its waypoints are never changed;
 - deterministic adaptive forward isochrones, reverse recovery and
   time-dependent graph fallback;
 - preservation of useful suboptimal lineages for difficult coastal routes;
@@ -30,10 +47,28 @@ not expose the optional chart-backed service, so Weather Routing disables
 those two controls and continues to use the standard GSHHS checks.
 There is no direct enhanced-core symbol dependency.
 
+Route checking also requires the compatible chart-safety host. It checks the
+rhumb-line legs between the route's existing waypoints using authoritative
+chart queries, independently of the routing engines. Depth is at chart datum;
+entering zero disables depth checks, and the report states this explicitly.
+Android retains the established Plan / Routes / Results / Tools workspace.
+Tools → Route management → Check this route opens the same read-only checker
+through a touch route picker, with stacked settings, scrollable findings and
+persistent Close/Back actions. Stock OpenCPN Android lacks the optional chart
+safety service and reports that checking is unavailable; ordinary routing and
+its GSHHG land checks remain available.
+The checker does not evaluate traffic rules, restricted-area conditions,
+bridge clearance or tide height. Reports become outdated when the route,
+chart selection or chart identity changes. Version 1.27 pairs the existing
+plugin with the optional geometry-based core improvements described in its
+release notes. Real S-63 cells still require separate qualification; this
+release does not claim a new S-63 provider integration.
+
 Fresh installations leave both optional chart/depth controls unchecked.
 Users of an enhanced OpenCPN host can opt in; explicit choices made by
 existing users are preserved. The established `/PlugIns/WeatherRouting`
-settings and user-data layout remain unchanged.
+settings and user-data layout remain unchanged. Upgrading from v1.24 preserves
+customized boat and polar files without prompting to replace them.
 
 ## Building
 
@@ -47,6 +82,9 @@ cmake -S . -B build-release -G Ninja \
 cmake --build build-release --parallel
 cmake --build build-release --target package
 ```
+
+For the separate xWeatherRouting identity, also set
+`-DWEATHER_ROUTING_XWEATHER_IDENTITY=ON`.
 
 Keep release packaging in a build directory where tests are disabled. This
 prevents test-only GoogleTest libraries from being included by older
