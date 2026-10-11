@@ -42,6 +42,10 @@ Windows host acceptance supports that identity and adds visibility/clearing
 lifecycle checks. Rick's Windows GitHub workflows, import libraries, helper
 scripts and prebuilt-gettext macOS fallback are preserved. CircleCI defaults
 remain validation-only, using the native identity.
+The native macOS CI script also uses the standalone branch's tested gettext
+source recovery when a Homebrew `msgfmt` bottle crashes. Reinstalling the
+same bottle failed before plugin compilation in the first PR build; healthy
+tools still use the normal path.
 
 All 1,064 tracked files under `src`, `include`, `vendor`,
 `test`, `data` and `po` match the tested standalone source commit

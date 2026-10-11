@@ -34,7 +34,8 @@ export WX_VER=32
 # matching the guard proven by xGRIB's native macOS job.
 msgfmt_smoke="${TMPDIR:-/tmp}/weather-routing-msgfmt-smoke.mo"
 if ! msgfmt --check -o "$msgfmt_smoke" po/el_GR.po; then
-  brew reinstall gettext </dev/null
+  python3 ci/fetch-macos-gettext-source.py
+  brew reinstall --build-from-source gettext </dev/null
   msgfmt --check -o "$msgfmt_smoke" po/el_GR.po
 fi
 rm -f "$msgfmt_smoke"
