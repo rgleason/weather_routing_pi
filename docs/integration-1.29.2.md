@@ -1,10 +1,17 @@
-# WeatherRouting 1.29.1 integration
+# WeatherRouting 1.29.2 integration
 
-This branch integrates the published xWeatherRouting 1.29.1 implementation
+This branch integrates the tested xWeatherRouting 1.29.2 implementation
 into WeatherRouting, starting from Rick's master at
 `a3cf453108fc866ae86aeed8ff32e410379841d7`. Master currently contains the 1.23
 routing baseline, so the integration includes the intervening changes.
 
+- Professional retains the independently validated coastal departure prefix
+  when selecting a contour incumbent. The delivered-route and plotting gates
+  apply that same bounded allowance. Actual land, drying areas and minimum
+  depth remain checked, and full stand-off resumes outside the local prefix.
+  This fixes the Holyhead–Conwy regression exposed when the 1.29.1 wave
+  correction made a shorter contour candidate eligible. It adds no provider
+  queries and preserves search, motoring and polar policies.
 - All engines and final validation share wave-height checks. Limited local
   estimates use the maximum height of nearby connected-water cells within
   15 NM, without time extrapolation. Unknown coverage and estimates are
@@ -36,15 +43,29 @@ lifecycle checks. Rick's Windows GitHub workflows, import libraries, helper
 scripts and prebuilt-gettext macOS fallback are preserved. CircleCI defaults
 remain validation-only, using the native identity.
 
-All 1,064 files under `src`, `include`, `vendor`, `test`, `data` and `po` match
-the published source commit `8a3ef56c635972c52cffc5f65c84e3737561a663`.
-Its platform qualification passed 22 CircleCI jobs and 7,692 test executions,
-including native Windows 32-bit/64-bit host checks for the xWeatherRouting
-packages. Android's local ARM64 build was also tested on the Samsung tablet.
-These results qualify the shared source. The native WeatherRouting integration
-was separately built with `WEATHER_ROUTING_XWEATHER_IDENTITY=OFF` against the
-vendored stock API 1.21 headers: all 480 tests passed. All 10 CI helper tests,
-build-script syntax checks and local CircleCI YAML checks also passed.
+All 1,064 tracked files under `src`, `include`, `vendor`,
+`test`, `data` and `po` match the tested standalone source commit
+`d67060ca9183bb204cfba828e1141db71b824391`.
+The native WeatherRouting integration was rebuilt with
+`WEATHER_ROUTING_XWEATHER_IDENTITY=OFF` against the vendored stock API 1.21
+headers: all **482/482 tests passed**. All **10/10 CI helper tests passed**.
 
-Published source and qualification evidence:
+Standalone 1.29.2 qualification includes 482 automated checks and isolated
+OpenCPN replays of all 13 Holyhead–Conwy departure times with the reported
+Nicholson 35, current forecast, motor settings, 0.4 NM margin, 3 m depth
+and comfort alternatives. Every delivered and plotted route passes final
+chart-safety validation. The final Android ARM64 package passes the 16 KB
+page-alignment gate. Quick, Standard and Professional complete the tablet's
+light-wind motoring test; all three reject a required-wave case without wave
+heights. Results touch controls and chart display were checked. The tested
+1.29.2 builds are installed on the working laptop and Samsung SM-X210 tablet;
+saved routes, polars and navigation data were checked during installation.
+
+The earlier shared 1.29.1 source passed 22 CircleCI jobs and 7,692 test
+executions, including Windows 32-bit/64-bit host checks for the xWeatherRouting
+packages. Those are prior-version platform results, not a claim that the
+1.29.2 platform matrix has completed.
+
+Release notes: [xWeatherRouting 1.29.2](release-1.29.2.md).
+Earlier platform qualification:
 https://github.com/pob220/xweather_routing_pi/releases/tag/v1.29.1-alpha.1
