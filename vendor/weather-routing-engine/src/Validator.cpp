@@ -91,6 +91,7 @@ RouteValidationResult validateRoute(const RoutingRequest& request,
 
   for (std::size_t legIndex = 0; legIndex < legs.size(); ++legIndex) {
     const RouteLeg& leg = legs[legIndex];
+    const bool departureEgressAtLegStart = departureEgress;
     if (leg.endTime <= leg.startTime)
       return fail(std::move(result),
                   "route timestamps are not strictly increasing");
@@ -167,6 +168,8 @@ RouteValidationResult validateRoute(const RoutingRequest& request,
         previousEnvironment = resolved.snapshot;
       }
       previousModeDuration = Duration{};
+      if (departureEgressAtLegStart)
+        result.coastalDepartureEgressLegs = legIndex + 1;
       ++result.acceptedPrefixLegs;
       continue;
     }
@@ -522,6 +525,8 @@ RouteValidationResult validateRoute(const RoutingRequest& request,
     if (request.vessel.propulsion.maximumFuelLitres &&
         totalFuel > *request.vessel.propulsion.maximumFuelLitres + 1e-6)
       return fail(std::move(result), "route exceeds fuel limit");
+    if (departureEgressAtLegStart)
+      result.coastalDepartureEgressLegs = legIndex + 1;
     ++result.acceptedPrefixLegs;
   }
   result.passed = true;

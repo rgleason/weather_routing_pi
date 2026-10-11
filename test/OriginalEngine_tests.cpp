@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 #include "original_routing/Engine.h"
 #include "original_routing/VisualizationSampler.h"
+#include "supercpn/weather_routing/CoastalEndpointPolicy.h"
 #include <future>
 #include <cmath>
 #include <stdexcept>
@@ -188,6 +189,57 @@ TEST(OriginalEngine, ProfessionalCoastalLeewayIsScopedAndValidated) {
   coast->actualLand = true;
   EXPECT_EQ(original_routing::Engine{}.route(r, e, options).status,
             wr::RoutingStatus::InvalidDestination);
+}
+
+TEST(OriginalEngine, ValidatedCoastalDepartureSurvivesDeliveredChordChecks) {
+  auto r = request();
+  r.start = {-20.0, -130.0};
+  r.destination = {-20.0, -129.8};
+  r.constraints.landSafetyMarginNm = 0.4;
+  auto e = environment();
+  auto coast = std::make_shared<EndpointBufferProvider>();
+  coast->start = r.start;
+  coast->destination = {-40.0, -100.0};  // Only the departure needs leeway.
+  e.landAndBoundaries = coast;
+  original_routing::Options options;
+  options.allowCoastalEndpointLeeway = true;
+  const auto result = original_routing::Engine{}.route(r, e, options);
+  ASSERT_EQ(result.status, wr::RoutingStatus::Complete) << result.message;
+  ASSERT_TRUE(result.validation.passed);
+  ASSERT_FALSE(result.legs.empty());
+  // The first chord extends beyond the local endpoint reach. It needs the
+  // validated prefix allowance as well as full stand-off for the rest.
+  ASSERT_GT(wr::distanceNm(r.start, result.legs.front().end),
+            wr::coastalEndpointReachNm(r.constraints.landSafetyMarginNm));
+  EXPECT_TRUE(result.legs.front().coastalDepartureEgress);
+  bool fullMarginResumed = false;
+  for (const auto& leg : result.legs) {
+    EXPECT_FALSE(fullMarginResumed && leg.coastalDepartureEgress);
+    if (!leg.coastalDepartureEgress) fullMarginResumed = true;
+    const auto forbidden = [&](wr::GeoPoint a, wr::GeoPoint b, double margin) {
+      return coast->segmentForbiddenAt(a, b, leg.startTime, margin);
+    };
+    const bool rejected = leg.coastalDepartureEgress
+        ? wr::coastalDepartureChordForbidden(
+              r.start, leg.start, leg.end, r.constraints.landSafetyMarginNm,
+              forbidden)
+        : forbidden(leg.start, leg.end, r.constraints.landSafetyMarginNm);
+    EXPECT_FALSE(rejected) << "A chronologically validated departure was lost "
+                             "before the delivered-route safety gate";
+  }
+}
+
+TEST(OriginalEngine, OffshoreDepartureDoesNotAcquireCoastalAllowance) {
+  auto r = request();
+  r.start = {-20.0, -130.0};
+  r.destination = {-20.0, -129.8};
+  r.constraints.landSafetyMarginNm = 0.4;
+  original_routing::Options options;
+  options.allowCoastalEndpointLeeway = true;
+  const auto result = original_routing::Engine{}.route(r, environment(), options);
+  ASSERT_EQ(result.status, wr::RoutingStatus::Complete) << result.message;
+  ASSERT_TRUE(result.validation.passed);
+  for (const auto& leg : result.legs) EXPECT_FALSE(leg.coastalDepartureEgress);
 }
 
 // Use the actual first-install polar: unlike ConstantBoat it does not supply
