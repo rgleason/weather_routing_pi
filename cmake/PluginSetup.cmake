@@ -101,12 +101,8 @@ if (OCPN_FLATPAK_CONFIG OR OCPN_FLATPAK_BUILD)
   set(PKG_TARGET "flatpak")
   set(PKG_TARGET_VERSION "${SDK_VER}") # As of flatpak/*yaml
   message(STATUS "${CMLOC}PKG_TARGET_VERSION: ${PKG_TARGET_VERSION}")
-  if (NOT "$ENV{WX_VER}" STREQUAL "")
-    set(PKG_TARGET_WX_VER "-$ENV{WX_VER}")
-  else ()
-    unset(PKG_TARGET_WX_VER)
-  endif ()
-  message(STATUS "${CMLOC}PKG_TARGET_WX_VER: ${PKG_TARGET_WX_VER}")
+  # The Flatpak runtime already defines the wx ABI. OpenCPN identifies this
+  # host as flatpak-<arch>, with no wx version in the compatibility label.
 elseif (MINGW)
   set(PKG_TARGET "mingw")
   if (CMAKE_SYSTEM_VERSION)
@@ -192,6 +188,23 @@ elseif (UNIX)
 else ()
   set(PKG_TARGET "unknown")
   set(PKG_TARGET_VERSION 1)
+endif ()
+
+string(STRIP "${PKG_TARGET_VERSION}" PKG_TARGET_VERSION)
+# Detect Jammy from the actual build platform, including Docker builds which
+# do not forward BUILD_ENV/WX_VER. OpenCPN distinguishes wx 3.2 on Ubuntu 22.04.
+if (UNIX AND NOT APPLE AND NOT OCPN_FLATPAK_CONFIG
+    AND NOT OCPN_FLATPAK_BUILD AND NOT QT_ANDROID
+    AND PKG_TARGET MATCHES "^[Uu]buntu" AND PKG_TARGET_VERSION STREQUAL "22.04")
+  execute_process(COMMAND wx-config --version
+    OUTPUT_VARIABLE _package_wx_version OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE _package_wx_status)
+  if (NOT _package_wx_status EQUAL 0)
+    message(FATAL_ERROR "Cannot determine the Ubuntu 22.04 wxWidgets ABI")
+  endif ()
+  if (_package_wx_version VERSION_GREATER_EQUAL "3.2")
+    set(PKG_TARGET_WX_VER "-wx32")
+  endif ()
 endif ()
 
 if (${BUILD_GTK3})

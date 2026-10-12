@@ -3,6 +3,9 @@
 
 #include <string>
 #include <string_view>
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
 #include "GribTimelineCachePolicy.h"
 
 namespace weather_routing {
@@ -65,6 +68,15 @@ struct QuickSearchSettings {
   SearchPreset preset{"balanced", kBalancedSearchPresetRevision};
   bool operator==(const QuickSearchSettings&) const = default;
 };
+
+// Quick (the hardened contour engine) uses the route's visible nominal
+// timestep, then reduces it near its endpoints. The saved Original offshore
+// value remains for Professional's separate contour incumbent; visible Quick
+// ignores it. Standard retains its own policy. Do not apply Professional's
+// 15-minute quality floor here.
+inline std::int64_t QuickTimeStepSeconds(double configuredSeconds) {
+  return std::max<std::int64_t>(60, std::llround(configuredSeconds));
+}
 
 // Main's numerical values retain their original RouteMapConfiguration fields
 // and serialization keys. Quick owns a separate block; switching selects only
@@ -151,13 +163,21 @@ struct RoutingSearchSnapshot {
     const auto& fast = c.EngineSettings.FastSettings();
     return {true, native ? c.EngineSettings.EngineId() : "legacy",
             quick ? fast.preset : c.EngineSettings.mainPreset,
-            quick ? fast.offshoreStepMinutes * 60.0 : c.DeltaTime,
+            c.EngineSettings.engine == RoutingEngine::Original
+                ? static_cast<double>(QuickTimeStepSeconds(c.DeltaTime))
+                : quick ? fast.offshoreStepMinutes * 60.0 : c.DeltaTime,
             quick ? fast.headingStepDegrees : c.ByDegrees,
             quick ? fast.memoryBudgetMiB : 0,
             static_cast<int>(quick ? fast.maximumSearchAngle : c.MaxSearchAngle),
             quick ? 100 : c.RoutingEffortPercent, c.EffectiveShorelineResolution(), c.DetectLand};
   }
 };
+
+template <typename Configuration>
+void ResetOriginalToBalanced(Configuration& configuration) {
+  configuration.DeltaTime = 3600;
+  configuration.EngineSettings.ResetOriginalToBalanced();
+}
 
 // This explicit action must never be called while loading/migrating settings.
 // Shared safety, vessel, weather and resource preferences are outside its scope.

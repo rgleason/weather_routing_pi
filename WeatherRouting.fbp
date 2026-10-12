@@ -7179,10 +7179,10 @@
                             <property name="flag">wxALL|wxEXPAND</property>
                             <property name="proportion">0</property>
                             <object class="wxStaticText" expanded="false">
-                              <property name="name">labelQuickOffshoreStepMinutes</property>
+                              <property name="name">m_tFastTimeStep</property>
                               <property name="id">wxID_ANY</property>
                               <property name="permission">protected</property>
-                              <property name="label">Offshore time step (minutes)</property>
+                              <property name="label">Nominal time step (minutes)</property>
                             </object>
                           </object>
                           <object class="sizeritem" expanded="false">
@@ -7193,10 +7193,11 @@
                               <property name="name">m_sQuickOffshoreStepMinutes</property>
                               <property name="id">wxID_ANY</property>
                               <property name="permission">protected</property>
-                              <property name="min">10</property>
-                              <property name="max">360</property>
-                              <property name="initial">180</property>
-                              <property name="value">180</property>
+                              <property name="min">1</property>
+                              <property name="max">60060</property>
+                              <property name="initial">60</property>
+                              <property name="value">60</property>
+                              <property name="tooltip">Quick uses the configured nominal time step and reduces it near departure and destination. Larger steps must be selected explicitly.</property>
                               <property name="size">160,-1</property>
                               <property name="style">wxSP_ARROW_KEYS</property>
                               <property name="inc">1</property>

@@ -4889,6 +4889,8 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
             else configuration.ShorelineResolution = scenario.route.shorelineResolution;
           }
           if (scenario.route.hasQuickOffshoreStepMinutes)
+            // Historical key: active only for Standard. Quick now uses the
+            // shared timeStepSeconds / dt field, including in Auto and All.
             configuration.EngineSettings.FastSettings().offshoreStepMinutes = scenario.route.quickOffshoreStepMinutes;
           if (scenario.route.hasQuickHeadingStepDegrees)
             configuration.EngineSettings.FastSettings().headingStepDegrees = scenario.route.quickHeadingStepDegrees;

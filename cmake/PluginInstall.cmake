@@ -99,6 +99,11 @@ endif (WIN32)
 
 if (UNIX AND NOT APPLE)
   set(PREFIX_PARENTDATA ${PREFIX_DATA}/${PARENT})
+  if (OCPN_FLATPAK_BUILD)
+    # Flatpak import maps share/ directly to the application data directory;
+    # GetPluginDataDir searches data/plugins, without another opencpn level.
+    set(PREFIX_PARENTDATA ${PREFIX_DATA})
+  endif ()
   set(PREFIX_PARENTLIB ${PREFIX_LIB}/${PARENT})
   message(STATUS "${CMLOC}PREFIX_PARENTLIB: ${PREFIX_PARENTLIB}")
   message(STATUS "${CMLOC}Library")

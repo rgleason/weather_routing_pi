@@ -1077,10 +1077,14 @@ void ConfigurationDialog::SetConfigurations(
     sameEngine = sameEngine && config.EngineSettings.engine == firstEngine;
   m_cRoutingEngine->SetSelection(!sameEngine ? wxNOT_FOUND :
       weather_routing::EngineSelection(firstEngine));
+  m_sQuickOffshoreStepMinutes->SetRange(it->IsQuick() ? 10 : 1,
+                                      it->IsQuick() ? 360 : 60060);
   SET_SPIN_VALUE(QuickMemoryBudgetMiB, (*it).EngineSettings.FastSettings().memoryBudgetMiB);
   SET_SPIN(MainGribTimelineCacheMiB);
   SET_SPIN_VALUE(QuickGribTimelineCacheMiB, (*it).FastGribTimelineCacheMiB());
-  SET_SPIN_VALUE(QuickOffshoreStepMinutes, (*it).EngineSettings.FastSettings().offshoreStepMinutes);
+  SET_SPIN_VALUE(QuickOffshoreStepMinutes, (*it).IsQuick()
+      ? (*it).EngineSettings.quick.offshoreStepMinutes
+      : static_cast<int>(weather_routing::QuickTimeStepSeconds((*it).DeltaTime) / 60));
   SET_SPIN_DOUBLE_VALUE(QuickHeadingStepDegrees, (*it).EngineSettings.FastSettings().headingStepDegrees);
   SET_SPIN_VALUE(QuickMaximumSearchAngle, (*it).EngineSettings.FastSettings().maximumSearchAngle);
   SET_SPIN(ArrivalSafetyMarginMinutes);
@@ -1417,13 +1421,21 @@ bool ConfigurationDialog::HandleEngineEdit(wxObject* control) {
       config.FastGribTimelineCacheMiB() =
           weather_routing::NormalizeGribTimelineCacheMiB(
               m_sQuickGribTimelineCacheMiB->GetValue(), true);
-    if (control == m_sQuickOffshoreStepMinutes)
-      config.EngineSettings.FastSettings().offshoreStepMinutes = m_sQuickOffshoreStepMinutes->GetValue();
+    if (control == m_sQuickOffshoreStepMinutes) {
+      if (config.IsQuick())
+        config.EngineSettings.quick.offshoreStepMinutes = m_sQuickOffshoreStepMinutes->GetValue();
+      else {
+        config.DeltaTime = 60 * m_sQuickOffshoreStepMinutes->GetValue();
+        config.EngineSettings.mainPreset = {};
+      }
+    }
     if (control == m_sQuickHeadingStepDegrees)
       config.EngineSettings.FastSettings().headingStepDegrees = m_sQuickHeadingStepDegrees->GetValue();
     if (control == m_sQuickMaximumSearchAngle)
       config.EngineSettings.FastSettings().maximumSearchAngle = m_sQuickMaximumSearchAngle->GetValue();
     if (mainField) config.EngineSettings.mainPreset = {};
+    if (control == m_sTimeStepHours || control == m_sTimeStepMinutes)
+      config.EngineSettings.original.preset = {};
     if (quickField) config.EngineSettings.FastSettings().preset = {};
     route->SetConfiguration(config);
     m_WeatherRouting.SaveLastUsedConfigurationDefaults(config);
@@ -1449,6 +1461,16 @@ void ConfigurationDialog::UpdateEngineControls() {
   m_pQuickEngine->Show(engine == weather_routing::RoutingEngine::Original ||
                        engine == weather_routing::RoutingEngine::Quick ||
                        engine == weather_routing::RoutingEngine::Main);
+  const bool standard = engine == weather_routing::RoutingEngine::Quick;
+  // Professional/Auto already show the route's nominal timestep above.
+  m_tFastTimeStep->Show(engine != weather_routing::RoutingEngine::Main);
+  m_sQuickOffshoreStepMinutes->Show(engine != weather_routing::RoutingEngine::Main);
+  m_tFastTimeStep->SetLabel(standard ? _("Offshore time step (minutes)")
+                                   : _("Nominal time step (minutes)"));
+  m_sQuickOffshoreStepMinutes->SetRange(standard ? 10 : 1, standard ? 360 : 60060);
+  m_sQuickOffshoreStepMinutes->SetToolTip(standard
+      ? _("Standard's nominal offshore step. Routes under 120 NM are capped at one hour; departure and destination search use smaller steps.")
+      : _("Quick uses the configured nominal time step and reduces it near departure and destination. Larger steps must be selected explicitly."));
   m_bResetAdvanced->Enable(engine != weather_routing::RoutingEngine::Unsupported);
   m_cEnginePreset->Enable(engine != weather_routing::RoutingEngine::Unsupported);
   bool running = false;
@@ -1576,10 +1598,12 @@ void ConfigurationDialog::OnResetAdvanced(wxCommandEvent&) {
   // explicit reset gives it an Apply/Cancel boundary without changing that
   // established workflow or modifying routes before the user accepts.
   const wxString values = combined
-      ? _("Auto / All - Balanced\nReset Quick and Standard to 3-hour adaptive steps and 10-degree headings. Reset Professional to 1-hour steps, 10-degree headings and 100% effort. Auto always allows Professional up to 400% effort.")
+      ? _("Auto / All - Balanced\nReset the shared Quick / Professional nominal time step to 1 hour. Standard keeps its 3-hour adaptive offshore step. Reset headings to 10 degrees and Professional effort to 100%. Auto always allows Professional up to 400% effort.")
       : engine == weather_routing::RoutingEngine::Main
       ? _("Professional - Balanced\nTime step: 1 hour\nHeading separation: 10 degrees\nRouting effort: 100%\nMaximum search angle: 120 degrees\nOptional reverse reachability recovery: off")
-      : _("Quick / Standard - Balanced\nOffshore time step: 3 hours (adaptive)\nHeading separation: 10 degrees (adaptive)\nMaximum search angle: 120 degrees");
+      : engine == weather_routing::RoutingEngine::Original
+      ? _("Quick - Balanced\nNominal time step: 1 hour (reduced near departure and destination)\nHeading separation: 10 degrees\nMaximum search angle: 120 degrees")
+      : _("Standard - Balanced\nOffshore time step: 3 hours (adaptive)\nHeading separation: 10 degrees (adaptive)\nMaximum search angle: 120 degrees");
   WR_MessageDialog preview(this, values +
       _("\n\nApplies to all selected routes. Memory and GRIB cache budgets, vessel, weather and safety settings are preserved."),
       _("Reset engine to preset"), wxOK | wxCANCEL);
@@ -1594,7 +1618,7 @@ void ConfigurationDialog::OnResetAdvanced(wxCommandEvent&) {
       config.EngineSettings.ResetQuickToBalanced();
     }
     else if (engine == weather_routing::RoutingEngine::Main) weather_routing::ResetMainToBalanced(config);
-    else if (engine == weather_routing::RoutingEngine::Original) config.EngineSettings.ResetOriginalToBalanced();
+    else if (engine == weather_routing::RoutingEngine::Original) weather_routing::ResetOriginalToBalanced(config);
     else config.EngineSettings.ResetQuickToBalanced();
     route->SetConfiguration(config);
     m_WeatherRouting.SaveLastUsedConfigurationDefaults(config);
@@ -1943,8 +1967,16 @@ void ConfigurationDialog::Update() {
       configuration.FastGribTimelineCacheMiB() =
           weather_routing::NormalizeGribTimelineCacheMiB(
               m_sQuickGribTimelineCacheMiB->GetValue(), true);
-    if (edited(m_sQuickOffshoreStepMinutes))
-      configuration.EngineSettings.FastSettings().offshoreStepMinutes = m_sQuickOffshoreStepMinutes->GetValue();
+    if (edited(m_sQuickOffshoreStepMinutes)) {
+      if (configuration.IsQuick())
+        configuration.EngineSettings.quick.offshoreStepMinutes = m_sQuickOffshoreStepMinutes->GetValue();
+      else {
+        configuration.DeltaTime = 60 * m_sQuickOffshoreStepMinutes->GetValue();
+        configuration.EngineSettings.mainPreset = {};
+      }
+    }
+    if (edited(m_sTimeStepHours) || edited(m_sTimeStepMinutes))
+      configuration.EngineSettings.original.preset = {};
     if (edited(m_sQuickHeadingStepDegrees))
       configuration.EngineSettings.FastSettings().headingStepDegrees = m_sQuickHeadingStepDegrees->GetValue();
     if (edited(m_sQuickMaximumSearchAngle))

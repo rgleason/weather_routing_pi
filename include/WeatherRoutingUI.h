@@ -463,6 +463,7 @@ protected:
   wxStaticText* m_tEnginePresetStatus;
   wxPanel* m_pMainEngine;
   wxPanel* m_pQuickEngine;
+  wxStaticText* m_tFastTimeStep;
   wxSpinCtrl* m_sQuickOffshoreStepMinutes;
   wxSpinCtrlDouble* m_sQuickHeadingStepDegrees;
   wxSpinCtrl* m_sQuickMaximumSearchAngle;
