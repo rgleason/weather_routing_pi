@@ -43,6 +43,10 @@ The normal-installation contract checks:
 - Existing route visibility/recompute/clear lifecycle checks on Windows.
 - Reimport and restart preserving added personal files and modified standard
   boats/polars.
+- Orderly host exit after every case. The scenario interface keeps the host
+  running after its result, then the test uses the stock `--remote --quit` IPC
+  action. The main frame closes and plugins deactivate before application
+  teardown, and the host removes its instance lock before the next launch.
 
 Reimport exercises replacement of the same package. It does not establish an
 upgrade between different versions or the interactive data-migration dialog.

@@ -43,3 +43,24 @@ class LinuxHostAbi(unittest.TestCase):
         for package_abi in ['debian-x86_64:12', 'ubuntu-wx32-arm64:22.04',
                             'ubuntu-wx32-x86_64:24.04', 'ubuntu-gtk3-x86_64:22.04']:
             self.assertFalse(host.linux_abi_matches('ubuntu-x86_64:22.04', package_abi))
+
+
+class ScenarioShutdown(unittest.TestCase):
+    route_end = 'WR_HEADLESS_ROUTE_TEST end route="offshore west to offshore east"'
+    lifecycle_end = 'WR_ROUTE_LIFECYCLE recompute_cycles=3 result=passed'
+
+    def test_initial_running_receipt_cannot_trigger_quit(self):
+        self.assertFalse(host.scenario_finished({'status': 'running'},
+                         self.route_end + self.lifecycle_end, False))
+
+    def test_complete_receipt_waits_for_route_and_optional_lifecycle_completion(self):
+        result = {'status': 'complete'}
+        self.assertFalse(host.scenario_finished(result, '', False))
+        self.assertTrue(host.scenario_finished(result, self.route_end, False))
+        self.assertFalse(host.scenario_finished(result, self.route_end, True))
+        self.assertTrue(host.scenario_finished(result,
+                        self.route_end + self.lifecycle_end, True))
+
+    def test_failure_and_timeout_can_close_the_host_and_retain_diagnostics(self):
+        for status in ['failed', 'timeout']:
+            self.assertTrue(host.scenario_finished({'status': status}, '', True))

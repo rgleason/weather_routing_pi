@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import time
 import xml.etree.ElementTree as ET
 
 
@@ -46,6 +47,14 @@ def linux_abi_matches(host_abi, package_abi):
     # Ubuntu 22.04 at runtime. The subsequent import checks the real wx ABI.
     return host_abi == package_abi or (host_abi, package_abi) == (
         'ubuntu-x86_64:22.04', 'ubuntu-wx32-x86_64:22.04')
+
+
+def scenario_finished(result, log, lifecycle):
+    if result.get('status') in ('failed', 'timeout'):
+        return True
+    return (result.get('status') == 'complete' and
+            'WR_HEADLESS_ROUTE_TEST end route=' in log and
+            (not lifecycle or 'WR_ROUTE_LIFECYCLE recompute_cycles=3 result=passed' in log))
 
 
 @contextmanager
@@ -207,6 +216,10 @@ def test(host, cli, archive_path, output, source):
     receipts = []
     with display(environment, output) as gui_environment:
         def route(engine, land, label):
+            # Prior cases have retained their complete logs in the artifacts.
+            # A fresh log avoids rotation prompts and stale lifecycle markers.
+            if log_file.exists():
+                log_file.unlink()
             scenario = dict(schemaVersion=1, name='Normal stock host ' + label,
                 start=dict(name='offshore west', lat=53.4, lon=-5.5),
                 end=dict(name='offshore east', lat=53.4, lon=-5.3),
@@ -220,23 +233,49 @@ def test(host, cli, archive_path, output, source):
             route_environment = dict(gui_environment, WR_HEADLESS_ROUTE_TEST='scenario',
                 WR_HEADLESS_SCENARIO=str(scenario_file), WR_HEADLESS_OUTPUT=str(result_file),
                 WR_HEADLESS_GRIB_FILE=str(source / 'ci/testdata/irish-sea-uniform-wind.grb'),
-                WR_HEADLESS_TIMEOUT_MS='90000')
+                WR_HEADLESS_TIMEOUT_MS='90000', WR_HEADLESS_NO_EXIT='resident')
             with (output / (label + '-stdout.log')).open('w') as stdout:
                 process = subprocess.Popen([str(host), '--no_opengl'], env=route_environment,
                                            cwd=host.parent, stdout=stdout, stderr=subprocess.STDOUT)
                 try:
-                    code = process.wait(timeout=120)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait()
+                    deadline = time.monotonic() + 120
+                    while process.poll() is None:
+                        finished = False
+                        if result_file.is_file() and log_file.is_file():
+                            try:
+                                result = json.loads(result_file.read_text())
+                                log = log_file.read_text(encoding='utf-8', errors='replace')
+                                finished = scenario_finished(result, log,
+                                    route_environment.get('WR_HEADLESS_LIFECYCLE_CONTRACT') == '1')
+                            except json.JSONDecodeError:
+                                pass  # The result writer has not closed the file yet.
+                        if finished:
+                            break
+                        require(time.monotonic() < deadline, 'Routing did not finish: ' + label)
+                        time.sleep(0.1)
+                    if process.poll() is None:
+                        # Use the stock IPC Quit action so MainFrame closes and
+                        # plugins are deactivated before the application exits.
+                        quit_result = subprocess.run([str(host), '--remote', '--quit'],
+                            env=gui_environment, cwd=host.parent, text=True,
+                            capture_output=True, timeout=30)
+                        (output / (label + '-quit.log')).write_text(
+                            quit_result.stdout + quit_result.stderr, encoding='utf-8')
+                        require(quit_result.returncode == 0, 'Stock remote quit failed: ' + label)
+                    code = process.wait(timeout=30)
+                except (subprocess.TimeoutExpired, RuntimeError) as error:
+                    if process.poll() is None:
+                        process.kill()
+                        process.wait()
                     if log_file.exists():
                         shutil.copy2(log_file, output / (label + '-opencpn.log'))
-                    raise RuntimeError('Normal installed host route timed out: ' + label)
+                    raise RuntimeError('Normal installed host runtime failed: ' + label) from error
             if log_file.exists():
                 shutil.copy2(log_file, output / (label + '-opencpn.log'))
             require(result_file.is_file(), 'Normal host produced no route result: ' + label)
             result = json.loads(result_file.read_text())
-            require(code == 0 and result.get('status') == 'complete', 'Normal host route failed: ' + label)
+            require(code == 0 and result.get('status') == 'complete',
+                    'Normal host route failed: ' + label + ' (exit=' + str(code) + ')')
             require(bool(result.get('candidates')), 'Normal host route has no candidate: ' + label)
             shoreline = result['candidates'][0].get('shoreline', {})
             require(shoreline.get('enabled') == land and (not land or
@@ -246,6 +285,8 @@ def test(host, cli, archive_path, output, source):
             log = log_file.read_text(encoding='utf-8', errors='replace').replace('\\', '/')
             require('using data dir: ' + str(data).replace('\\', '/') in log,
                     'Stock GetPluginDataDir did not resolve the normal installation: ' + label)
+            require('opencpn::MyApp exiting cleanly...' in log,
+                    'Stock host did not complete orderly shutdown: ' + label)
             lifecycle = route_environment.get('WR_HEADLESS_LIFECYCLE_CONTRACT') == '1'
             require(not lifecycle or 'WR_ROUTE_LIFECYCLE recompute_cycles=3 result=passed' in log,
                     'Normal host route lifecycle failed: ' + label)
@@ -282,7 +323,7 @@ def test(host, cli, archive_path, output, source):
     (output / 'acceptance.json').write_text(json.dumps(dict(
         stock_host=version, host_build_date=build_date, host_abi=abi, package_abi=expected_abi,
         package=archive_path.name, package_sha256=digest(archive_path), identity=identity,
-        normal_profile=True, portable=False, imported_by_stock_host=True,
+        normal_profile=True, portable=False, imported_by_stock_host=True, orderly_host_exit=True,
         data_lookup_checked=True, bundled_assets_checked=len(assets),
         translation_catalogs_installed=len(catalogs), help_installed=True,
         private_data_overrides=False, private_data=str(private_data), host_log=str(log_file),
