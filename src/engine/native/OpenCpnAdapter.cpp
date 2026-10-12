@@ -1103,11 +1103,8 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
       quickConfiguration.EngineSettings.original.memoryBudgetMiB =
           static_cast<int>(quickMemory.effectiveMiB);
       wr::RoutingRequest quickRequest = BuildRequest(overlay, quickConfiguration);
-      // Professional's separate contour incumbent keeps its existing step.
-      // Override only that step: changing DeltaTime would also retune spatial
-      // cells and the interim bridges. Visible Quick uses the configured dt.
-      quickRequest.options.timeStep = std::chrono::minutes(
-          selectedConfiguration.EngineSettings.original.offshoreStepMinutes);
+      // Professional's contour candidate uses the same configured nominal
+      // timestep as standalone Quick, including its endpoint reductions.
       auto quickWeather = std::make_shared<OpenCpnWeatherProvider>(
           overlay, quickConfiguration);
       auto quickLand = std::make_shared<OpenCpnLandProvider>(
