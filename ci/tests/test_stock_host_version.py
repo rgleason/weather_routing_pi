@@ -45,6 +45,25 @@ class LinuxHostAbi(unittest.TestCase):
             self.assertFalse(host.linux_abi_matches('ubuntu-x86_64:22.04', package_abi))
 
 
+class CliImportAbi(unittest.TestCase):
+    libraries = 'libwx_gtk3u_core-3.2.so.0 => /lib/core\nlibwx_baseu-3.2.so.0 => /lib/base'
+
+    def test_jammy_option_requires_the_actual_host_wx32_libraries(self):
+        self.assertEqual(host.cli_import_abi('ubuntu-x86_64:22.04', self.libraries),
+                         'ubuntu-wx32-x86_64:22.04')
+
+    def test_no_option_for_other_host_versions_or_architectures(self):
+        for abi in ['debian-x86_64:12', 'ubuntu-x86_64:24.04', 'ubuntu-arm64:22.04']:
+            self.assertIsNone(host.cli_import_abi(abi, self.libraries))
+
+    def test_missing_wrong_or_mixed_wx_libraries_are_rejected(self):
+        for libraries in ['', self.libraries.replace('-3.2', '-3.0'),
+                          self.libraries.split('\n')[0],
+                          self.libraries + '\nlibwx_baseu-3.0.so.0 => /lib/old']:
+            with self.assertRaises(RuntimeError):
+                host.cli_import_abi('ubuntu-x86_64:22.04', libraries)
+
+
 class ScenarioShutdown(unittest.TestCase):
     route_end = 'WR_HEADLESS_ROUTE_TEST end route="offshore west to offshore east"'
     lifecycle_end = 'WR_ROUTE_LIFECYCLE recompute_cycles=3 result=passed'

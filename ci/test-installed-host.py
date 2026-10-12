@@ -44,9 +44,22 @@ def host_build(binary):
 
 def linux_abi_matches(host_abi, package_abi):
     # print-abi reports PKG_TARGET, while stock CompatOs adds -wx32 for
-    # Ubuntu 22.04 at runtime. The subsequent import checks the real wx ABI.
+    # Ubuntu 22.04 at runtime. The CLI selection also checks the linked wx ABI.
     return host_abi == package_abi or (host_abi, package_abi) == (
         'ubuntu-x86_64:22.04', 'ubuntu-wx32-x86_64:22.04')
+
+
+def cli_import_abi(host_abi, libraries):
+    if host_abi != 'ubuntu-x86_64:22.04':
+        return None
+    # The stock CLI keeps g_compatOS = PKG_TARGET, bypassing the wx32
+    # adjustment used by the GUI. Select its documented ABI only after
+    # independently checking the host's actual linked wxWidgets libraries.
+    require(all(name in libraries for name in
+                ('libwx_gtk3u_core-3.2.so', 'libwx_baseu-3.2.so')) and
+            not re.search(r'libwx_[^\s]*-3\.0\.so', libraries),
+            'Ubuntu 22.04 stock host is not linked to the required wxWidgets 3.2 ABI')
+    return 'ubuntu-wx32-x86_64:22.04'
 
 
 def scenario_finished(result, log, lifecycle):
@@ -173,7 +186,8 @@ def test(host, cli, archive_path, output, source):
                                 env=command_environment or environment, cwd=host.parent,
                                 text=True, capture_output=True, timeout=90)
         (output / (name + '.log')).write_text(result.stdout + result.stderr, encoding='utf-8')
-        require(result.returncode == 0, 'Stock host command failed: ' + name)
+        require(result.returncode == 0, 'Stock host command failed: ' + name + '\n' +
+                (result.stdout + result.stderr).strip()[-4000:])
         return result.stdout.strip()
 
     abi = command('host-abi', ['print-abi'])
@@ -183,7 +197,16 @@ def test(host, cli, archive_path, output, source):
     if sys.platform == 'linux':
         require(linux_abi_matches(abi, expected_abi),
                 'Package ABI differs from the actual Linux host: ' + abi)
-    command('import', ['import-plugin', str(archive_path)])
+    import_abi = None
+    if sys.platform == 'linux' and abi == 'ubuntu-x86_64:22.04':
+        libraries = subprocess.run(['ldd', str(host)], env=environment,
+                                   text=True, capture_output=True, timeout=30)
+        (output / 'stock-wx-libraries.log').write_text(libraries.stdout + libraries.stderr)
+        require(libraries.returncode == 0, 'Cannot check the stock host wxWidgets ABI')
+        import_abi = cli_import_abi(abi, libraries.stdout)
+    import_arguments = (['--abi', import_abi] if import_abi else []) + [
+        'import-plugin', str(archive_path)]
+    command('import', import_arguments)
     require(library.is_file(), 'Normal import did not install the plugin library')
     for relative, expected in assets.items():
         installed = data / 'data' / relative
@@ -315,13 +338,14 @@ def test(host, cli, archive_path, output, source):
         with personal[3].open('a') as stream:
             stream.write('\n')
         snapshots = {str(path): digest(path) for path in personal}
-        command('reimport', ['import-plugin', str(archive_path)])
+        command('reimport', import_arguments)
         route('main', True, 'reinstall-restart')
         require(all(path.is_file() and digest(path) == snapshots[str(path)] for path in personal),
                 'Reinstall/restart overwrote personal boats or polars')
 
     (output / 'acceptance.json').write_text(json.dumps(dict(
         stock_host=version, host_build_date=build_date, host_abi=abi, package_abi=expected_abi,
+        cli_abi_option=import_abi,
         package=archive_path.name, package_sha256=digest(archive_path), identity=identity,
         normal_profile=True, portable=False, imported_by_stock_host=True, orderly_host_exit=True,
         data_lookup_checked=True, bundled_assets_checked=len(assets),

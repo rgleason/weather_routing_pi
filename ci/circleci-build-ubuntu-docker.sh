@@ -9,6 +9,14 @@ test -n "${DOCKER_IMAGE:-}"
 test -n "${OCPN_TARGET:-}"
 
 mkdir -p build artifacts
+# Retain diagnostics even when the build or installed-host gate fails.
+retain_build_artifacts() {
+  sudo chmod -R a+rw build
+  if [[ -d build/artifacts ]]; then
+    cp -a build/artifacts/. artifacts/
+  fi
+}
+trap retain_build_artifacts EXIT
 docker build --build-arg "BASE_IMAGE=${DOCKER_IMAGE}" \
   -f "${DOCKERFILE:-ci/Dockerfile.linux}" \
   -t weather-routing-linux-build ci
@@ -22,6 +30,3 @@ docker run --rm \
   -v "${PWD}/build:/work" \
   weather-routing-linux-build \
   /src/ci/build-linux-catalogue.sh
-
-sudo chmod -R a+rw build
-cp -a build/artifacts/. artifacts/

@@ -14,9 +14,14 @@ their checksums are retained with the source.
 
 Stock `print-abi` reports the compile-time target. On Ubuntu 22.04 it reports
 `ubuntu-x86_64`, while `CompatOs` selects `ubuntu-wx32-x86_64` when using wx 3.2.
-The test recognises this specific pair and leaves the real import compatibility
-decision to the stock host. It sets no compatibility override; both target
-labels are retained in the receipt.
+The stock CLI retains `g_compatOS = PKG_TARGET` and bypasses the GUI's wx32
+adjustment. For this exact Ubuntu 22.04 x86_64 case, the test independently
+checks the stock GUI's linked wxWidgets core/base libraries are 3.2, then uses
+the CLI's documented `--abi ubuntu-wx32-x86_64:22.04` option for import and
+reimport. Missing, older or mixed wx libraries fail the check. The GUI runs
+without an ABI override and must actually load the installed library and
+complete every routing case. The raw host label, package label and CLI option
+are retained in the receipt. Other platforms use the CLI's default ABI.
 
 Linux uses a fresh application home. Windows uses fresh local and roaming
 application-data roots and its normal common application-data config directory
@@ -29,7 +34,8 @@ scripts.
 
 The normal-installation contract checks:
 
-- Host compatibility without forcing an ABI override, followed by real import.
+- Host compatibility and real import, with the independently checked Ubuntu
+  22.04 CLI exception described above.
 - Installed library and every bundled data file against the final tarball.
 - Each installed translation catalog against its packaged bytes and locale
   directory; this establishes installation, not translated GUI rendering.
