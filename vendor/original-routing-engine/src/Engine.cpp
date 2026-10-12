@@ -972,7 +972,9 @@ public:
                         result.diagnostics.closestApproachNm, 100});
     State s{request.start, request.departure};
     std::vector<wr::RouteLeg> legs;
-    for (auto p : chain) {
+    unsigned contourRejoins = 0;
+    for (std::size_t node = 0; node < chain.size(); ++node) {
+      auto p = chain[node];
       if (request.progress)
         request.progress({wr::RoutingProgressStage::Validation, candidatesTried,
                           options.maximumValidatedCandidates,
@@ -992,6 +994,36 @@ public:
       auto repaired = connect(s, p->point, hint, allowance);
       if (!repaired)
         repaired = interimBridge(s, p->point, allowance, legs);
+      // Contour vertices are search proposals, not mandatory waypoints. A
+      // precise prefix may reach one at a different tide or wind phase and
+      // cannot always reproduce the next proposed point. Professional may
+      // reconnect to a nearby later vertex without changing the search step.
+      // Keep this recovery small, preserve proposed waits, and independently
+      // replay every delivered leg under the original request.
+      if (!repaired && options.allowProfessionalInterimBridge &&
+          contourRejoins < 4) {
+        for (std::size_t ahead = 1; ahead <= 3 && node + ahead < chain.size();
+             ++ahead) {
+          const auto target = chain[node + ahead];
+          if (target->stationaryWait) break;
+          if (wr::distanceNm(s.point, target->point) > 30.0) continue;
+          const auto joinedHint = (target->time - p->parent->time).count();
+          const wr::Duration joinedAllowance{
+              std::max<std::int64_t>(1800, joinedHint * 2 + 1200)};
+          repaired = connect(s, target->point, joinedHint, joinedAllowance);
+          if (!repaired)
+            repaired = interimBridge(s, target->point, joinedAllowance, legs);
+          if (!repaired) continue;
+          if (result.diagnostics.stageStopReasons.size() < 8)
+            result.diagnostics.stageStopReasons.push_back(
+                "Professional Quick contour rejoin: skipped " +
+                std::to_string(ahead) + " proposed vertices after " +
+                std::to_string(legs.size()) + " replayed legs");
+          node += ahead;
+          ++contourRejoins;
+          break;
+        }
+      }
       if (!repaired) {
         if (result.diagnostics.stageStopReasons.size() < 8)
           result.diagnostics.stageStopReasons.push_back(

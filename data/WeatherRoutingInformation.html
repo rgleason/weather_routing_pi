@@ -12,6 +12,16 @@ a certain time.  By merging the results of many calculations,
 it is possible to form a map determining routes
 to any given location within the map.
 
+<h3>Consistent Quick timesteps inside Professional (1.30.0)</h3>
+<p>Professional's internal Quick candidate search now uses the route's configured
+nominal time step, just like standalone Quick, with the existing reductions near
+departure and destination. It no longer silently substitutes a three-hour
+offshore setting. Route safety checks and chronological validation still apply.</p>
+<p>If a proposed contour point cannot be reconstructed, Professional can try a
+bounded connection to a nearby later point. Proposed stationary waits are
+preserved, and the complete joined route must pass chronological and final
+chart validation before it can be used.</p>
+
 <h3>Quick coastal routing and package compatibility (1.29.3)</h3>
 <p>Quick uses the configured nominal time step, one hour by default, with
 smaller steps near departure and destination. It no longer silently uses a
