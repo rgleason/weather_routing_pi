@@ -138,6 +138,7 @@ jobs:
       - retain-artifacts:
           api_headers: << parameters.api_headers >>
           target: macos-arm64
+          build_dir: build-package
 
   windows-x86:
     parameters:
