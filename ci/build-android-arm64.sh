@@ -12,7 +12,8 @@ artifacts="$source_dir/artifacts/android-arm64"
 package_name=weather_routing_pi
 identity_arg=OFF
 if [[ "${WEATHER_ROUTING_CI_XWEATHER:-false}" == "true" ||
-      "${WEATHER_ROUTING_XWEATHER_IDENTITY:-false}" == "true" ]]; then
+      "${WEATHER_ROUTING_XWEATHER_IDENTITY:-false}" == "true" ||
+      "${CIRCLE_PROJECT_REPONAME:-}" == "xweather_routing_pi" ]]; then
   package_name=xweather_routing_pi
   identity_arg=ON
 fi
