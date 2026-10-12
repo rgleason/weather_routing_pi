@@ -155,7 +155,6 @@ test "${#packages[@]}" -eq 1
 test "${#metadata[@]}" -eq 1
 python3 "$source_dir/ci/package-android-import.py" \
   "${packages[0]}" "${metadata[0]}" "$artifacts/import"
-python3 "$source_dir/ci/verify-shoreline-package.py" "${packages[0]}"
 "$tool_base/bin/llvm-readelf" -h "$plugin_build/lib${package_name}.so" \
   | grep -E 'Machine:.*AArch64'
 "$tool_base/bin/llvm-readelf" -d "$plugin_build/lib${package_name}.so" \
@@ -164,6 +163,8 @@ cp "${packages[0]}" "${metadata[0]}" "$artifacts/package/"
 python3 "$source_dir/ci/embed-package-metadata.py" \
   "$artifacts/package/$(basename "${packages[0]}")" \
   "$artifacts/package/$(basename "${metadata[0]}")" \
+  "$artifacts/package/$(basename "${packages[0]}")"
+python3 "$source_dir/ci/verify-shoreline-package.py" \
   "$artifacts/package/$(basename "${packages[0]}")"
 (cd "$artifacts/package" && sha256sum ./*.tar.gz ./*.xml > SHA256SUMS)
 
