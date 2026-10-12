@@ -34,6 +34,13 @@ def require(condition, message):
         raise RuntimeError(message)
 
 
+def host_build(binary):
+    versions = re.findall(rb'5\.14\.2(?:-[A-Za-z0-9._]+)?(?:\+[A-Za-z0-9._]+)?\x00', binary)
+    dates = re.findall(rb'20\d{2}-\d{2}-\d{2}\x00', binary)
+    require(versions and dates, 'Cannot determine the pinned stock host version/build date')
+    return max(versions, key=len)[:-1].decode(), max(dates)[:-1].decode()
+
+
 @contextmanager
 def display(environment, output):
     if sys.platform != 'linux':
@@ -128,12 +135,7 @@ def test(host, cli, archive_path, output, source):
     require(assets and catalogs, 'Final package lacks bundled data or translations')
     environment, config, config_file, library, data = profile(output, identity)
     environment['PATH'] = str(host.parent) + os.pathsep + environment.get('PATH', '')
-    binary = host.read_bytes()
-    versions = re.findall(rb'5\.14\.2(?:-\d+(?:\+[a-f0-9]+)?)?\x00', binary)
-    dates = re.findall(rb'20\d{2}-\d{2}-\d{2}\x00', binary)
-    require(versions and dates, 'Cannot determine the pinned stock host version/build date')
-    version = max(versions, key=len)[:-1].decode()
-    build_date = max(dates)[:-1].decode()
+    version, build_date = host_build(host.read_bytes())
     config_version = int(metadata.findtext('version').strip().split('.')[0]) * 100 + int(
         metadata.findtext('version').strip().split('.')[1])
     plugin_key = library.name
