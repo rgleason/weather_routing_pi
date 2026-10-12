@@ -30,9 +30,6 @@ commands:
       build_dir: {type: string, default: build}
     steps:
       - run:
-          name: Verify OpenCPN package ABI for << parameters.target >>
-          command: python3 ci/verify-package-abi.py << parameters.build_dir >> --target << parameters.target >>
-      - run:
           name: Retain artifacts for << parameters.target >>
           when: always
           command: |
@@ -42,6 +39,9 @@ commands:
               -exec cp -f '{}' artifacts/<< parameters.target >>/package/ \; || true
             find artifacts -type f -name '*ctest.xml' \
               -exec cp -f '{}' test-results/ \; || true
+      - run:
+          name: Verify OpenCPN package ABI for << parameters.target >>
+          command: python3 ci/verify-package-abi.py artifacts/<< parameters.target >>/package --target << parameters.target >>
       - store_test_results:
           path: test-results
       - store_artifacts:
