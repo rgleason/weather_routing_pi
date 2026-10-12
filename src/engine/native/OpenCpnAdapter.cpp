@@ -989,7 +989,8 @@ wr::RoutingRequest BuildRequest(RouteMapOverlay& overlay,
   request.limits.maximumRetainedStates = resources.maximum_retained_states;
   if (configuration.IsOriginal()) {
     const auto& settings = configuration.EngineSettings.original;
-    request.options.timeStep = std::chrono::minutes(settings.offshoreStepMinutes);
+    request.options.timeStep = wr::Duration{
+        weather_routing::QuickTimeStepSeconds(configuration.DeltaTime)};
     request.options.headingStepDegrees = settings.headingStepDegrees;
     request.options.maximumSearchAngleDegrees = settings.maximumSearchAngle;
     request.options.routingEffortPercent = 100;
@@ -1102,6 +1103,8 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
       quickConfiguration.EngineSettings.original.memoryBudgetMiB =
           static_cast<int>(quickMemory.effectiveMiB);
       wr::RoutingRequest quickRequest = BuildRequest(overlay, quickConfiguration);
+      // Professional's contour candidate uses the same configured nominal
+      // timestep as standalone Quick, including its endpoint reductions.
       auto quickWeather = std::make_shared<OpenCpnWeatherProvider>(
           overlay, quickConfiguration);
       auto quickLand = std::make_shared<OpenCpnLandProvider>(
@@ -1125,13 +1128,14 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
       wxLogMessage(
           "WR_PROFESSIONAL_QUICK_BUDGET saved_mib=%u target_mib=%u "
           "effective_mib=%u available_mib=%llu required_before_mib=%llu "
-          "generated_limit=%llu",
+          "generated_limit=%llu time_step_s=%lld",
           quickMemory.savedMiB, quickMemory.targetMiB,
           quickMemory.effectiveMiB,
           static_cast<unsigned long long>(quickMemory.availableMiB),
           static_cast<unsigned long long>(quickMemory.requiredBeforeMiB),
           static_cast<unsigned long long>(
-              quickRequest.limits.maximumGeneratedStates));
+              quickRequest.limits.maximumGeneratedStates),
+          static_cast<long long>(quickRequest.options.timeStep.count()));
       wr::RoutingResult quick;
       if (quickMemory.effectiveMiB == 0) {
         quick.status = wr::RoutingStatus::ResourceLimitReached;
@@ -1188,6 +1192,9 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
       }
       original_routing::Options originalOptions;
       originalOptions.captureVisualization = true;
+      // Match the other engines' bounded harbour access. Search and replay
+      // retain full clearance outside the fixed endpoint areas.
+      originalOptions.allowCoastalEndpointLeeway = true;
       auto original = original_routing::Engine{}.route(
           bounded, solveEnvironment, originalOptions);
       originalGenerated += original.diagnostics.generatedStates;

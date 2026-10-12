@@ -39,6 +39,9 @@ commands:
               -exec cp -f '{}' artifacts/<< parameters.target >>/package/ \; || true
             find artifacts -type f -name '*ctest.xml' \
               -exec cp -f '{}' test-results/ \; || true
+      - run:
+          name: Verify OpenCPN package ABI for << parameters.target >>
+          command: python3 ci/verify-package-abi.py artifacts/<< parameters.target >>/package --target << parameters.target >>
       - store_test_results:
           path: test-results
       - store_artifacts:
@@ -135,6 +138,7 @@ jobs:
       - retain-artifacts:
           api_headers: << parameters.api_headers >>
           target: macos-arm64
+          build_dir: build-package
 
   windows-x86:
     parameters:
@@ -156,6 +160,9 @@ jobs:
           name: Native Windows build, tests and package
           command: ci\circleci-build-msvc.bat
           no_output_timeout: 45m
+      - run:
+          name: Verify Windows x86 package ABI
+          command: python ci/verify-package-abi.py artifacts/windows-x86/package --target windows-x86
       - store_test_results:
           path: artifacts/windows-x86/tests
       - store_artifacts:
@@ -188,6 +195,9 @@ jobs:
           name: Upstream OpenCPN 5.14.2 x64 build, tests and import verification
           command: ci\circleci-build-windows64.bat
           no_output_timeout: 45m
+      - run:
+          name: Verify Windows x64 package ABI
+          command: python ci/verify-package-abi.py artifacts/windows-x64/package --target windows-x64
       - save_cache:
           key: windows64-upstream-v1-{{ checksum "ci/windows64-sdk.json" }}
           paths: [.windows64/cache]
@@ -267,6 +277,9 @@ jobs:
           name: Build OpenCPN 5.14 core and xWeatherRouting for Android arm64
           command: bash ci/build-android-arm64.sh
           no_output_timeout: 60m
+      - run:
+          name: Verify Android package ABI
+          command: python3 ci/verify-package-abi.py artifacts/android-arm64/package --target android-arm64
       - store_artifacts:
           path: artifacts/android-arm64
       - when:

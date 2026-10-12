@@ -1385,11 +1385,11 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
 
   int confVersion;
   pConf->Read(_T ( "ConfigVersion" ), &confVersion, 0);
-  // v1.25 through v1.29 retain the v1.24 bundled boats and polars. A feature-only
+  // v1.25 through v1.30 retain the v1.24 bundled boats and polars. A feature-only
   // upgrade must not prompt to overwrite existing user data.
-  if (confVersion >= 124 && confVersion <= 128 &&
+  if (confVersion >= 124 && confVersion <= 129 &&
       PLUGIN_VERSION_MAJOR == 1 &&
-      PLUGIN_VERSION_MINOR >= 25 && PLUGIN_VERSION_MINOR <= 29) {
+      PLUGIN_VERSION_MINOR >= 25 && PLUGIN_VERSION_MINOR <= 30) {
     confVersion = PLUGIN_VERSION_MAJOR * 100 + PLUGIN_VERSION_MINOR;
     pConf->Write(_T("ConfigVersion"), confVersion);
   }
@@ -4889,6 +4889,8 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
             else configuration.ShorelineResolution = scenario.route.shorelineResolution;
           }
           if (scenario.route.hasQuickOffshoreStepMinutes)
+            // Historical key: active only for Standard. Quick now uses the
+            // shared timeStepSeconds / dt field, including in Auto and All.
             configuration.EngineSettings.FastSettings().offshoreStepMinutes = scenario.route.quickOffshoreStepMinutes;
           if (scenario.route.hasQuickHeadingStepDegrees)
             configuration.EngineSettings.FastSettings().headingStepDegrees = scenario.route.quickHeadingStepDegrees;

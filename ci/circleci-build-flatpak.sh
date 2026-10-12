@@ -100,3 +100,5 @@ make flatpak-build
 make flatpak-pkg
 ../ci/embed-built-metadata.sh .
 python3 ../ci/verify-shoreline-package.py .
+sudo apt-get install -y xvfb
+python3 ../ci/test-flatpak-host.py ./*weather_routing_pi-*.tar.gz ../artifacts/flatpak-${BUILD_ARCH}/runtime

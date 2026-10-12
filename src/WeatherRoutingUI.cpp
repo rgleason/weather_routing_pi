@@ -1956,7 +1956,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   m_sTimeStepHours = new wxSpinCtrl(
       sbTime_Step->GetStaticBox(), wxID_ANY, wxEmptyString, wxDefaultPosition,
       wxSize(-1, -1), wxALIGN_RIGHT | wxSP_ARROW_KEYS, 0, 1000, 1);
-  m_sTimeStepHours->SetToolTip(_("Hours between each calculation step"));
+  m_sTimeStepHours->SetToolTip(_("Configured nominal time step for Quick and Professional, including their Auto/All attempts. Quick reduces it near departure and destination. Standard keeps its separate timestep policy."));
   m_sTimeStepHours->SetMaxSize(wxSize(140, -1));
 
   fgSizer921->Add(m_sTimeStepHours, 0, wxALL, 5);
@@ -1970,7 +1970,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   m_sTimeStepMinutes = new wxSpinCtrl(
       sbTime_Step->GetStaticBox(), wxID_ANY, wxEmptyString, wxDefaultPosition,
       wxSize(-1, -1), wxALIGN_RIGHT | wxSP_ARROW_KEYS, 0, 60, 1);
-  m_sTimeStepMinutes->SetToolTip(_("Minutes between each calculation step"));
+  m_sTimeStepMinutes->SetToolTip(m_sTimeStepHours->GetToolTipText());
   m_sTimeStepMinutes->SetMaxSize(wxSize(140, -1));
 
   fgSizer921->Add(m_sTimeStepMinutes, 0, wxALL, 5);
@@ -2132,10 +2132,12 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
       sizeof(void*) <= 4 ? 4095 : 4096, 256);
   m_sQuickMemoryBudgetMiB->SetToolTip(_("Search-storage allowance for the selected engine. Weather, charts and OpenCPN require additional memory. Presets preserve this allowance."));
   quickEngineSizer->Add(m_sQuickMemoryBudgetMiB, 0, wxALL, 5);
-  quickLabel(_("Offshore time step (minutes)"));
+  m_tFastTimeStep = new wxStaticText(m_pQuickEngine, wxID_ANY,
+      _("Nominal time step (minutes)"));
+  quickEngineSizer->Add(m_tFastTimeStep, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
   m_sQuickOffshoreStepMinutes = new wxSpinCtrl(m_pQuickEngine, wxID_ANY,
-      "180", wxDefaultPosition, wxSize(160, -1), wxSP_ARROW_KEYS, 10, 360, 180);
-  m_sQuickOffshoreStepMinutes->SetToolTip(_("Nominal offshore step. Quick reduces steps near the destination; Standard also refines departure and coastal search."));
+      "60", wxDefaultPosition, wxSize(160, -1), wxSP_ARROW_KEYS, 1, 60060, 60);
+  m_sQuickOffshoreStepMinutes->SetToolTip(_("Quick uses the configured nominal time step and reduces it near departure and destination. Larger steps must be selected explicitly."));
   quickEngineSizer->Add(m_sQuickOffshoreStepMinutes, 0, wxALL, 5);
   quickLabel(_("Heading separation (degrees)"));
   m_sQuickHeadingStepDegrees = new wxSpinCtrlDouble(m_pQuickEngine, wxID_ANY,
