@@ -65,7 +65,7 @@ The full westbound Atlantic comparison ended normally in both builds. Old: 2,546
 ## Automated checks and packaging
 
 - Final C++/contract suite: **484/484 passed** (36.02 seconds). Includes timestep settings, impossible polar speed prevention, low-wind/zero handling, waiting, endpoint safety, chronology and recovery coverage.
-- Python packaging suite: **14/14 passed in each repository**.
+- Python packaging suite: **15/15 passed in each repository**, including the final-package check which excludes CPack's intermediate staging archives.
 - Stock Flatpak 5.14.0-1+91f3b67, ABI `flatpak-x86_64:25.08`: corrected package imports; the previous incorrectly suffixed package is rejected; Quick, Standard and Professional smoke routes complete.
 - Android arm64 package: target/API compatibility and 16 KiB ELF alignment gates pass.
 - Prior label audit covered 44 artifacts; Flatpak and Jammy label families needed correction. Other labels retain their expected target mapping. Full remote platform builds remain part of the later publication step.

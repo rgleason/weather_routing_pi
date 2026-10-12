@@ -37,7 +37,8 @@ def validate(root, target):
 
 def verify(directory, target):
     metadata = {}
-    for path in directory.rglob("*weather_routing_pi-*.xml"):
+    # Validate the delivered files, not CPack's intermediate staging copies.
+    for path in directory.glob("*weather_routing_pi-*.xml"):
         root = ET.parse(path).getroot()
         if root.tag != "plugin":
             continue
@@ -45,7 +46,7 @@ def verify(directory, target):
         metadata[ET.tostring(root)] = path
     if not metadata:
         raise ValueError(f"No generated plugin metadata in {directory}")
-    archives = list(directory.rglob("*weather_routing_pi-*.tar.gz"))
+    archives = list(directory.glob("*weather_routing_pi-*.tar.gz"))
     if not archives:
         raise ValueError(f"No plugin archive in {directory}")
     for path in archives:
