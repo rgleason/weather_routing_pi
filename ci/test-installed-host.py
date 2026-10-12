@@ -41,6 +41,13 @@ def host_build(binary):
     return max(versions, key=len)[:-1].decode(), max(dates)[:-1].decode()
 
 
+def linux_abi_matches(host_abi, package_abi):
+    # print-abi reports PKG_TARGET, while stock CompatOs adds -wx32 for
+    # Ubuntu 22.04 at runtime. The subsequent import checks the real wx ABI.
+    return host_abi == package_abi or (host_abi, package_abi) == (
+        'ubuntu-x86_64:22.04', 'ubuntu-wx32-x86_64:22.04')
+
+
 @contextmanager
 def display(environment, output):
     if sys.platform != 'linux':
@@ -165,7 +172,8 @@ def test(host, cli, archive_path, output, source):
     # Host compatibility checks permit Windows build-number and older macOS
     # target versions. Import must make that decision; do not override its ABI.
     if sys.platform == 'linux':
-        require(abi == expected_abi, 'Package ABI differs from the actual Linux host: ' + abi)
+        require(linux_abi_matches(abi, expected_abi),
+                'Package ABI differs from the actual Linux host: ' + abi)
     command('import', ['import-plugin', str(archive_path)])
     require(library.is_file(), 'Normal import did not install the plugin library')
     for relative, expected in assets.items():
@@ -272,7 +280,7 @@ def test(host, cli, archive_path, output, source):
                 'Reinstall/restart overwrote personal boats or polars')
 
     (output / 'acceptance.json').write_text(json.dumps(dict(
-        stock_host=version, host_build_date=build_date, host_abi=abi,
+        stock_host=version, host_build_date=build_date, host_abi=abi, package_abi=expected_abi,
         package=archive_path.name, package_sha256=digest(archive_path), identity=identity,
         normal_profile=True, portable=False, imported_by_stock_host=True,
         data_lookup_checked=True, bundled_assets_checked=len(assets),

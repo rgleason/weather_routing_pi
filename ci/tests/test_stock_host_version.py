@@ -27,3 +27,19 @@ class StockHostVersion(unittest.TestCase):
     def test_missing_build_date_is_rejected(self):
         with self.assertRaises(RuntimeError):
             host.host_build(b'5.14.2-universal+bd6986a08\0')
+
+
+class LinuxHostAbi(unittest.TestCase):
+    def test_exact_host_targets(self):
+        for abi in ['debian-x86_64:12', 'debian-arm64:12',
+                    'debian-x86_64:13', 'ubuntu-x86_64:24.04']:
+            self.assertTrue(host.linux_abi_matches(abi, abi))
+
+    def test_stock_jammy_print_abi_uses_its_compile_time_label(self):
+        self.assertTrue(host.linux_abi_matches('ubuntu-x86_64:22.04',
+                                              'ubuntu-wx32-x86_64:22.04'))
+
+    def test_other_distribution_architecture_version_and_wx_variants_are_rejected(self):
+        for package_abi in ['debian-x86_64:12', 'ubuntu-wx32-arm64:22.04',
+                            'ubuntu-wx32-x86_64:24.04', 'ubuntu-gtk3-x86_64:22.04']:
+            self.assertFalse(host.linux_abi_matches('ubuntu-x86_64:22.04', package_abi))

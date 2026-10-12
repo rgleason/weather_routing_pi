@@ -12,6 +12,12 @@ pinned official x86/x64 installers. macOS extracts the checksum-pinned official
 universal package and runs its native Apple Silicon executable. The pins and
 their checksums are retained with the source.
 
+Stock `print-abi` reports the compile-time target. On Ubuntu 22.04 it reports
+`ubuntu-x86_64`, while `CompatOs` selects `ubuntu-wx32-x86_64` when using wx 3.2.
+The test recognises this specific pair and leaves the real import compatibility
+decision to the stock host. It sets no compatibility override; both target
+labels are retained in the receipt.
+
 Linux uses a fresh application home. Windows uses fresh local and roaming
 application-data roots and its normal common application-data config directory
 in a disposable CircleCI VM. macOS uses the disposable VM account's normal home
