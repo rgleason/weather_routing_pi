@@ -134,6 +134,10 @@ def test(host, cli, archive_path, output, source):
                     for entry in archive.getmembers() if entry.isfile() and entry.name.endswith('.mo')}
     require(assets and catalogs, 'Final package lacks bundled data or translations')
     environment, config, config_file, library, data = profile(output, identity)
+    # Stock BasePlatform keeps the macOS log in Library/Logs, separately
+    # from its Library/Preferences/opencpn configuration/private data.
+    log_file = (config.parents[1] / 'Logs/opencpn.log' if sys.platform == 'darwin'
+                else config / 'opencpn.log')
     environment['PATH'] = str(host.parent) + os.pathsep + environment.get('PATH', '')
     version, build_date = host_build(host.read_bytes())
     config_version = int(metadata.findtext('version').strip().split('.')[0]) * 100 + int(
@@ -217,10 +221,9 @@ def test(host, cli, archive_path, output, source):
                 except subprocess.TimeoutExpired:
                     process.kill()
                     process.wait()
-                    if (config / 'opencpn.log').exists():
-                        shutil.copy2(config / 'opencpn.log', output / (label + '-opencpn.log'))
+                    if log_file.exists():
+                        shutil.copy2(log_file, output / (label + '-opencpn.log'))
                     raise RuntimeError('Normal installed host route timed out: ' + label)
-            log_file = config / 'opencpn.log'
             if log_file.exists():
                 shutil.copy2(log_file, output / (label + '-opencpn.log'))
             require(result_file.is_file(), 'Normal host produced no route result: ' + label)
@@ -231,6 +234,7 @@ def test(host, cli, archive_path, output, source):
             require(shoreline.get('enabled') == land and (not land or
                     (shoreline.get('resolution') == 2 and bool(shoreline.get('dataset')))),
                     'Normal host did not use the requested shoreline checks: ' + label)
+            require(log_file.is_file(), 'Normal host log is missing: ' + str(log_file))
             log = log_file.read_text(encoding='utf-8', errors='replace').replace('\\', '/')
             require('using data dir: ' + str(data).replace('\\', '/') in log,
                     'Stock GetPluginDataDir did not resolve the normal installation: ' + label)
@@ -273,7 +277,7 @@ def test(host, cli, archive_path, output, source):
         normal_profile=True, portable=False, imported_by_stock_host=True,
         data_lookup_checked=True, bundled_assets_checked=len(assets),
         translation_catalogs_installed=len(catalogs), help_installed=True,
-        private_data_overrides=False, private_data=str(private_data),
+        private_data_overrides=False, private_data=str(private_data), host_log=str(log_file),
         reinstall_preserves_personal_data=True, uninstall_checked=False,
         uninstall_limitation='Stock 5.14.2 CLI has an unset plugin activation callback',
         routes=receipts), indent=2) + '\n')
