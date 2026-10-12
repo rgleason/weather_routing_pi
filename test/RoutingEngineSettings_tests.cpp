@@ -264,6 +264,38 @@ TEST(RoutingEngineSettings, ResultProvenanceSurvivesEngineSwitchAndPresetReset) 
   EXPECT_EQ(quick.timeStepSeconds, 10800);
 }
 
+TEST(RoutingEngineSettings, QuickUsesConfiguredNominalStepDespiteSavedOffshoreValue) {
+  TiXmlElement xml("Configuration");
+  xml.SetAttribute("RoutingEngine", "original");
+  xml.SetAttribute("OriginalOffshoreStepMinutes", 180);
+  xml.SetAttribute("QuickOffshoreStepMinutes", 240);
+  Configuration c;
+  c.EngineSettings = wr::ReadRoutingEngineSettings(xml);
+  for (const int step : {600, 3600, 7200}) {
+    c.DeltaTime = step;
+    const auto snapshot = wr::RoutingSearchSnapshot::Capture(c, true);
+    EXPECT_EQ(snapshot.timeStepSeconds, step);
+    EXPECT_EQ(wr::QuickTimeStepSeconds(c.DeltaTime), step);
+  }
+  c.EngineSettings.SetEngineId("quick");
+  EXPECT_EQ(wr::RoutingSearchSnapshot::Capture(c, true).timeStepSeconds, 14400);
+}
+
+TEST(RoutingEngineSettings, QuickPresetResetsNominalStepAndPreservesStandardAndSafety) {
+  Configuration c;
+  c.EngineSettings.original.memoryBudgetMiB = 128;
+  c.EngineSettings.quick = {512, 240, 15, 90, {"custom", 0}};
+  const auto before = c;
+  wr::ResetOriginalToBalanced(c);
+  EXPECT_EQ(c.DeltaTime, 3600);
+  EXPECT_EQ(c.EngineSettings.original.memoryBudgetMiB, 128);
+  EXPECT_EQ(c.EngineSettings.quick, before.EngineSettings.quick);
+  EXPECT_EQ(c.RoutingEffortPercent, before.RoutingEffortPercent);
+  EXPECT_EQ(c.MinimumDepthMeters, before.MinimumDepthMeters);
+  EXPECT_EQ(c.SafetyMarginLand, before.SafetyMarginLand);
+  EXPECT_EQ(c.UseMotor, before.UseMotor);
+}
+
 TEST(RoutingEngineSettings, MissingQuickFieldsInitializeOnlyNewSettings) {
   TiXmlElement xml("Configuration");
   xml.SetAttribute("MainSearchPreset", "custom");

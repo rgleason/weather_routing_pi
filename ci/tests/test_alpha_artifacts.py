@@ -70,7 +70,7 @@ class AlphaArtifacts(unittest.TestCase):
     def test_rejects_mismatched_catalogue_target(self):
         directory, _, metadata = self.pair("flatpak-aarch64")
         root = ET.parse(metadata).getroot()
-        root.find("target").text = "flatpak-aarch64"
+        root.find("target").text = "flatpak-32-aarch64"
         ET.ElementTree(root).write(metadata)
         with self.assertRaisesRegex(ValueError, "Unexpected target"):
             prepare.inspect_pair(directory)

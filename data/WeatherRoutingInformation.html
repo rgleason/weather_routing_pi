@@ -12,6 +12,19 @@ a certain time.  By merging the results of many calculations,
 it is possible to form a map determining routes
 to any given location within the map.
 
+<h3>Quick coastal routing and package compatibility (1.29.3)</h3>
+<p>Quick uses the configured nominal time step, one hour by default, with
+smaller steps near departure and destination. It no longer silently uses a
+three-hour base step. Auto uses this corrected Quick search first. Standard
+and Professional retain their existing search and recovery policies.</p>
+<p>Quick now permits bounded access to waterborne coastal endpoints. The
+exception is confined to fixed areas around the original endpoints and cannot
+move along the coast with the boat. Full land clearance applies outside those
+areas; land, drying hazards and required minimum depths remain checked.</p>
+<p>Flatpak and Ubuntu packages now report the target labels expected by their
+OpenCPN hosts. Flatpak also installs its boat and polar data in the location
+used by the stock plugin manager.</p>
+
 <h3>Validated coastal departures (1.29.2)</h3>
 <p>Professional retains the bounded coastal departure allowance when it
 selects a contour route. The final chart checks use the same departure prefix
