@@ -19,7 +19,7 @@ cmake -S "$host_source" -B "$host_work/build" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local \
   -DOCPN_BUILD_TEST=OFF -DOCPN_USE_BUNDLED_LIBS=ON \
   -DOCPN_USE_WEBVIEW=OFF -DOCPN_BUNDLE_DOCS=OFF \
-  -DOCPN_BUNDLE_GSHHS=OFF -DOCPN_BUNDLE_TCDATA=OFF
+  -DOCPN_BUNDLE_GSHHS=ON -DOCPN_BUNDLE_TCDATA=ON
 cmake --build "$host_work/build" --parallel "${CMAKE_BUILD_PARALLEL_LEVEL:-3}"
 cmake --install "$host_work/build"
 dbus-run-session -- python3 "$source_dir/ci/test-installed-host.py" \

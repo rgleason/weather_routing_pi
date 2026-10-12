@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Import the final package and exercise a normal stock OpenCPN installation.
 
-Linux/macOS use a private HOME. Windows uses private LOCALAPPDATA and the
-default system config directory in a disposable CI VM (never a personal PC).
+Linux uses a private HOME. Windows/macOS run in disposable CI VMs, with the
+normal system/user config locations (never on a personal PC).
 No portable flag, plugin path override or plugin data/cache override is used.
 """
 import argparse
@@ -61,10 +61,19 @@ def display(environment, output):
 def profile(output, identity):
     environment = dict(os.environ)
     for name in ('WR_HEADLESS_DATA_DIR', 'WR_SHORELINE_DATA_HOME',
-                 'OPENCPN_PLUGIN_DIRS', 'FLATPAK_ID', 'OCPN_TEST_HOMEDIR'):
+                 'OPENCPN_PLUGIN_DIRS', 'OPENCPN_COMPAT_TARGET',
+                 'FLATPAK_ID', 'OCPN_TEST_HOMEDIR', 'WR_HEADLESS_ROUTE_TEST',
+                 'WR_HEADLESS_SCENARIO', 'WR_HEADLESS_OUTPUT', 'WR_HEADLESS_GRIB_FILE'):
         environment.pop(name, None)
-    home = output / 'user-home'
-    home.mkdir()
+    if sys.platform == 'darwin':
+        require(os.environ.get('CIRCLECI') == 'true',
+                'Native macOS normal-profile tests require a disposable CircleCI VM')
+        # Cocoa/wx standard paths can use the account's home independently of
+        # HOME. Exercise the real account in the disposable VM.
+        home = Path.home()
+    else:
+        home = output / 'user-home'
+        home.mkdir()
     environment.update(HOME=str(home), XDG_CONFIG_HOME=str(home / '.config'),
                        XDG_DATA_HOME=str(home / '.local/share'),
                        XDG_CACHE_HOME=str(home / '.cache'),
@@ -137,8 +146,9 @@ def test(host, cli, archive_path, output, source):
               '[PlugIns/WeatherRouting]\nConfigVersion=' + str(config_version) + '\n')
     config_file.write_text(header, encoding='utf-8')
 
-    def command(name, arguments):
-        result = subprocess.run([str(cli)] + arguments, env=environment, cwd=host.parent,
+    def command(name, arguments, command_environment=None):
+        result = subprocess.run([str(cli)] + arguments,
+                                env=command_environment or environment, cwd=host.parent,
                                 text=True, capture_output=True, timeout=90)
         (output / (name + '.log')).write_text(result.stdout + result.stderr, encoding='utf-8')
         require(result.returncode == 0, 'Stock host command failed: ' + name)
@@ -156,13 +166,17 @@ def test(host, cli, archive_path, output, source):
         installed = data / 'data' / relative
         require(installed.is_file() and digest(installed) == expected,
                 'Normal import lost or changed bundled asset: ' + relative)
-    installed_catalogs = {}
-    search_roots = [output / 'user-home', output / 'local-appdata']
-    for root in search_roots:
-        for path in root.rglob('*.mo'):
-            installed_catalogs[digest(path)] = str(path)
-    require(set(catalogs.values()) <= installed_catalogs.keys(),
-            'Normal import lost a translation catalog')
+    for name, expected in catalogs.items():
+        if sys.platform == 'darwin':
+            relative = name.split('/Contents/Resources/', 1)[1]
+            installed = data.parents[2] / 'Resources' / relative
+        else:
+            relative = name.split('/share/locale/', 1)[1]
+            share = (library.parent.parent / 'share' if sys.platform == 'win32'
+                     else output / 'user-home/.local/share')
+            installed = share / 'locale' / relative
+        require(installed.is_file() and digest(installed) == expected,
+                'Normal import lost or changed translation catalog: ' + relative)
     require((data / 'data/WeatherRoutingInformation.html').is_file(), 'Installed help is missing')
 
     private_data = config / 'plugins/weather_routing'
@@ -201,6 +215,8 @@ def test(host, cli, archive_path, output, source):
                 except subprocess.TimeoutExpired:
                     process.kill()
                     process.wait()
+                    if (config / 'opencpn.log').exists():
+                        shutil.copy2(config / 'opencpn.log', output / (label + '-opencpn.log'))
                     raise RuntimeError('Normal installed host route timed out: ' + label)
             log_file = config / 'opencpn.log'
             if log_file.exists():
@@ -248,10 +264,6 @@ def test(host, cli, archive_path, output, source):
         route('main', True, 'reinstall-restart')
         require(all(path.is_file() and digest(path) == snapshots[str(path)] for path in personal),
                 'Reinstall/restart overwrote personal boats or polars')
-        command('uninstall', ['uninstall-plugin', metadata.findtext('name').strip()])
-        require(not library.exists(), 'Uninstall left the installed plugin library')
-        require(all(path.is_file() and digest(path) == snapshots[str(path)] for path in personal),
-                'Uninstall removed or changed personal boats or polars')
 
     (output / 'acceptance.json').write_text(json.dumps(dict(
         stock_host=version, host_build_date=build_date, host_abi=abi,
@@ -260,9 +272,10 @@ def test(host, cli, archive_path, output, source):
         data_lookup_checked=True, bundled_assets_checked=len(assets),
         translation_catalogs_installed=len(catalogs), help_installed=True,
         private_data_overrides=False, private_data=str(private_data),
-        reinstall_preserves_personal_data=True, uninstall_preserves_personal_data=True,
+        reinstall_preserves_personal_data=True, uninstall_checked=False,
+        uninstall_limitation='Stock 5.14.2 CLI has an unset plugin activation callback',
         routes=receipts), indent=2) + '\n')
-    print('Normal installation, shoreline routes, reinstall and uninstall passed', flush=True)
+    print('Normal installation, shoreline routes and reinstall passed', flush=True)
 
 
 if __name__ == '__main__':
