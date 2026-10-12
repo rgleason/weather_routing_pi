@@ -1,5 +1,8 @@
 import importlib.util
+import io
 from pathlib import Path
+import tarfile
+import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 
@@ -10,6 +13,22 @@ spec.loader.exec_module(abi)
 
 
 class PackageAbi(unittest.TestCase):
+    def test_delivered_archive_is_checked_without_cpack_staging_copies(self):
+        with tempfile.TemporaryDirectory() as folder:
+            directory = Path(folder)
+            metadata = ET.tostring(self.metadata("darwin-wx32", "15.3.2", "arm64"))
+            stem = "xweather_routing_pi-1.29.3-macos-arm64"
+            (directory / (stem + ".xml")).write_bytes(metadata)
+            with tarfile.open(directory / (stem + ".tar.gz"), "w:gz") as archive:
+                member = tarfile.TarInfo("metadata.xml")
+                member.size = len(metadata)
+                archive.addfile(member, io.BytesIO(metadata))
+            staging = directory / "_CPack_Packages/Darwin/TGZ"
+            staging.mkdir(parents=True)
+            with tarfile.open(staging / (stem + ".tar.gz"), "w:gz"):
+                pass  # CPack's intermediate archive has no embedded metadata.
+            abi.verify(directory, "macos-arm64")
+
     def metadata(self, label, version, arch):
         root = ET.Element("plugin")
         for key, value in zip(("target", "target-version", "target-arch", "api-version"),
