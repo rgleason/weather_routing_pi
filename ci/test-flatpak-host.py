@@ -9,10 +9,32 @@ import selectors
 import shutil
 import subprocess
 import tarfile
+import tempfile
 import xml.etree.ElementTree as ET
 
 
 def test(archive, output, xvfb, reject_archive=None):
+    # Normal Flatpak profiles use D-Bus for the single-instance check. A private
+    # bus tests that path while allowing the user's working host to stay open.
+    # Keep the Unix socket short even when the artifact directory is long.
+    with tempfile.TemporaryDirectory(prefix="wr-flatpak-bus-") as directory:
+        socket = Path(directory) / "bus"
+        bus = subprocess.Popen([
+            "dbus-daemon", "--session", "--nofork",
+            f"--address=unix:path={socket}", "--print-address=1"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            with selectors.DefaultSelector() as selector:
+                selector.register(bus.stdout, selectors.EVENT_READ)
+                if not selector.select(10) or not bus.stdout.readline().strip():
+                    raise RuntimeError("Private Flatpak message bus did not start")
+            run_test(archive, output, xvfb, reject_archive, socket)
+        finally:
+            bus.terminate()
+            bus.wait(timeout=5)
+
+
+def run_test(archive, output, xvfb, reject_archive, socket):
     output = output.resolve()
     output.mkdir(parents=True, exist_ok=False)
     profile = output / "app-home"
@@ -32,7 +54,10 @@ def test(archive, output, xvfb, reject_archive=None):
             f"--filesystem={source}", f"--filesystem={output}",
             f"--filesystem={archive.resolve().parent}:ro",
             f"--bind-mount={Path.home()}/.var/app/org.opencpn.OpenCPN={profile}",
+            f"--bind-mount=/run/wr-flatpak-test-bus={socket}",
             "--env=FLATPAK_ID=org.opencpn.OpenCPN",
+            "--env=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/wr-flatpak-test-bus",
+            "--env=NO_AT_BRIDGE=1",
             f"--env=XDG_CONFIG_HOME={config.parent}",
             f"--env=XDG_DATA_HOME={output / 'data'}", f"--env=XDG_CACHE_HOME={output / 'cache'}"]
 
@@ -58,7 +83,7 @@ def test(archive, output, xvfb, reject_archive=None):
     library = profile / "lib/opencpn" / f"lib{identity}.so"
     if not library.is_file():
         raise RuntimeError("Import did not install the packaged library in the private profile")
-    polar = profile / f"data/plugins/{identity}/data/polars/Example/Test-TWS-0-20+60.pol"
+    polar = profile / f"data/opencpn/plugins/{identity}/data/polars/Example/Test-TWS-0-20+60.pol"
     if not polar.is_file():
         raise RuntimeError("Import did not install the example polar")
     boat = output / "boat.xml"
@@ -73,15 +98,6 @@ def test(archive, output, xvfb, reject_archive=None):
     dates = re.findall(rb"20\d{2}-\d{2}-\d{2}\x00", binary)
     if not host_version or not dates:
         raise RuntimeError("Cannot determine the stock host welcome-dialog version")
-    # Portable OpenCPN looks beside its executable for the shared resources.
-    # Mount a private copy of the stock bin directory with resource links;
-    # the installed app and the user's profile remain untouched.
-    host_bin = output / "host-bin"
-    shutil.copytree(Path(location) / "files/bin", host_bin, symlinks=True)
-    for resource in (Path(location) / "files/share/opencpn").iterdir():
-        link = host_bin / resource.name
-        if not link.exists():
-            link.symlink_to("/app/share/opencpn/" + resource.name)
     header = "[Settings]\nConfigVersionString=Version " + host_version[0][:-1].decode() + " Build " + max(dates)[:-1].decode() + "\n"
     header += "NavMessageShown=1\nOpenGL=0\nDisableOpenGL=1\nDataConnections=\n"
     header += f"[PlugIns/lib{identity}.so]\nbEnabled=1\n[PlugIns/libgrib_pi.so]\nbEnabled=1\n"
@@ -103,28 +119,30 @@ def test(archive, output, xvfb, reject_archive=None):
                 display = ":" + os.read(read_fd, 128).decode().strip()
             os.close(read_fd)
             receipts = []
-            for engine in ("original", "quick", "main"):
+            for engine, land in ((engine, land) for engine in
+                                 ("original", "quick", "main")
+                                 for land in (False, True)):
+                case = engine + ("-land" if land else "-offshore")
                 (config / "opencpn.conf").write_text(header)
                 scenario = dict(schemaVersion=1, name="Flatpak stock host " + engine,
                     start=dict(name="offshore west", lat=53.4, lon=-5.5),
                     end=dict(name="offshore east", lat=53.4, lon=-5.3),
                     startTime="2026-09-28T00:00:00Z", departureOptimization=dict(enabled=False),
                     environment=dict(useGrib=True, useCurrents=False, allowClimatologyFallback=False),
-                    route=dict(routingEngine=engine, boatFile=str(boat), timeStepSeconds=900,
+                    route=dict(routingEngine=engine, shorelineResolution=2,
+                               boatFile=str(boat), timeStepSeconds=900,
                                headingStepDegrees=5, maxSwellMeters=0),
-                    safety=dict(mode="none", enforce=False))
-                scenario_file = output / (engine + "-scenario.json")
+                    safety=dict(mode="gshhs" if land else "none", enforce=False))
+                scenario_file = output / (case + "-scenario.json")
                 scenario_file.write_text(json.dumps(scenario, indent=2) + "\n")
-                result_file = output / (engine + "-result.json")
+                result_file = output / (case + "-result.json")
                 environment = dict(DISPLAY=display, WR_HEADLESS_ROUTE_TEST="scenario",
                     WR_HEADLESS_SCENARIO=str(scenario_file), WR_HEADLESS_OUTPUT=str(result_file),
                     WR_HEADLESS_GRIB_FILE=str(source / "ci/testdata/irish-sea-uniform-wind.grb"),
-                    WR_HEADLESS_DATA_DIR=str(plugin_data), WR_HEADLESS_TIMEOUT_MS="90000",
-                    WR_SHORELINE_DATA_HOME=str(output / "shoreline"))
+                    WR_HEADLESS_DATA_DIR=str(plugin_data), WR_HEADLESS_TIMEOUT_MS="90000")
                 command = base + [f"--env={key}={value}" for key, value in environment.items()]
-                command += [f"--bind-mount=/app/bin={host_bin}"]
-                command += [str(sandbox), "/app/bin/opencpn", "--portable", f"--configdir={config}", "--no_opengl"]
-                with (output / (engine + "-stdout.log")).open("w") as stdout:
+                command += [str(sandbox), "/app/bin/opencpn", f"--configdir={config}", "--no_opengl"]
+                with (output / (case + "-stdout.log")).open("w") as stdout:
                     process = subprocess.Popen(command, stdout=stdout, stderr=subprocess.STDOUT)
                     try:
                         code = process.wait(timeout=120)
@@ -136,14 +154,28 @@ def test(archive, output, xvfb, reject_archive=None):
                 result = json.loads(result_file.read_text())
                 if code or result.get("status") != "complete":
                     raise RuntimeError(f"Flatpak {engine} route failed: exit {code}, {result.get('status')}")
-                receipts.append(dict(engine=engine, status=result["status"], exit_code=code))
-                shutil.copy2(config / "opencpn.log", output / (engine + "-opencpn.log"))
+                candidates = result.get("candidates", [])
+                if not candidates:
+                    raise RuntimeError(f"Flatpak {case} returned no candidate")
+                shoreline = candidates[0].get("shoreline", {})
+                if shoreline.get("enabled") != land or (land and
+                        (shoreline.get("resolution") != 2 or not shoreline.get("dataset"))):
+                    raise RuntimeError(f"Flatpak {case} did not use the requested shoreline checks")
+                host_log = (config / "opencpn.log").read_text()
+                expected_data = str(Path.home() / ".var/app/org.opencpn.OpenCPN/data/opencpn/plugins" / identity)
+                if "using data dir: " + expected_data not in host_log:
+                    raise RuntimeError(f"Flatpak {case} did not resolve bundled data through stock OpenCPN")
+                receipts.append(dict(engine=engine, status=result["status"], exit_code=code,
+                                     detect_land=land, shoreline_resolution=shoreline.get("resolution"),
+                                     shoreline_dataset_verified=bool(shoreline.get("dataset"))))
+                shutil.copy2(config / "opencpn.log", output / (case + "-opencpn.log"))
         finally:
             display_server.terminate(); display_server.wait(timeout=5)
     (output / "acceptance.json").write_text(json.dumps(dict(host_abi=abi,
         stock_host=host_version[0][:-1].decode(), package=archive.name,
-        isolated_application_home=True, import_passed=True, routes=receipts), indent=2) + "\n")
-    print("Stock Flatpak import and Quick/Standard/Professional routes passed", flush=True)
+        isolated_application_home=True, normal_profile=True,
+        host_bundled_data_lookup_checked=True, import_passed=True, routes=receipts), indent=2) + "\n")
+    print("Stock Flatpak import and Quick/Standard/Professional routes passed with Detect Land off/on", flush=True)
 
 
 if __name__ == "__main__":
