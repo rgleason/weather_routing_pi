@@ -57,3 +57,9 @@ find "$package_build" -maxdepth 1 -type f \
   \( -name '*.tar.gz' -o -name '*.xml' \) \
   -exec cp -f '{}' "$package_dir/" \;
 sha256sum "$package_dir"/* >"$package_dir/SHA256SUMS"
+
+archives=("$package_dir"/*weather_routing_pi-*.tar.gz)
+test "${#archives[@]}" -eq 1
+bash "$source_dir/ci/test-linux-installed-host.sh" \
+  "$source_dir" "$work_dir" "${archives[0]}" "$artifact_dir/normal-runtime" \
+  2>&1 | tee "$log_dir/normal-installed-host.log"

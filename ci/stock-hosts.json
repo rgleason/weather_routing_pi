@@ -1,0 +1,14 @@
+{
+  "version": "5.14.2",
+  "core_revision": "bd6986a0854d89c662a3d3cab011e629337fcb88",
+  "linux-source": {
+    "url": "https://codeload.github.com/OpenCPN/OpenCPN/tar.gz/bd6986a0854d89c662a3d3cab011e629337fcb88",
+    "filename": "opencpn-5.14.2-source.tar.gz",
+    "sha256": "a4590f794edf6b77e5fbb9cc698d5083e5c4c6948d1e75893c3ea48296ec38bd"
+  },
+  "macos-arm64": {
+    "url": "https://github.com/OpenCPN/OpenCPN/releases/download/Release_5.14.2/OpenCPN_5.14.2-universal%2B18284.bd6986a08-14.pkg",
+    "filename": "opencpn-5.14.2-universal.pkg",
+    "sha256": "cf56e9c55c2d72cae5ae3013876139f61b7757edc9777a022bddedc11fc3922b"
+  }
+}

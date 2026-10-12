@@ -155,3 +155,5 @@ jq -n \
     package_status: "passed", metadata_validation_status: "passed",
     stock_api_status: "passed", package_filename: $package,
     package_checksum_sha256: $checksum}' >"$artifact/result.json"
+
+python3 ci/test-macos-installed-host.py 2>&1 | tee "$log_dir/normal-installed-host.log"
