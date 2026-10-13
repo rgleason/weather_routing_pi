@@ -11,7 +11,7 @@ parameters:
     default: false
   build_xweather_identity:
     type: boolean
-    default: false
+    default: true
   recover_alpha_deploy:
     type: boolean
     default: false
