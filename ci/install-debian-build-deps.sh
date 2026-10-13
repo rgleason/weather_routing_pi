@@ -7,6 +7,7 @@ apt-get install -y --no-install-recommends \
   binutils \
   build-essential \
   ca-certificates \
+  ccache \
   cmake \
   gettext \
   git \
