@@ -210,9 +210,7 @@ copy /y test-results\ctest.xml ..\artifacts\windows-x86\tests\ctest.xml
 if errorlevel 1 exit /b %errorlevel%
 dir ..\artifacts\windows-x86\package
 
-if /I "%WR_XWEATHER_IDENTITY%" == "ON" (
-  python "%SCRIPTDIR%run-windows86-host.py"
-  if errorlevel 1 exit /b 1
-)
+python "%SCRIPTDIR%run-windows86-host.py"
+if errorlevel 1 exit /b 1
 
 endlocal

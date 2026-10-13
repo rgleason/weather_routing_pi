@@ -20,10 +20,13 @@ with installer.open('rb') as stream:
         raise RuntimeError('Official Win32 host checksum mismatch')
 host = work / 'host'
 subprocess.run(['7z', 'x', '-y', '-o' + str(host), str(installer)], check=True)
-archives = list((root / 'build').glob('xweather_routing_pi-*.tar.gz'))
+archives = list((root / 'build').glob('*weather_routing_pi-*.tar.gz'))
 if len(archives) != 1:
-    raise RuntimeError('Expected exactly one Win32 xWeatherRouting archive')
+    raise RuntimeError('Expected exactly one Win32 plugin archive')
 spec = importlib.util.spec_from_file_location('runtime', root / 'ci/test-windows-host.py')
 runtime = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runtime)
+subprocess.run(['python', str(root / 'ci/test-installed-host.py'),
+                str(host / 'opencpn.exe'), str(host / 'opencpn-cmd.exe'),
+                str(archives[0]), str(root / 'artifacts/windows-x86/normal-runtime')], check=True)
 runtime.test(host, archives[0], root / 'artifacts/windows-x86/runtime', root)
