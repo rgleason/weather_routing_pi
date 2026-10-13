@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Validate, URL-resolve and stage importable xWeatherRouting packages."""
+"""Validate and stage qualified packages for an explicit publication channel.
+
+The historical command defaults to xWeatherRouting Alpha for compatibility.
+Rick's CircleCI workflow uses prepare-publication-artifacts.py with a channel.
+"""
 
 import hashlib
 import json
@@ -27,6 +31,21 @@ EXPECTED_TARGETS = {
 TARGETS = set(EXPECTED_TARGETS)
 PACKAGE = "xweather_routing_pi"
 REPOSITORY = "pob220/xweather-routing-alpha-oss"
+PROFILES = {
+    "production": {
+        "package": "weather_routing_pi", "name": "WeatherRouting",
+        "repository": "opencpn/weather-routing-prod",
+        "source": "https://github.com/rgleason/weather_routing_pi",
+        "allowed_sources": {"https://github.com/rgleason/weather_routing_pi",
+                            "https://github.com/pob220/weather_routing_pi"},
+    },
+    "xweather-alpha": {
+        "package": PACKAGE, "name": "xWeatherRouting", "repository": REPOSITORY,
+        "source": "https://github.com/pob220/xweather_routing_pi",
+        "allowed_sources": {"https://github.com/pob220/xweather_routing_pi",
+                            "https://github.com/rgleason/weather_routing_pi"},
+    },
+}
 SUMMARY = "Weather routing, faster optional chart awareness and route checks."
 PREVIOUS_SUMMARY = "Weather routing, passage planning and existing-route chart checks."
 OLDER_SUMMARY = "Advanced weather routing with departure and arrival planning."
@@ -40,22 +59,30 @@ def value(root, field):
     return text
 
 
-def inspect_pair(directory):
+def profile_for(channel):
+    if channel not in PROFILES:
+        raise ValueError(f"Unknown publication channel: {channel}")
+    return PROFILES[channel]
+
+
+def inspect_pair(directory, channel="xweather-alpha"):
+    profile = profile_for(channel)
+    package_name = profile["package"]
     archives = list(directory.glob("*.tar.gz"))
     if len(archives) != 1:
         raise ValueError(f"Expected exactly one archive: {directory}")
     archive = archives[0]
-    if not archive.name.startswith(PACKAGE + "-"):
+    if not archive.name.startswith(package_name + "-"):
         raise ValueError(f"Wrong archive identity: {archive.name}")
     metadata = archive.with_name(archive.name[:-7] + ".xml")
     if not metadata.is_file():
-        match = re.match(rf"{PACKAGE}-(\d+\.\d+\.\d+)-", archive.name)
-        candidates = list(directory.glob(f"{PACKAGE}-{match[1]}-*.xml")) if match else []
+        match = re.match(rf"{package_name}-(\d+\.\d+\.\d+)-", archive.name)
+        candidates = list(directory.glob(f"{package_name}-{match[1]}-*.xml")) if match else []
         if len(candidates) != 1:
             raise ValueError(f"No unique same-version XML: {archive}")
         metadata = candidates[0]
     root = ET.parse(metadata).getroot()
-    if root.tag != "plugin" or value(root, "name") != "xWeatherRouting":
+    if root.tag != "plugin" or value(root, "name") != profile["name"]:
         raise ValueError(f"Wrong plugin name: {metadata}")
     summary = value(root, "summary")
     if summary not in {SUMMARY, PREVIOUS_SUMMARY, OLDER_SUMMARY, LEGACY_SUMMARY}:
@@ -65,10 +92,10 @@ def inspect_pair(directory):
         raise ValueError(f"Catalogue summary exceeds 72 characters: {metadata}")
     if value(root, "api-version") != "1.21":
         raise ValueError(f"Unexpected stock API requirement: {metadata}")
-    if value(root, "source") != "https://github.com/pob220/xweather_routing_pi":
+    if value(root, "source") not in profile["allowed_sources"]:
         raise ValueError(f"Wrong source repository: {metadata}")
     version = value(root, "version")
-    if not re.fullmatch(r"\d+\.\d+\.\d+", version) or not archive.name.startswith(f"{PACKAGE}-{version}-"):
+    if not re.fullmatch(r"\d+\.\d+\.\d+", version) or not archive.name.startswith(f"{package_name}-{version}-"):
         raise ValueError(f"Archive/XML version mismatch: {archive}")
     target = tuple(value(root, key) for key in ("target", "target-version", "target-arch"))
     if any(not re.fullmatch(r"[\w.+-]+", item) for item in target):
@@ -79,38 +106,47 @@ def inspect_pair(directory):
             f"Unexpected target for {matrix_name}: {target}; "
             f"expected {EXPECTED_TARGETS.get(matrix_name)}"
         )
-    libraries = {f"lib{PACKAGE}.so", f"lib{PACKAGE}.dylib", f"{PACKAGE}.dll"}
+    libraries = {f"lib{package_name}.so", f"lib{package_name}.dylib", f"{package_name}.dll"}
+    other_package = "xweather_routing_pi" if channel == "production" else "weather_routing_pi"
     with tarfile.open(archive, "r:gz") as package:
         members = package.getmembers()
         if any(PurePosixPath(item.name).is_absolute() or ".." in PurePosixPath(item.name).parts for item in members):
             raise ValueError(f"Unsafe archive path: {archive}")
         if sum(item.isfile() and PurePosixPath(item.name).name in libraries for item in members) != 1:
-            raise ValueError(f"Missing/duplicate xWeatherRouting library: {archive}")
+            raise ValueError(f"Missing/duplicate {profile['name']} library: {archive}")
         if any(
             re.fullmatch(
-                r"(?:lib)?weather_routing_pi\.(?:so|dylib|dll)",
+                rf"(?:lib)?{other_package}\.(?:so|dylib|dll)",
                 PurePosixPath(item.name).name,
             )
             or re.match(r"(?:lib)?g(?:test|mock)", PurePosixPath(item.name).name)
             for item in members
         ):
-            raise ValueError(f"Standard plugin or test library included: {archive}")
+            raise ValueError(f"Other plugin identity or test library included: {archive}")
         embedded_members = [item for item in members if item.name == "metadata.xml"]
         if len(embedded_members) != 1:
             raise ValueError(f"Missing/duplicate embedded metadata: {archive}")
         embedded = package.extractfile(embedded_members[0]).read()
-        if (ET.fromstring(embedded).findtext("version") or "").strip() != version:
-            raise ValueError(f"Embedded metadata version mismatch: {archive}")
+        embedded_root = ET.fromstring(embedded)
+        for field in ("name", "version", "api-version", "source", "target", "target-version", "target-arch"):
+            if value(embedded_root, field) != value(root, field):
+                raise ValueError(f"Embedded metadata {field} mismatch: {archive}")
     return archive, root, version, target, metadata.name
 
 
-def prepare(artifact_root, output, revision, build_number):
+def prepare(artifact_root, output, revision, build_number, channel="xweather-alpha",
+            source_repository=None):
+    profile = profile_for(channel)
+    package_name, repository = profile["package"], profile["repository"]
+    source_repository = source_repository or profile["source"]
+    if source_repository not in profile["allowed_sources"]:
+        raise ValueError("Source repository does not match the publication channel")
     if not re.fullmatch(r"[0-9a-f]{7,40}", revision) or not re.fullmatch(r"\d+", build_number):
         raise ValueError("Expected commit SHA and numeric CircleCI build number")
     directories = {path.parent.name: path for path in artifact_root.glob("*/package")}
     if set(directories) != TARGETS:
         raise ValueError(f"Incomplete/unexpected matrix: {sorted(directories)}")
-    pairs = [inspect_pair(directories[name]) for name in sorted(TARGETS)]
+    pairs = [inspect_pair(directories[name], channel) for name in sorted(TARGETS)]
     if len({pair[2] for pair in pairs}) != 1 or len({pair[3] for pair in pairs}) != len(TARGETS):
         raise ValueError("Mixed versions or duplicate platform metadata")
     output.mkdir(parents=True, exist_ok=False)
@@ -118,10 +154,14 @@ def prepare(artifact_root, output, revision, build_number):
     embed_module = module_from_spec(embed_spec)
     embed_spec.loader.exec_module(embed_module)
     uploads = []
+    inputs = []
     for archive, root, version, target, metadata_name in pairs:
         cloud_version = f"{version}+{build_number}.{revision[:7]}"
-        base = f"{PACKAGE}-{version}-{'-'.join(target)}"
-        url = f"https://dl.cloudsmith.io/public/{REPOSITORY}/raw/names/{base}-tarball/versions/{cloud_version}/{archive.name}"
+        base = f"{package_name}-{version}-{'-'.join(target)}"
+        url = f"https://dl.cloudsmith.io/public/{repository}/raw/names/{base}-tarball/versions/{cloud_version}/{archive.name}"
+        root.find("source").text = source_repository
+        if root.find("info-url") is not None:
+            root.find("info-url").text = source_repository
         root.find("tarball-url").text = "\n    " + url + "\n  "
         staged_metadata = output / metadata_name
         ET.ElementTree(root).write(staged_metadata, encoding="utf-8", xml_declaration=True)
@@ -131,12 +171,22 @@ def prepare(artifact_root, output, revision, build_number):
             embedded = package.extractfile("metadata.xml").read()
         if ET.tostring(ET.fromstring(embedded)) != ET.tostring(ET.parse(staged_metadata).getroot()):
             raise ValueError(f"Embedded metadata differs: {staged_archive}")
+        with archive.open("rb") as stream:
+            input_digest = hashlib.file_digest(stream, "sha256").hexdigest()
+        inputs.append({"file": archive.name, "sha256": input_digest,
+                       "target": list(target)})
         for name, file in ((base + "-metadata", staged_metadata), (base + "-tarball", staged_archive)):
             with file.open("rb") as stream:
                 digest = hashlib.file_digest(stream, "sha256").hexdigest()
             uploads.append({"name": name, "version": cloud_version,
                             "file": str(file.resolve()), "sha256": digest})
     (output / "uploads.json").write_text(json.dumps(uploads, indent=2) + "\n")
+    (output / "publication.json").write_text(json.dumps({
+        "channel": channel, "repository": repository, "package": package_name,
+        "source_repository": source_repository, "source_revision": revision,
+        "inputs": inputs, "uploads": uploads,
+    }, indent=2) + "\n")
+    print(f"Publication: {profile['name']} -> {repository}; source {revision}")
     print(f"Validated {len(pairs)} importable platform pairs; {len(uploads)} uploads staged")
 
 
