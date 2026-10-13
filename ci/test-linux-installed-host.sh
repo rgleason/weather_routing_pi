@@ -33,8 +33,9 @@ cmake -S "$host_source" -B "$host_work/build" -G Ninja \
   -DOCPN_BUNDLE_GSHHS=ON -DOCPN_BUNDLE_TCDATA=ON
 cmake --build "$host_work/build" --parallel "${CMAKE_BUILD_PARALLEL_LEVEL:-3}"
 if [[ -n "${CCACHE_DIR:-}" ]]; then
-  mkdir -p "$output"
-  ccache --show-stats | tee "$output/stock-host-compiler-cache.log"
+  cache_log_dir="$(dirname "$output")/logs"
+  mkdir -p "$cache_log_dir"
+  ccache --show-stats | tee "$cache_log_dir/stock-host-compiler-cache.log"
 fi
 cmake --install "$host_work/build"
 dbus-run-session -- python3 "$source_dir/ci/test-installed-host.py" \
