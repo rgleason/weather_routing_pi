@@ -83,6 +83,10 @@ packaging infrastructure.
 
 ## Testing
 
+For real-GRIB smoke tests in a separate OpenCPN profile, see the
+[headless testing kit](tools/headless-testing/). It includes a Python runner,
+timing extractor, example scenario and setup instructions.
+
 ```sh
 cmake -S . -B build-test -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
