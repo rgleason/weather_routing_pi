@@ -10,8 +10,9 @@ def check(channel, xweather, workflow_id, branch, repository):
         raise ValueError("Unknown publication channel")
     if xweather != (channel == "xweather-alpha"):
         raise ValueError("Production requires build_xweather_identity=false; xweather-alpha requires true")
+    workflow_id = workflow_id.strip()
     if workflow_id and not re.fullmatch(r"[0-9a-fA-F-]{36}", workflow_id):
-        raise ValueError("release_workflow_id must be a CircleCI workflow UUID")
+        raise ValueError(f"release_workflow_id must be a CircleCI workflow UUID, got: {workflow_id!r}")
     if channel == "production" and (branch != "master" or repository != "weather_routing_pi"):
         raise ValueError("Production publication must be triggered from WeatherRouting master")
     destination = ("opencpn/weather-routing-prod" if channel == "production" else

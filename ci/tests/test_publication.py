@@ -215,6 +215,17 @@ class ReleaseRequest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "master"):
             request.check("production", False, "", "pull/714", "weather_routing_pi")
 
+    def test_non_uuid_workflow_id_is_rejected(self):
+        for bad in ("not-a-uuid", "1234", "https://app.circleci.com/pipelines/gh/rgleason/weather_routing_pi"):
+            with self.assertRaisesRegex(ValueError, "UUID"):
+                request.check("production", False, bad, "master", "weather_routing_pi")
+
+    def test_valid_workflow_uuid_is_accepted(self):
+        request.check("production", False, "da6bf846-9538-4ceb-bd98-b5ae8572949c", "master", "weather_routing_pi")
+
+    def test_workflow_id_whitespace_is_stripped(self):
+        request.check("production", False, "  da6bf846-9538-4ceb-bd98-b5ae8572949c\n", "master", "weather_routing_pi")
+
 
 if __name__ == "__main__":
     unittest.main()
