@@ -20,6 +20,7 @@
 #ifndef _WEATHER_ROUTING_H_
 #define _WEATHER_ROUTING_H_
 
+#include <chrono>
 #include <wx/treectrl.h>
 #include <wx/fileconf.h>
 #include <wx/collpane.h>
@@ -920,6 +921,8 @@ private:
   bool m_bRunning;
   int m_RoutePreparationDepth;
   wxTimeSpan m_RunTime;
+  bool m_LivePreviewDirty{false};
+  std::chrono::steady_clock::time_point m_LastLivePreviewRefresh{};
   wxDateTime m_StartTime;
 
   wxString m_default_configuration_path;

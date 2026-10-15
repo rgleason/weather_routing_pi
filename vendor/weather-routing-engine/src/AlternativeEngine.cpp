@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "supercpn/weather_routing/AlternativeEngine.h"
 #include "MotionKernel.h"
+#include "supercpn/weather_routing/Preview.h"
 
 #include <algorithm>
 #include <cmath>
@@ -52,6 +53,7 @@ bool validPoint(GeoPoint point) {
 AlternativeRoutingResult AlternativeRoutingEngine::route(
     const RoutingRequest& request, const RoutingEnvironment& environment,
     const AlternativeRoutingOptions& requestedOptions) const {
+  RoutingPreviewPublisher preview(request);
   AlternativeRoutingResult output;
   auto& result = output.route;
   const AlternativeRoutingOptions options = requestedOptions;
@@ -205,6 +207,21 @@ AlternativeRoutingResult AlternativeRoutingEngine::route(
                         frontier.size(),
                         result.diagnostics.landChecks,
                         result.diagnostics.closestApproachNm, 100});
+    preview.publish([&] {
+      RoutingPreview view;
+      const auto stride = std::max<std::size_t>(1, (frontier.size() + 255) / 256);
+      auto representative = frontier.front();
+      for (std::size_t i = 0; i < frontier.size(); i += stride) {
+        view.frontier.push_back(frontier[i]->state.position);
+        if (distanceNm(frontier[i]->state.position, request.destination) <
+            distanceNm(representative->state.position, request.destination)) representative = frontier[i];
+      }
+      view.time = representative->state.time;
+      for (auto node = representative; node && view.path.size() < RoutingPreviewPublisher::maximumPathPoints; node = node->parent)
+        view.path.push_back(node->state.position);
+      std::reverse(view.path.begin(), view.path.end());
+      return view;
+    });
     std::vector<std::optional<Candidate>> best(options.sectors);
     std::optional<Candidate> closest;
     bool withinDuration = false;

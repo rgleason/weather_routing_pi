@@ -1,4 +1,5 @@
 #include "supercpn/weather_routing/Engine.h"
+#include "supercpn/weather_routing/Preview.h"
 #include "supercpn/weather_routing/CoastalEndpointPolicy.h"
 
 #include <algorithm>
@@ -1178,6 +1179,7 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
                               std::uint64_t arrivalGeneratedStateReserve,
                               RoutingDiagnostics& diagnostics) {
   SearchArtifacts result;
+  RoutingPreviewPublisher preview(request);
   WorkProgress workerProgress;
   Node initial;
   initial.position = request.start;
@@ -1681,6 +1683,8 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
     if (!result.retained.empty())
       result.isochrones.push_back(buildIsochroneLayer(
           request, environment, result.nodes, result.retained, headingStep));
+    if (!result.isochrones.empty())
+      preview.publish([&] { return PreviewFromLayer(result.isochrones.back()); });
     if (!result.retained.empty()) {
       constexpr std::size_t kRecoveryFrontierHistory = 8;
       result.recoveryFrontiers.push_back(result.retained);
@@ -1813,6 +1817,7 @@ std::optional<std::pair<SearchArtifacts, std::size_t>> reverseRecovery(
     const RoutingRequest& request, const RoutingEnvironment& environment,
     const VesselPerformanceModel& performance, SearchArtifacts search,
     RoutingDiagnostics& diagnostics) {
+  RoutingPreviewPublisher preview(request);
   diagnostics.stagesAttempted.push_back(SolverPath::ReverseRecovery);
   ++diagnostics.reverseLayers;
   const std::uint64_t configuredCandidateLimit =
@@ -1898,6 +1903,16 @@ std::optional<std::pair<SearchArtifacts, std::size_t>> reverseRecovery(
   for (std::size_t index : candidates) {
     if (request.cancellation.cancelled()) return {};
     if (bridgeBudgetExhausted()) return {};
+    preview.publish([&] {
+      RoutingPreview view;
+      view.stage = RoutingProgressStage::ReverseRecovery;
+      view.time = search.nodes[index].time;
+      view.frontier.push_back(search.nodes[index].position);
+      for (auto id = index; id != std::numeric_limits<std::size_t>::max() && view.path.size() < RoutingPreviewPublisher::maximumPathPoints; id = search.nodes[id].predecessor)
+        view.path.push_back(search.nodes[id].position);
+      std::reverse(view.path.begin(), view.path.end());
+      return view;
+    });
     ++diagnostics.reverseNodes;
     if ((diagnostics.reverseNodes & 63U) == 0U)
       reportProgress(request, RoutingProgressStage::ReverseRecovery,
@@ -2436,6 +2451,8 @@ SearchArtifacts graphSearch(const RoutingRequest& request,
     return true;
   };
 
+  RoutingPreviewPublisher graphPreview(request);
+  std::uint64_t graphPreviewChecks = 0;
   while (true) {
     if (corridorStage + 1 < corridorWidths.size() &&
         deferredLabelCount > 0 &&
@@ -2466,6 +2483,21 @@ SearchArtifacts graphSearch(const RoutingRequest& request,
       result.failure = RoutingStatus::Cancelled;
       result.reason = "routing cancelled";
       return result;
+    }
+    if ((graphPreviewChecks++ & 255U) == 0U && !open.empty()) {
+      graphPreview.publish([&] {
+        RoutingPreview view;
+        view.stage = progressStage;
+        auto id = open.top().node;
+        view.time = result.nodes[id].time;
+        view.frontier.push_back(result.nodes[id].position);
+        while (id != std::numeric_limits<std::size_t>::max() && view.path.size() < RoutingPreviewPublisher::maximumPathPoints) {
+          view.path.push_back(result.nodes[id].position);
+          id = result.nodes[id].predecessor;
+        }
+        std::reverse(view.path.begin(), view.path.end());
+        return view;
+      });
     }
     const QueueEntry entry = open.top();
     open.pop();

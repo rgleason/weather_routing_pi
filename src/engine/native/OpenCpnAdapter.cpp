@@ -1017,6 +1017,15 @@ wr::RoutingRequest BuildRequest(RouteMapOverlay& overlay,
                          const wr::RoutingProgressUpdate& progress) {
     overlay.SetModernNativeProgress(progress, generation);
   };
+  wxString livePreview;
+  if (!configuration.chart_safety_scout_preview &&
+      (!wxGetEnv("WR_LIVE_ROUTE_PREVIEW", &livePreview) || livePreview != "0")) {
+    request.previewPhase = overlay.NextModernPreviewPhase();
+    request.previewWanted = [&overlay] { return overlay.WantsModernPreview(); };
+    request.preview = [&overlay, generation = overlay.ModernPreviewGeneration()](auto value) {
+      overlay.SetModernPreview(std::move(value), generation);
+    };
+  }
   return request;
 }
 

@@ -1385,11 +1385,11 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
 
   int confVersion;
   pConf->Read(_T ( "ConfigVersion" ), &confVersion, 0);
-  // v1.25 through v1.30 retain the v1.24 bundled boats and polars. A feature-only
+  // v1.25 through v1.31 retain the v1.24 bundled boats and polars. A feature-only
   // upgrade must not prompt to overwrite existing user data.
-  if (confVersion >= 124 && confVersion <= 129 &&
+  if (confVersion >= 124 && confVersion <= 130 &&
       PLUGIN_VERSION_MAJOR == 1 &&
-      PLUGIN_VERSION_MINOR >= 25 && PLUGIN_VERSION_MINOR <= 30) {
+      PLUGIN_VERSION_MINOR >= 25 && PLUGIN_VERSION_MINOR <= 31) {
     confVersion = PLUGIN_VERSION_MAJOR * 100 + PLUGIN_VERSION_MINOR;
     pConf->Write(_T("ConfigVersion"), confVersion);
   }
@@ -8161,6 +8161,7 @@ void WeatherRouting::SetRouteVisibility(RouteMapOverlay* route, bool visible,
                           .DepartureTimeOptimizationCandidate)
     SetDepartureChartDisplay(route, RouteMapConfiguration::MANUAL_DEPARTURES);
   route->m_bEndRouteVisible = visible;
+  route->RequestModernPreview(visible && route->Running());
   for (long row = 0; row < m_panel->m_lWeatherRoutes->GetItemCount(); ++row) {
     auto* item = reinterpret_cast<WeatherRoute*>(
         wxUIntToPtr(m_panel->m_lWeatherRoutes->GetItemData(row)));
@@ -8890,6 +8891,12 @@ void WeatherRouting::OnAbout(wxCommandEvent& event) {
 void WeatherRouting::OnComputationTimer(wxTimerEvent&) {
   wxStopWatch tickTimer;
   int runningBefore = m_RunningRouteMaps.size();
+  bool livePreviewChanged = false;
+  const bool livePreviewVisible = IsShown()
+#ifdef __OCPN__ANDROID__
+      || m_androidChartVisible
+#endif
+      ;
   int waitingBefore = m_WaitingRouteMaps.size();
   int completedProcessed = 0;
   int gribRequests = 0;
@@ -9064,6 +9071,11 @@ void WeatherRouting::OnComputationTimer(wxTimerEvent&) {
     } else
       it++;
 
+    routemapoverlay->RequestModernPreview(livePreviewVisible && routemapoverlay->m_bEndRouteVisible &&
+        (m_SettingsDialog.m_sIsoChronThickness->GetValue() > 0 ||
+         m_SettingsDialog.m_sRouteThickness->GetValue() > 0));
+    livePreviewChanged = routemapoverlay->ConsumeModernPreview() || livePreviewChanged;
+
     /* Service chart-derived data only on the application thread.  The route
      * worker retains all completed isochrones and recomputes only its
      * provisional current layer when these requests complete. */
@@ -9098,6 +9110,16 @@ void WeatherRouting::OnComputationTimer(wxTimerEvent&) {
     }
   }
 
+  // Batch all workers into one repaint budget. Departure candidates must not
+  // each force a full chart redraw; user interactions and final results keep
+  // their ordinary immediate refresh paths.
+  m_LivePreviewDirty = livePreviewVisible && (m_LivePreviewDirty || livePreviewChanged);
+  const auto previewNow = std::chrono::steady_clock::now();
+  if (m_LivePreviewDirty && previewNow - m_LastLivePreviewRefresh >= std::chrono::seconds{1}) {
+    RequestRefresh(GetOCPNCanvasWindow());
+    m_LastLivePreviewRefresh = previewNow;
+    m_LivePreviewDirty = false;
+  }
   wxStopWatch sectionTimer;
   for (auto routemapoverlay : completedRouteMaps) {
     AdvanceMultiLegSequence(routemapoverlay);

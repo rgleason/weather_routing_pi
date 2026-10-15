@@ -4,6 +4,7 @@
 #include "RoutingInternal.h"
 #include "MotionKernel.h"
 #include "original_routing/VisualizationSampler.h"
+#include "supercpn/weather_routing/Preview.h"
 #include <array>
 #include <memory>
 #include <numeric>
@@ -226,6 +227,7 @@ public:
   const wr::RoutingRequest& request;
   const Options& options;
   Arena arena;
+  wr::RoutingPreviewPublisher preview;
   wr::RoutingEnvironment environment;
   wr::RoutingResult result;
   std::vector<wr::PerformanceCandidate> profiles;
@@ -253,7 +255,7 @@ public:
   original_routing::VisualizationSampler visualizationSampler;
   Search(const wr::RoutingRequest& r, const wr::RoutingEnvironment& e,
          const Options& o)
-      : request(r), options(o), arena(r, o), environment(e) {
+      : request(r), options(o), arena(r, o), preview(r), environment(e) {
     if (e.grib)
       environment.grib = std::make_shared<GuardWeather>(
           e.grib, arena, result.diagnostics.weatherSamples);
@@ -1399,6 +1401,34 @@ public:
       merge(front, grown);
       for (auto route : front) route->ReduceClosePoints();
       captureFront(front);
+      preview.publish([&] {
+        wr::RoutingPreview view;
+        std::size_t remaining = wr::RoutingPreviewPublisher::maximumFrontPoints;
+        const Trace* representative = nullptr;
+        double closest = std::numeric_limits<double>::infinity();
+        for (const auto* route : front) {
+          if (!remaining || !route->skippoints) break;
+          wr::IsochroneContour contour;
+          auto* first = route->skippoints->point;
+          auto* point = first;
+          do {
+            contour.points.push_back({point->lat, point->lon});
+            --remaining;
+            if (point->trace) {
+              view.time = std::max(view.time, point->trace->time);
+              const double distance = wr::distanceNm(point->trace->point, request.destination);
+              if (distance < closest) { closest = distance; representative = point->trace; }
+            }
+            point = point->next;
+          } while (point != first && remaining);
+          contour.closed = point == first;
+          view.contours.push_back(std::move(contour));
+        }
+        for (auto* p = representative; p && view.path.size() < wr::RoutingPreviewPublisher::maximumPathPoints; p = p->parent)
+          view.path.push_back(p->point);
+        std::reverse(view.path.begin(), view.path.end());
+        return view;
+      });
       result.diagnostics.retainedStates = std::max<std::uint64_t>(
           result.diagnostics.retainedStates, arena.traces.count);
       if (request.progress)

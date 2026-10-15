@@ -40,6 +40,7 @@ class SettingsDialog;
 namespace supercpn::weather_routing {
 struct RoutingResult;
 struct RoutingProgressUpdate;
+struct RoutingPreview;
 }  // namespace supercpn::weather_routing
 
 struct ModernIsochroneLayer {
@@ -364,6 +365,13 @@ public:
   std::uint64_t ModernProgressGeneration() const {
     return m_ModernProgress.Read().generation;
   }
+  std::uint64_t NextModernPreviewPhase() { return ++m_LivePreviewPhase; }
+  std::uint64_t ModernPreviewGeneration() const { return m_LivePreview.Read().generation; }
+  void SetModernPreview(std::shared_ptr<const supercpn::weather_routing::RoutingPreview>, std::uint64_t);
+  bool WantsModernPreview() const { return m_LivePreviewWanted.load(std::memory_order_relaxed); }
+  void RequestModernPreview(bool value) { m_LivePreviewWanted.store(value, std::memory_order_relaxed); }
+  bool ConsumeModernPreview();
+  void RenderModernPreview(SettingsDialog&, piDC&, PlugIn_ViewPort&, bool);
   bool UsesModernNativeResult() const { return m_UsesModernNativeResult; }
   bool UsesEstimatedPolarPerformance();
   const wxString& ModernNativeCoverageNotes() const { return m_ModernNativeCoverageNotes; }
@@ -527,6 +535,15 @@ private:
   std::vector<ModernIsochroneLayer> m_ModernIsochrones;
   std::size_t m_ModernCursorLayer{std::numeric_limits<std::size_t>::max()};
   std::size_t m_ModernCursorTrace{std::numeric_limits<std::size_t>::max()};
+  using LivePreview = std::shared_ptr<const supercpn::weather_routing::RoutingPreview>;
+  weather_routing::RoutingProgressState<LivePreview> m_LivePreview;
+  std::atomic<bool> m_LivePreviewWanted{false};
+  std::atomic<std::uint64_t> m_LivePreviewPhase{0};
+  std::atomic<unsigned> m_LivePreviewPublished{0}, m_LivePreviewRendered{0};
+  std::atomic<unsigned> m_LivePreviewDrawCalls{0};
+  std::atomic<std::uint64_t> m_LivePreviewDrawUs{0}, m_LivePreviewMaxDrawUs{0};
+  std::uint64_t m_LivePreviewSequence{};
+  std::vector<LivePreview> m_LivePreviewFrames;
   struct ProgressText { wxString stage, detail; };
   weather_routing::RoutingProgressState<ProgressText> m_ModernProgress;
 
