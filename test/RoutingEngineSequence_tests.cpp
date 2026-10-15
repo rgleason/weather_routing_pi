@@ -3,6 +3,7 @@
 #include <map>
 #include "engine/native/RoutingEngineSequence.h"
 #include "original_routing/Engine.h"
+#include "quick2_routing/Engine.h"
 #include "supercpn/weather_routing/Engine.h"
 #include "supercpn/weather_routing/QuickEngine.h"
 #include "supercpn/weather_routing/AlternativeEngine.h"
@@ -42,6 +43,57 @@ TEST(RoutingEngineSequence, AutoStopsAtQuickSuccess) {
   EXPECT_EQ(calls, (std::vector{SequenceEngine::Original}));
   EXPECT_EQ(result.engineIdentity, "original");
 }
+TEST(RoutingEngineSequence, Quick2CannotStopBeforeIndependentStandard) {
+  std::vector<SequenceEngine> calls;
+  const auto result = native::RunRoutingEngineSequence(
+      RoutingEngine::Auto, {}, [&](auto engine) {
+        calls.push_back(engine);
+        if (engine == SequenceEngine::Original) return Failure();
+        if (engine == SequenceEngine::Quick2) return Success(41000);
+        if (engine == SequenceEngine::Quick) return Success(19000);
+        ADD_FAILURE() << "Auto should stop after accepted Standard";
+        return Failure();
+      });
+  EXPECT_EQ(calls, (std::vector{SequenceEngine::Original, SequenceEngine::Quick2,
+                                SequenceEngine::Quick}));
+  EXPECT_EQ(result.engineIdentity, "quick");
+  EXPECT_EQ(result.metrics.elapsed.count(), 19000);
+}
+TEST(RoutingEngineSequence, Quick2RemainsAvailableWhenLaterSearchesFailOrAreSlower) {
+  for (bool standardSucceeds : {false, true}) {
+    std::vector<SequenceEngine> calls;
+    const auto result = native::RunRoutingEngineSequence(
+        RoutingEngine::Auto, {}, [&](auto engine) {
+          calls.push_back(engine);
+          if (engine == SequenceEngine::Quick2) return Success(100);
+          if (engine == SequenceEngine::Quick && standardSucceeds) return Success(200);
+          return Failure();
+        });
+    EXPECT_EQ(result.engineIdentity, "quick2");
+    EXPECT_TRUE(native::AcceptedRoute(result));
+    EXPECT_NE(std::find(calls.begin(), calls.end(), SequenceEngine::Quick), calls.end());
+    EXPECT_EQ(calls.size(), standardSucceeds ? 3U : 4U);
+  }
+}
+TEST(RoutingEngineSequence, MembershipSkipsUncheckedAndCanEnableAlternativeInAuto) {
+  std::vector<SequenceEngine> calls;
+  const auto mask = weather_routing::EngineBit(RoutingEngine::Quick2) |
+                    weather_routing::EngineBit(RoutingEngine::Alternative);
+  const auto result = native::RunRoutingEngineSequence(
+      RoutingEngine::Auto, {}, [&](auto engine) {
+        calls.push_back(engine);
+        return Success(engine == SequenceEngine::Quick2 ? 200 : 100);
+      }, {}, mask);
+  EXPECT_EQ(calls, (std::vector{SequenceEngine::Quick2, SequenceEngine::Alternative}));
+  EXPECT_EQ(result.engineIdentity, "alternative");
+}
+TEST(RoutingEngineSequence, EmptyMembershipNeverSilentlyRunsAnEngine) {
+  int calls = 0;
+  const auto result = native::RunRoutingEngineSequence(
+      RoutingEngine::All, {}, [&](auto) { ++calls; return Success(100); }, {}, 0);
+  EXPECT_EQ(calls, 0);
+  EXPECT_EQ(result.status, wr::RoutingStatus::InvalidVesselConfiguration);
+}
 TEST(RoutingEngineSequence, AutoFallsBackOnMissingWavesAndStopsAtStandard) {
   std::vector<SequenceEngine> calls;
   const auto result = native::RunRoutingEngineSequence(
@@ -49,10 +101,10 @@ TEST(RoutingEngineSequence, AutoFallsBackOnMissingWavesAndStopsAtStandard) {
         calls.push_back(engine);
         return engine == SequenceEngine::Original
                    ? Failure(wr::RoutingStatus::WaveDataRequired)
-                   : Success(100);
+                   : Success(engine == SequenceEngine::Quick2 ? 200 : 100);
       });
   EXPECT_EQ(calls,
-            (std::vector{SequenceEngine::Original, SequenceEngine::Quick}));
+            (std::vector{SequenceEngine::Original, SequenceEngine::Quick2, SequenceEngine::Quick}));
   EXPECT_EQ(result.engineIdentity, "quick");
 }
 TEST(RoutingEngineSequence,
@@ -64,12 +116,12 @@ TEST(RoutingEngineSequence,
         return engine == SequenceEngine::Main ? Success(300)
                                               : Success(100, false);
       });
-  EXPECT_EQ(calls, (std::vector{SequenceEngine::Original, SequenceEngine::Quick,
+  EXPECT_EQ(calls, (std::vector{SequenceEngine::Original, SequenceEngine::Quick2, SequenceEngine::Quick,
                                 SequenceEngine::Main}));
   EXPECT_EQ(result.engineIdentity, "main");
   EXPECT_TRUE(result.validation.passed);
 }
-TEST(RoutingEngineSequence, AllRunsFourAndChoosesEarliestValidatedArrival) {
+TEST(RoutingEngineSequence, AllRunsFiveAndChoosesEarliestValidatedArrival) {
   std::vector<SequenceEngine> calls;
   const auto result = native::RunRoutingEngineSequence(
       RoutingEngine::All, {}, [&](auto engine) {
@@ -80,7 +132,7 @@ TEST(RoutingEngineSequence, AllRunsFourAndChoosesEarliestValidatedArrival) {
         return Failure(wr::RoutingStatus::ResourceLimitReached);
       });
   EXPECT_EQ(calls,
-            (std::vector{SequenceEngine::Original, SequenceEngine::Quick,
+            (std::vector{SequenceEngine::Original, SequenceEngine::Quick2, SequenceEngine::Quick,
                          SequenceEngine::Alternative, SequenceEngine::Main}));
   EXPECT_EQ(result.engineIdentity, "alternative");
   EXPECT_EQ(result.metrics.elapsed.count(), 200);
@@ -120,7 +172,7 @@ TEST(RoutingEngineSequence,
         if (engine == SequenceEngine::Quick) token.cancel();
         return Success(100);
       });
-  EXPECT_EQ(calls.size(), 2u);
+  EXPECT_EQ(calls.size(), 3u);
   EXPECT_EQ(result.status, wr::RoutingStatus::Cancelled);
 }
 TEST(RoutingEngineSequence, AlreadyCancelledDoesNotStartAnyEngine) {
@@ -165,7 +217,7 @@ TEST(RoutingEngineSequence,
 // Real solvers exercise their shared chronological validator, not just the
 // selector's callback contract. A short, uniform open-water passage is bounded.
 TEST(RoutingEngineSequenceIntegration,
-     FourRealEnginesReturnEarliestValidatedRoute) {
+     FiveRealEnginesReturnEarliestValidatedRoute) {
   wr::RoutingRequest request;
   request.start = {60, 0};
   request.destination = {60, 0.1};
@@ -203,6 +255,8 @@ TEST(RoutingEngineSequenceIntegration,
         wr::RoutingResult candidate;
         if (engine == SequenceEngine::Original)
           candidate = original_routing::Engine{}.route(request, environment);
+        else if (engine == SequenceEngine::Quick2)
+          candidate = quick2_routing::Engine{}.route(request, environment).route;
         else if (engine == SequenceEngine::Quick)
           candidate =
               wr::QuickRoutingEngine{}.route(request, environment).route;
@@ -214,7 +268,7 @@ TEST(RoutingEngineSequenceIntegration,
         candidates.emplace(engine, candidate);
         return candidate;
       });
-  ASSERT_EQ(candidates.size(), 4u);
+  ASSERT_EQ(candidates.size(), 5u);
   ASSERT_TRUE(native::AcceptedRoute(result)) << result.message;
   for (const auto& [engine, candidate] : candidates) {
     ASSERT_TRUE(native::AcceptedRoute(candidate))
@@ -241,9 +295,9 @@ TEST(RoutingEngineSequence, FailureHeadlineSummarisesEveryAttemptHonestly) {
     return result;
   });
   EXPECT_EQ(result.message.find("No validated route found with the selected settings."), 0U);
-  EXPECT_EQ(result.attemptFailures.size(), 3U);
-  EXPECT_EQ(result.attemptFailures[1].engine, "Standard");
-  EXPECT_EQ(result.attemptFailures[2].status, wr::RoutingStatus::ResourceLimitReached);
+  EXPECT_EQ(result.attemptFailures.size(), 4U);
+  EXPECT_EQ(result.attemptFailures[2].engine, "Standard");
+  EXPECT_EQ(result.attemptFailures[3].status, wr::RoutingStatus::ResourceLimitReached);
   EXPECT_EQ(result.message.find("try the main engine"), std::string::npos);
   EXPECT_NE(result.message.find("invalid_start"), std::string::npos);
   EXPECT_NE(result.message.find("resource_limit"), std::string::npos);

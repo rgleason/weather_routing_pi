@@ -32,6 +32,7 @@ wxString UtcText(const wxDateTime& time) {
 }
 wxString EngineTitle(const std::string& engine) {
   if (engine == "original") return _("Quick");
+  if (engine == "quick2") return _("Quick2");
   if (engine == "quick") return _("Standard");
   if (engine == "main") return _("Professional");
   if (engine == "alternative") return _("Alternative");
@@ -98,10 +99,10 @@ RouteComparisonDialog::RouteComparisonDialog(WeatherRouting& routing)
   m_WindOnly->SetToolTip(_("Exclude waves from comfort ranking. The worst known leg still includes available waves. Route validation is unchanged."));
   layout->Add(m_WindOnly, 0, wxALL, 6);
   auto* explorationHelp = new wxStaticText(content, wxID_ANY,
-      _("Enable additional fastest / comfort alternatives in the routing configuration before computing. Applies to Quick, Standard, Professional, Auto and All."));
+      _("Enable additional fastest / comfort alternatives in the routing configuration before computing. Applies to every individual engine, Auto and All."));
   explorationHelp->Wrap(1100);
 #ifdef __OCPN__ANDROID__
-  explorationHelp->SetLabel(_("Enable alternatives in Plan > Engine before computing. Applies to Quick, Standard, Professional, Auto and All."));
+  explorationHelp->SetLabel(_("Enable alternatives in Plan > Engine before computing. Applies to every individual engine, Auto and All."));
   m_AndroidExplorationHelp = explorationHelp;
 #endif
   layout->Add(explorationHelp, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 6);

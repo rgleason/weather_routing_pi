@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <array>
 #include "GribTimelineCachePolicy.h"
 
 namespace weather_routing {
@@ -18,7 +19,18 @@ constexpr int kDefaultMaxDivertedCourse = 120;
 
 // Serialized IDs remain stable: historical "quick" is Standard, while
 // "main" selects the current Professional implementation.
-enum class RoutingEngine { Main, Quick, Unsupported, Original, Auto, All };
+enum class RoutingEngine { Main, Quick, Unsupported, Original, Auto, All, Quick2, Alternative };
+
+inline constexpr std::array kSequenceEngines{
+    RoutingEngine::Original, RoutingEngine::Quick2, RoutingEngine::Quick,
+    RoutingEngine::Alternative, RoutingEngine::Main};
+inline constexpr unsigned kAllEnginesMask = 31;
+inline constexpr unsigned kAutoEnginesMask = 23;
+inline unsigned EngineBit(RoutingEngine engine) {
+  for (unsigned i = 0; i < kSequenceEngines.size(); ++i)
+    if (kSequenceEngines[i] == engine) return 1U << i;
+  return 0;
+}
 
 inline int EngineSelection(RoutingEngine engine) {
   switch (engine) {
@@ -27,6 +39,8 @@ inline int EngineSelection(RoutingEngine engine) {
     case RoutingEngine::Quick: return 2;
     case RoutingEngine::Main: return 3;
     case RoutingEngine::All: return 4;
+    case RoutingEngine::Quick2: return 5;
+    case RoutingEngine::Alternative: return 6;
     default: return -1;
   }
 }
@@ -37,6 +51,8 @@ inline RoutingEngine EngineFromSelection(int selection) {
     case 2: return RoutingEngine::Quick;
     case 3: return RoutingEngine::Main;
     case 4: return RoutingEngine::All;
+    case 5: return RoutingEngine::Quick2;
+    case 6: return RoutingEngine::Alternative;
     default: return RoutingEngine::Unsupported;
   }
 }
@@ -48,6 +64,8 @@ inline const char* EngineTitle(RoutingEngine engine) {
     case RoutingEngine::Original: return "Quick";
     case RoutingEngine::Quick: return "Standard";
     case RoutingEngine::Main: return "Professional";
+    case RoutingEngine::Quick2: return "Quick2";
+    case RoutingEngine::Alternative: return "Alternative";
     case RoutingEngine::Auto: return "Auto";
     case RoutingEngine::All: return "All (slow)";
     default: return "Unsupported";
@@ -89,6 +107,13 @@ struct RoutingEngineSettings {
   QuickSearchSettings original;
   int originalShorelineResolution{kDefaultQuickShorelineResolution};
   int originalGribTimelineCacheMiB{kQuickGribTimelineCacheDefaultMiB};
+  // Membership is independent of each engine's settings and resource limits.
+  // Explicit empty selections remain empty and are rejected before routing.
+  unsigned autoEngines{kAutoEnginesMask};
+  unsigned allEngines{kAllEnginesMask};
+  unsigned SelectedEngines() const {
+    return engine == RoutingEngine::Auto ? autoEngines : allEngines;
+  }
 
   QuickSearchSettings& FastSettings() {
     return engine == RoutingEngine::Original || engine == RoutingEngine::Main
@@ -106,6 +131,8 @@ struct RoutingEngineSettings {
       case RoutingEngine::Original: return "original";
       case RoutingEngine::Auto: return "auto";
       case RoutingEngine::All: return "all";
+      case RoutingEngine::Quick2: return "quick2";
+      case RoutingEngine::Alternative: return "alternative";
       default: return unsupportedId;
     }
   }
@@ -116,6 +143,8 @@ struct RoutingEngineSettings {
     else if (id == "original") engine = RoutingEngine::Original;
     else if (id == "auto") engine = RoutingEngine::Auto;
     else if (id == "all") engine = RoutingEngine::All;
+    else if (id == "quick2") engine = RoutingEngine::Quick2;
+    else if (id == "alternative") engine = RoutingEngine::Alternative;
     else {
       engine = RoutingEngine::Unsupported;
       unsupportedId = id;

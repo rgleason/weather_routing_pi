@@ -31,6 +31,7 @@
 #include "engine/native/ConstraintTime.h"
 #include "engine/native/CoordinateNormalization.h"
 #include "engine/native/RoutingEngineSequence.h"
+#include "quick2_routing/Engine.h"
 #include "engine/native/WeatherCoverage.h"
 #include "engine/native/NearbyWaveHeight.h"
 #include "original_routing/Engine.h"
@@ -1090,9 +1091,35 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
   wr::RoutingResult result;
   std::uint64_t quickGenerated = 0;
   std::uint64_t originalGenerated = 0;
+  std::uint64_t quick2Generated = 0;
   auto solveSingle = [&](const wr::RoutingRequest& solveRequest,
                          const wr::RoutingEnvironment& solveEnvironment,
                          const RouteMapConfiguration& selectedConfiguration) {
+    if (selectedConfiguration.EngineSettings.engine == weather_routing::RoutingEngine::Alternative)
+      return wr::AlternativeRoutingEngine{}.route(solveRequest, solveEnvironment).route;
+    if (selectedConfiguration.EngineSettings.engine == weather_routing::RoutingEngine::Quick2) {
+      auto bounded = solveRequest;
+      quick2_routing::Options options;
+      options.step = std::clamp(solveRequest.options.timeStep, wr::Duration{60}, wr::Duration{21600});
+      options.maximumLayers = 4096;
+      if (selectedConfiguration.TimeMode == RouteMapConfiguration::ROUTE_BY_ARRIVAL_TIME) {
+        if (quick2Generated >= 6000000) {
+          wr::RoutingResult exhausted;
+          exhausted.status = wr::RoutingStatus::ResourceLimitReached;
+          exhausted.message = "Quick2 arrival search allowance reached";
+          return exhausted;
+        }
+        options.maximumProposals = std::min<std::uint64_t>(2000000, 6000000 - quick2Generated);
+      }
+      auto searched = quick2_routing::Engine{}.route(bounded, solveEnvironment, options);
+      quick2Generated += searched.frontier.proposals;
+      wxLogMessage("WR_QUICK2_SUMMARY proposals=%llu motions=%llu lineage=%llu layers=%u status=%s",
+          static_cast<unsigned long long>(searched.frontier.proposals),
+          static_cast<unsigned long long>(searched.frontier.exactMotions),
+          static_cast<unsigned long long>(searched.frontier.lineageNodes), searched.frontier.layers,
+          wxString::FromUTF8(wr::toString(searched.route.status).c_str()));
+      return std::move(searched.route);
+    }
     if (selectedConfiguration.EngineSettings.engine ==
         weather_routing::RoutingEngine::Main) {
       if (selectedConfiguration.chart_safety_scout_preview)
@@ -1366,17 +1393,27 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
     };
     // A prewarm scout is only a geometry probe, not the All comparison itself.
     if (configuration.chart_safety_scout_preview) {
-      auto candidate = runAttempt(SequenceEngine::Original);
-      candidate.engineIdentity = "original";
-      return candidate;
+      for (const auto engine : {SequenceEngine::Original, SequenceEngine::Quick2,
+                               SequenceEngine::Quick, SequenceEngine::Alternative,
+                               SequenceEngine::Main}) {
+        if (!(configuration.EngineSettings.SelectedEngines() &
+              weather_routing::EngineBit(weather_routing::native::SequenceRoutingEngine(engine))))
+          continue;
+        auto candidate = runAttempt(engine);
+        candidate.engineIdentity = weather_routing::native::SequenceEngineId(engine);
+        return candidate;
+      }
+      wr::RoutingResult empty;
+      empty.status = wr::RoutingStatus::InvalidVesselConfiguration;
+      empty.message = "Select at least one routing engine in Advanced";
+      return empty;
     }
     return weather_routing::native::RunRoutingEngineSequence(
         configuration.EngineSettings.engine, solveRequest.cancellation,
         runAttempt, [&](SequenceEngine engine, const wr::RoutingResult& accepted) {
           // Arrival-planning probes are internal evaluations, not a collection
           // of interchangeable deadline-valid results. Retain its winner only.
-          if (configuration.EngineSettings.engine != weather_routing::RoutingEngine::All ||
-              configuration.TimeMode == RouteMapConfiguration::ROUTE_BY_ARRIVAL_TIME)
+          if (configuration.TimeMode == RouteMapConfiguration::ROUTE_BY_ARRIVAL_TIME)
             return;
           auto candidateConfiguration =
               weather_routing::native::ConfigurationForSequenceEngine(configuration, engine);
@@ -1388,7 +1425,7 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
           }
           retainedCandidates.push_back(weather_routing::RetainRouteCandidate(
               accepted, candidateConfiguration));
-        });
+        }, configuration.EngineSettings.SelectedEngines());
   };
   OpenCpnWeatherProvider::CacheDiagnostics arrivalWeatherCache;
   std::optional<wr::ArrivalPlanningResult> arrivalPlan;
@@ -1517,7 +1554,7 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
       auto selectedConfiguration = configuration;
       if (!result.engineIdentity.empty())
         selectedConfiguration.EngineSettings.SetEngineId(
-            result.engineIdentity == "alternative" ? "main" : result.engineIdentity);
+            result.engineIdentity);
       if (configuration.EngineSettings.engine == weather_routing::RoutingEngine::Auto &&
           result.engineIdentity == "main")
         selectedConfiguration.RoutingEffortPercent = 400;
@@ -1529,7 +1566,7 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
       }
       if (deliveredAccepted(result, selectedConfiguration)) {
         // Baseline is secured before the extra timer starts. For All it is the
-        // completed four-engine winner; Auto retains its successful engine.
+        // completed selected-engine winner; Auto can retain Quick2 and Standard.
         const auto initial = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - started);
         if (retainedCandidates.empty())
@@ -1596,6 +1633,14 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
               limits.maximumWeatherQueries = options.maximumWeatherCalls;
               limits.maximumValidatedCandidates = 24;
               results.push_back(original_routing::Engine{}.route(r, e, limits));
+            } else if (c.EngineSettings.engine == weather_routing::RoutingEngine::Quick2) {
+              quick2_routing::Options limits;
+              limits.step = std::clamp(r.options.timeStep, wr::Duration{60}, wr::Duration{21600});
+              limits.maximumProposals = options.maximumGeneratedStates;
+              limits.maximumLayers = 4096;
+              if (directed) limits.objective = quick2_routing::Objective::Comfortable;
+              limits.comfortWindOnly = options.windOnly;
+              results.push_back(quick2_routing::Engine{}.route(r, e, limits).route);
             } else if (c.EngineSettings.engine == weather_routing::RoutingEngine::Quick) {
               wr::QuickRoutingOptions limits;
               limits.memoryBudgetMiB = std::min(64, c.EngineSettings.quick.memoryBudgetMiB);
@@ -1626,7 +1671,8 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
           auto perEngine = options;
           perEngine.deadline = deadline;
           perEngine.nativeComfortLanes =
-              c.EngineSettings.engine == weather_routing::RoutingEngine::Quick;
+              c.EngineSettings.engine == weather_routing::RoutingEngine::Quick ||
+              c.EngineSettings.engine == weather_routing::RoutingEngine::Quick2;
           perEngine.maximumGeneratedStates = options.maximumGeneratedStates - generatedUsed;
           perEngine.maximumWeatherCalls = options.maximumWeatherCalls - weatherUsed;
           perEngine.maximumAlternatives = 4 - totalAccepted;
@@ -1738,8 +1784,7 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
   auto reportingRequest = request;
   if (!result.engineIdentity.empty()) {
     reportingConfiguration.EngineSettings.SetEngineId(
-        result.engineIdentity == "alternative" ? "main"
-                                               : result.engineIdentity);
+        result.engineIdentity);
     if (configuration.EngineSettings.engine ==
             weather_routing::RoutingEngine::Auto &&
         result.engineIdentity == "main")

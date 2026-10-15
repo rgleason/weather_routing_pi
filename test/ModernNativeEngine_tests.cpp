@@ -14,6 +14,7 @@
 #include "engine/native/CoordinateNormalization.h"
 #include "engine/native/WeatherCoverage.h"
 #include "original_routing/Engine.h"
+#include "quick2_routing/Engine.h"
 #include "supercpn/weather_routing/Engine.h"
 #include "supercpn/weather_routing/CoastalEndpointPolicy.h"
 #include "supercpn/weather_routing/QuickEngine.h"
@@ -1747,7 +1748,13 @@ alternatives::ComfortSolve AlternativeSolver(int engine, bool windOnly = true) {
       results.push_back(original_routing::Engine{}.route(request, env));
     else if (engine == 2)
       results.push_back(ProfessionalEngine{}.route(request, env));
-    else {
+    else if (engine == 3) {
+      quick2_routing::Options options;
+      options.step = request.options.timeStep;
+      options.comfortWindOnly = windOnly;
+      if (directed) options.objective = quick2_routing::Objective::Comfortable;
+      results.push_back(quick2_routing::Engine{}.route(request, env, options).route);
+    } else {
       QuickRoutingOptions options;
       options.offshoreStep = request.options.timeStep;
       options.headingStepDegrees = request.options.headingStepDegrees;
@@ -1813,7 +1820,7 @@ TEST_P(AllEngineAlternatives, SameEngineExplorationFindsAndRevalidatesGentlerRou
   // Allowance arithmetic, exhaustion and cancellation have separate tests.
   options.maximumSeconds = 30;
   options.additionalPercent = 400;
-  options.nativeComfortLanes = GetParam() == 1;
+  options.nativeComfortLanes = GetParam() == 1 || GetParam() == 3;
   auto report = alternatives::ExploreComfortAlternatives(
       request, env, baseline, std::chrono::seconds{10}, options, solver,
       [](const auto&) { return true; }, std::make_shared<std::atomic_bool>(false));
@@ -1833,8 +1840,8 @@ TEST_P(AllEngineAlternatives, SameEngineExplorationFindsAndRevalidatesGentlerRou
   EXPECT_TRUE(gentler);
   EXPECT_LE(report.alternatives.size(), 4U);
 }
-INSTANTIATE_TEST_SUITE_P(QuickStandardProfessional, AllEngineAlternatives,
-                         testing::Values(0, 1, 2));
+INSTANTIATE_TEST_SUITE_P(QuickQuick2StandardProfessional, AllEngineAlternatives,
+                         testing::Values(0, 1, 2, 3));
 TEST(ComfortAlternatives, ExhaustedWorkAndExplicitStopPreserveTheBaseline) {
   auto request = AlternativesRequest();
   auto env = AlternativesEnvironment(request);
@@ -2143,13 +2150,16 @@ TEST_P(CoastalEngineClearance, BinaryMarginCannotProduceCoastFollowingSuccess) {
       result = AlternativeRoutingEngine{}.route(request, environment, options).route;
       break;
     }
+    case 4:
+      result = quick2_routing::Engine{}.route(request, environment).route;
+      break;
   }
   EXPECT_FALSE(Successful(result.status)) << result.message;
   EXPECT_FALSE(result.validation.passed);
   EXPECT_GT(boundaries->fullChecks, 0U);
 }
-INSTANTIATE_TEST_SUITE_P(AllFourSolvers, CoastalEngineClearance,
-                        testing::Values(0, 1, 2, 3));
+INSTANTIATE_TEST_SUITE_P(AllFiveSolvers, CoastalEngineClearance,
+                        testing::Values(0, 1, 2, 3, 4));
 
 }  // namespace
 
@@ -2267,10 +2277,11 @@ RoutingResult WaveRoute(int engine, WaveGapWeather::Kind kind, bool required) {
   e.performance=std::make_shared<PolarPerformanceModel>(r.vessel);
   if (engine==0) return original_routing::Engine{}.route(r,e);
   if (engine==1) return QuickRoutingEngine{}.route(r,e).route;
+  if (engine==3) return quick2_routing::Engine{}.route(r,e).route;
   return RoutingEngine{}.route(r,e);
 }
 TEST(WaveCoveragePolicy, EveryEngineAllowsUnknownWithWarningOrRejectsWhenRequired) {
-  for (int engine=0; engine<3; ++engine) for (auto kind : {WaveGapWeather::None, WaveGapWeather::SpatialGap, WaveGapWeather::TemporalGap}) {
+  for (int engine=0; engine<4; ++engine) for (auto kind : {WaveGapWeather::None, WaveGapWeather::SpatialGap, WaveGapWeather::TemporalGap}) {
     SCOPED_TRACE(std::to_string(engine)+"/"+std::to_string(kind));
     const auto allowed=WaveRoute(engine,kind,false);
     ASSERT_TRUE(Successful(allowed.status)) << allowed.message;

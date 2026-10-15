@@ -62,6 +62,7 @@
 #include "RouteWaypointExtractor.h"
 #include "weather_routing_pi.h"
 #include "WeatherRouting.h"
+#include "BundledDataUpgradePolicy.h"
 #include "ShorelineManager.h"
 #include "ChartSafetyDefaults.h"
 #include "AboutDialog.h"
@@ -1385,11 +1386,10 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
 
   int confVersion;
   pConf->Read(_T ( "ConfigVersion" ), &confVersion, 0);
-  // v1.25 through v1.31 retain the v1.24 bundled boats and polars. A feature-only
+  // v1.25 through v1.32 retain the v1.24 bundled boats and polars. A feature-only
   // upgrade must not prompt to overwrite existing user data.
-  if (confVersion >= 124 && confVersion <= 130 &&
-      PLUGIN_VERSION_MAJOR == 1 &&
-      PLUGIN_VERSION_MINOR >= 25 && PLUGIN_VERSION_MINOR <= 31) {
+  if (weather_routing::CanSkipBundledDataUpdate(
+          confVersion, PLUGIN_VERSION_MAJOR, PLUGIN_VERSION_MINOR)) {
     confVersion = PLUGIN_VERSION_MAJOR * 100 + PLUGIN_VERSION_MINOR;
     pConf->Write(_T("ConfigVersion"), confVersion);
   }
@@ -4489,7 +4489,8 @@ void WeatherRouting::CompleteHeadlessSingleRouteTest(bool timed_out,
     ShowRouteComparison();
   }
   if (!timed_out && complete > 0 &&
-      EnvString("WR_HEADLESS_COMFORT_CONFIGURATION_CONTRACT") == "1" &&
+      (EnvString("WR_HEADLESS_COMFORT_CONFIGURATION_CONTRACT") == "1" ||
+       EnvString("WR_HEADLESS_ENGINE_CONFIGURATION_CONTRACT") == "1") &&
       !EnvString("WR_HEADLESS_SCENARIO").empty()) {
     auto* list = m_panel->m_lWeatherRoutes;
     for (long row = 0; row < list->GetItemCount(); ++row) {
@@ -4497,7 +4498,10 @@ void WeatherRouting::CompleteHeadlessSingleRouteTest(bool timed_out,
       list->SetItemState(row, route->routemapoverlay == selected_route ? wxLIST_STATE_SELECTED : 0,
                          wxLIST_STATE_SELECTED);
     }
-    m_ConfigurationDialog.RunComfortHostContract();
+    if (EnvString("WR_HEADLESS_ENGINE_CONFIGURATION_CONTRACT") == "1")
+      m_ConfigurationDialog.RunEngineHostContract();
+    if (EnvString("WR_HEADLESS_COMFORT_CONFIGURATION_CONTRACT") == "1")
+      m_ConfigurationDialog.RunComfortHostContract();
   }
   FinishHeadlessRouteTestProcess(timed_out ? 3 : 0);
 }
@@ -4869,6 +4873,8 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
               ? weather_routing::RoutingEngine::Quick : weather_routing::RoutingEngine::Main;
           if (scenario.route.hasRoutingEngine)
             configuration.EngineSettings.SetEngineId(scenario.route.routingEngine.ToStdString());
+          if (scenario.route.hasAutoEngineMask) configuration.EngineSettings.autoEngines = scenario.route.autoEngineMask;
+          if (scenario.route.hasAllEngineMask) configuration.EngineSettings.allEngines = scenario.route.allEngineMask;
           if (scenario.route.hasComfortAlternatives) {
             configuration.ExploreComfortAlternatives = scenario.route.comfortAlternativesEnabled;
             configuration.ComfortAdditionalPercent = scenario.route.comfortAdditionalPercent;
@@ -10257,6 +10263,7 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
         const auto computed = routemapoverlay->GetComputedSearchSettings();
         const auto& engine = computed.selectedEngine.empty() ? computed.engine : computed.selectedEngine;
         const wxString title = engine == "original" ? _("Quick")
+            : engine == "quick2" ? _("Quick2")
             : engine == "quick" ? _("Standard") : engine == "main" ? _("Professional")
             : engine == "alternative" ? _("Alternative") : wxString();
         const wxString mode = computed.engine == "auto" ? _("Auto")
@@ -12767,6 +12774,13 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
   configuration.chart_safety_missing_tile_max_lon = NAN;
   routemapoverlay->SetConfiguration(configuration);
 
+  if (weather_routing::IsCombinedEngine(configuration.EngineSettings.engine) &&
+      (!configuration.EngineSettings.SelectedEngines() ||
+       (configuration.EngineSettings.SelectedEngines() & ~weather_routing::kAllEnginesMask))) {
+    routemapoverlay->SetError(_("Select at least one routing engine in Advanced."));
+    return;
+  }
+
   /* initialize crossing land routine from main thread as it is
      not re-entrant, and cannot be done by worker-threads later */
   if (configuration.DetectLand) {
@@ -12795,9 +12809,9 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
           configuration.shoreline_dataset.reset();
           // Load each selected engine's immutable snapshot on the main thread.
           // An unavailable optional dataset rejects that engine, not the sequence.
-          for (const auto engine : {weather_routing::RoutingEngine::Original,
-                                    weather_routing::RoutingEngine::Quick,
-                                    weather_routing::RoutingEngine::Main}) {
+          for (const auto engine : weather_routing::kSequenceEngines) {
+            if (!(configuration.EngineSettings.SelectedEngines() & weather_routing::EngineBit(engine)))
+              continue;
             auto candidate = configuration;
             candidate.EngineSettings.engine = engine;
             const int resolution = candidate.EffectiveShorelineResolution();

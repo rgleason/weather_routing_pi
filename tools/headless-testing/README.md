@@ -86,6 +86,8 @@ negative tests, time limits or missing results produce exit 1.
 | Wrapper name | Scenario `routingEngine` value |
 |---|---|
 | `quick` | `original` |
+| `quick2` | `quick2` |
+| `alternative` | `alternative` |
 | `standard` | `quick` |
 | `professional` | `main` |
 | `auto` | `auto` |

@@ -74,6 +74,7 @@ set(TEST_SRC
     StabilityCorridorLifecycle_tests.cpp
     RoutingEngineSettings_tests.cpp
     RoutingEngineSequence_tests.cpp
+    Quick2Engine_tests.cpp
     RouteComfort_tests.cpp
     RoutingScenarioJson_tests.cpp
     DepartureScheduler_tests.cpp
@@ -89,6 +90,7 @@ set(TEST_SRC
     NearbyWaveHeight_tests.cpp
     ModernNativeEngine_tests.cpp
     OriginalEngine_tests.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/vendor/quick2-routing-engine/src/Engine.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/vendor/original-routing-engine/src/Engine.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/vendor/original-routing-engine/src/Contour.cpp
     ArrivalPlanner_tests.cpp
@@ -149,6 +151,7 @@ set(TEST_SRC
        PRIVATE
             ${WEATHER_ROUTING_SOURCE_DIR}/src
             ${WEATHER_ROUTING_SOURCE_DIR}/include
+            ${WEATHER_ROUTING_SOURCE_DIR}/vendor/quick2-routing-engine/include
             ${WEATHER_ROUTING_ENGINE_DIR}/include
             ${WEATHER_ROUTING_ENGINE_DIR}/src
             ${CMAKE_SOURCE_DIR}/include

@@ -16,7 +16,8 @@ import time
 from pathlib import Path
 from extract_timings import extract
 
-ENGINES = {'quick': 'original', 'standard': 'quick', 'professional': 'main',
+ENGINES = {'quick': 'original', 'quick2': 'quick2', 'alternative': 'alternative',
+           'standard': 'quick', 'professional': 'main',
            'auto': 'auto', 'all': 'all'}
 
 
