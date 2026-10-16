@@ -2,6 +2,7 @@
 #include <cmath>
 #include "Polar.h"
 #include "original_routing/Engine.h"
+#include "quick2_routing/Engine.h"
 #include "supercpn/weather_routing/Engine.h"
 #include "supercpn/weather_routing/QuickEngine.h"
 
@@ -148,6 +149,7 @@ protected:
   wr::RoutingResult route(const wr::RoutingRequest& r, const wr::RoutingEnvironment& e) {
     if (GetParam() == 0) return original_routing::Engine{}.route(r, e);
     if (GetParam() == 1) return wr::QuickRoutingEngine{}.route(r, e).route;
+    if (GetParam() == 3) return quick2_routing::Engine{}.route(r, e).route;
     return wr::RoutingEngine{}.route(r, e);
   }
 };
@@ -244,5 +246,5 @@ TEST_P(Engines, ReplayChecksWindDuringTheLegInsteadOfOnlyAtDeparture) {
   EXPECT_FALSE(replay.passed);
   EXPECT_NE(replay.failureReason.find("true-wind-angle"), std::string::npos);
 }
-INSTANTIATE_TEST_SUITE_P(QuickStandardProfessional, Engines, testing::Values(0, 1, 2));
+INSTANTIATE_TEST_SUITE_P(QuickStandardProfessional, Engines, testing::Values(0, 1, 2, 3));
 } // namespace

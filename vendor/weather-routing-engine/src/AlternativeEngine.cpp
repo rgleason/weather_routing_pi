@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "supercpn/weather_routing/AlternativeEngine.h"
 #include "MotionKernel.h"
+#include "supercpn/weather_routing/Preview.h"
+#include "supercpn/weather_routing/PartialRoutes.h"
 
 #include <algorithm>
 #include <cmath>
@@ -26,10 +28,13 @@ struct Candidate {
   unsigned sector{};
 };
 
-std::vector<RouteLeg> lineage(const std::shared_ptr<const Node>& parent) {
+std::vector<RouteLeg> lineage(const std::shared_ptr<const Node>& parent,
+                             std::size_t maximumLegs = std::numeric_limits<std::size_t>::max()) {
   std::vector<RouteLeg> legs;
-  for (auto node = parent; node && node->parent; node = node->parent)
+  for (auto node = parent; node && node->parent; node = node->parent) {
+    if (legs.size() >= maximumLegs) return {};
     legs.push_back(node->incoming);
+  }
   std::reverse(legs.begin(), legs.end());
   return legs;
 }
@@ -52,6 +57,7 @@ bool validPoint(GeoPoint point) {
 AlternativeRoutingResult AlternativeRoutingEngine::route(
     const RoutingRequest& request, const RoutingEnvironment& environment,
     const AlternativeRoutingOptions& requestedOptions) const {
+  RoutingPreviewPublisher preview(request);
   AlternativeRoutingResult output;
   auto& result = output.route;
   const AlternativeRoutingOptions options = requestedOptions;
@@ -205,6 +211,27 @@ AlternativeRoutingResult AlternativeRoutingEngine::route(
                         frontier.size(),
                         result.diagnostics.landChecks,
                         result.diagnostics.closestApproachNm, 100});
+    preview.publish([&] {
+      RoutingPreview view;
+      const auto stride = std::max<std::size_t>(1, (frontier.size() + 255) / 256);
+      auto representative = frontier.front();
+      for (std::size_t i = 0; i < frontier.size(); i += stride) {
+        view.frontier.push_back(frontier[i]->state.position);
+        if (distanceNm(frontier[i]->state.position, request.destination) <
+            distanceNm(representative->state.position, request.destination)) representative = frontier[i];
+      }
+      view.time = representative->state.time;
+      for (auto node = representative; node && view.path.size() < RoutingPreviewPublisher::maximumPathPoints; node = node->parent)
+        view.path.push_back(node->state.position);
+      std::reverse(view.path.begin(), view.path.end());
+      return view;
+    });
+    if (request.partials) {
+      for (const auto& node : frontier)
+        request.partials->offer(node->state.position, node->state.time,
+            "Alternative sector frontier", [&] { return FreezePartialLegs(lineage(node,
+                request.partials->byteBudget() / sizeof(RouteLeg))); }, PartialRoutePhase::Sector);
+    }
     std::vector<std::optional<Candidate>> best(options.sectors);
     std::optional<Candidate> closest;
     bool withinDuration = false;

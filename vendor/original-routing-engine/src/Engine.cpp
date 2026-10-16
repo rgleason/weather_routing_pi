@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "Contour.h"
+#include "supercpn/weather_routing/PartialRoutes.h"
 #include "supercpn/weather_routing/CoastalEndpointPolicy.h"
 #include "RoutingInternal.h"
 #include "MotionKernel.h"
 #include "original_routing/VisualizationSampler.h"
+#include "supercpn/weather_routing/Preview.h"
 #include <array>
 #include <memory>
 #include <numeric>
@@ -226,6 +228,7 @@ public:
   const wr::RoutingRequest& request;
   const Options& options;
   Arena arena;
+  wr::RoutingPreviewPublisher preview;
   wr::RoutingEnvironment environment;
   wr::RoutingResult result;
   std::vector<wr::PerformanceCandidate> profiles;
@@ -253,7 +256,7 @@ public:
   original_routing::VisualizationSampler visualizationSampler;
   Search(const wr::RoutingRequest& r, const wr::RoutingEnvironment& e,
          const Options& o)
-      : request(r), options(o), arena(r, o), environment(e) {
+      : request(r), options(o), arena(r, o), preview(r), environment(e) {
     if (e.grib)
       environment.grib = std::make_shared<GuardWeather>(
           e.grib, arena, result.diagnostics.weatherSamples);
@@ -1122,20 +1125,75 @@ public:
         "chronological validation";
     return true;
   }
+  wr::PartialRouteTrace freezePartial(const Trace* end) const {
+    struct Waypoint { wr::GeoPoint point; wr::TimePoint time; bool wait; };
+    std::vector<Waypoint> points;
+    for (auto* p = end; p && p->parent; p = p->parent) {
+      if ((points.size() + 1) * sizeof(Waypoint) > request.partials->byteBudget()) return {};
+      points.push_back({p->point, p->time, p->stationaryWait});
+    }
+    std::reverse(points.begin(), points.end());
+    const auto bytes = sizeof(wr::PartialRouteTrace) + points.capacity() * sizeof(Waypoint);
+    auto replayOptions = options;
+    replayOptions.allowProfessionalInterimBridge = false;
+    replayOptions.maximumRuntime = std::chrono::seconds{5};
+    return {bytes, [points = std::move(points), replayOptions](
+        const wr::RoutingRequest& replayRequest, const wr::RoutingEnvironment& source,
+        wr::RoutingDiagnostics&) {
+      Search replay(replayRequest, source, replayOptions);
+      State s{replayRequest.start, replayRequest.departure};
+      std::vector<wr::RouteLeg> legs;
+      auto previousTime = replayRequest.departure;
+      try {
+        for (const auto& target : points) {
+          const auto hint = (target.time - previousTime).count();
+          previousTime = target.time;
+          if (target.wait) {
+            auto waiting = replay.wait(s, wr::Duration{hint});
+            if (!waiting) break;
+            legs.push_back(waiting->leg); s = replay.after(*waiting);
+          } else {
+            auto repaired = replay.connect(s, target.point, hint,
+                wr::Duration{std::max<std::int64_t>(1800, hint * 2 + 1200)});
+            if (!repaired) break;
+            for (const auto& m : *repaired) { legs.push_back(m.leg); s = replay.after(m); }
+          }
+        }
+      } catch (const Stop&) { /* independently validate the reconstructed prefix */ }
+      return legs;
+    }, request.environment};
+  }
   bool arrivals(const IsoRouteList& routes) {
     std::vector<std::pair<double, Trace*>> nearest;
+    std::array<std::pair<double, Trace*>, 4> partialSeeds;
+    for (auto& seed : partialSeeds) seed = {std::numeric_limits<double>::infinity(), nullptr};
     for (auto route : routes) {
       Position* p = route->skippoints->point;
       do {
         arena.checkpoint();
         if (!p->propagated && p->trace) {
           double d = wr::distanceNm(p->trace->point, request.destination);
+          if (request.partials && d < partialSeeds.back().first) {
+            partialSeeds.back() = {d, p->trace};
+            std::stable_sort(partialSeeds.begin(), partialSeeds.end(),
+                [](const auto& a, const auto& b) { return a.first < b.first; });
+          }
           result.diagnostics.closestApproachNm =
               std::min(result.diagnostics.closestApproachNm, d);
           if (d <= largestStepNm * 1.25) nearest.emplace_back(d, p->trace);
         }
         p = p->next;
       } while (p != route->skippoints->point);
+    }
+    if (request.partials) {
+      const auto captureStarted = std::chrono::steady_clock::now();
+      for (const auto& seed : partialSeeds) {
+        if (!seed.second) continue;
+        request.partials->offer(seed.second->point, seed.second->time,
+            "Quick contour frontier", [&] { return freezePartial(seed.second); }, wr::PartialRoutePhase::Contour);
+      }
+      // Optional copying must not reduce the contour solver's wall allowance.
+      arena.deadline += std::chrono::steady_clock::now() - captureStarted;
     }
     std::sort(nearest.begin(), nearest.end(),
               [](auto a, auto b) { return a.first < b.first; });
@@ -1399,6 +1457,34 @@ public:
       merge(front, grown);
       for (auto route : front) route->ReduceClosePoints();
       captureFront(front);
+      preview.publish([&] {
+        wr::RoutingPreview view;
+        std::size_t remaining = wr::RoutingPreviewPublisher::maximumFrontPoints;
+        const Trace* representative = nullptr;
+        double closest = std::numeric_limits<double>::infinity();
+        for (const auto* route : front) {
+          if (!remaining || !route->skippoints) break;
+          wr::IsochroneContour contour;
+          auto* first = route->skippoints->point;
+          auto* point = first;
+          do {
+            contour.points.push_back({point->lat, point->lon});
+            --remaining;
+            if (point->trace) {
+              view.time = std::max(view.time, point->trace->time);
+              const double distance = wr::distanceNm(point->trace->point, request.destination);
+              if (distance < closest) { closest = distance; representative = point->trace; }
+            }
+            point = point->next;
+          } while (point != first && remaining);
+          contour.closed = point == first;
+          view.contours.push_back(std::move(contour));
+        }
+        for (auto* p = representative; p && view.path.size() < wr::RoutingPreviewPublisher::maximumPathPoints; p = p->parent)
+          view.path.push_back(p->point);
+        std::reverse(view.path.begin(), view.path.end());
+        return view;
+      });
       result.diagnostics.retainedStates = std::max<std::uint64_t>(
           result.diagnostics.retainedStates, arena.traces.count);
       if (request.progress)

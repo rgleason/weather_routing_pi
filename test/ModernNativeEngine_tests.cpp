@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "supercpn/weather_routing/Preview.h"
 
 #include <array>
 #include <chrono>
@@ -13,6 +14,7 @@
 #include "engine/native/CoordinateNormalization.h"
 #include "engine/native/WeatherCoverage.h"
 #include "original_routing/Engine.h"
+#include "quick2_routing/Engine.h"
 #include "supercpn/weather_routing/Engine.h"
 #include "supercpn/weather_routing/CoastalEndpointPolicy.h"
 #include "supercpn/weather_routing/QuickEngine.h"
@@ -778,10 +780,16 @@ TEST(ModernNativeEngine, ProfessionalRetainsGraphRecoveryWhenQuickFails) {
   ASSERT_EQ(upgradedProfessional.solverPath, professional.solverPath)
       << upgradedProfessional.message;
   EXPECT_TRUE(upgradedProfessional.validation.passed);
-  EXPECT_EQ(upgradedProfessional.metrics.elapsed, professional.metrics.elapsed);
-  EXPECT_EQ(upgradedProfessional.legs.size(), professional.legs.size());
-  EXPECT_EQ(upgradedProfessional.diagnostics.graphCorridorWidthsNm,
-            professional.diagnostics.graphCorridorWidthsNm);
+  // Professional settles generated goal connections before stopping. It may
+  // reopen deferred corridors to establish its remaining-cost bound, unlike
+  // the generic engine's first-connection policy. Compare validity/arrival,
+  // not an identical trace of the older stopping rule.
+  EXPECT_LE(upgradedProfessional.metrics.elapsed, professional.metrics.elapsed);
+  ASSERT_FALSE(upgradedProfessional.diagnostics.graphCorridorWidthsNm.empty());
+  EXPECT_DOUBLE_EQ(upgradedProfessional.diagnostics.graphCorridorWidthsNm.front(),
+                   request.options.graphCorridorWidthNm);
+  EXPECT_LE(upgradedProfessional.diagnostics.graphCorridorWidthsNm.back(),
+            request.options.maximumGraphCorridorWidthNm);
 }
 
 TEST(ModernNativeEngine, BoundedRecoveryStopsAfterFirstTier) {
@@ -1746,7 +1754,13 @@ alternatives::ComfortSolve AlternativeSolver(int engine, bool windOnly = true) {
       results.push_back(original_routing::Engine{}.route(request, env));
     else if (engine == 2)
       results.push_back(ProfessionalEngine{}.route(request, env));
-    else {
+    else if (engine == 3) {
+      quick2_routing::Options options;
+      options.step = request.options.timeStep;
+      options.comfortWindOnly = windOnly;
+      if (directed) options.objective = quick2_routing::Objective::Comfortable;
+      results.push_back(quick2_routing::Engine{}.route(request, env, options).route);
+    } else {
       QuickRoutingOptions options;
       options.offshoreStep = request.options.timeStep;
       options.headingStepDegrees = request.options.headingStepDegrees;
@@ -1812,7 +1826,7 @@ TEST_P(AllEngineAlternatives, SameEngineExplorationFindsAndRevalidatesGentlerRou
   // Allowance arithmetic, exhaustion and cancellation have separate tests.
   options.maximumSeconds = 30;
   options.additionalPercent = 400;
-  options.nativeComfortLanes = GetParam() == 1;
+  options.nativeComfortLanes = GetParam() == 1 || GetParam() == 3;
   auto report = alternatives::ExploreComfortAlternatives(
       request, env, baseline, std::chrono::seconds{10}, options, solver,
       [](const auto&) { return true; }, std::make_shared<std::atomic_bool>(false));
@@ -1832,8 +1846,8 @@ TEST_P(AllEngineAlternatives, SameEngineExplorationFindsAndRevalidatesGentlerRou
   EXPECT_TRUE(gentler);
   EXPECT_LE(report.alternatives.size(), 4U);
 }
-INSTANTIATE_TEST_SUITE_P(QuickStandardProfessional, AllEngineAlternatives,
-                         testing::Values(0, 1, 2));
+INSTANTIATE_TEST_SUITE_P(QuickQuick2StandardProfessional, AllEngineAlternatives,
+                         testing::Values(0, 1, 2, 3));
 TEST(ComfortAlternatives, ExhaustedWorkAndExplicitStopPreserveTheBaseline) {
   auto request = AlternativesRequest();
   auto env = AlternativesEnvironment(request);
@@ -2142,13 +2156,16 @@ TEST_P(CoastalEngineClearance, BinaryMarginCannotProduceCoastFollowingSuccess) {
       result = AlternativeRoutingEngine{}.route(request, environment, options).route;
       break;
     }
+    case 4:
+      result = quick2_routing::Engine{}.route(request, environment).route;
+      break;
   }
   EXPECT_FALSE(Successful(result.status)) << result.message;
   EXPECT_FALSE(result.validation.passed);
   EXPECT_GT(boundaries->fullChecks, 0U);
 }
-INSTANTIATE_TEST_SUITE_P(AllFourSolvers, CoastalEngineClearance,
-                        testing::Values(0, 1, 2, 3));
+INSTANTIATE_TEST_SUITE_P(AllFiveSolvers, CoastalEngineClearance,
+                        testing::Values(0, 1, 2, 3, 4));
 
 }  // namespace
 
@@ -2266,10 +2283,11 @@ RoutingResult WaveRoute(int engine, WaveGapWeather::Kind kind, bool required) {
   e.performance=std::make_shared<PolarPerformanceModel>(r.vessel);
   if (engine==0) return original_routing::Engine{}.route(r,e);
   if (engine==1) return QuickRoutingEngine{}.route(r,e).route;
+  if (engine==3) return quick2_routing::Engine{}.route(r,e).route;
   return RoutingEngine{}.route(r,e);
 }
 TEST(WaveCoveragePolicy, EveryEngineAllowsUnknownWithWarningOrRejectsWhenRequired) {
-  for (int engine=0; engine<3; ++engine) for (auto kind : {WaveGapWeather::None, WaveGapWeather::SpatialGap, WaveGapWeather::TemporalGap}) {
+  for (int engine=0; engine<4; ++engine) for (auto kind : {WaveGapWeather::None, WaveGapWeather::SpatialGap, WaveGapWeather::TemporalGap}) {
     SCOPED_TRACE(std::to_string(engine)+"/"+std::to_string(kind));
     const auto allowed=WaveRoute(engine,kind,false);
     ASSERT_TRUE(Successful(allowed.status)) << allowed.message;
@@ -2299,4 +2317,121 @@ TEST(WaveCoveragePolicy, RequireCoverageStillAppliesWithoutHeightCeiling) {
   EXPECT_EQ(original_routing::Engine{}.route(r,e).status, RoutingStatus::WaveDataRequired);
   EXPECT_EQ(QuickRoutingEngine{}.route(r,e).route.status, RoutingStatus::WaveDataRequired);
   EXPECT_EQ(RoutingEngine{}.route(r,e).status, RoutingStatus::WaveDataRequired);
+}
+
+TEST(LiveRoutingPreview, DemandCadenceBoundsAndObserverFailuresAreIsolated) {
+  RoutingRequest request;
+  request.previewPhase = 7;
+  bool wanted = false;
+  unsigned built = 0, delivered = 0;
+  request.previewWanted = [&] { return wanted; };
+  request.preview = [&](auto view) {
+    ++delivered;
+    EXPECT_EQ(view->phase, 7U);
+    EXPECT_LE(view->path.size(), 256U);
+    std::size_t points = view->frontier.size();
+    for (const auto& c : view->contours) points += c.points.size();
+    EXPECT_LE(points, 256U);
+  };
+  RoutingPreviewPublisher publisher(request, std::chrono::hours{1});
+  auto build = [&] {
+    ++built;
+    RoutingPreview view;
+    view.frontier.resize(600);
+    view.path.resize(600);
+    return view;
+  };
+  publisher.publish(build);
+  EXPECT_EQ(built, 0U);
+  wanted = true;
+  publisher.publish(build);
+  publisher.publish(build);
+  EXPECT_EQ(built, 1U);
+  EXPECT_EQ(delivered, 1U);
+  request.preview = [](auto) { throw std::runtime_error("display unavailable"); };
+  RoutingPreviewPublisher failing(request, std::chrono::milliseconds{0});
+  EXPECT_NO_THROW(failing.publish(build));
+  EXPECT_NO_THROW(failing.publish([]() -> RoutingPreview { throw std::bad_alloc{}; }));
+}
+
+TEST(LiveRoutingPreview, AllFourEnginesPreserveRouteAndSearchWork) {
+  for (int engine = 0; engine < 4; ++engine) {
+    SCOPED_TRACE(engine);
+    auto request = TestRequest();
+    request.destination = {53.34, -4.1};
+    request.options.useGraphFallback = false;
+    auto environment = TestEnvironment();
+    environment.performance = std::make_shared<PolarPerformanceModel>(request.vessel);
+    const auto solve = [&](const RoutingRequest& r) {
+      if (engine == 0) return original_routing::Engine{}.route(r, environment);
+      if (engine == 1) return QuickRoutingEngine{}.route(r, environment).route;
+      if (engine == 2) return AlternativeRoutingEngine{}.route(r, environment).route;
+      return RoutingEngine{}.route(r, environment);
+    };
+    const auto baseline = solve(request);
+    ASSERT_EQ(baseline.status, RoutingStatus::Complete) << baseline.message;
+    unsigned frames = 0;
+    request.previewWanted = [] { return true; };
+    request.preview = [&](auto frame) {
+      ++frames;
+      EXPECT_LE(frame->path.size(), 256U);
+      EXPECT_FALSE(frame->path.empty());
+      std::size_t points = frame->frontier.size();
+      for (const auto& c : frame->contours) points += c.points.size();
+      EXPECT_LE(points, 256U);
+    };
+    const auto observed = solve(request);
+    EXPECT_GT(frames, 0U);
+    ASSERT_EQ(observed.status, baseline.status);
+    EXPECT_EQ(observed.validation.passed, baseline.validation.passed);
+    EXPECT_EQ(observed.metrics.elapsed.count(), baseline.metrics.elapsed.count());
+    EXPECT_EQ(observed.diagnostics.generatedStates, baseline.diagnostics.generatedStates);
+    EXPECT_EQ(observed.diagnostics.weatherSamples, baseline.diagnostics.weatherSamples);
+    EXPECT_EQ(observed.diagnostics.landChecks, baseline.diagnostics.landChecks);
+    ASSERT_EQ(observed.legs.size(), baseline.legs.size());
+    for (std::size_t i = 0; i < observed.legs.size(); ++i) {
+      EXPECT_EQ(observed.legs[i].start, baseline.legs[i].start);
+      EXPECT_EQ(observed.legs[i].end, baseline.legs[i].end);
+      EXPECT_EQ(observed.legs[i].startTime.time_since_epoch().count(), baseline.legs[i].startTime.time_since_epoch().count());
+      EXPECT_EQ(observed.legs[i].endTime.time_since_epoch().count(), baseline.legs[i].endTime.time_since_epoch().count());
+    }
+  }
+}
+
+TEST(LiveRoutingPreview, DISABLED_OceanTimingComparison) {
+  for (int engine = 0; engine < 4; ++engine) {
+    auto request = TestRequest();
+    request.start = {0, -30}; request.destination = {0, -10};
+    request.options.timeStep = std::chrono::hours{3};
+    request.options.minimumTimeStep = std::chrono::hours{1};
+    request.options.useGraphFallback = false;
+    request.options.useReverseRecovery = false;
+    request.limits.maximumRouteDuration = std::chrono::hours{600};
+    auto environment = TestEnvironment();
+    environment.performance = std::make_shared<PolarPerformanceModel>(request.vessel);
+    UniformWeatherProvider::Configuration weather;
+    weather.windTowardKnots = Vector2{0, -15};
+    environment.grib = std::make_shared<UniformWeatherProvider>(weather);
+    for (unsigned run = 0; run < 6; ++run) {
+      const bool enabled = run % 2 != 0;
+      unsigned frames = 0;
+      std::shared_ptr<const RoutingPreview> latest;
+      request.preview = enabled ? RoutingPreviewCallback([&](auto view) {
+        latest = std::move(view); ++frames;
+      }) : RoutingPreviewCallback{};
+      const auto started = std::chrono::steady_clock::now();
+      RoutingResult result;
+      if (engine == 0) result = original_routing::Engine{}.route(request, environment);
+      else if (engine == 1) result = QuickRoutingEngine{}.route(request, environment).route;
+      else if (engine == 2) result = AlternativeRoutingEngine{}.route(request, environment).route;
+      else result = RoutingEngine{}.route(request, environment);
+      const auto seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+      std::printf("WR_PREVIEW_BENCH engine=%d preview=%d run=%u seconds=%.6f frames=%u status=%s generated=%llu weather=%llu land=%llu\n",
+          engine, enabled, run, seconds, frames, toString(result.status).c_str(),
+          static_cast<unsigned long long>(result.diagnostics.generatedStates),
+          static_cast<unsigned long long>(result.diagnostics.weatherSamples),
+          static_cast<unsigned long long>(result.diagnostics.landChecks));
+      std::fflush(stdout);
+    }
+  }
 }

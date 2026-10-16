@@ -20,6 +20,7 @@
 
 #include "DepartureScheduler.h"
 #include "RoutingResourcePolicy.h"
+#include "RoutingEngineSettings.h"
 
 namespace {
 
@@ -182,6 +183,25 @@ bool LoadRoutingScenarioJson(const wxString& path,
         scenario.route.comfortMaximumSeconds = extra["maximumSeconds"].asInt();
     }
 
+    for (bool all : {false, true}) {
+      const char* key = all ? "allEngines" : "autoEngines";
+      if (!route.isMember(key)) continue;
+      const auto& engines = route[key];
+      if (!engines.isArray() || engines.empty()) {
+        error = wxString::FromUTF8(key) + " must be a nonempty array of engine IDs";
+        return false;
+      }
+      unsigned mask = 0;
+      for (const auto& id : engines) {
+        weather_routing::RoutingEngineSettings parsed;
+        if (id.isString()) parsed.SetEngineId(id.asString());
+        const auto bit = id.isString() ? weather_routing::EngineBit(parsed.engine) : 0;
+        if (!bit) { error = "Unknown engine in " + wxString::FromUTF8(key); return false; }
+        mask |= bit;
+      }
+      if (all) { scenario.route.allEngineMask = mask; scenario.route.hasAllEngineMask = true; }
+      else { scenario.route.autoEngineMask = mask; scenario.route.hasAutoEngineMask = true; }
+    }
     if (route.isMember("routingEngine")) {
       scenario.route.routingEngine = JsonString(route, "routingEngine");
       scenario.route.hasRoutingEngine = true;
@@ -189,8 +209,9 @@ bool LoadRoutingScenarioJson(const wxString& path,
           scenario.route.routingEngine != "professional2" &&
           scenario.route.routingEngine != "quick" &&
           scenario.route.routingEngine != "original" && scenario.route.routingEngine != "auto" &&
-          scenario.route.routingEngine != "all") {
-        error = "routingEngine must be auto, original (Quick), quick (Standard), main (Professional), or all";
+          scenario.route.routingEngine != "all" && scenario.route.routingEngine != "quick2" &&
+          scenario.route.routingEngine != "alternative") {
+        error = "routingEngine must be auto, original (Quick), quick2, quick (Standard), alternative, main (Professional), or all";
         return false;
       }
     }

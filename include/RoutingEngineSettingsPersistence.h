@@ -53,6 +53,15 @@ RoutingEngineSettings ReadRoutingEngineSettingsWith(Reader read) {
         ? static_cast<int>(parsed) : 4;
   }
   integer("OriginalGribTimelineCacheMiB", settings.originalGribTimelineCacheMiB);
+  const auto membership = [&](const char* key, unsigned& mask) {
+    if (!read(key, value)) return;
+    long parsed;
+    // Never silently enable unselected engines for corrupt or empty settings.
+    mask = value.ToLong(&parsed) && parsed >= 0 && parsed <= kAllEnginesMask
+               ? static_cast<unsigned>(parsed) : 0;
+  };
+  membership("AutoEngineMask", settings.autoEngines);
+  membership("AllEngineMask", settings.allEngines);
   if (read("OriginalHeadingStepDegrees", value)) {
     double parsed;
     if (value.ToCDouble(&parsed) && std::isfinite(parsed))
@@ -75,6 +84,8 @@ RoutingEngineSettings ReadRoutingEngineSettingsWith(Reader read) {
 template <typename Writer>
 void WriteRoutingEngineSettingsWith(const RoutingEngineSettings& settings, Writer write) {
   write("RoutingEngine", wxString::FromUTF8(settings.EngineId().c_str()));
+  write("AutoEngineMask", wxString::Format("%u", settings.autoEngines));
+  write("AllEngineMask", wxString::Format("%u", settings.allEngines));
   write("MainSearchPreset", wxString::FromUTF8(settings.mainPreset.id.c_str()));
   write("MainSearchPresetRevision", wxString::Format("%d", settings.mainPreset.revision));
   write("QuickSearchPreset", wxString::FromUTF8(settings.quick.preset.id.c_str()));

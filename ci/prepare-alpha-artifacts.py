@@ -46,7 +46,7 @@ PROFILES = {
                             "https://github.com/rgleason/weather_routing_pi"},
     },
 }
-SUMMARY = "Weather routing, faster optional chart awareness and route checks."
+SUMMARY = "Weather routing with Quick2, configurable Auto/All and partial results."
 PREVIOUS_SUMMARY = "Weather routing, passage planning and existing-route chart checks."
 OLDER_SUMMARY = "Advanced weather routing with departure and arrival planning."
 LEGACY_SUMMARY = "Advanced deterministic weather routing with departure and arrival planning."

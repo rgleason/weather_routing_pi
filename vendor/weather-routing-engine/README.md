@@ -81,7 +81,9 @@ revalidated and emitted as JSON.
 
 The plugin labels this bounded beam engine **Standard**. Its **Quick** engine
 is the separate hardened original contour implementation in the sibling
-`vendor/original-routing-engine` directory; `RoutingEngine` is **Professional**.
+`vendor/original-routing-engine` directory. `ProfessionalEngine` selects the
+refinement policy described in [PROFESSIONAL-POLICY.md](PROFESSIONAL-POLICY.md);
+generic `RoutingEngine` callers and Quick bridges retain the baseline policy.
 
 ## Separate Alternative engine
 

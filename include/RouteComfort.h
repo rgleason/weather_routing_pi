@@ -7,6 +7,8 @@
 #include <cstdint>
 #include <limits>
 #include <string>
+#include <span>
+#include <tuple>
 #include <vector>
 #include "supercpn/weather_routing/Types.h"
 #include "supercpn/weather_routing/Comfort.h"
@@ -152,5 +154,76 @@ inline RouteComparisonSelection SelectComfortCandidate(
       haveEligible = true;
     }
   return result;
+}
+// Proximity eligibility is anchored at the closest retained endpoint. It must
+// not grow transitively through a chain of individually close endpoints.
+inline RouteComparisonSelection SelectPartialComfortCandidate(
+    const std::vector<RouteComparisonMetric>& candidates,
+    const std::vector<double>& remainingNm, int preference, double toleranceNm) {
+  RouteComparisonSelection result;
+  if (candidates.empty() || candidates.size() != remainingNm.size()) return result;
+  double nearest = std::numeric_limits<double>::infinity();
+  for (const auto d : remainingNm) if (std::isfinite(d) && d >= 0) nearest = std::min(nearest, d);
+  std::vector<RouteComparisonMetric> eligible;
+  std::vector<std::size_t> indices;
+  for (std::size_t i = 0; i < candidates.size(); ++i)
+    if (std::isfinite(remainingNm[i]) && remainingNm[i] >= 0 &&
+        remainingNm[i] <= nearest + toleranceNm) {
+      eligible.push_back(candidates[i]); indices.push_back(i);
+    }
+  if (indices.empty()) return result;
+  result = SelectComfortCandidate(eligible, preference);
+  result.selected = indices[result.selected];
+  return result;
+}
+
+struct PartialRetentionMetric {
+  double remainingNm{};
+  std::int64_t elapsedSeconds{};
+  RouteComfort full, wind;
+};
+// Admission uses ACTUAL replay endpoints, not a contour's predicted endpoint.
+// Preserve the closest and the near-proximity time/comfort extremes before
+// dropping a surplus candidate under the caller's count/byte allowance.
+inline std::size_t PartialCandidateToDiscard(std::span<const PartialRetentionMetric> metrics,
+                                           double toleranceNm) {
+  if (metrics.size() < 2) return 0;
+  std::size_t closest = 0;
+  for (std::size_t i = 1; i < metrics.size(); ++i)
+    if (std::tuple{metrics[i].remainingNm, metrics[i].elapsedSeconds} <
+        std::tuple{metrics[closest].remainingNm, metrics[closest].elapsedSeconds}) closest = i;
+  const double anchor = metrics[closest].remainingNm;
+  std::size_t fast = closest, full = closest, wind = closest;
+  bool haveFull = false, haveWind = false;
+  for (std::size_t i = 0; i < metrics.size(); ++i) {
+    const auto& m = metrics[i];
+    if (m.remainingNm > anchor + toleranceNm) continue;
+    if (m.elapsedSeconds < metrics[fast].elapsedSeconds) fast = i;
+    if (m.full.comparable() && (!haveFull ||
+        std::tuple{m.full.exposureHours, m.elapsedSeconds} <
+        std::tuple{metrics[full].full.exposureHours, metrics[full].elapsedSeconds})) {
+      full = i; haveFull = true;
+    }
+    if (m.wind.comparable() && (!haveWind ||
+        std::tuple{m.wind.exposureHours, m.elapsedSeconds} <
+        std::tuple{metrics[wind].wind.exposureHours, metrics[wind].elapsedSeconds})) {
+      wind = i; haveWind = true;
+    }
+  }
+  const auto rank = [&](std::size_t i) {
+    return std::tuple{std::floor((metrics[i].remainingNm - anchor) / toleranceNm),
+                      metrics[i].elapsedSeconds, metrics[i].remainingNm, i};
+  };
+  std::optional<std::size_t> worst;
+  for (std::size_t i = 0; i < metrics.size(); ++i) {
+    if (i == closest || i == fast || (haveFull && i == full) || (haveWind && i == wind)) continue;
+    if (!worst || rank(*worst) < rank(i)) worst = i;
+  }
+  if (worst) return *worst;
+  // A byte budget may be too small for all four extremes. Keep a closest
+  // representative; the caller rejects individually oversized paths first.
+  for (std::size_t i = 0; i < metrics.size(); ++i)
+    if (i != closest && (!worst || rank(*worst) < rank(i))) worst = i;
+  return *worst;
 }
 } // namespace weather_routing

@@ -21,6 +21,7 @@
 #include <wx/glcanvas.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <functional>
 #include <list>
@@ -213,10 +214,21 @@ bool RouteMapOverlay::Start(wxString& error) {
 
   Lock();
   m_ModernProgress.Begin();
+  m_LivePreview.Begin();
+  m_LivePreviewSequence = 0;
+  m_LivePreviewFrames.clear();
+  m_LivePreviewPublished.store(0);
+  m_LivePreviewRendered.store(0);
+  RequestModernPreview(false);
+  m_LivePreviewDrawCalls.store(0);
+  m_LivePreviewDrawUs.store(0);
+  m_LivePreviewMaxDrawUs.store(0);
   m_ComfortStop->store(false);
   m_ExploringComfort.store(false);
   m_RetainedCandidates.clear();
   m_SelectedRetainedCandidateId.clear();
+  m_PartialCandidates.clear();
+  m_SelectedPartialCandidateId.clear();
   Unlock();
 
   CaptureSearchSettings(configuration, ModernNativeRouteEnabled(configuration));
@@ -365,6 +377,93 @@ bool RouteMapOverlay::GetModernNativeProgress(wxString& stage,
   return true;
 }
 
+void RouteMapOverlay::SetModernPreview(LivePreview value, std::uint64_t generation) {
+  if (!WantsModernPreview() || generation != ModernPreviewGeneration()) return;
+  m_LivePreview.Publish(generation, value);
+  ++m_LivePreviewPublished;
+}
+
+bool RouteMapOverlay::ConsumeModernPreview() {
+  const auto snapshot = m_LivePreview.Read();
+  if (!snapshot.value || snapshot.sequence == m_LivePreviewSequence) return false;
+  Lock();
+  if (snapshot.generation != ModernPreviewGeneration()) { Unlock(); return false; }
+  m_LivePreviewSequence = snapshot.sequence;
+  if (!m_LivePreviewFrames.empty() &&
+      (snapshot.value->phase != m_LivePreviewFrames.back()->phase ||
+       snapshot.value->stage != m_LivePreviewFrames.back()->stage ||
+       snapshot.value->time < m_LivePreviewFrames.back()->time))
+    m_LivePreviewFrames.clear();
+  if (!m_LivePreviewFrames.empty() && snapshot.value->time == m_LivePreviewFrames.back()->time)
+    m_LivePreviewFrames.back() = snapshot.value;
+  else
+    m_LivePreviewFrames.push_back(snapshot.value);
+  constexpr std::size_t maximumFrames = 16;
+  if (m_LivePreviewFrames.size() > maximumFrames)
+    m_LivePreviewFrames.erase(m_LivePreviewFrames.begin());
+  Unlock();
+  return true;
+}
+
+void RouteMapOverlay::RenderModernPreview(SettingsDialog& settings, piDC& dc,
+                                         PlugIn_ViewPort& vp, bool courseOnly) {
+  Lock();
+  if (m_LivePreviewFrames.empty()) { Unlock(); return; }
+  const auto drawStarted = std::chrono::steady_clock::now();
+  const auto point = [&](const auto& p) {
+    wxPoint pixel;
+    WR_GetCanvasPixLL(&vp, &pixel, p.latitude, p.longitude);
+    return pixel;
+  };
+  const auto polyline = [&](const auto& source, bool closed = false) {
+    std::array<wxPoint, 258> pixels;
+    int count = 0;
+    const auto flush = [&] { if (count > 1) dc.DrawLines(count, pixels.data()); };
+    for (const auto& p : source) {
+      const auto pixel = point(p);
+      if (count && std::abs(pixel.x - pixels[count-1].x) >= vp.pix_width / 2) {
+        flush(); count = 0;
+      }
+      pixels[count++] = pixel;
+    }
+    if (closed && count > 2 && std::abs(pixels[0].x - pixels[count-1].x) < vp.pix_width / 2)
+      pixels[count++] = pixels[0];
+    flush();
+  };
+  dc.SetBrush(*wxTRANSPARENT_BRUSH);
+  if (!courseOnly && settings.m_sIsoChronThickness->GetValue() > 0) {
+    dc.SetPen(wxPen(wxColour(0, 140, 160, 170), 1, wxPENSTYLE_SHORT_DASH));
+    for (const auto& frame : m_LivePreviewFrames) {
+      for (const auto& contour : frame->contours)
+        polyline(contour.points, contour.closed);
+      // Beam/sector searches supply unordered points, never join them into
+      // fabricated contours. Only the current sparse frontier needs drawing.
+      if (frame == m_LivePreviewFrames.back()) {
+        const auto stride = std::max<std::size_t>(1, (frame->frontier.size() + 63) / 64);
+        for (std::size_t i = 0; i < frame->frontier.size(); i += stride) {
+          const auto pixel = point(frame->frontier[i]);
+          dc.DrawCircle(pixel.x, pixel.y, 1);
+        }
+      }
+    }
+  }
+  const auto& path = m_LivePreviewFrames.back()->path;
+  if (courseOnly && settings.m_sRouteThickness->GetValue() > 0 && !path.empty()) {
+    dc.SetPen(wxPen(wxColour(0, 120, 145, 220), 2, wxPENSTYLE_SHORT_DASH));
+    polyline(path);
+    const auto pixel = point(path.back());
+    dc.SetTextForeground(wxColour(0, 90, 110));
+    dc.DrawText(_("Search preview (not validated)"), pixel.x + 8, pixel.y + 8);
+    ++m_LivePreviewRendered;
+  }
+  const auto drawUs = std::chrono::duration_cast<std::chrono::microseconds>(
+      std::chrono::steady_clock::now() - drawStarted).count();
+  ++m_LivePreviewDrawCalls;
+  m_LivePreviewDrawUs.fetch_add(drawUs);
+  m_LivePreviewMaxDrawUs.store(std::max<std::uint64_t>(m_LivePreviewMaxDrawUs.load(), drawUs));
+  Unlock();
+}
+
 bool RouteMapOverlay::UsesEstimatedPolarPerformance() {
   if (!Finished() || !ReachedDestination()) return false;
   if (UsesModernNativeResult()) return m_ModernNativeEstimatedPolar;
@@ -376,6 +475,13 @@ bool RouteMapOverlay::UsesEstimatedPolarPerformance() {
 void RouteMapOverlay::InstallModernNativeResult(
     const supercpn::weather_routing::RoutingResult& result) {
   namespace wr = supercpn::weather_routing;
+  RequestModernPreview(false);
+  wxLogMessage("WR_LIVE_PREVIEW published=%u rendered=%u draw_calls=%u draw_us_total=%llu draw_us_max=%llu",
+               m_LivePreviewPublished.load(), m_LivePreviewRendered.load(),
+               m_LivePreviewDrawCalls.load(),
+               static_cast<unsigned long long>(m_LivePreviewDrawUs.load()),
+               static_cast<unsigned long long>(m_LivePreviewMaxDrawUs.load()));
+  m_LivePreview.Begin();
   const bool resultComplete =
       result.status == wr::RoutingStatus::Complete ||
       result.status == wr::RoutingStatus::CompleteUsingReverseRecovery ||
@@ -498,6 +604,7 @@ void RouteMapOverlay::InstallModernNativeResult(
   m_ModernCursorLayer = std::numeric_limits<std::size_t>::max();
   m_ModernCursorTrace = std::numeric_limits<std::size_t>::max();
   m_ModernIsochrones.clear();
+  m_LivePreviewFrames.clear();
   destination_position = nullptr;
   last_destination_position = nullptr;
   last_cursor_position = nullptr;
@@ -681,6 +788,77 @@ bool RouteMapOverlay::SelectRetainedCandidate(const std::string& id) {
     return true;
   }
   return false;
+}
+
+void RouteMapOverlay::SetPartialCandidates(
+    std::vector<weather_routing::RetainedRouteCandidate> candidates) {
+  Lock();
+  m_PartialCandidates = std::move(candidates);
+  m_SelectedPartialCandidateId.clear();
+  Unlock();
+}
+
+std::vector<weather_routing::RetainedRouteCandidate> RouteMapOverlay::PartialCandidates() {
+  if (Running() || !Valid() || !Finished() || ReachedDestination() || CancellationFlag()->load()) return {};
+  Lock();
+  auto candidates = m_PartialCandidates;
+  Unlock();
+  return candidates;
+}
+
+bool RouteMapOverlay::HasSelectedPartial() {
+  const auto candidates = PartialCandidates();
+  Lock();
+  const bool selected = !m_SelectedPartialCandidateId.empty() && !candidates.empty();
+  Unlock();
+  return selected;
+}
+
+bool RouteMapOverlay::SelectPartialCandidate(const std::string& id) {
+  const auto candidates = PartialCandidates();
+  for (const auto& candidate : candidates) {
+    if (candidate.id != id || !candidate.result->validation.passed || candidate.result->legs.empty()) continue;
+    Lock();
+    m_SelectedPartialCandidateId = id;
+    // Discard all exploratory display tracks. Partial geometry has its own
+    // renderer and never becomes destination_position or export plotdata.
+    m_LivePreviewFrames.clear();
+    m_ModernIsochrones.clear();
+    m_UpdateOverlay = true;
+    Unlock();
+    wxLogMessage("WR_PARTIAL_SELECTED id=%s engine=%s remaining_nm=%.6f elapsed_s=%lld complete=0",
+        wxString::FromUTF8(id.c_str()), wxString::FromUTF8(candidate.result->engineIdentity.c_str()),
+        candidate.remainingNm, static_cast<long long>(candidate.result->metrics.elapsed.count()));
+    return true;
+  }
+  return false;
+}
+
+void RouteMapOverlay::RenderPartialRoute(piDC& dc, PlugIn_ViewPort& vp) {
+  const auto candidates = PartialCandidates();
+  Lock();
+  const auto id = m_SelectedPartialCandidateId;
+  Unlock();
+  for (const auto& candidate : candidates) {
+    if (candidate.id != id) continue;
+    dc.SetPen(wxPen(wxColour(0, 120, 145, 220), 2, wxPENSTYLE_SHORT_DASH));
+    dc.SetBrush(*wxTRANSPARENT_BRUSH);
+    wxPoint end;
+    for (const auto& leg : candidate.result->legs) {
+      wxPoint a, b;
+      WR_GetCanvasPixLL(&vp, &a, leg.start.latitude, leg.start.longitude);
+      WR_GetCanvasPixLL(&vp, &b, leg.end.latitude, leg.end.longitude);
+      if (std::abs(a.x - b.x) < vp.pix_width / 2) dc.DrawLine(a.x, a.y, b.x, b.y);
+      end = b;
+    }
+    dc.DrawCircle(end.x, end.y, 5);
+    dc.SetTextForeground(wxColour(0, 90, 110));
+    const auto label = wxString::Format(_("Incomplete - %.2f NM remaining"), candidate.remainingNm);
+    wxCoord width, height; dc.GetTextExtent(label, &width, &height);
+    dc.DrawText(label, std::clamp(end.x + 8, 4, std::max(4, vp.pix_width - width - 4)),
+                std::clamp(end.y + 8, 4, std::max(4, vp.pix_height - height - 4)));
+    break;
+  }
 }
 
 void RouteMapOverlay::DeleteThread() {
@@ -935,6 +1113,14 @@ void RouteMapOverlay::Render(wxDateTime time, SettingsDialog& settingsdialog,
                              piDC& dc, PlugIn_ViewPort& vp, bool justendroute,
                              RoutePoint* positionOnRoute) {
   if (!m_bEndRouteVisible) return;
+  if (justendroute && !Running() && HasSelectedPartial()) {
+    RenderPartialRoute(dc, vp);
+    return;
+  }
+  if (Running() && justendroute) {
+    RenderModernPreview(settingsdialog, dc, vp, true);
+    return;
+  }
   dc.SetPen(*wxBLACK);                // reset pen
   dc.SetBrush(*wxTRANSPARENT_BRUSH);  // reset brush
   if (!justendroute) {
@@ -960,6 +1146,14 @@ void RouteMapOverlay::Render(wxDateTime time, SettingsDialog& settingsdialog,
       dc.DrawLine(r.x - 10, r.y + 10, r.x + 10, r.y - 10);
     }
 
+    if (!Running() && HasSelectedPartial()) {
+      RenderPartialRoute(dc, vp);
+      return;
+    }
+    if (Running()) {
+      RenderModernPreview(settingsdialog, dc, vp, false);
+      return;
+    }
     static const double NORM_FACTOR = 16;
 
     // Do not use displaylist processing to avoid incorrect vp calculations in
@@ -2349,8 +2543,14 @@ bool RouteMapOverlay::HasComputedResults() {
 }
 
 void RouteMapOverlay::Clear() {
+  RequestModernPreview(false);
+  m_LivePreview.Begin();
+  m_LivePreviewFrames.clear();
+  m_LivePreviewSequence = 0;
   decltype(m_RetainedCandidates)().swap(m_RetainedCandidates);
   m_SelectedRetainedCandidateId.clear();
+  decltype(m_PartialCandidates)().swap(m_PartialCandidates);
+  m_SelectedPartialCandidateId.clear();
   if (m_UsesModernNativeResult) {
     for (Position* position : m_ModernRoutePositions) delete position;
     for (Position* position : m_ModernCursorRoutePositions) delete position;
