@@ -8,6 +8,16 @@
 namespace {
 namespace p2=supercpn::weather_routing::professional_policy;
 namespace wr=supercpn::weather_routing;
+// Compare scalar ticks so GoogleTest does not instantiate C++20 chrono
+// formatters unavailable at the supported macOS 11 deployment target.
+template <typename Clock, typename Duration>
+auto PolicyTicks(const std::chrono::time_point<Clock, Duration>& value) {
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(value.time_since_epoch()).count();
+}
+template <typename Rep, typename Period>
+auto PolicyTicks(const std::chrono::duration<Rep, Period>& value) {
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(value).count();
+}
 struct TestResult {wr::RoutingResult route;p2::Diagnostics diagnostics;};
 struct TestSolve {
   TestResult route(const wr::RoutingRequest& r,const wr::RoutingEnvironment& e,
@@ -34,13 +44,13 @@ static fixtures::Fixture corridorBottleneck(double islandHalfHeight=.12) {
 static void sameRoute(const wr::RoutingResult& a, const wr::RoutingResult& b) {
   ASSERT_EQ(a.status,b.status) << a.message << " / " << b.message;
   ASSERT_EQ(a.validation.passed,b.validation.passed);
-  ASSERT_EQ(a.metrics.elapsed,b.metrics.elapsed);
+  ASSERT_EQ(PolicyTicks(a.metrics.elapsed),PolicyTicks(b.metrics.elapsed));
   ASSERT_EQ(a.legs.size(),b.legs.size());
   for (std::size_t i=0;i<a.legs.size();++i) {
     EXPECT_EQ(a.legs[i].start,b.legs[i].start);
     EXPECT_EQ(a.legs[i].end,b.legs[i].end);
-    EXPECT_EQ(a.legs[i].startTime,b.legs[i].startTime);
-    EXPECT_EQ(a.legs[i].endTime,b.legs[i].endTime);
+    EXPECT_EQ(PolicyTicks(a.legs[i].startTime),PolicyTicks(b.legs[i].startTime));
+    EXPECT_EQ(PolicyTicks(a.legs[i].endTime),PolicyTicks(b.legs[i].endTime));
     EXPECT_DOUBLE_EQ(a.legs[i].speedThroughWaterKnots,b.legs[i].speedThroughWaterKnots);
   }
 }
@@ -57,7 +67,7 @@ TEST(ProfessionalSearchPolicy, ReopensExcludedWaterFromOriginalDeparture) {
   EXPECT_GT(expanded.diagnostics.corridorWidthsNm.front(),f.request.options.graphCorridorWidthNm);
   EXPECT_LE(expanded.diagnostics.corridorWidthsNm.size(),options.maximumCorridorPasses);
   EXPECT_LE(expanded.diagnostics.corridorGenerated,expanded.diagnostics.corridorGeneratedBudget+1);
-  EXPECT_EQ(expanded.route.legs.front().startTime,f.request.departure);
+  EXPECT_EQ(PolicyTicks(expanded.route.legs.front().startTime),PolicyTicks(f.request.departure));
   EXPECT_TRUE(wr::RouteValidator{}.validate(f.request,f.environment,
       *f.environment.performance,expanded.route.legs).passed);
 }
@@ -309,7 +319,7 @@ TEST(ProfessionalSearchPolicy, PruningPreservesSailPlansWithDifferentFutureTrans
   ASSERT_TRUE(result.route.validation.passed)<<result.route.message;
   ASSERT_FALSE(result.route.legs.empty());
   EXPECT_EQ(result.route.legs.front().sailPlan,1);
-  EXPECT_LE(result.route.metrics.elapsed,std::chrono::hours{6});
+  EXPECT_LE(PolicyTicks(result.route.metrics.elapsed),PolicyTicks(std::chrono::hours{6}));
 }
 
 TEST(ProfessionalSearchPolicy, UnrestrictedRecoveryReopensOriginalDepartureWithinAllowance) {
@@ -318,7 +328,7 @@ TEST(ProfessionalSearchPolicy, UnrestrictedRecoveryReopensOriginalDepartureWithi
   bool began=false;
   o.trace=[&](const auto& e) {
     if(e.stage=="unrestricted_recovery" && e.action=="begin") {
-      began=true;EXPECT_EQ(e.time,f.request.departure);EXPECT_EQ(e.position,f.request.start);
+      began=true;EXPECT_EQ(PolicyTicks(e.time),PolicyTicks(f.request.departure));EXPECT_EQ(e.position,f.request.start);
     }
   };
   const auto result=TestSolve{}.route(f.request,f.environment,o);
@@ -368,10 +378,10 @@ TEST(ProfessionalSearchPolicy, UnrestrictedInitialBoundsFocusedComparisonByValid
   };
   const auto result=TestSolve{}.route(f.request,f.environment,o);
   ASSERT_TRUE(result.route.validation.passed)<<result.route.message;
-  ASSERT_GT(broadArrival,f.request.departure);
+  ASSERT_GT(PolicyTicks(broadArrival),PolicyTicks(f.request.departure));
   EXPECT_EQ(focusedHorizon,(broadArrival-f.request.departure).count());
   EXPECT_EQ(focusedEffort,100U);
-  EXPECT_LE(result.route.metrics.elapsed,broadArrival-f.request.departure);
+  EXPECT_LE(PolicyTicks(result.route.metrics.elapsed),PolicyTicks(broadArrival-f.request.departure));
   EXPECT_TRUE(wr::RouteValidator{}.validate(f.request,f.environment,
       *f.environment.performance,result.route.legs).passed);
 }
@@ -397,7 +407,7 @@ TEST(ProfessionalSearchPolicy, ReverseRecoveryAndQuickIncumbentRespectRouteHoriz
   p2::Options o;o.runInternalQuick=false;o.policy=p2::Policy::Baseline;
   const auto control=TestSolve{}.route(r,f.environment,o);
   ASSERT_TRUE(control.route.validation.passed)<<control.route.message;
-  ASSERT_GT(control.route.metrics.elapsed,r.limits.maximumRouteDuration);
+  ASSERT_GT(PolicyTicks(control.route.metrics.elapsed),PolicyTicks(r.limits.maximumRouteDuration));
   o.policy=p2::Policy::Sanity;
   const auto bounded=TestSolve{}.route(r,f.environment,o);
   EXPECT_FALSE(bounded.route.validation.passed);
@@ -417,7 +427,7 @@ TEST(ProfessionalSearchPolicy, GraphCannotExtendAnExpiredRouteHorizon) {
   p2::Options o;o.runInternalQuick=false;o.policy=p2::Policy::Baseline;
   const auto control=TestSolve{}.route(r,f.environment,o);
   ASSERT_TRUE(control.route.validation.passed)<<control.route.message;
-  ASSERT_GT(control.route.metrics.elapsed,r.limits.maximumRouteDuration);
+  ASSERT_GT(PolicyTicks(control.route.metrics.elapsed),PolicyTicks(r.limits.maximumRouteDuration));
   o.policy=p2::Policy::Sanity;
   const auto bounded=TestSolve{}.route(r,f.environment,o);
   EXPECT_FALSE(bounded.route.validation.passed);
@@ -441,7 +451,7 @@ TEST(ProfessionalSearchPolicy, ValidatedQuickRetainsSingleFirstTierImprovementBu
   const auto selected=p2::detail::solveProfessional(f.request,f.environment,&quick,o,d);
   ASSERT_TRUE(selected.validation.passed);
   EXPECT_FALSE(broadTried);EXPECT_EQ(tiers,1U);
-  EXPECT_LE(selected.metrics.elapsed,quick.metrics.elapsed);
+  EXPECT_LE(PolicyTicks(selected.metrics.elapsed),PolicyTicks(quick.metrics.elapsed));
 }
 
 TEST(ProfessionalSearchPolicy, BoundedConnectionRefinesAnOverlongInitialEstimate) {
@@ -488,7 +498,7 @@ TEST(ProfessionalSearchPolicy, BoundedConnectionRefinesAnOverlongInitialEstimate
   EXPECT_EQ(refined.route.legs.size(),1U);
   EXPECT_EQ(refined.route.diagnostics.generatedStates,0U);
   EXPECT_TRUE(!estimated.route.validation.passed || estimated.route.legs.size()>1U);
-  EXPECT_LE(refined.route.metrics.elapsed,r.limits.maximumRouteDuration);
+  EXPECT_LE(PolicyTicks(refined.route.metrics.elapsed),PolicyTicks(r.limits.maximumRouteDuration));
   EXPECT_TRUE(wr::RouteValidator{}.validate(r,f.environment,*f.environment.performance,
       refined.route.legs).passed);
 }
