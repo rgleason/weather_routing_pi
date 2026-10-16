@@ -108,6 +108,26 @@ class Publication(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Embedded metadata source mismatch"):
             prepare.inspect_pair(directory, "production")
 
+    def test_invalid_windows_build_target_is_rejected_before_staging(self):
+        directory, archive, metadata = self.pair("windows-x64")
+        root = ET.parse(metadata).getroot()
+        ET.SubElement(root, "build-target").text = "msvc-64"
+        ET.ElementTree(root).write(metadata)
+        embed.embed(archive, metadata, archive)
+        with self.assertRaisesRegex(ValueError, "Invalid Windows build-target"):
+            prepare.inspect_pair(directory, "production")
+
+    def test_external_only_windows_build_target_fix_is_rejected(self):
+        directory, archive, metadata = self.pair("windows-x64")
+        root = ET.parse(metadata).getroot()
+        ET.SubElement(root, "build-target").text = "msvc-64"
+        ET.ElementTree(root).write(metadata)
+        embed.embed(archive, metadata, archive)
+        root.find("build-target").text = "msvc"
+        ET.ElementTree(root).write(metadata)
+        with self.assertRaisesRegex(ValueError, "build-target mismatch"):
+            prepare.inspect_pair(directory, "production")
+
     def test_wrong_upload_channel_fails_before_invoking_cloudsmith(self):
         output = self.matrix()
         with patch.object(deploy.subprocess, "run") as run:

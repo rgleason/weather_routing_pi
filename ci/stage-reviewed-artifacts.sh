@@ -9,5 +9,6 @@ python3 ci/recover-validated-artifacts.py "$release_source_workflow" qualified-s
 python3 ci/prepare-publication-artifacts.py qualified-source/artifacts reviewed-publication \
   --channel "$WR_RELEASE_CHANNEL" --build-number "${CIRCLE_BUILD_NUM:?}" \
   --source-receipt qualified-source/validated-source.json
+python3 ci/validate-catalogue-packages.py reviewed-publication
 python3 ci/deploy-reviewed-artifacts.py reviewed-publication \
   --channel "$WR_RELEASE_CHANNEL" --dry-run
