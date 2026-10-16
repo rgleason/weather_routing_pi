@@ -460,7 +460,7 @@ protected:
   wxComboBox* m_cEnd;
   wxChoice* m_cRoutingEngine;
   wxChoice* m_cBasicRoutingMode;
-  std::array<wxCheckBox*, 5> m_cbAutoEngines{}, m_cbAllEngines{};
+  std::array<wxCheckBox*, 6> m_cbAutoEngines{}, m_cbAllEngines{};
   wxStaticText* m_tRoutingEngineDescription;
   wxChoice* m_cEnginePreset;
   wxStaticText* m_tEnginePresetStatus;

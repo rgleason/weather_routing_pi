@@ -1,0 +1,18 @@
+{
+  "name": "real_tpxo_conwy_06",
+  "start": [
+    53.334,
+    -4.618
+  ],
+  "end": [
+    53.29,
+    -3.84
+  ],
+  "grib": "/home/paul/.opencpn/grib/generated/environment_ukmo_ukv_tpxo_irish_sea_24h.grb",
+  "polar": "/home/paul/src/OpenCPN/.worktrees/xweather-sixth/test/testdata/polars/Hallberg-Rassy_40_test.pol",
+  "epoch": 1783069200,
+  "currents": true,
+  "shoreline": "/tmp/atlas-poly-f.dat",
+  "max_hours": 18,
+  "cache": true
+}

@@ -1,0 +1,15 @@
+[
+  {
+    "engine": "atlas",
+    "cases": 168,
+    "valid": 160,
+    "process_errors": 0,
+    "negative_cases": 8,
+    "unsafe_negative_acceptances": 0,
+    "median_seconds": 0.6948384105000001,
+    "total_seconds": 149.80300132600001,
+    "median_ratio_to_best": 1.0,
+    "worst_ratio_to_best": 1.0,
+    "median_rss_kib": 277996.0
+  }
+]

@@ -1,0 +1,166 @@
+{
+  "arrival_seconds": 1080011,
+  "cache_state": "cold",
+  "case": "long_ocean",
+  "complete": true,
+  "cpu_seconds": 1.279333,
+  "distance_nm": 1799.9978908670184,
+  "engine": "atlas",
+  "generated": 528,
+  "incumbents": [
+    1085329,
+    1080011
+  ],
+  "independent_failure": "",
+  "land_queries": 55013,
+  "land_queries_including_audit": 58657,
+  "message": "Complete (Atlas experimental)",
+  "peak_rss_kib": 49912,
+  "polar_queries": 237077,
+  "preparation_seconds": 8.0433e-05,
+  "profile": {
+    "arcs": 67433,
+    "edge_attempts": 528,
+    "first_valid_ms": 151.747069,
+    "geometry_queries": 55013,
+    "integrations": 392,
+    "managed_bytes": 4259520,
+    "polar_queries": 237077,
+    "preprocessing_ms": 1175.614015,
+    "queue_peak": 2796,
+    "reconstruction_ms": 10.890952,
+    "search_ms": 84.45653599999984,
+    "validation_failures": 0,
+    "validation_ms": 9.706295,
+    "waypoints": 2341,
+    "weather_queries": 86155
+  },
+  "repeat": 0,
+  "retained": 83,
+  "seconds": 1.280680205,
+  "solver_weather_samples": 68492,
+  "status": "complete",
+  "track": [
+    {
+      "heading": 90.69678902812477,
+      "lat": 24.963440879606697,
+      "lon": -136.69289588909962,
+      "seconds": 107998,
+      "wait": false
+    },
+    {
+      "heading": 91.743565334602,
+      "lat": 24.917778254695225,
+      "lon": -135.04038714225095,
+      "seconds": 162002,
+      "wait": false
+    },
+    {
+      "heading": 92.43949904113619,
+      "lat": 24.85392301557227,
+      "lon": -133.3894366664474,
+      "seconds": 216003,
+      "wait": false
+    },
+    {
+      "heading": 93.13297186131534,
+      "lat": 24.77194638495394,
+      "lon": -131.74043112991424,
+      "seconds": 270004,
+      "wait": false
+    },
+    {
+      "heading": 93.82338424387311,
+      "lat": 24.671944014454272,
+      "lon": -130.09390132757107,
+      "seconds": 324003,
+      "wait": false
+    },
+    {
+      "heading": 94.5100697571572,
+      "lat": 24.55402026711913,
+      "lon": -128.45018438451143,
+      "seconds": 378004,
+      "wait": false
+    },
+    {
+      "heading": 95.19241108751919,
+      "lat": 24.418309019735386,
+      "lon": -126.8097878136456,
+      "seconds": 432005,
+      "wait": false
+    },
+    {
+      "heading": 95.86974689739968,
+      "lat": 24.264965514479105,
+      "lon": -125.1732041543804,
+      "seconds": 486004,
+      "wait": false
+    },
+    {
+      "heading": 96.54144946382006,
+      "lat": 24.094146287023325,
+      "lon": -123.54072790294093,
+      "seconds": 540005,
+      "wait": false
+    },
+    {
+      "heading": 97.20694436992191,
+      "lat": 23.906041660419966,
+      "lon": -121.91281775036329,
+      "seconds": 594006,
+      "wait": false
+    },
+    {
+      "heading": 98.19099912712447,
+      "lat": 23.478807790714473,
+      "lon": -118.6722424048177,
+      "seconds": 702008,
+      "wait": false
+    },
+    {
+      "heading": 99.4774198432604,
+      "lat": 22.985082133394105,
+      "lon": -115.45431864965263,
+      "seconds": 810006,
+      "wait": false
+    },
+    {
+      "heading": 100.42101593102528,
+      "lat": 22.71388063087837,
+      "lon": -113.85440383990992,
+      "seconds": 864010,
+      "wait": false
+    },
+    {
+      "heading": 101.03756100151128,
+      "lat": 22.4268465138189,
+      "lon": -112.2610885263871,
+      "seconds": 918011,
+      "wait": false
+    },
+    {
+      "heading": 101.83355484789561,
+      "lat": 21.924291688772918,
+      "lon": -109.67128491040188,
+      "seconds": 1006282,
+      "wait": false
+    },
+    {
+      "heading": 102.71914923654467,
+      "lat": 21.473620434022852,
+      "lon": -107.52260922242512,
+      "seconds": 1080011,
+      "wait": false
+    }
+  ],
+  "valid": true,
+  "validation_queries": 10888,
+  "validation_samples": 7222,
+  "waiting_seconds": 0,
+  "weather_cache_hits_including_audit": 37840,
+  "weather_queries": 86155,
+  "weather_queries_including_audit": 93377,
+  "process_wall_seconds": 1.2951766659971327,
+  "expected_negative": false
+}

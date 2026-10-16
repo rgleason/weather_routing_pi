@@ -1386,7 +1386,7 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
 
   int confVersion;
   pConf->Read(_T ( "ConfigVersion" ), &confVersion, 0);
-  // v1.25 through v1.32 retain the v1.24 bundled boats and polars. A feature-only
+  // v1.25 through v1.33 retain the v1.24 bundled boats and polars. A feature-only
   // upgrade must not prompt to overwrite existing user data.
   if (weather_routing::CanSkipBundledDataUpdate(
           confVersion, PLUGIN_VERSION_MAJOR, PLUGIN_VERSION_MINOR)) {
@@ -4399,6 +4399,17 @@ void WeatherRouting::CompleteHeadlessSingleRouteTest(bool timed_out,
                            : is_running ? _("Running")
                            : is_waiting ? _("Waiting")
                                         : _("Not running");
+    wxString display_state;
+    auto* list = m_panel->m_lWeatherRoutes;
+    for (long row = 0; row < list->GetItemCount(); ++row) {
+      auto* displayed = reinterpret_cast<WeatherRoute*>(
+          wxUIntToPtr(list->GetItemData(row)));
+      if (displayed && displayed->routemapoverlay == route) {
+        displayed->Update(this, true);
+        display_state = displayed->State;
+        break;
+      }
+    }
     long elapsed_seconds = -1;
     if (is_complete && route->EndTime().IsValid() && configuration.StartTime.IsValid()) {
       const wxTimeSpan elapsed = route->EndTime() - configuration.StartTime;
@@ -4409,12 +4420,13 @@ void WeatherRouting::CompleteHeadlessSingleRouteTest(bool timed_out,
     wxLogMessage(
         "WR_HEADLESS_ROUTE_TEST route_result index=%lu offset=%d "
         "start=\"%s\" end=\"%s\" complete=%d failed=%d running=%d "
-        "waiting=%d state=\"%s\" end_time=\"%s\" elapsed=%ld "
+        "waiting=%d state=\"%s\" ui_state=\"%s\" end_time=\"%s\" elapsed=%ld "
         "distance=%.3f reason=\"%s\".",
         static_cast<unsigned long>(i),
         configuration.DepartureTimeOptimizationOffsetMinutes,
         configuration.Start, configuration.End, is_complete ? 1 : 0,
         is_failed ? 1 : 0, is_running ? 1 : 0, is_waiting ? 1 : 0, state,
+        display_state,
         is_complete && route->EndTime().IsValid()
             ? route->EndTime().FormatISOCombined()
                                    : wxString("invalid"),
@@ -10285,10 +10297,13 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
       if (routemapoverlay->ReachedDestination()) {
         const auto computed = routemapoverlay->GetComputedSearchSettings();
         const auto& engine = computed.selectedEngine.empty() ? computed.engine : computed.selectedEngine;
-        const wxString title = engine == "original" ? _("Quick")
-            : engine == "quick2" ? _("Quick2")
-            : engine == "quick" ? _("Standard") : engine == "main" ? _("Professional")
-            : engine == "alternative" ? _("Alternative") : wxString();
+        weather_routing::RoutingEngineSettings winner;
+        winner.SetEngineId(engine);
+        const wxString title =
+            winner.engine != weather_routing::RoutingEngine::Unsupported &&
+                    !weather_routing::IsCombinedEngine(winner.engine)
+                ? wxGetTranslation(weather_routing::EngineTitle(winner.engine))
+                : wxString();
         const wxString mode = computed.engine == "auto" ? _("Auto")
             : computed.engine == "all" ? _("All (slow)") : wxString();
 #ifdef __OCPN__ANDROID__
@@ -12801,7 +12816,7 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
 
   if (weather_routing::IsCombinedEngine(configuration.EngineSettings.engine) &&
       (!configuration.EngineSettings.SelectedEngines() ||
-       (configuration.EngineSettings.SelectedEngines() & ~weather_routing::kAllEnginesMask))) {
+       (configuration.EngineSettings.SelectedEngines() & ~weather_routing::kSelectableEnginesMask))) {
     routemapoverlay->SetError(_("Select at least one routing engine in Advanced."));
     return;
   }

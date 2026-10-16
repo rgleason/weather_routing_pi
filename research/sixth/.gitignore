@@ -1,0 +1,9 @@
+__pycache__/
+**/atlas-benchmark
+**/shoreline.dat
+*.er/
+
+# Keep local compiler/application logs out of the public research record.
+*.log
+*.log.gz
+*.error

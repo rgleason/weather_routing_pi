@@ -1,0 +1,18 @@
+{
+  "name": "real_pacific_east",
+  "start": [
+    30,
+    -148
+  ],
+  "end": [
+    30,
+    -144
+  ],
+  "grib": "/home/paul/.opencpn/grib/generated/environment_ecmwf_ifs_copernicus_global_20260920_1635.grb",
+  "polar": "/home/paul/src/OpenCPN/.worktrees/xweather-sixth/test/testdata/polars/Hallberg-Rassy_40_test.pol",
+  "epoch": 1789884000,
+  "currents": true,
+  "max_hours": 240,
+  "cache": true,
+  "step_seconds": 10800
+}

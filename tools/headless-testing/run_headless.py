@@ -18,7 +18,7 @@ from extract_timings import extract
 
 ENGINES = {'quick': 'original', 'quick2': 'quick2', 'alternative': 'alternative',
            'standard': 'quick', 'professional': 'main',
-           'auto': 'auto', 'all': 'all'}
+           'auto': 'auto', 'all': 'all', 'atlas': 'atlas'}
 
 
 def stop(process):

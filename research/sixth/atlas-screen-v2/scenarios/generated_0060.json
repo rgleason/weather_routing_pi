@@ -1,0 +1,15 @@
+{
+  "name": "generated_0060",
+  "start": [
+    30,
+    -140
+  ],
+  "east_nm": 47.222128003895925,
+  "north_nm": 0,
+  "wind_from": 12.752782900854873,
+  "max_hours": 72,
+  "cache": true,
+  "seed": 60,
+  "family": 4,
+  "variable": true
+}
