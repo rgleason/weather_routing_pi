@@ -1,0 +1,1 @@
+{"name": "long_ocean_variable", "start": [25, -140], "east_nm": 1200, "north_nm": 0, "wind_from": 0, "max_hours": 400, "cache": true, "variable": true, "step_seconds": 21600, "atlas_waypoints": 2400, "atlas_neighbours": 24, "atlas_edges": 30000}

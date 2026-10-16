@@ -1,0 +1,111 @@
+{
+  "arrival_seconds": 12917,
+  "cache_state": "cold",
+  "case": "generated_0071",
+  "complete": true,
+  "cpu_seconds": 0.798576,
+  "distance_nm": 26.87985111129306,
+  "engine": "atlas",
+  "generated": 769,
+  "incumbents": [
+    14214,
+    13486,
+    13099,
+    13077,
+    13076,
+    13067,
+    13065,
+    12980,
+    12917
+  ],
+  "independent_failure": "",
+  "land_queries": 572307,
+  "land_queries_including_audit": 572365,
+  "message": "Complete (Atlas experimental)",
+  "peak_rss_kib": 58752,
+  "polar_queries": 861222,
+  "preparation_peak_rss_kib": 7564,
+  "preparation_seconds": 0.000145243,
+  "profile": {
+    "arcs": 104241,
+    "edge_attempts": 769,
+    "first_valid_ms": 1.468105,
+    "geometry_queries": 572307,
+    "integrations": 1625,
+    "land_provider_ms": 0.0,
+    "lane_probes": 72,
+    "managed_bytes": 7174808,
+    "pilot_legs": 27,
+    "polar_provider_ms": 0.0,
+    "polar_queries": 861222,
+    "preprocessing_ms": 667.4698109999999,
+    "provider_timing_enabled": false,
+    "queue_peak": 2810,
+    "reconstruction_ms": 9.470909999999998,
+    "search_ms": 114.78508100000005,
+    "validation_failures": 0,
+    "validation_ms": 7.975258999999997,
+    "value_field_cells": 28275,
+    "value_field_ms": 477.354124,
+    "waypoints": 2108,
+    "weather_provider_ms": 0.0,
+    "weather_queries": 188100
+  },
+  "repeat": 0,
+  "retained": 175,
+  "rusage_peak_rss_kib": 58752,
+  "seconds": 0.799725222,
+  "solver_weather_samples": 54483,
+  "status": "complete",
+  "track": [
+    {
+      "heading": 52.508043944810204,
+      "lat": 30.050037353439897,
+      "lon": -139.92318646029696,
+      "seconds": 3510,
+      "wait": false
+    },
+    {
+      "heading": 45.53198122869529,
+      "lat": 30.078840300028098,
+      "lon": -139.86606744863178,
+      "seconds": 5462,
+      "wait": false
+    },
+    {
+      "heading": 60.63134508090175,
+      "lat": 30.091907375343162,
+      "lon": -139.80243212775002,
+      "seconds": 6556,
+      "wait": false
+    },
+    {
+      "heading": 90.19988463224487,
+      "lat": 30.09179933247214,
+      "lon": -139.7263858617874,
+      "seconds": 7612,
+      "wait": false
+    },
+    {
+      "heading": 122.2644104578118,
+      "lat": 30.078607108779238,
+      "lon": -139.67223055638712,
+      "seconds": 8502,
+      "wait": false
+    },
+    {
+      "heading": 130.51057064625857,
+      "lat": 29.999217419379438,
+      "lon": -139.54441104262665,
+      "seconds": 12917,
+      "wait": false
+    }
+  ],
+  "valid": true,
+  "validation_queries": 4413,
+  "validation_samples": 90,
+  "waiting_seconds": 0,
+  "weather_cache_hits_including_audit": 66206,
+  "weather_queries": 188100,
+  "weather_queries_including_audit": 188280
+}

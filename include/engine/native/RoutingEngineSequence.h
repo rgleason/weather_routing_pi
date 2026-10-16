@@ -9,7 +9,7 @@
 #include "supercpn/weather_routing/Engine.h"
 
 namespace weather_routing::native {
-enum class SequenceEngine { Original, Quick2, Quick, Alternative, Main };
+enum class SequenceEngine { Original, Quick2, Quick, Alternative, Main, Atlas };
 inline RoutingEngine SequenceRoutingEngine(SequenceEngine engine) {
   switch (engine) {
     case SequenceEngine::Original: return RoutingEngine::Original;
@@ -17,6 +17,7 @@ inline RoutingEngine SequenceRoutingEngine(SequenceEngine engine) {
     case SequenceEngine::Quick: return RoutingEngine::Quick;
     case SequenceEngine::Alternative: return RoutingEngine::Alternative;
     case SequenceEngine::Main: return RoutingEngine::Main;
+    case SequenceEngine::Atlas: return RoutingEngine::Atlas;
   }
   return RoutingEngine::Unsupported;
 }
@@ -32,6 +33,8 @@ inline const char* SequenceEngineId(SequenceEngine engine) {
       return "alternative";
     case SequenceEngine::Main:
       return "main";
+    case SequenceEngine::Atlas:
+      return "atlas";
   }
   return "";
 }
@@ -47,6 +50,8 @@ inline const char* SequenceEngineTitle(SequenceEngine engine) {
       return "Alternative";
     case SequenceEngine::Main:
       return "Professional";
+    case SequenceEngine::Atlas:
+      return "Atlas";
   }
   return "";
 }
@@ -89,13 +94,13 @@ supercpn::weather_routing::RoutingResult RunRoutingEngineSequence(
   std::vector<wr::RoutingAttemptFailure> attempts;
   if (enabled == 0xffffffffU)
     enabled = mode == RoutingEngine::Auto ? kAutoEnginesMask : kAllEnginesMask;
-  if (!enabled || (enabled & ~kAllEnginesMask)) {
+  if (!enabled || (enabled & ~kSelectableEnginesMask)) {
     last.status = wr::RoutingStatus::InvalidVesselConfiguration;
     last.message = "Select at least one routing engine in Advanced";
     return last;
   }
-  constexpr std::array engines{SequenceEngine::Original, SequenceEngine::Quick2, SequenceEngine::Quick,
-                               SequenceEngine::Alternative,
+  constexpr std::array engines{SequenceEngine::Original, SequenceEngine::Quick2, SequenceEngine::Atlas,
+                               SequenceEngine::Quick, SequenceEngine::Alternative,
                                SequenceEngine::Main};
   for (const auto engine : engines) {
     if (!(enabled & EngineBit(SequenceRoutingEngine(engine)))) continue;

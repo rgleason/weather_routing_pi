@@ -1,0 +1,17 @@
+{
+  "name": "holyhead_conwy",
+  "start": [
+    53.334,
+    -4.618
+  ],
+  "east_nm": 20,
+  "north_nm": 0,
+  "wind_from": 200,
+  "max_hours": 72,
+  "cache": true,
+  "end": [
+    53.29,
+    -3.84
+  ],
+  "shoreline": "/tmp/atlas-poly-f.dat"
+}

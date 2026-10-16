@@ -1,0 +1,20 @@
+{
+  "name": "island_north_south",
+  "start": [
+    30,
+    -140
+  ],
+  "east_nm": 20,
+  "north_nm": 0,
+  "wind_from": 0,
+  "max_hours": 48,
+  "cache": true,
+  "rectangles_nm": [
+    [
+      8,
+      -4,
+      12,
+      4
+    ]
+  ]
+}

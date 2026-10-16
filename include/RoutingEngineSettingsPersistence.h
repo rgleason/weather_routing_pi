@@ -57,7 +57,7 @@ RoutingEngineSettings ReadRoutingEngineSettingsWith(Reader read) {
     if (!read(key, value)) return;
     long parsed;
     // Never silently enable unselected engines for corrupt or empty settings.
-    mask = value.ToLong(&parsed) && parsed >= 0 && parsed <= kAllEnginesMask
+    mask = value.ToLong(&parsed) && parsed >= 0 && parsed <= kSelectableEnginesMask
                ? static_cast<unsigned>(parsed) : 0;
   };
   membership("AutoEngineMask", settings.autoEngines);

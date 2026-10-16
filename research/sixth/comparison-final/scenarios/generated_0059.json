@@ -1,0 +1,19 @@
+{
+  "name": "generated_0059",
+  "start": [
+    30,
+    -140
+  ],
+  "east_nm": 7.820502327695748,
+  "north_nm": 0,
+  "wind_from": 336.84412254281216,
+  "max_hours": 72,
+  "cache": true,
+  "seed": 59,
+  "family": 3,
+  "currents": true,
+  "current_speed": 4.337379937256076,
+  "current_to": 334.96185780083096,
+  "tidal": true,
+  "tidal_phase": 0.7447377206461789
+}

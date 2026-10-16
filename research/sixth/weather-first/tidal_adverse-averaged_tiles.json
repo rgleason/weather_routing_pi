@@ -1,0 +1,1 @@
+{"name": "tidal_adverse", "start": [30, -140], "east_nm": 20, "north_nm": 0, "wind_from": 0, "max_hours": 48, "cache": true, "currents": true, "current_speed": 7, "current_to": 90, "tidal": true, "tidal_phase": -1.5, "atlas_always_field": true, "atlas_weather_pilot": true, "atlas_average_tiles": true}

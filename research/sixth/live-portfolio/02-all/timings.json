@@ -1,0 +1,65 @@
+{
+  "engine_attempts": [
+    {
+      "mode": "all",
+      "engine": "Quick2",
+      "status": "complete",
+      "validated": "1",
+      "elapsed_ms": "350",
+      "passage_s": "15070",
+      "line": 162,
+      "computation_seconds": 0.35,
+      "scout": false,
+      "route": "Offshore start -> Offshore finish"
+    },
+    {
+      "mode": "all",
+      "engine": "Atlas",
+      "status": "complete",
+      "validated": "1",
+      "elapsed_ms": "4316",
+      "passage_s": "15041",
+      "line": 233,
+      "computation_seconds": 4.316,
+      "scout": false,
+      "route": "Offshore start -> Offshore finish"
+    }
+  ],
+  "native_summaries": [
+    {
+      "route": "Offshore start -> Offshore finish",
+      "status": "complete",
+      "solver": "none",
+      "candidate_offset": "0",
+      "departure": "2026-07-03T03:00:00",
+      "elapsed_ms": "4669",
+      "legs": "5",
+      "generated": "631",
+      "retained": "64",
+      "graph_labels": "0",
+      "wait_states": "31",
+      "land_checks": "17719",
+      "land_rejections": "0",
+      "land_guided_layers": "0",
+      "land_guided_generated": "0",
+      "land_guided_port": "0",
+      "land_guided_starboard": "0",
+      "constraint_rejections": "95",
+      "validation_samples": "3938",
+      "closest_nm": "0.001",
+      "effort": "100",
+      "completed_effort": "0",
+      "cumulative_generated": "0",
+      "generated_limit": "735500",
+      "retained_limit": "42000",
+      "graph_label_limit": "108000",
+      "scout": false,
+      "route_fingerprint": "b26a258bdbd9940d",
+      "line": 234,
+      "computation_seconds": 4.669
+    }
+  ],
+  "professional_quick_budgets": [],
+  "single_route_association": true,
+  "note": "elapsed_ms is computation time; passage_s is voyage duration. Engine records include waits inside an invocation, but not earlier preparation. Unknown scout/route associations are left unset. --single-route is valid only for serial, single-route runs, not concurrent GUI/departure tests."
+}

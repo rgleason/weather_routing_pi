@@ -12,6 +12,20 @@ a certain time.  By merging the results of many calculations,
 it is possible to form a map determining routes
 to any given location within the map.
 
+<h3>Atlas engine (1.33.0)</h3>
+<p>Atlas uses continuous physical connection solving, adaptive spatial decisions
+and time-dependent weather guidance. Every accepted route uses the original
+weather, current, polar and safety providers and chronological validation.
+Its finite search does not guarantee a globally optimal route.</p>
+<p>Choose Atlas in Engine settings, or check its independent Auto
+and All membership boxes. The order is Quick, Quick2, Atlas, Standard,
+Alternative, Professional. Existing memberships and the default engine are
+preserved. Quick2 remains a provisional Auto candidate while later selected
+engines search; All selects the earliest validated arrival. Atlas's nominal
+heading-step and fixed-time-step controls are disabled because it uses separate
+spatial and temporal decisions. Existing Android partial-result controls remain
+available for the engines that supply failed-search prefixes.</p>
+
 <h3>Consistent Quick timesteps inside Professional (1.30.0)</h3>
 <p>Professional's internal Quick candidate search now uses the route's configured
 nominal time step, just like standalone Quick, with the existing reductions near

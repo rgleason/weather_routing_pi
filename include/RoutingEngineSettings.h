@@ -19,13 +19,23 @@ constexpr int kDefaultMaxDivertedCourse = 120;
 
 // Serialized IDs remain stable: historical "quick" is Standard, while
 // "main" selects the current Professional implementation.
-enum class RoutingEngine { Main, Quick, Unsupported, Original, Auto, All, Quick2, Alternative };
+enum class RoutingEngine { Main, Quick, Unsupported, Original, Auto, All, Quick2, Alternative, Atlas };
 
 inline constexpr std::array kSequenceEngines{
     RoutingEngine::Original, RoutingEngine::Quick2, RoutingEngine::Quick,
-    RoutingEngine::Alternative, RoutingEngine::Main};
+    RoutingEngine::Alternative, RoutingEngine::Main, RoutingEngine::Atlas};
+// Execution/display order is independent of the historical saved bit positions.
+inline constexpr std::array kRoutingEngineOrder{
+    RoutingEngine::Original, RoutingEngine::Quick2, RoutingEngine::Atlas,
+    RoutingEngine::Quick, RoutingEngine::Alternative, RoutingEngine::Main};
+inline constexpr std::array kEngineChoices{
+    RoutingEngine::Auto, RoutingEngine::Original, RoutingEngine::Quick2,
+    RoutingEngine::Atlas, RoutingEngine::Quick, RoutingEngine::Alternative,
+    RoutingEngine::Main, RoutingEngine::All};
+// Historical defaults remain unchanged. Atlas is available only by opt-in.
 inline constexpr unsigned kAllEnginesMask = 31;
 inline constexpr unsigned kAutoEnginesMask = 23;
+inline constexpr unsigned kSelectableEnginesMask = 63;
 inline unsigned EngineBit(RoutingEngine engine) {
   for (unsigned i = 0; i < kSequenceEngines.size(); ++i)
     if (kSequenceEngines[i] == engine) return 1U << i;
@@ -33,28 +43,12 @@ inline unsigned EngineBit(RoutingEngine engine) {
 }
 
 inline int EngineSelection(RoutingEngine engine) {
-  switch (engine) {
-    case RoutingEngine::Auto: return 0;
-    case RoutingEngine::Original: return 1;
-    case RoutingEngine::Quick: return 2;
-    case RoutingEngine::Main: return 3;
-    case RoutingEngine::All: return 4;
-    case RoutingEngine::Quick2: return 5;
-    case RoutingEngine::Alternative: return 6;
-    default: return -1;
-  }
+  const auto found = std::find(kEngineChoices.begin(), kEngineChoices.end(), engine);
+  return found == kEngineChoices.end() ? -1 : static_cast<int>(found - kEngineChoices.begin());
 }
 inline RoutingEngine EngineFromSelection(int selection) {
-  switch (selection) {
-    case 0: return RoutingEngine::Auto;
-    case 1: return RoutingEngine::Original;
-    case 2: return RoutingEngine::Quick;
-    case 3: return RoutingEngine::Main;
-    case 4: return RoutingEngine::All;
-    case 5: return RoutingEngine::Quick2;
-    case 6: return RoutingEngine::Alternative;
-    default: return RoutingEngine::Unsupported;
-  }
+  return selection >= 0 && static_cast<unsigned>(selection) < kEngineChoices.size()
+      ? kEngineChoices[selection] : RoutingEngine::Unsupported;
 }
 inline bool IsCombinedEngine(RoutingEngine engine) {
   return engine == RoutingEngine::Auto || engine == RoutingEngine::All;
@@ -66,6 +60,7 @@ inline const char* EngineTitle(RoutingEngine engine) {
     case RoutingEngine::Main: return "Professional";
     case RoutingEngine::Quick2: return "Quick2";
     case RoutingEngine::Alternative: return "Alternative";
+    case RoutingEngine::Atlas: return "Atlas";
     case RoutingEngine::Auto: return "Auto";
     case RoutingEngine::All: return "All (slow)";
     default: return "Unsupported";
@@ -133,6 +128,7 @@ struct RoutingEngineSettings {
       case RoutingEngine::All: return "all";
       case RoutingEngine::Quick2: return "quick2";
       case RoutingEngine::Alternative: return "alternative";
+      case RoutingEngine::Atlas: return "atlas";
       default: return unsupportedId;
     }
   }
@@ -145,6 +141,7 @@ struct RoutingEngineSettings {
     else if (id == "all") engine = RoutingEngine::All;
     else if (id == "quick2") engine = RoutingEngine::Quick2;
     else if (id == "alternative") engine = RoutingEngine::Alternative;
+    else if (id == "atlas") engine = RoutingEngine::Atlas;
     else {
       engine = RoutingEngine::Unsupported;
       unsupportedId = id;

@@ -1,0 +1,12 @@
+{
+  "name": "dateline_east",
+  "start": [
+    -20,
+    179.9
+  ],
+  "east_nm": 30,
+  "north_nm": 0,
+  "wind_from": 0,
+  "max_hours": 48,
+  "cache": true
+}

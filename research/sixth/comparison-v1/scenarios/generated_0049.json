@@ -1,0 +1,15 @@
+{
+  "name": "generated_0049",
+  "start": [
+    30,
+    -140
+  ],
+  "east_nm": 0,
+  "north_nm": 14.204867773972097,
+  "wind_from": 0,
+  "max_hours": 72,
+  "cache": true,
+  "seed": 49,
+  "family": 1,
+  "oracle": "upwind_envelope"
+}

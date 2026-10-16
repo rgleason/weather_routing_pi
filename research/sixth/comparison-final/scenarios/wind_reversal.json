@@ -1,0 +1,13 @@
+{
+  "name": "wind_reversal",
+  "start": [
+    30,
+    -140
+  ],
+  "east_nm": 60,
+  "north_nm": 0,
+  "wind_from": 0,
+  "max_hours": 48,
+  "cache": true,
+  "wind_shift": true
+}

@@ -1904,17 +1904,19 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   engineSettingsBox->Add(new wxStaticText(engineSettingsBox->GetStaticBox(), wxID_ANY,
       _("Search mode / individual engine")), 0, wxALL, 5);
   m_cRoutingEngine = new wxChoice(engineSettingsBox->GetStaticBox(), wxID_ANY);
-  for (const auto* label : {"Auto", "Quick", "Standard", "Professional", "All (slow)", "Quick2", "Alternative"})
-    m_cRoutingEngine->Append(wxGetTranslation(label));
+  for (const auto engine : weather_routing::kEngineChoices)
+    m_cRoutingEngine->Append(wxGetTranslation(weather_routing::EngineTitle(engine)));
   m_cRoutingEngine->SetSelection(0);
   engineSettingsBox->Add(m_cRoutingEngine, 0, wxALL | wxEXPAND, 5);
   auto membership = new wxFlexGridSizer(0, 3, 4, 12);
-  membership->Add(new wxStaticText(engineSettingsBox->GetStaticBox(), wxID_ANY, _("Engine order")));
+  membership->Add(new wxStaticText(engineSettingsBox->GetStaticBox(), wxID_ANY, _("Engine")));
   membership->Add(new wxStaticText(engineSettingsBox->GetStaticBox(), wxID_ANY, _("Auto")));
   membership->Add(new wxStaticText(engineSettingsBox->GetStaticBox(), wxID_ANY, _("All")));
-  const char* engineNames[] = {"Quick", "Quick2", "Standard", "Alternative", "Professional"};
-  for (unsigned i = 0; i < 5; ++i) {
-    membership->Add(new wxStaticText(engineSettingsBox->GetStaticBox(), wxID_ANY, wxGetTranslation(engineNames[i])));
+  for (const auto engine : weather_routing::kRoutingEngineOrder) {
+    const unsigned i = static_cast<unsigned>(std::find(weather_routing::kSequenceEngines.begin(),
+        weather_routing::kSequenceEngines.end(), engine) - weather_routing::kSequenceEngines.begin());
+    membership->Add(new wxStaticText(engineSettingsBox->GetStaticBox(), wxID_ANY,
+        wxGetTranslation(weather_routing::EngineTitle(engine))));
     m_cbAutoEngines[i] = new wxCheckBox(engineSettingsBox->GetStaticBox(), wxID_ANY, wxEmptyString,
         wxDefaultPosition, wxDefaultSize, wxCHK_3STATE);
     m_cbAllEngines[i] = new wxCheckBox(engineSettingsBox->GetStaticBox(), wxID_ANY, wxEmptyString,
@@ -1926,7 +1928,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   }
   engineSettingsBox->Add(membership, 0, wxALL, 5);
   auto membershipHelp = new wxStaticText(engineSettingsBox->GetStaticBox(), wxID_ANY,
-      _("Unchecked engines are skipped. Auto retains Quick2 while later engines search independently with fresh allowances. All compares every selected engine. Select at least one engine per mode."));
+      _("Unchecked engines are skipped. Auto retains Quick2 while later engines search independently with fresh allowances. Atlas is optional and runs after Quick2, before Standard when selected. All compares every selected engine. Select at least one engine per mode."));
   membershipHelp->Wrap(430);
   engineSettingsBox->Add(membershipHelp, 0, wxALL | wxEXPAND, 5);
   engineSettingsBox->Add(new wxStaticText(engineSettingsBox->GetStaticBox(), wxID_ANY,

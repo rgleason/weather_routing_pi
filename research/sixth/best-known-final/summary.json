@@ -1,0 +1,86 @@
+{
+  "attempts": 13,
+  "accepted": 13,
+  "improved_cases": {
+    "island_chain": {
+      "matrix_best_seconds": 30596,
+      "best_known_seconds": 30367
+    },
+    "u_trap": {
+      "matrix_best_seconds": 17604,
+      "best_known_seconds": 17457
+    },
+    "offset_narrow": {
+      "matrix_best_seconds": 12643,
+      "best_known_seconds": 12572
+    },
+    "long_ocean": {
+      "matrix_best_seconds": 1080022,
+      "best_known_seconds": 1080011
+    },
+    "generated_0004": {
+      "matrix_best_seconds": 31261,
+      "best_known_seconds": 31225
+    },
+    "generated_0015": {
+      "matrix_best_seconds": 11920,
+      "best_known_seconds": 11822
+    },
+    "generated_0018": {
+      "matrix_best_seconds": 22232,
+      "best_known_seconds": 22211
+    },
+    "generated_0023": {
+      "matrix_best_seconds": 12348,
+      "best_known_seconds": 12339
+    },
+    "generated_0050": {
+      "matrix_best_seconds": 14785,
+      "best_known_seconds": 14715
+    },
+    "generated_0071": {
+      "matrix_best_seconds": 13001,
+      "best_known_seconds": 12917
+    },
+    "generated_0082": {
+      "matrix_best_seconds": 14427,
+      "best_known_seconds": 14261
+    },
+    "generated_0095": {
+      "matrix_best_seconds": 12891,
+      "best_known_seconds": 12859
+    }
+  },
+  "per_engine": {
+    "original": {
+      "p95_ratio": 1.0717450747719135,
+      "worst_ratio": 3.52875,
+      "within_one_percent": 53
+    },
+    "quick2": {
+      "p95_ratio": 1.0897298120148333,
+      "worst_ratio": 2.52858261550509,
+      "within_one_percent": 82
+    },
+    "quick": {
+      "p95_ratio": 1.1405329836612308,
+      "worst_ratio": 4.704591836734694,
+      "within_one_percent": 79
+    },
+    "alternative": {
+      "p95_ratio": 1.2092890978991795,
+      "worst_ratio": 6.15505090054816,
+      "within_one_percent": 41
+    },
+    "main": {
+      "p95_ratio": 1.0988537338687128,
+      "worst_ratio": 1.148872925439683,
+      "within_one_percent": 97
+    },
+    "atlas": {
+      "p95_ratio": 1.0120104069200395,
+      "worst_ratio": 1.0250682300616598,
+      "within_one_percent": 156
+    }
+  }
+}

@@ -208,3 +208,13 @@ the real-GRIB headless application runner):
 
 The [comparison tables](quinton-comparison-tables.md) accompanying this kit clearly identify missing
 timings, time-limited tests and candidates rejected by a subsequent chart audit.
+
+## Experimental Atlas source build
+
+The sixth-engine research worktree adds `--engines atlas`, mapped to scenario
+`routingEngine: "atlas"`. It needs a plugin built from that worktree; older
+installed releases do not recognise the selector. Atlas is an explicit
+experimental selection. It can be explicitly enabled in Advanced Auto/All
+membership or JSON `autoEngines`/`allEngines` arrays; their defaults are unchanged. For the
+standalone six-engine research harness, oracles and source/input provenance,
+see [the Atlas build guide](../../docs/atlas-engine.md).

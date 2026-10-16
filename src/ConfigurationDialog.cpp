@@ -1080,7 +1080,7 @@ void ConfigurationDialog::SetConfigurations(
   m_cBasicRoutingMode->SetSelection(!sameEngine ? wxNOT_FOUND :
       firstEngine == weather_routing::RoutingEngine::Auto ? 0 :
       firstEngine == weather_routing::RoutingEngine::All ? 1 : wxNOT_FOUND);
-  for (unsigned i = 0; i < 5; ++i) {
+  for (unsigned i = 0; i < m_cbAutoEngines.size(); ++i) {
     for (bool all : {false, true}) {
       auto* check = all ? m_cbAllEngines[i] : m_cbAutoEngines[i];
       const auto mask = all ? it->EngineSettings.allEngines : it->EngineSettings.autoEngines;
@@ -1372,7 +1372,7 @@ bool ConfigurationDialog::HandleEngineEdit(wxObject* control) {
   const bool quickField = control == m_sQuickOffshoreStepMinutes ||
       control == m_sQuickHeadingStepDegrees || control == m_sQuickMaximumSearchAngle;
   bool memberField = false;
-  for (unsigned i = 0; i < 5; ++i)
+  for (unsigned i = 0; i < m_cbAutoEngines.size(); ++i)
     memberField |= control == m_cbAutoEngines[i] || control == m_cbAllEngines[i];
   if (!mainField && !quickField && !memberField && control != m_cBasicRoutingMode && control != m_cRoutingEngine &&
       control != m_sQuickMemoryBudgetMiB && control != m_cbExploreComfortAlternatives &&
@@ -1408,7 +1408,7 @@ bool ConfigurationDialog::HandleEngineEdit(wxObject* control) {
       config.ComfortAdditionalPercent = std::clamp(m_sComfortAdditionalPercent->GetValue(), 0, 400);
     if (control == m_sComfortMaximumSeconds)
       config.ComfortMaximumSeconds = std::clamp(m_sComfortMaximumSeconds->GetValue(), 0, 3600);
-    for (unsigned i = 0; i < 5; ++i) {
+    for (unsigned i = 0; i < m_cbAutoEngines.size(); ++i) {
       for (bool all : {false, true}) {
         auto* check = all ? m_cbAllEngines[i] : m_cbAutoEngines[i];
         if (control != check || check->Get3StateValue() == wxCHK_UNDETERMINED) continue;
@@ -1492,8 +1492,10 @@ void ConfigurationDialog::UpdateEngineControls() {
   // An individual selection has no Auto/All item; avoid an empty picker.
   m_cBasicRoutingMode->Show(combined);
 #endif
+  const bool atlas = engine == weather_routing::RoutingEngine::Atlas;
   m_pMainEngine->Show(engine == weather_routing::RoutingEngine::Main || combined ||
-      engine == weather_routing::RoutingEngine::Quick2 || engine == weather_routing::RoutingEngine::Alternative);
+      engine == weather_routing::RoutingEngine::Quick2 || engine == weather_routing::RoutingEngine::Alternative ||
+      engine == weather_routing::RoutingEngine::Atlas);
   m_pQuickEngine->Show(engine == weather_routing::RoutingEngine::Original ||
                        engine == weather_routing::RoutingEngine::Quick ||
                        engine == weather_routing::RoutingEngine::Main);
@@ -1508,12 +1510,13 @@ void ConfigurationDialog::UpdateEngineControls() {
       ? _("Standard's nominal offshore step. Routes under 120 NM are capped at one hour; departure and destination search use smaller steps.")
       : _("Quick uses the configured nominal time step and reduces it near departure and destination. Larger steps must be selected explicitly."));
   m_bResetAdvanced->Enable(engine != weather_routing::RoutingEngine::Unsupported);
-  m_cEnginePreset->Enable(engine != weather_routing::RoutingEngine::Unsupported);
+  m_cEnginePreset->Enable(engine != weather_routing::RoutingEngine::Unsupported && !atlas);
+  if (atlas) m_bResetAdvanced->Enable(false);
   bool running = false;
   for (auto* route : m_WeatherRouting.CurrentRouteMaps(false)) running |= route->Running();
   m_cRoutingEngine->Enable(!running);
   m_cBasicRoutingMode->Enable(!running);
-  for (unsigned i = 0; i < 5; ++i) {
+  for (unsigned i = 0; i < m_cbAutoEngines.size(); ++i) {
     m_cbAutoEngines[i]->Enable(!running);
     m_cbAllEngines[i]->Enable(!running);
   }
@@ -1559,10 +1562,13 @@ void ConfigurationDialog::UpdateEngineControls() {
       ? _("Chart geometry and depth checks are authoritative. This separately saved shoreline choice controls preliminary scouting. It starts at Crude; increase it for finer coastal detail.")
       : _("Shoreline detail for the selected engine. Quick, Standard and Professional remember independent choices. High and Full require installation from Shoreline data on Advanced. Lower resolutions omit smaller coastal features."));
   m_pMainEngine->Enable(!running);
+  m_sTimeStepHours->Enable(!running && !atlas);
+  m_sTimeStepMinutes->Enable(!running && !atlas);
+  m_sMaxSearchAngle->Enable(!running && !atlas);
   m_cRoutingEffortPercent->Enable(!running && engine != weather_routing::RoutingEngine::Auto &&
-                                 engine != weather_routing::RoutingEngine::Quick2);
-  m_sByDegrees->Enable(!running && engine != weather_routing::RoutingEngine::Quick2);
-  m_cbUseReverseReachabilityRecovery->Enable(!running && engine != weather_routing::RoutingEngine::Quick2);
+                                 engine != weather_routing::RoutingEngine::Quick2 && !atlas);
+  m_sByDegrees->Enable(!running && engine != weather_routing::RoutingEngine::Quick2 && !atlas);
+  m_cbUseReverseReachabilityRecovery->Enable(!running && engine != weather_routing::RoutingEngine::Quick2 && !atlas);
   if (engine == weather_routing::RoutingEngine::Auto)
     m_cRoutingEffortPercent->SetSelection(RoutingEffortSelection(400));
   m_pQuickEngine->Enable(!running);
@@ -1575,6 +1581,8 @@ void ConfigurationDialog::UpdateEngineControls() {
       ? _("Advanced selection: Quick2 CPU frontier. Bounded search may miss routes or return detours. Auto retains its candidate while Standard searches independently.")
       : engine == weather_routing::RoutingEngine::Alternative
       ? _("Advanced selection: Alternative search. Uses the shared route, vessel, weather and safety settings.")
+      : engine == weather_routing::RoutingEngine::Atlas
+      ? _("Atlas: adaptive spatial search with explicit arrival and waiting choices. Uses the shared vessel, weather and safety checks. Global optimality and completeness are not established.")
       : engine == weather_routing::RoutingEngine::Main
       ? _("Advanced selection: Professional keeps a validated Quick candidate, then searches for a faster route with broader recovery. The Quick controls below tune its integrated candidate.")
       : engine == weather_routing::RoutingEngine::Quick ? _("Advanced selection: Standard bounded adaptive search with recovery.")
@@ -1585,7 +1593,7 @@ void ConfigurationDialog::UpdateEngineControls() {
     for (auto* route : m_WeatherRouting.CurrentRouteMaps(false)) {
       unsigned mask = route->GetConfiguration().EngineSettings.SelectedEngines();
       int value = 0;
-      for (unsigned i = 0; i < 5; ++i) value += (mask >> i) & 1U;
+      for (unsigned i = 0; i < m_cbAutoEngines.size(); ++i) value += (mask >> i) & 1U;
       if (count == -1) count = value;
       else if (count != value) { count = -2; break; }
     }
@@ -1637,6 +1645,7 @@ void ConfigurationDialog::RefreshEnginePresetStatus() {
     else if (status != label) { status = _("Mixed"); break; }
   }
   if (engine == weather_routing::RoutingEngine::Unsupported) status = _("Mixed or unsupported");
+  if (engine == weather_routing::RoutingEngine::Atlas) status = _("Atlas defaults");
 #ifdef __OCPN__ANDROID__
   WR_WrapAndroidText(m_tEnginePresetStatus, _("Current settings: ") + status,
       wxMax(300, m_pAdvanced->GetClientSize().x - 100));
@@ -1650,7 +1659,8 @@ void ConfigurationDialog::RefreshEnginePresetStatus() {
 void ConfigurationDialog::OnResetAdvanced(wxCommandEvent&) {
   const auto engine = weather_routing::EngineFromSelection(m_cRoutingEngine->GetSelection());
   const bool combined = weather_routing::IsCombinedEngine(engine);
-  if (m_bBlockUpdate || engine == weather_routing::RoutingEngine::Unsupported || m_cEnginePreset->GetSelection() != 0)
+  if (m_bBlockUpdate || engine == weather_routing::RoutingEngine::Unsupported ||
+      engine == weather_routing::RoutingEngine::Atlas || m_cEnginePreset->GetSelection() != 0)
     return;
   const auto routes = m_WeatherRouting.CurrentRouteMaps(false);
   if (routes.empty()) return;
@@ -2194,6 +2204,11 @@ bool ConfigurationDialog::RunEngineHostContract() {
     passed &= config->ReadLong("/PlugIns/WeatherRouting/LastUsedConfiguration/AutoEngineMask", -1) ==
               changed.EngineSettings.autoEngines;
   else passed = false;
+  choose(m_cRoutingEngine, weather_routing::EngineSelection(weather_routing::RoutingEngine::Atlas));
+  tick(m_cbAutoEngines[5], true);
+  passed &= routes.front()->GetConfiguration().EngineSettings.EngineId() == "atlas" &&
+            (routes.front()->GetConfiguration().EngineSettings.autoEngines & 32U) &&
+            !m_sByDegrees->IsEnabled() && !m_sTimeStepHours->IsEnabled();
   routes.front()->SetConfiguration(saved);
   m_WeatherRouting.SaveLastUsedConfigurationDefaults(saved);
   SetConfigurations({saved});
