@@ -106,6 +106,9 @@ def inspect_pair(directory, channel="xweather-alpha"):
             f"Unexpected target for {matrix_name}: {target}; "
             f"expected {EXPECTED_TARGETS.get(matrix_name)}"
         )
+    build_target = (root.findtext("build-target") or "").strip()
+    if matrix_name.startswith("windows-") and build_target and build_target != "msvc":
+        raise ValueError(f"Invalid Windows build-target: {build_target}; expected msvc")
     libraries = {f"lib{package_name}.so", f"lib{package_name}.dylib", f"{package_name}.dll"}
     other_package = "xweather_routing_pi" if channel == "production" else "weather_routing_pi"
     with tarfile.open(archive, "r:gz") as package:
@@ -130,6 +133,9 @@ def inspect_pair(directory, channel="xweather-alpha"):
         embedded_root = ET.fromstring(embedded)
         for field in ("name", "version", "api-version", "source", "target", "target-version", "target-arch"):
             if value(embedded_root, field) != value(root, field):
+                raise ValueError(f"Embedded metadata {field} mismatch: {archive}")
+        for field in ("build-target", "build-gtk"):
+            if (embedded_root.findtext(field) or "").strip() != (root.findtext(field) or "").strip():
                 raise ValueError(f"Embedded metadata {field} mismatch: {archive}")
     return archive, root, version, target, metadata.name
 

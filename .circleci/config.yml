@@ -257,6 +257,9 @@ jobs:
     steps:
       - checkout
       - run:
+          name: Install offline catalogue schema validator
+          command: sudo apt-get update && sudo apt-get install -y libxml2-utils
+      - run:
           name: Recover qualified packages and prepare the exact publication for review
           command: bash ci/stage-reviewed-artifacts.sh
       - store_artifacts:
