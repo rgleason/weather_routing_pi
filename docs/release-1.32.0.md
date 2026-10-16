@@ -1,42 +1,13 @@
-# xWeatherRouting 1.32.0
+# WeatherRouting 1.32.0
 
-Quick2 adds an independent CPU frontier search alongside Quick, Standard,
-Alternative and Professional. It shares the existing vessel physics and safety
-providers and independently replays each delivered route. It needs neither CUDA
-nor a GPU. No OpenCPN core changes are required.
+Quick2 adds an independent bounded CPU frontier search using the shared motion kernel and independent chronological validation. Auto and All have saved per-engine membership controls. Auto retains a successful Quick2 route while Standard searches independently with its normal allowance, and compares later successful candidates. All compares every selected engine. No GPU is required.
 
-Basic settings offer Auto and All (slow), with the existing option to search
-fastest/comfort alternatives. Individual engine selection and separate Auto/All
-membership are on Advanced. Their common order is Quick, Quick2, Standard,
-Alternative, Professional. Auto enables all except Alternative by default; All
-enables all five. Unchecked engines are skipped. Empty selections produce a
-configuration error instead of silently enabling an engine. Existing individual
-engine selections and numerical preferences remain usable.
+Professional preserves validated incumbents while comparing unrestricted and focused native recovery. Arrival-horizon checks and continuation-aware pruning cover tide, sailing profile and minimum motor-run state. Existing motion, land, depth and other configured safety checks remain mandatory. The detailed sequence and its resource limits are documented in [the Professional policy](../vendor/weather-routing-engine/PROFESSIONAL-POLICY.md); bounded search does not guarantee the globally optimal route or a solution for every feasible passage.
 
-Auto stops its engine fallback sequence when Quick returns an accepted route.
-If Quick fails and Quick2 succeeds, it stores Quick2's candidate and still runs
-selected Standard independently, with its full normal allowance and fresh
-providers/request. Quick2 neither seeds nor prunes Standard and spends none of
-its allowance. When Standard succeeds, Auto keeps the earlier validated arrival.
-If it fails, further enabled engines may try; the Quick2 candidate remains
-available. A complete-operation cancellation retains the existing cancellation
-semantics. All attempts every selected engine and compares validated arrivals.
-There is no distance threshold or parallel-engine scheduling in this release.
+Failed All calculations can retain a bounded set of independently replayed partial routes. Best partial route shows each prefix's actual endpoint, endpoint time and remaining straight-line distance. A partial preview remains incomplete, follows the route visibility control and never supplies a destination ETA or enables completed-route exports. Clearing computed results removes the prefixes while preserving route settings. Unknown wave heights remain unknown.
 
-The Fastest / Comfort slider, comparison table, missing-weather treatment and
-existing severity model are preserved. Auto can retain both Quick2 and Standard
-for comparison and optional exploration. Quick2's directed comfort search uses
-the shared scorer, rather than the experiment's illustrative scoring policy.
-The extra-search allowance remains separate from ordinary engine allowances
-and shared across retained candidates. Its numerical controls are on Advanced.
+The established Android Plan / Routes / Results / Tools workflow is retained. Its touch controls expose engine selection, Auto/All membership and Best partial route. Tablet testing found and corrected a Qt keyword collision which otherwise made the partial archive capacity zero. A dedicated regression reproduces that failure and verifies the correction.
 
-Quick2's approximate bounded search can miss a route or return a detour; this is
-why its success cannot skip Standard in Auto. It receives the original chart
-provider during propagation, chronological replay and final plotting checks.
-Coarse geographic search data never overrides authoritative chart/depth checks.
-Tests establish behaviour under the supplied charts/settings, not navigational
-safety of future forecasts or routes.
+This release includes 1.31's bounded live chart progress for visible computations. Search-front and provisional-path previews are labelled unvalidated and do not change final acceptance. Hidden computations stay hidden. Preview work is bounded and requested only for visible routes.
 
-The 1.32 feature upgrade retains the existing bundled boats, polars and examples
-and does not offer to overwrite personal routing data merely for a version bump.
-See the local qualification report for exact binaries, scenarios and results.
+Release packages retain minimum plugin API 1.21 and are qualified with both API 1.21 and 1.22 headers. Each manual-import tarball contains one root metadata.xml matching the external XML; publication rewrites its tarball URL to the verified public download. The separately installable xWeatherRouting identity and mergeable native WeatherRouting identity are built independently.
