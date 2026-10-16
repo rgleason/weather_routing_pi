@@ -16,3 +16,10 @@ build_android_arm64_codex/
 /build-android/
 /build-desktop/
 artifacts/
+/build-atlas/
+/build-atlas-plugin/
+/build-atlas-asan/
+/po/xweather_routing_pi.pot
+
+/build-1.33-desktop/
+/build-1.33-android/

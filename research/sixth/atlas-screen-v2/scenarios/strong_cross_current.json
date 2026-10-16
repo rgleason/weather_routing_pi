@@ -1,0 +1,16 @@
+{
+  "name": "strong_cross_current",
+  "start": [
+    30,
+    -140
+  ],
+  "east_nm": 20,
+  "north_nm": 0,
+  "wind_from": 0,
+  "max_hours": 48,
+  "cache": true,
+  "currents": true,
+  "current_speed": 5,
+  "current_to": 0,
+  "expected_negative": true
+}

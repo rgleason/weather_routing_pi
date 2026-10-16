@@ -1,0 +1,12 @@
+{
+  "positive": {
+    "arrival_seconds": 13001,
+    "reason": "",
+    "samples": 90,
+    "valid": true
+  },
+  "tampered_heading": {
+    "reason": "recorded controls do not reproduce endpoint",
+    "valid": false
+  }
+}

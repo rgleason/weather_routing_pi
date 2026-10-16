@@ -94,6 +94,62 @@ TEST(RoutingEngineSequence, EmptyMembershipNeverSilentlyRunsAnEngine) {
   EXPECT_EQ(calls, 0);
   EXPECT_EQ(result.status, wr::RoutingStatus::InvalidVesselConfiguration);
 }
+TEST(RoutingEngineSequence, ExperimentalAtlasIsOptInAndPrecedesProfessional) {
+  EXPECT_EQ(weather_routing::kAutoEnginesMask, 23U);
+  EXPECT_EQ(weather_routing::kAllEnginesMask, 31U);
+  const auto atlas = weather_routing::EngineBit(RoutingEngine::Atlas);
+  ASSERT_EQ(atlas, 32U);
+  EXPECT_EQ(atlas & weather_routing::kAutoEnginesMask, 0U);
+  EXPECT_EQ(atlas & weather_routing::kAllEnginesMask, 0U);
+  std::vector<SequenceEngine> calls;
+  const auto result = native::RunRoutingEngineSequence(
+      RoutingEngine::Auto, {}, [&](auto engine) {
+        calls.push_back(engine);
+        return Success(100);
+      }, {}, atlas | weather_routing::EngineBit(RoutingEngine::Main));
+  EXPECT_EQ(calls, (std::vector{SequenceEngine::Atlas}));
+  EXPECT_EQ(result.engineIdentity, "atlas");
+}
+TEST(RoutingEngineSequence, AllCanSelectAtlasForQualityAndRejectItsInvalidRoute) {
+  for (bool validated : {false, true}) {
+    std::vector<SequenceEngine> calls;
+    const auto result = native::RunRoutingEngineSequence(
+        RoutingEngine::All, {}, [&](auto engine) {
+          calls.push_back(engine);
+          return Success(engine == SequenceEngine::Atlas ? 90 : 100,
+                         engine != SequenceEngine::Atlas || validated);
+        }, {}, weather_routing::kSelectableEnginesMask);
+    EXPECT_EQ(calls.size(), 6U);
+    EXPECT_EQ(calls, (std::vector{SequenceEngine::Original, SequenceEngine::Quick2,
+        SequenceEngine::Atlas, SequenceEngine::Quick, SequenceEngine::Alternative, SequenceEngine::Main}));
+    EXPECT_EQ(calls[5], SequenceEngine::Main);
+    EXPECT_EQ(result.engineIdentity, validated ? "atlas" : "original");
+  }
+}
+TEST(RoutingEngineSequence, RejectedAtlasInAutoFallsBackToProfessional) {
+  std::vector<SequenceEngine> calls;
+  const auto result = native::RunRoutingEngineSequence(
+      RoutingEngine::Auto, {}, [&](auto engine) {
+        calls.push_back(engine);
+        return Success(100, engine != SequenceEngine::Atlas);
+      }, {}, weather_routing::EngineBit(RoutingEngine::Atlas) |
+             weather_routing::EngineBit(RoutingEngine::Main));
+  EXPECT_EQ(calls, (std::vector{SequenceEngine::Atlas, SequenceEngine::Main}));
+  EXPECT_EQ(result.engineIdentity, "main");
+}
+TEST(RoutingEngineSequence, AutoStopsAtAtlasBeforeStandardWithQuick2Held) {
+  std::vector<SequenceEngine> calls;
+  const auto result = native::RunRoutingEngineSequence(
+      RoutingEngine::Auto, {}, [&](auto engine) {
+        calls.push_back(engine);
+        if (engine == SequenceEngine::Original)
+          return Failure(wr::RoutingStatus::SearchIncomplete);
+        return Success(engine == SequenceEngine::Atlas ? 90 : 100);
+      }, {}, weather_routing::kSelectableEnginesMask);
+  EXPECT_EQ(calls, (std::vector{SequenceEngine::Original,
+      SequenceEngine::Quick2, SequenceEngine::Atlas}));
+  EXPECT_EQ(result.engineIdentity, "atlas");
+}
 TEST(RoutingEngineSequence, AutoFallsBackOnMissingWavesAndStopsAtStandard) {
   std::vector<SequenceEngine> calls;
   const auto result = native::RunRoutingEngineSequence(

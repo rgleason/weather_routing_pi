@@ -68,11 +68,13 @@ vendor/weather-routing-engine/src/Engine.cpp
 vendor/weather-routing-engine/src/QuickEngine.cpp
 vendor/weather-routing-engine/src/AlternativeEngine.cpp
 vendor/quick2-routing-engine/src/Engine.cpp
+vendor/atlas-routing-engine/src/Engine.cpp
 vendor/original-routing-engine/src/Engine.cpp
 vendor/original-routing-engine/src/Contour.cpp
 vendor/weather-routing-engine/src/Validator.cpp
 vendor/weather-routing-engine/src/Ensemble.cpp
 src/engine/native/OpenCpnAdapter.cpp
+src/AndroidWeatherRouting.cpp
 include/AppendOnlyCache.h
 include/ChartSafetyCache.h
 include/ChartHazardEvaluator.h

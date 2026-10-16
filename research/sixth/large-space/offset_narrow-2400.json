@@ -1,0 +1,1 @@
+{"name": "offset_narrow", "start": [30, -140], "east_nm": 20, "north_nm": 0, "wind_from": 0, "max_hours": 48, "cache": true, "rectangles_nm": [[8, -20, 12, 1.9], [8, 2.1, 12, 20]], "atlas_waypoints": 2400, "atlas_neighbours": 24, "atlas_edges": 30000}

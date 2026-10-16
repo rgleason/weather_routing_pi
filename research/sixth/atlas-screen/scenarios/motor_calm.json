@@ -1,0 +1,14 @@
+{
+  "name": "motor_calm",
+  "start": [
+    30,
+    -140
+  ],
+  "east_nm": 10,
+  "north_nm": 0,
+  "wind_from": 0,
+  "max_hours": 48,
+  "cache": true,
+  "wind_speed": 0,
+  "motor": true
+}

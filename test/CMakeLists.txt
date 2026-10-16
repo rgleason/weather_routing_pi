@@ -75,6 +75,7 @@ set(TEST_SRC
     RoutingEngineSettings_tests.cpp
     RoutingEngineSequence_tests.cpp
     Quick2Engine_tests.cpp
+    AtlasEngine_tests.cpp
     RouteComfort_tests.cpp
     PartialRoutes_tests.cpp
     RoutingScenarioJson_tests.cpp
@@ -93,6 +94,7 @@ set(TEST_SRC
     ProfessionalSearchPolicy_tests.cpp
     OriginalEngine_tests.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/vendor/quick2-routing-engine/src/Engine.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/vendor/atlas-routing-engine/src/Engine.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/vendor/original-routing-engine/src/Engine.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/vendor/original-routing-engine/src/Contour.cpp
     ArrivalPlanner_tests.cpp
@@ -154,6 +156,7 @@ set(TEST_SRC
             ${WEATHER_ROUTING_SOURCE_DIR}/src
             ${WEATHER_ROUTING_SOURCE_DIR}/include
             ${WEATHER_ROUTING_SOURCE_DIR}/vendor/quick2-routing-engine/include
+            ${WEATHER_ROUTING_SOURCE_DIR}/vendor/atlas-routing-engine/include
             ${WEATHER_ROUTING_ENGINE_DIR}/include
             ${WEATHER_ROUTING_ENGINE_DIR}/src
             ${CMAKE_SOURCE_DIR}/include

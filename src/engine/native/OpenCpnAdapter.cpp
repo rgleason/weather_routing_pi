@@ -33,6 +33,7 @@
 #include "engine/native/CoordinateNormalization.h"
 #include "engine/native/RoutingEngineSequence.h"
 #include "quick2_routing/Engine.h"
+#include "atlas_routing/Engine.h"
 #include "engine/native/WeatherCoverage.h"
 #include "engine/native/NearbyWaveHeight.h"
 #include "original_routing/Engine.h"
@@ -633,6 +634,35 @@ private:
   mutable std::optional<double> bestSpeed_;
 };
 
+// Scheduling hints only. The physical/final provider remains OpenCpnLandProvider.
+bool AtlasUsesGeographyHints() {
+  wxString value;
+  return !wxGetEnv("WR_ATLAS_FULL_CHART_GUIDANCE", &value) || value == "0";
+}
+class AtlasShorelineHints final : public wr::LandAndBoundaryProvider {
+public:
+  explicit AtlasShorelineHints(std::shared_ptr<weather_routing::ShorelineDataset> data)
+      : data_(std::move(data)) {}
+  bool pointForbidden(wr::GeoPoint p) const override {
+    return data_->CrossesLand(p.latitude,p.longitude,p.latitude,p.longitude);
+  }
+  bool segmentForbidden(wr::GeoPoint a,wr::GeoPoint b,double margin) const override {
+    return data_->WithinLandMargin(a.latitude,a.longitude,b.latitude,b.longitude,margin);
+  }
+  double distanceToForbiddenNm(wr::GeoPoint p) const override {
+    if(pointForbidden(p))return 0;
+    double lower=0;
+    for(double radius:{.1,.25,.5,1.,2.,5.,10.,20.}) {
+      if(segmentForbidden(p,p,radius))break;
+      lower=radius;
+    }
+    return lower;
+  }
+  std::string identity() const override {return "Atlas shoreline scheduling hints";}
+private:
+  std::shared_ptr<weather_routing::ShorelineDataset> data_;
+};
+
 class OpenCpnLandProvider final : public wr::LandAndBoundaryProvider {
 public:
   OpenCpnLandProvider(RouteMapOverlay& overlay,
@@ -642,6 +672,11 @@ public:
   bool pointForbidden(wr::GeoPoint point) const override {
     if (configuration_.IsOriginal() && configuration_.DetectLand &&
         !configuration_.UseChartSafetyForPropagation && configuration_.shoreline_dataset)
+      return configuration_.shoreline_dataset->CrossesLand(
+          point.latitude, point.longitude, point.latitude, point.longitude);
+    if (configuration_.EngineSettings.engine == weather_routing::RoutingEngine::Atlas &&
+        configuration_.DetectLand && !configuration_.chart_safety_runtime_enforced &&
+        configuration_.shoreline_dataset)
       return configuration_.shoreline_dataset->CrossesLand(
           point.latitude, point.longitude, point.latitude, point.longitude);
     // Known start/destination points are allowed to egress from a configured
@@ -784,6 +819,27 @@ public:
   }
 
   double distanceToForbiddenNm(wr::GeoPoint point) const override {
+    if (configuration_.EngineSettings.engine == weather_routing::RoutingEngine::Atlas &&
+        configuration_.DetectLand && !configuration_.chart_safety_runtime_enforced &&
+        configuration_.shoreline_dataset) {
+      // Spatial planning needs geographical clearance, rather than the host's
+      // binary stand-off probe. Use the same conservative ladder as the
+      // standalone shoreline provider. Preserve the exact in/out test at the
+      // requested margin, so this hint cannot grant extra coastal egress.
+      auto& data = *configuration_.shoreline_dataset;
+      const double margin = std::max(0.0, configuration_.SafetyMarginLand);
+      if (data.CrossesLand(point.latitude, point.longitude,
+                           point.latitude, point.longitude)) return 0;
+      double lower = 0;
+      for (double radius : {.1, .25, .5, 1., 2., 5., 10., 20.}) {
+        if (data.WithinLandMargin(point.latitude, point.longitude,
+                                 point.latitude, point.longitude, radius)) break;
+        lower = radius;
+      }
+      if (lower < margin && !data.WithinLandMargin(point.latitude, point.longitude,
+                            point.latitude, point.longitude, margin)) return margin;
+      return lower;
+    }
     // The validator only needs to distinguish a point which is already clear
     // of the configured stand-off from one inside that buffer. A zero-length
     // OpenCPN chord has no raster samples and therefore cannot prove this.
@@ -1094,9 +1150,36 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
   std::uint64_t quickGenerated = 0;
   std::uint64_t originalGenerated = 0;
   std::uint64_t quick2Generated = 0;
+  std::uint64_t atlasGenerated = 0;
   auto solveSingle = [&](const wr::RoutingRequest& solveRequest,
                          const wr::RoutingEnvironment& solveEnvironment,
                          const RouteMapConfiguration& selectedConfiguration) {
+    if (selectedConfiguration.EngineSettings.engine == weather_routing::RoutingEngine::Atlas) {
+      atlas_routing::Options options;
+      if(AtlasUsesGeographyHints() && selectedConfiguration.DetectLand && selectedConfiguration.chart_safety_runtime_enforced &&
+          selectedConfiguration.shoreline_dataset)
+        options.geographyGuidance=std::make_shared<AtlasShorelineHints>(selectedConfiguration.shoreline_dataset);
+      if (selectedConfiguration.TimeMode == RouteMapConfiguration::ROUTE_BY_ARRIVAL_TIME) {
+        if (atlasGenerated >= 90000) {
+          wr::RoutingResult exhausted;
+          exhausted.status = wr::RoutingStatus::ResourceLimitReached;
+          exhausted.message = "Atlas arrival search allowance reached";
+          return exhausted;
+        }
+        options.maximumEdgeAttempts = std::min<std::uint64_t>(options.maximumEdgeAttempts, 90000 - atlasGenerated);
+      }
+      auto searched = atlas_routing::Engine{}.route(solveRequest, solveEnvironment, options);
+      atlasGenerated += searched.atlas.edgeAttempts;
+      wxLogMessage("WR_ATLAS_SUMMARY edges=%llu integrations=%llu waypoints=%llu geometry_queries=%llu guidance_geometry_queries=%llu first_valid_ms=%.3f total_ms=%.3f status=%s",
+          static_cast<unsigned long long>(searched.atlas.edgeAttempts),
+          static_cast<unsigned long long>(searched.atlas.shootingIntegrations),
+          static_cast<unsigned long long>(searched.atlas.waypoints),
+          static_cast<unsigned long long>(searched.atlas.geometryQueries),
+          static_cast<unsigned long long>(searched.atlas.guidanceGeometryQueries),
+          searched.atlas.firstValidMs, searched.atlas.totalMs,
+          wxString::FromUTF8(wr::toString(searched.route.status).c_str()));
+      return std::move(searched.route);
+    }
     if (selectedConfiguration.EngineSettings.engine == weather_routing::RoutingEngine::Alternative)
       return wr::AlternativeRoutingEngine{}.route(solveRequest, solveEnvironment).route;
     if (selectedConfiguration.EngineSettings.engine == weather_routing::RoutingEngine::Quick2) {
@@ -1427,6 +1510,7 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
     if (configuration.chart_safety_scout_preview) {
       for (const auto engine : {SequenceEngine::Original, SequenceEngine::Quick2,
                                SequenceEngine::Quick, SequenceEngine::Alternative,
+                               SequenceEngine::Atlas,
                                SequenceEngine::Main}) {
         if (!(configuration.EngineSettings.SelectedEngines() &
               weather_routing::EngineBit(weather_routing::native::SequenceRoutingEngine(engine))))
@@ -1757,7 +1841,15 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
           auto solver = [&](const wr::RoutingRequest& r, const wr::RoutingEnvironment& e,
                             bool directed) {
             std::vector<wr::RoutingResult> results;
-            if (base.result->engineIdentity == "alternative") {
+            if (c.EngineSettings.engine == weather_routing::RoutingEngine::Atlas ||
+                base.result->engineIdentity == "atlas") {
+              atlas_routing::Options limits;
+              if(AtlasUsesGeographyHints() && c.DetectLand && c.chart_safety_runtime_enforced && c.shoreline_dataset)
+                limits.geographyGuidance=std::make_shared<AtlasShorelineHints>(c.shoreline_dataset);
+              limits.maximumEdgeAttempts = std::min<std::uint64_t>(limits.maximumEdgeAttempts, options.maximumGeneratedStates);
+              limits.maximumWeatherQueries = options.maximumWeatherCalls;
+              results.push_back(atlas_routing::Engine{}.route(r, e, limits).route);
+            } else if (base.result->engineIdentity == "alternative") {
               results.push_back(wr::AlternativeRoutingEngine{}.route(r, e).route);
             } else if (c.EngineSettings.engine == weather_routing::RoutingEngine::Original) {
               original_routing::Options limits;

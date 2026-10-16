@@ -1,0 +1,14 @@
+{
+  "name": "moving_storm",
+  "start": [
+    30,
+    -140
+  ],
+  "east_nm": 40,
+  "north_nm": 0,
+  "wind_from": 0,
+  "max_hours": 48,
+  "cache": true,
+  "storm": true,
+  "max_wind": 30
+}

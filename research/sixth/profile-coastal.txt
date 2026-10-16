@@ -1,0 +1,27 @@
+Functions sorted by metric: Exclusive Total CPU Time
+
+Excl. Total   Incl. Total    Name
+CPU           CPU
+ sec.      %   sec.      %
+0.031 100.00  0.031 100.00   <Total>
+0.022  70.97  0.022  70.97   original_routing::shoreline::(anonymous namespace)::Land(std::vector<original_routing::shoreline::(anonymous namespace)::Ring, std::allocator<original_routing::shoreline::(anonymous namespace)::Ring> > const&, original_routing::shoreline::(anonymous namespace)::Point)
+0.004  12.90  0.004  12.90   <static>@0x8a5d2 (<libm.so.6>)
+0.004  12.90  0.004  12.90   hypot
+0.001   3.23  0.001   3.23   __vdso_clock_gettime
+0.      0.    0.031 100.00   <static>@0x276f5 (<libc.so.6>)
+0.      0.    0.002   6.45   atan2
+0.      0.    0.001   3.23   atlas_routing::(anonymous namespace)::Land::segmentForbidden(supercpn::weather_routing::GeoPoint, supercpn::weather_routing::GeoPoint, double) const
+0.      0.    0.003   9.68   atlas_routing::(anonymous namespace)::addPoint(atlas_routing::(anonymous namespace)::Graph&, atlas_routing::(anonymous namespace)::Plane const&, double, double, supercpn::weather_routing::RoutingRequest const&, supercpn::weather_routing::RoutingEnvironment const&, atlas_routing::Options const&) [clone .isra.0]
+0.      0.    0.031 100.00   atlas_routing::(anonymous namespace)::buildGraph(atlas_routing::(anonymous namespace)::Graph&, atlas_routing::(anonymous namespace)::Plane const&, supercpn::weather_routing::RoutingRequest const&, supercpn::weather_routing::RoutingEnvironment const&, atlas_routing::Options const&, atlas_routing::(anonymous namespace)::Work&, unsigned int, std::vector<supercpn::weather_routing::GeoPoint, std::allocator<supercpn::weather_routing::GeoPoint> > const&, supercpn::weather_routing::VesselPerformanceModel const&, double) [clone .constprop.0]
+0.      0.    0.004  12.90   atlas_routing::(anonymous namespace)::mesh(atlas_routing::(anonymous namespace)::Graph&, atlas_routing::(anonymous namespace)::Plane const&, supercpn::weather_routing::RoutingRequest const&, supercpn::weather_routing::RoutingEnvironment const&, atlas_routing::Options const&, atlas_routing::(anonymous namespace)::Work&, double, double, double, double, unsigned int)
+0.      0.    0.031 100.00   atlas_routing::Engine::route(supercpn::weather_routing::RoutingRequest const&, supercpn::weather_routing::RoutingEnvironment const&, atlas_routing::Options const&) const
+0.      0.    0.001   3.23   clock_gettime
+0.      0.    0.031 100.00   main
+0.      0.    0.003   9.68   original_routing::GshhgProvider::distanceToForbiddenNm(supercpn::weather_routing::GeoPoint) const
+0.      0.    0.022  70.97   original_routing::shoreline::ShorelineDataset::CrossesLand(double, double, double, double)
+0.      0.    0.021  67.74   original_routing::shoreline::ShorelineDataset::WithinLandMargin(double, double, double, double, double)
+0.      0.    0.001   3.23   pow
+0.      0.    0.001   3.23   std::chrono::_V2::steady_clock::now()
+0.      0.    0.002   6.45   supercpn::weather_routing::(anonymous namespace)::angularDistance(supercpn::weather_routing::GeoPoint, supercpn::weather_routing::GeoPoint)
+0.      0.    0.002   6.45   supercpn::weather_routing::distanceNm(supercpn::weather_routing::GeoPoint, supercpn::weather_routing::GeoPoint)
+

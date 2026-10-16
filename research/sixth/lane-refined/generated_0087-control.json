@@ -1,0 +1,18 @@
+{
+  "name": "generated_0087",
+  "start": [
+    30,
+    -140
+  ],
+  "east_nm": 49.02380947955017,
+  "north_nm": 0,
+  "wind_from": 0,
+  "max_hours": 72,
+  "cache": true,
+  "seed": 87,
+  "family": 7,
+  "currents": true,
+  "jet": true,
+  "current_to": 90,
+  "atlas_weather_lanes": false
+}
