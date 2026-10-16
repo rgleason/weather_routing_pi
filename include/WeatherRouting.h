@@ -576,7 +576,7 @@ private:
   // CUSTOMIZATION
   void OnRoutePosition(wxCommandEvent& event);
   void OnWeatherTable(wxCommandEvent& event);
-  void ShowRouteComparison();
+  void ShowRouteComparison(bool partials = false);
   void OnManual(wxCommandEvent& event);
   void OnInformation(wxCommandEvent& event);
   void OnAbout(wxCommandEvent& event);
@@ -1004,6 +1004,7 @@ private:
   std::vector<wxButton*> m_androidNavigation;
   std::vector<wxButton*> m_androidNeedsRoute;
   std::vector<wxButton*> m_androidNeedsResult;
+  std::vector<wxButton*> m_androidPartialResultButtons;
   std::vector<wxButton*> m_androidAnyResultButtons;
   std::vector<wxButton*> m_androidNeedsPosition;
   std::vector<wxButton*> m_androidAnyRouteButtons;

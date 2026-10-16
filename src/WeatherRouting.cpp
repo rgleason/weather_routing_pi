@@ -1524,6 +1524,13 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
   const int comparisonId = wxWindow::NewControlId();
   m_mContextMenu->Append(comparisonId, _("Compare Fastest / Comfort..."));
   Bind(wxEVT_MENU, [this](wxCommandEvent&) { ShowRouteComparison(); }, comparisonId);
+  const int partialId = wxWindow::NewControlId();
+  m_mContextMenu->Append(partialId, _("Best partial route..."));
+  Bind(wxEVT_MENU, [this](wxCommandEvent&) { ShowRouteComparison(true); }, partialId);
+  Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& event) {
+    const auto selected = CurrentRouteMaps();
+    event.Enable(selected.size() == 1 && !selected.front()->PartialCandidates().empty());
+  }, partialId);
 
   if (m_colpane) m_colpane->Expand();
 
@@ -4473,6 +4480,22 @@ void WeatherRouting::CompleteHeadlessSingleRouteTest(bool timed_out,
       return;
     }
     wxLogMessage("WR_ROUTE_LIFECYCLE recompute_cycles=3 result=passed");
+  }
+  if (!timed_out && complete == 0 && failed > 0 && EnvString("WR_HEADLESS_PARTIAL_CONTRACT") == "1") {
+    Show(true);
+    auto* list = m_panel->m_lWeatherRoutes;
+    long partialRow = -1;
+    for (long row = 0; row < list->GetItemCount(); ++row) {
+      auto* route = reinterpret_cast<WeatherRoute*>(wxUIntToPtr(list->GetItemData(row)));
+      if (partialRow < 0 && !route->routemapoverlay->PartialCandidates().empty()) partialRow = row;
+      list->SetItemState(row, 0, wxLIST_STATE_SELECTED);
+    }
+    if (partialRow < 0) { FinishHeadlessRouteTestProcess(4); return; }
+    list->SetItemState(partialRow, wxLIST_STATE_SELECTED, wxLIST_STATE_SELECTED);
+    const int action = m_mContextMenu->FindItem(_("Best partial route..."));
+    wxUpdateUIEvent enabled(action); GetEventHandler()->ProcessEvent(enabled);
+    if (action == wxNOT_FOUND || !enabled.GetEnabled()) { FinishHeadlessRouteTestProcess(4); return; }
+    wxCommandEvent choose(wxEVT_MENU, action); GetEventHandler()->ProcessEvent(choose);
   }
   if (!timed_out && complete > 0 && EnvString("WR_HEADLESS_COMFORT_COMPARE") == "1") {
     Show(true);
@@ -10283,6 +10306,8 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
           State += _(" (shore buffer at endpoint: check route)");
       } else
         State = BuildRouteFailureState(routemapoverlay);
+      if (routemapoverlay->HasSelectedPartial())
+        State = _("Incomplete - destination not reached (partial shown)");
     } else {
       for (std::list<RouteMapOverlay*>::iterator it =
                wr->m_WaitingRouteMaps.begin();

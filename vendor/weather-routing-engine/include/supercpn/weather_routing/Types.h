@@ -362,6 +362,7 @@ using RoutingProgressCallback =
     std::function<void(const RoutingProgressUpdate&)>;
 
 struct RoutingPreview;
+class PartialRouteArchive;
 using RoutingPreviewCallback =
     std::function<void(std::shared_ptr<const RoutingPreview>)>;
 
@@ -382,6 +383,9 @@ struct RoutingRequest {
   RoutingPreviewCallback preview;
   std::uint64_t previewPhase{};
   std::function<bool()> previewWanted;
+  // Optional failed-search capture. Never used as a search incumbent, seed,
+  // constraint or acceptance criterion. The caller owns the archive.
+  std::shared_ptr<PartialRouteArchive> partials;
 
 };
 

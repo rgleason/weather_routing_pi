@@ -4,6 +4,7 @@
 #include "RoutingInternal.h"
 #include "supercpn/weather_routing/Comfort.h"
 #include "supercpn/weather_routing/Preview.h"
+#include "supercpn/weather_routing/PartialRoutes.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -279,6 +280,34 @@ Result Engine::route(const wr::RoutingRequest& request,
                                                    request.destination));
       r.diagnostics.closestApproachNm =
           std::min(r.diagnostics.closestApproachNm, nearest);
+      if (request.partials) {
+        for (auto id : frontier) {
+          const auto& state = history[id].state;
+          request.partials->offer(state.position, state.time, "Quick2 frontier", [&] {
+            std::vector<Node> path;
+            for (auto i = id; i != noParent; i = history[i].parent) {
+              if ((path.size() + 1) * sizeof(Node) > request.partials->byteBudget()) return wr::PartialRouteTrace{};
+              path.push_back(history[i]);
+            }
+            std::reverse(path.begin(), path.end());
+            std::size_t bytes = sizeof(wr::PartialRouteTrace) + path.capacity() * sizeof(Node);
+            for (std::size_t i = 0; i < path.size(); ++i) {
+              path[i].parent = i ? static_cast<std::uint32_t>(i - 1) : noParent;
+              bytes += path[i].state.profileIdentity.capacity();
+            }
+            return wr::PartialRouteTrace{bytes, [path = std::move(path)](
+                const wr::RoutingRequest& replayRequest,
+                const wr::RoutingEnvironment& replayEnvironment,
+                wr::RoutingDiagnostics& diagnostics) {
+              wr::PolarPerformanceModel fallback(replayRequest.vessel);
+              const auto& performance = replayEnvironment.performance
+                  ? *replayEnvironment.performance : fallback;
+              return traceback(replayRequest, replayEnvironment, performance,
+                  path, static_cast<std::uint32_t>(path.size() - 1), diagnostics);
+            }};
+          }, wr::PartialRoutePhase::Beam);
+        }
+      }
       if (request.progress)
         request.progress({wr::RoutingProgressStage::ForwardIsochrone, 1, 1,
                           d.proposals, history.size(), r.diagnostics.landChecks,

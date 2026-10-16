@@ -2,6 +2,7 @@
 #include "supercpn/weather_routing/AlternativeEngine.h"
 #include "MotionKernel.h"
 #include "supercpn/weather_routing/Preview.h"
+#include "supercpn/weather_routing/PartialRoutes.h"
 
 #include <algorithm>
 #include <cmath>
@@ -27,10 +28,13 @@ struct Candidate {
   unsigned sector{};
 };
 
-std::vector<RouteLeg> lineage(const std::shared_ptr<const Node>& parent) {
+std::vector<RouteLeg> lineage(const std::shared_ptr<const Node>& parent,
+                             std::size_t maximumLegs = std::numeric_limits<std::size_t>::max()) {
   std::vector<RouteLeg> legs;
-  for (auto node = parent; node && node->parent; node = node->parent)
+  for (auto node = parent; node && node->parent; node = node->parent) {
+    if (legs.size() >= maximumLegs) return {};
     legs.push_back(node->incoming);
+  }
   std::reverse(legs.begin(), legs.end());
   return legs;
 }
@@ -222,6 +226,12 @@ AlternativeRoutingResult AlternativeRoutingEngine::route(
       std::reverse(view.path.begin(), view.path.end());
       return view;
     });
+    if (request.partials) {
+      for (const auto& node : frontier)
+        request.partials->offer(node->state.position, node->state.time,
+            "Alternative sector frontier", [&] { return FreezePartialLegs(lineage(node,
+                request.partials->byteBudget() / sizeof(RouteLeg))); }, PartialRoutePhase::Sector);
+    }
     std::vector<std::optional<Candidate>> best(options.sectors);
     std::optional<Candidate> closest;
     bool withinDuration = false;

@@ -388,6 +388,11 @@ public:
   void SetRetainedCandidates(std::vector<weather_routing::RetainedRouteCandidate> candidates);
   std::vector<weather_routing::RetainedRouteCandidate> RetainedCandidates();
   bool SelectRetainedCandidate(const std::string& id);
+  void SetPartialCandidates(std::vector<weather_routing::RetainedRouteCandidate> candidates);
+  std::vector<weather_routing::RetainedRouteCandidate> PartialCandidates();
+  bool SelectPartialCandidate(const std::string& id);
+  bool HasSelectedPartial();
+  void RenderPartialRoute(piDC&, PlugIn_ViewPort&);
   std::string SelectedRetainedCandidateId() {
     if (Running()) return {};
     Lock();
@@ -530,6 +535,8 @@ private:
   std::atomic_bool m_ExploringComfort{false};
   std::vector<weather_routing::RetainedRouteCandidate> m_RetainedCandidates;
   std::string m_SelectedRetainedCandidateId;
+  std::vector<weather_routing::RetainedRouteCandidate> m_PartialCandidates;
+  std::string m_SelectedPartialCandidateId;
   std::vector<Position*> m_ModernRoutePositions;
   std::vector<Position*> m_ModernCursorRoutePositions;
   std::vector<ModernIsochroneLayer> m_ModernIsochrones;

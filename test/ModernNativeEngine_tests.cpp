@@ -780,10 +780,16 @@ TEST(ModernNativeEngine, ProfessionalRetainsGraphRecoveryWhenQuickFails) {
   ASSERT_EQ(upgradedProfessional.solverPath, professional.solverPath)
       << upgradedProfessional.message;
   EXPECT_TRUE(upgradedProfessional.validation.passed);
-  EXPECT_EQ(upgradedProfessional.metrics.elapsed, professional.metrics.elapsed);
-  EXPECT_EQ(upgradedProfessional.legs.size(), professional.legs.size());
-  EXPECT_EQ(upgradedProfessional.diagnostics.graphCorridorWidthsNm,
-            professional.diagnostics.graphCorridorWidthsNm);
+  // Professional settles generated goal connections before stopping. It may
+  // reopen deferred corridors to establish its remaining-cost bound, unlike
+  // the generic engine's first-connection policy. Compare validity/arrival,
+  // not an identical trace of the older stopping rule.
+  EXPECT_LE(upgradedProfessional.metrics.elapsed, professional.metrics.elapsed);
+  ASSERT_FALSE(upgradedProfessional.diagnostics.graphCorridorWidthsNm.empty());
+  EXPECT_DOUBLE_EQ(upgradedProfessional.diagnostics.graphCorridorWidthsNm.front(),
+                   request.options.graphCorridorWidthNm);
+  EXPECT_LE(upgradedProfessional.diagnostics.graphCorridorWidthsNm.back(),
+            request.options.maximumGraphCorridorWidthNm);
 }
 
 TEST(ModernNativeEngine, BoundedRecoveryStopsAfterFirstTier) {

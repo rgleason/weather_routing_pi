@@ -3,6 +3,7 @@
 #include "MotionKernel.h"
 #include "supercpn/weather_routing/Preview.h"
 #include "supercpn/weather_routing/Comfort.h"
+#include "supercpn/weather_routing/PartialRoutes.h"
 
 #include <algorithm>
 #include <array>
@@ -503,6 +504,41 @@ QuickRoutingResult QuickRoutingEngine::route(
       unsigned layer = 0;
       while (!frontier.empty() &&
              result.diagnostics.generatedStates < stageLimit) {
+        if (request.partials) {
+          for (auto id : frontier) {
+            const auto& endpoint = pool.labels[id];
+            request.partials->offer(endpoint.position,
+                TimePoint{Duration{endpoint.time}}, "Standard attempt " + std::to_string(attempt + 1), [&] {
+              std::vector<Label> path;
+              for (auto i = id; i != none; i = pool.labels[i].parent) {
+                if ((path.size() + 1) * sizeof(Label) > request.partials->byteBudget()) return PartialRouteTrace{};
+                path.push_back(pool.labels[i]);
+              }
+              std::reverse(path.begin(), path.end());
+              std::vector<std::string> profiles;
+              for (const auto& p : pool.profiles) profiles.emplace_back(p);
+              std::size_t bytes = sizeof(PartialRouteTrace) + path.capacity() * sizeof(Label) +
+                                  profiles.capacity() * sizeof(std::string);
+              for (const auto& p : profiles) bytes += p.capacity();
+              for (std::size_t i = 0; i < path.size(); ++i)
+                path[i].parent = i ? static_cast<std::uint32_t>(i - 1) : none;
+              return PartialRouteTrace{bytes, [path = std::move(path), profiles = std::move(profiles)](
+                  const RoutingRequest& replayRequest, const RoutingEnvironment& replayEnvironment,
+                  RoutingDiagnostics& diagnostics) {
+                QuickRoutingDiagnostics poolDiagnostics;
+                auto* resource = std::pmr::new_delete_resource();
+                Pool replayPool(resource, poolDiagnostics);
+                for (const auto& p : profiles) replayPool.profiles.emplace_back(p);
+                for (const auto& n : path) replayPool.labels.push_back(n);
+                PolarPerformanceModel fallback(replayRequest.vessel);
+                const auto& performance = replayEnvironment.performance
+                    ? *replayEnvironment.performance : fallback;
+                return reconstruct(replayRequest, replayEnvironment, performance, replayPool,
+                    static_cast<std::uint32_t>(path.size() - 1), diagnostics, resource);
+              }};
+            }, PartialRoutePhase::Beam);
+          }
+        }
         result.diagnostics.retainedStates =
             std::max<std::uint64_t>(result.diagnostics.retainedStates,
                                     pool.labels.size() - pool.free.size());

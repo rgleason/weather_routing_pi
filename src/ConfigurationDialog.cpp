@@ -1487,6 +1487,11 @@ bool ConfigurationDialog::HandleEngineEdit(wxObject* control) {
 void ConfigurationDialog::UpdateEngineControls() {
   const auto engine = weather_routing::EngineFromSelection(m_cRoutingEngine->GetSelection());
   const bool combined = weather_routing::IsCombinedEngine(engine);
+#ifdef __OCPN__ANDROID__
+  // The tablet keeps both mode and individual settings on one Engine page.
+  // An individual selection has no Auto/All item; avoid an empty picker.
+  m_cBasicRoutingMode->Show(combined);
+#endif
   m_pMainEngine->Show(engine == weather_routing::RoutingEngine::Main || combined ||
       engine == weather_routing::RoutingEngine::Quick2 || engine == weather_routing::RoutingEngine::Alternative);
   m_pQuickEngine->Show(engine == weather_routing::RoutingEngine::Original ||

@@ -227,6 +227,8 @@ bool RouteMapOverlay::Start(wxString& error) {
   m_ExploringComfort.store(false);
   m_RetainedCandidates.clear();
   m_SelectedRetainedCandidateId.clear();
+  m_PartialCandidates.clear();
+  m_SelectedPartialCandidateId.clear();
   Unlock();
 
   CaptureSearchSettings(configuration, ModernNativeRouteEnabled(configuration));
@@ -788,6 +790,77 @@ bool RouteMapOverlay::SelectRetainedCandidate(const std::string& id) {
   return false;
 }
 
+void RouteMapOverlay::SetPartialCandidates(
+    std::vector<weather_routing::RetainedRouteCandidate> candidates) {
+  Lock();
+  m_PartialCandidates = std::move(candidates);
+  m_SelectedPartialCandidateId.clear();
+  Unlock();
+}
+
+std::vector<weather_routing::RetainedRouteCandidate> RouteMapOverlay::PartialCandidates() {
+  if (Running() || !Valid() || !Finished() || ReachedDestination() || CancellationFlag()->load()) return {};
+  Lock();
+  auto candidates = m_PartialCandidates;
+  Unlock();
+  return candidates;
+}
+
+bool RouteMapOverlay::HasSelectedPartial() {
+  const auto candidates = PartialCandidates();
+  Lock();
+  const bool selected = !m_SelectedPartialCandidateId.empty() && !candidates.empty();
+  Unlock();
+  return selected;
+}
+
+bool RouteMapOverlay::SelectPartialCandidate(const std::string& id) {
+  const auto candidates = PartialCandidates();
+  for (const auto& candidate : candidates) {
+    if (candidate.id != id || !candidate.result->validation.passed || candidate.result->legs.empty()) continue;
+    Lock();
+    m_SelectedPartialCandidateId = id;
+    // Discard all exploratory display tracks. Partial geometry has its own
+    // renderer and never becomes destination_position or export plotdata.
+    m_LivePreviewFrames.clear();
+    m_ModernIsochrones.clear();
+    m_UpdateOverlay = true;
+    Unlock();
+    wxLogMessage("WR_PARTIAL_SELECTED id=%s engine=%s remaining_nm=%.6f elapsed_s=%lld complete=0",
+        wxString::FromUTF8(id.c_str()), wxString::FromUTF8(candidate.result->engineIdentity.c_str()),
+        candidate.remainingNm, static_cast<long long>(candidate.result->metrics.elapsed.count()));
+    return true;
+  }
+  return false;
+}
+
+void RouteMapOverlay::RenderPartialRoute(piDC& dc, PlugIn_ViewPort& vp) {
+  const auto candidates = PartialCandidates();
+  Lock();
+  const auto id = m_SelectedPartialCandidateId;
+  Unlock();
+  for (const auto& candidate : candidates) {
+    if (candidate.id != id) continue;
+    dc.SetPen(wxPen(wxColour(0, 120, 145, 220), 2, wxPENSTYLE_SHORT_DASH));
+    dc.SetBrush(*wxTRANSPARENT_BRUSH);
+    wxPoint end;
+    for (const auto& leg : candidate.result->legs) {
+      wxPoint a, b;
+      WR_GetCanvasPixLL(&vp, &a, leg.start.latitude, leg.start.longitude);
+      WR_GetCanvasPixLL(&vp, &b, leg.end.latitude, leg.end.longitude);
+      if (std::abs(a.x - b.x) < vp.pix_width / 2) dc.DrawLine(a.x, a.y, b.x, b.y);
+      end = b;
+    }
+    dc.DrawCircle(end.x, end.y, 5);
+    dc.SetTextForeground(wxColour(0, 90, 110));
+    const auto label = wxString::Format(_("Incomplete - %.2f NM remaining"), candidate.remainingNm);
+    wxCoord width, height; dc.GetTextExtent(label, &width, &height);
+    dc.DrawText(label, std::clamp(end.x + 8, 4, std::max(4, vp.pix_width - width - 4)),
+                std::clamp(end.y + 8, 4, std::max(4, vp.pix_height - height - 4)));
+    break;
+  }
+}
+
 void RouteMapOverlay::DeleteThread() {
   if (!m_Thread) return;
 
@@ -1040,6 +1113,10 @@ void RouteMapOverlay::Render(wxDateTime time, SettingsDialog& settingsdialog,
                              piDC& dc, PlugIn_ViewPort& vp, bool justendroute,
                              RoutePoint* positionOnRoute) {
   if (!m_bEndRouteVisible) return;
+  if (justendroute && !Running() && HasSelectedPartial()) {
+    RenderPartialRoute(dc, vp);
+    return;
+  }
   if (Running() && justendroute) {
     RenderModernPreview(settingsdialog, dc, vp, true);
     return;
@@ -1069,6 +1146,10 @@ void RouteMapOverlay::Render(wxDateTime time, SettingsDialog& settingsdialog,
       dc.DrawLine(r.x - 10, r.y + 10, r.x + 10, r.y - 10);
     }
 
+    if (!Running() && HasSelectedPartial()) {
+      RenderPartialRoute(dc, vp);
+      return;
+    }
     if (Running()) {
       RenderModernPreview(settingsdialog, dc, vp, false);
       return;
@@ -2468,6 +2549,8 @@ void RouteMapOverlay::Clear() {
   m_LivePreviewSequence = 0;
   decltype(m_RetainedCandidates)().swap(m_RetainedCandidates);
   m_SelectedRetainedCandidateId.clear();
+  decltype(m_PartialCandidates)().swap(m_PartialCandidates);
+  m_SelectedPartialCandidateId.clear();
   if (m_UsesModernNativeResult) {
     for (Position* position : m_ModernRoutePositions) delete position;
     for (Position* position : m_ModernCursorRoutePositions) delete position;
