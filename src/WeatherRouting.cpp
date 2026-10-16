@@ -62,6 +62,7 @@
 #include "RouteWaypointExtractor.h"
 #include "weather_routing_pi.h"
 #include "WeatherRouting.h"
+#include "BundledDataUpgradePolicy.h"
 #include "ShorelineManager.h"
 #include "ChartSafetyDefaults.h"
 #include "AboutDialog.h"
@@ -1385,11 +1386,10 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
 
   int confVersion;
   pConf->Read(_T ( "ConfigVersion" ), &confVersion, 0);
-  // v1.25 through v1.30 retain the v1.24 bundled boats and polars. A feature-only
+  // v1.25 through v1.32 retain the v1.24 bundled boats and polars. A feature-only
   // upgrade must not prompt to overwrite existing user data.
-  if (confVersion >= 124 && confVersion <= 129 &&
-      PLUGIN_VERSION_MAJOR == 1 &&
-      PLUGIN_VERSION_MINOR >= 25 && PLUGIN_VERSION_MINOR <= 30) {
+  if (weather_routing::CanSkipBundledDataUpdate(
+          confVersion, PLUGIN_VERSION_MAJOR, PLUGIN_VERSION_MINOR)) {
     confVersion = PLUGIN_VERSION_MAJOR * 100 + PLUGIN_VERSION_MINOR;
     pConf->Write(_T("ConfigVersion"), confVersion);
   }
@@ -1524,6 +1524,13 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
   const int comparisonId = wxWindow::NewControlId();
   m_mContextMenu->Append(comparisonId, _("Compare Fastest / Comfort..."));
   Bind(wxEVT_MENU, [this](wxCommandEvent&) { ShowRouteComparison(); }, comparisonId);
+  const int partialId = wxWindow::NewControlId();
+  m_mContextMenu->Append(partialId, _("Best partial route..."));
+  Bind(wxEVT_MENU, [this](wxCommandEvent&) { ShowRouteComparison(true); }, partialId);
+  Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& event) {
+    const auto selected = CurrentRouteMaps();
+    event.Enable(selected.size() == 1 && !selected.front()->PartialCandidates().empty());
+  }, partialId);
 
   if (m_colpane) m_colpane->Expand();
 
@@ -4474,6 +4481,22 @@ void WeatherRouting::CompleteHeadlessSingleRouteTest(bool timed_out,
     }
     wxLogMessage("WR_ROUTE_LIFECYCLE recompute_cycles=3 result=passed");
   }
+  if (!timed_out && complete == 0 && failed > 0 && EnvString("WR_HEADLESS_PARTIAL_CONTRACT") == "1") {
+    Show(true);
+    auto* list = m_panel->m_lWeatherRoutes;
+    long partialRow = -1;
+    for (long row = 0; row < list->GetItemCount(); ++row) {
+      auto* route = reinterpret_cast<WeatherRoute*>(wxUIntToPtr(list->GetItemData(row)));
+      if (partialRow < 0 && !route->routemapoverlay->PartialCandidates().empty()) partialRow = row;
+      list->SetItemState(row, 0, wxLIST_STATE_SELECTED);
+    }
+    if (partialRow < 0) { FinishHeadlessRouteTestProcess(4); return; }
+    list->SetItemState(partialRow, wxLIST_STATE_SELECTED, wxLIST_STATE_SELECTED);
+    const int action = m_mContextMenu->FindItem(_("Best partial route..."));
+    wxUpdateUIEvent enabled(action); GetEventHandler()->ProcessEvent(enabled);
+    if (action == wxNOT_FOUND || !enabled.GetEnabled()) { FinishHeadlessRouteTestProcess(4); return; }
+    wxCommandEvent choose(wxEVT_MENU, action); GetEventHandler()->ProcessEvent(choose);
+  }
   if (!timed_out && complete > 0 && EnvString("WR_HEADLESS_COMFORT_COMPARE") == "1") {
     Show(true);
     auto* list = m_panel->m_lWeatherRoutes;
@@ -4489,7 +4512,8 @@ void WeatherRouting::CompleteHeadlessSingleRouteTest(bool timed_out,
     ShowRouteComparison();
   }
   if (!timed_out && complete > 0 &&
-      EnvString("WR_HEADLESS_COMFORT_CONFIGURATION_CONTRACT") == "1" &&
+      (EnvString("WR_HEADLESS_COMFORT_CONFIGURATION_CONTRACT") == "1" ||
+       EnvString("WR_HEADLESS_ENGINE_CONFIGURATION_CONTRACT") == "1") &&
       !EnvString("WR_HEADLESS_SCENARIO").empty()) {
     auto* list = m_panel->m_lWeatherRoutes;
     for (long row = 0; row < list->GetItemCount(); ++row) {
@@ -4497,7 +4521,10 @@ void WeatherRouting::CompleteHeadlessSingleRouteTest(bool timed_out,
       list->SetItemState(row, route->routemapoverlay == selected_route ? wxLIST_STATE_SELECTED : 0,
                          wxLIST_STATE_SELECTED);
     }
-    m_ConfigurationDialog.RunComfortHostContract();
+    if (EnvString("WR_HEADLESS_ENGINE_CONFIGURATION_CONTRACT") == "1")
+      m_ConfigurationDialog.RunEngineHostContract();
+    if (EnvString("WR_HEADLESS_COMFORT_CONFIGURATION_CONTRACT") == "1")
+      m_ConfigurationDialog.RunComfortHostContract();
   }
   FinishHeadlessRouteTestProcess(timed_out ? 3 : 0);
 }
@@ -4869,6 +4896,8 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
               ? weather_routing::RoutingEngine::Quick : weather_routing::RoutingEngine::Main;
           if (scenario.route.hasRoutingEngine)
             configuration.EngineSettings.SetEngineId(scenario.route.routingEngine.ToStdString());
+          if (scenario.route.hasAutoEngineMask) configuration.EngineSettings.autoEngines = scenario.route.autoEngineMask;
+          if (scenario.route.hasAllEngineMask) configuration.EngineSettings.allEngines = scenario.route.allEngineMask;
           if (scenario.route.hasComfortAlternatives) {
             configuration.ExploreComfortAlternatives = scenario.route.comfortAlternativesEnabled;
             configuration.ComfortAdditionalPercent = scenario.route.comfortAdditionalPercent;
@@ -8161,6 +8190,7 @@ void WeatherRouting::SetRouteVisibility(RouteMapOverlay* route, bool visible,
                           .DepartureTimeOptimizationCandidate)
     SetDepartureChartDisplay(route, RouteMapConfiguration::MANUAL_DEPARTURES);
   route->m_bEndRouteVisible = visible;
+  route->RequestModernPreview(visible && route->Running());
   for (long row = 0; row < m_panel->m_lWeatherRoutes->GetItemCount(); ++row) {
     auto* item = reinterpret_cast<WeatherRoute*>(
         wxUIntToPtr(m_panel->m_lWeatherRoutes->GetItemData(row)));
@@ -8890,6 +8920,12 @@ void WeatherRouting::OnAbout(wxCommandEvent& event) {
 void WeatherRouting::OnComputationTimer(wxTimerEvent&) {
   wxStopWatch tickTimer;
   int runningBefore = m_RunningRouteMaps.size();
+  bool livePreviewChanged = false;
+  const bool livePreviewVisible = IsShown()
+#ifdef __OCPN__ANDROID__
+      || m_androidChartVisible
+#endif
+      ;
   int waitingBefore = m_WaitingRouteMaps.size();
   int completedProcessed = 0;
   int gribRequests = 0;
@@ -9064,6 +9100,11 @@ void WeatherRouting::OnComputationTimer(wxTimerEvent&) {
     } else
       it++;
 
+    routemapoverlay->RequestModernPreview(livePreviewVisible && routemapoverlay->m_bEndRouteVisible &&
+        (m_SettingsDialog.m_sIsoChronThickness->GetValue() > 0 ||
+         m_SettingsDialog.m_sRouteThickness->GetValue() > 0));
+    livePreviewChanged = routemapoverlay->ConsumeModernPreview() || livePreviewChanged;
+
     /* Service chart-derived data only on the application thread.  The route
      * worker retains all completed isochrones and recomputes only its
      * provisional current layer when these requests complete. */
@@ -9098,6 +9139,16 @@ void WeatherRouting::OnComputationTimer(wxTimerEvent&) {
     }
   }
 
+  // Batch all workers into one repaint budget. Departure candidates must not
+  // each force a full chart redraw; user interactions and final results keep
+  // their ordinary immediate refresh paths.
+  m_LivePreviewDirty = livePreviewVisible && (m_LivePreviewDirty || livePreviewChanged);
+  const auto previewNow = std::chrono::steady_clock::now();
+  if (m_LivePreviewDirty && previewNow - m_LastLivePreviewRefresh >= std::chrono::seconds{1}) {
+    RequestRefresh(GetOCPNCanvasWindow());
+    m_LastLivePreviewRefresh = previewNow;
+    m_LivePreviewDirty = false;
+  }
   wxStopWatch sectionTimer;
   for (auto routemapoverlay : completedRouteMaps) {
     AdvanceMultiLegSequence(routemapoverlay);
@@ -10235,6 +10286,7 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
         const auto computed = routemapoverlay->GetComputedSearchSettings();
         const auto& engine = computed.selectedEngine.empty() ? computed.engine : computed.selectedEngine;
         const wxString title = engine == "original" ? _("Quick")
+            : engine == "quick2" ? _("Quick2")
             : engine == "quick" ? _("Standard") : engine == "main" ? _("Professional")
             : engine == "alternative" ? _("Alternative") : wxString();
         const wxString mode = computed.engine == "auto" ? _("Auto")
@@ -10254,6 +10306,8 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
           State += _(" (shore buffer at endpoint: check route)");
       } else
         State = BuildRouteFailureState(routemapoverlay);
+      if (routemapoverlay->HasSelectedPartial())
+        State = _("Incomplete - destination not reached (partial shown)");
     } else {
       for (std::list<RouteMapOverlay*>::iterator it =
                wr->m_WaitingRouteMaps.begin();
@@ -12745,6 +12799,13 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
   configuration.chart_safety_missing_tile_max_lon = NAN;
   routemapoverlay->SetConfiguration(configuration);
 
+  if (weather_routing::IsCombinedEngine(configuration.EngineSettings.engine) &&
+      (!configuration.EngineSettings.SelectedEngines() ||
+       (configuration.EngineSettings.SelectedEngines() & ~weather_routing::kAllEnginesMask))) {
+    routemapoverlay->SetError(_("Select at least one routing engine in Advanced."));
+    return;
+  }
+
   /* initialize crossing land routine from main thread as it is
      not re-entrant, and cannot be done by worker-threads later */
   if (configuration.DetectLand) {
@@ -12773,9 +12834,9 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
           configuration.shoreline_dataset.reset();
           // Load each selected engine's immutable snapshot on the main thread.
           // An unavailable optional dataset rejects that engine, not the sequence.
-          for (const auto engine : {weather_routing::RoutingEngine::Original,
-                                    weather_routing::RoutingEngine::Quick,
-                                    weather_routing::RoutingEngine::Main}) {
+          for (const auto engine : weather_routing::kSequenceEngines) {
+            if (!(configuration.EngineSettings.SelectedEngines() & weather_routing::EngineBit(engine)))
+              continue;
             auto candidate = configuration;
             candidate.EngineSettings.engine = engine;
             const int resolution = candidate.EffectiveShorelineResolution();

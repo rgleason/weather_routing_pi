@@ -361,6 +361,11 @@ struct RoutingProgressUpdate {
 using RoutingProgressCallback =
     std::function<void(const RoutingProgressUpdate&)>;
 
+struct RoutingPreview;
+class PartialRouteArchive;
+using RoutingPreviewCallback =
+    std::function<void(std::shared_ptr<const RoutingPreview>)>;
+
 struct RoutingRequest {
   GeoPoint start;
   GeoPoint destination;
@@ -374,6 +379,14 @@ struct RoutingRequest {
   CancellationToken cancellation;
   // Runtime observer only; configuration serialization intentionally omits it.
   RoutingProgressCallback progress;
+  // Optional display observer. Never participates in route acceptance.
+  RoutingPreviewCallback preview;
+  std::uint64_t previewPhase{};
+  std::function<bool()> previewWanted;
+  // Optional failed-search capture. Never used as a search incumbent, seed,
+  // constraint or acceptance criterion. The caller owns the archive.
+  std::shared_ptr<PartialRouteArchive> partials;
+
 };
 
 enum class RequiredUserAction {
@@ -551,6 +564,16 @@ struct IsochroneLayer {
   bool reverse{};
   std::vector<IsochroneContour> contours;
   std::vector<IsochroneTrace> traces;
+};
+
+// A bounded, provisional view of search activity, never an exportable route.
+struct RoutingPreview {
+  std::uint64_t phase{};
+  RoutingProgressStage stage{RoutingProgressStage::ForwardIsochrone};
+  TimePoint time{};
+  std::vector<IsochroneContour> contours;
+  std::vector<GeoPoint> frontier;
+  std::vector<GeoPoint> path;
 };
 
 struct RoutingVisualization {

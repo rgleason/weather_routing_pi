@@ -74,7 +74,9 @@ set(TEST_SRC
     StabilityCorridorLifecycle_tests.cpp
     RoutingEngineSettings_tests.cpp
     RoutingEngineSequence_tests.cpp
+    Quick2Engine_tests.cpp
     RouteComfort_tests.cpp
+    PartialRoutes_tests.cpp
     RoutingScenarioJson_tests.cpp
     DepartureScheduler_tests.cpp
     RoutingQualityPolicy_tests.cpp
@@ -88,7 +90,9 @@ set(TEST_SRC
     ${WEATHER_ROUTING_SOURCE_DIR}/src/navobj_util.cpp
     NearbyWaveHeight_tests.cpp
     ModernNativeEngine_tests.cpp
+    ProfessionalSearchPolicy_tests.cpp
     OriginalEngine_tests.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/vendor/quick2-routing-engine/src/Engine.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/vendor/original-routing-engine/src/Engine.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/vendor/original-routing-engine/src/Contour.cpp
     ArrivalPlanner_tests.cpp
@@ -149,6 +153,7 @@ set(TEST_SRC
        PRIVATE
             ${WEATHER_ROUTING_SOURCE_DIR}/src
             ${WEATHER_ROUTING_SOURCE_DIR}/include
+            ${WEATHER_ROUTING_SOURCE_DIR}/vendor/quick2-routing-engine/include
             ${WEATHER_ROUTING_ENGINE_DIR}/include
             ${WEATHER_ROUTING_ENGINE_DIR}/src
             ${CMAKE_SOURCE_DIR}/include
@@ -260,3 +265,25 @@ target_compile_definitions(weather_routing_pi_tests
 
 include(GoogleTest)
 gtest_discover_tests(weather_routing_pi_tests DISCOVERY_MODE PRE_TEST)
+
+add_executable(partial_routes_qt_macro_tests
+    PartialRoutesQtMacro_tests.cpp
+    ${WEATHER_ROUTING_ENGINE_DIR}/src/Geometry.cpp)
+target_include_directories(partial_routes_qt_macro_tests PRIVATE
+    ${WEATHER_ROUTING_ENGINE_DIR}/include)
+target_link_libraries(partial_routes_qt_macro_tests PRIVATE GTest::gtest_main)
+# This executable needs the same test-only runtime lookup as the main suite;
+# the plugin's installation RPATH intentionally does not locate GoogleTest.
+set_target_properties(partial_routes_qt_macro_tests PROPERTIES
+    BUILD_WITH_INSTALL_RPATH FALSE
+    SKIP_BUILD_RPATH FALSE
+    BUILD_RPATH "${CMAKE_BINARY_DIR}/lib"
+    INSTALL_RPATH "../lib")
+if(WIN32)
+    add_custom_command(TARGET partial_routes_qt_macro_tests POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:GTest::gtest>"
+            "$<TARGET_FILE:GTest::gtest_main>"
+            "$<TARGET_FILE_DIR:partial_routes_qt_macro_tests>")
+endif()
+gtest_discover_tests(partial_routes_qt_macro_tests DISCOVERY_MODE PRE_TEST)

@@ -1694,17 +1694,16 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   fgSizer112->Add(sbEnd, 1, wxEXPAND | wxALL, 5);
 
   auto engineBox = new wxStaticBoxSizer(
-      new wxStaticBox(m_pBasic, wxID_ANY, _("Routing engine")), wxVERTICAL);
-  m_cRoutingEngine = new wxChoice(engineBox->GetStaticBox(), wxID_ANY);
-  m_cRoutingEngine->Append(_("Auto"));
-  m_cRoutingEngine->Append(_("Quick"));
-  m_cRoutingEngine->Append(_("Standard"));
-  m_cRoutingEngine->Append(_("Professional"));
-  m_cRoutingEngine->Append(_("All (slow)"));
-  m_cRoutingEngine->SetSelection(0);
-  engineBox->Add(m_cRoutingEngine, 0, wxALL | wxEXPAND, 5);
+      new wxStaticBox(m_pBasic, wxID_ANY, _("Routing search")), wxVERTICAL);
+  m_cBasicRoutingMode = new wxChoice(engineBox->GetStaticBox(), wxID_ANY);
+  m_cBasicRoutingMode->Append(_("Auto"));
+  m_cBasicRoutingMode->Append(_("All (slow)"));
+  m_cBasicRoutingMode->SetSelection(0);
+  m_cBasicRoutingMode->SetToolTip(_("Choose engines and individual-engine testing in Advanced. The Fastest / Comfort selector remains available for retained alternatives."));
+  engineBox->Add(m_cBasicRoutingMode, 0, wxALL | wxEXPAND, 5);
+  m_cBasicRoutingMode->Bind(wxEVT_CHOICE, [this](wxCommandEvent& event) { OnUpdate(event); });
   m_tRoutingEngineDescription = new wxStaticText(engineBox->GetStaticBox(), wxID_ANY,
-      _("Auto: Quick, then Standard, then Professional up to 400% effort; stops at the first validated route."));
+      _("Auto finds a validated route using the engines selected in Advanced. Enable alternatives to compare passage time and comfort."));
   m_tRoutingEngineDescription->Wrap(430);
   engineBox->Add(m_tRoutingEngineDescription, 0, wxALL | wxEXPAND, 5);
   m_cbExploreComfortAlternatives = new wxCheckBox(engineBox->GetStaticBox(), wxID_ANY,
@@ -1713,33 +1712,8 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
 #else
       _("Search additional fastest / comfort alternatives"), wxDefaultPosition, wxDefaultSize, wxCHK_3STATE);
 #endif
-  m_cbExploreComfortAlternatives->SetToolTip(_("Find and preserve the normal validated route first, then explore alternatives using the selected engine. Auto explores with its successful engine. Extra limits never restrict finding the first route."));
+  m_cbExploreComfortAlternatives->SetToolTip(_("Find and preserve the normal validated route first, then explore alternatives using the selected engine. Auto can explore its retained Quick2 and Standard candidates. Extra limits never restrict finding the first route."));
   engineBox->Add(m_cbExploreComfortAlternatives, 0, wxALL | wxEXPAND, 5);
-  auto* comfortControls = new wxFlexGridSizer(0, 2, 4, 6);
-  comfortControls->Add(new wxStaticText(engineBox->GetStaticBox(), wxID_ANY, _("Additional search allowance (%)")), 0, wxALIGN_CENTER_VERTICAL);
-  m_sComfortAdditionalPercent = new wxSpinCtrl(engineBox->GetStaticBox(), wxID_ANY, "200", wxDefaultPosition, wxSize(120,-1), wxSP_ARROW_KEYS, 0, 400, 200);
-  m_sComfortAdditionalPercent->SetToolTip(_("Extra computation time as a percentage of the normal route computation. 200% permits twice that time after the valid route is secured. Separate from Professional effort."));
-  comfortControls->Add(m_sComfortAdditionalPercent, 0);
-  comfortControls->Add(new wxStaticText(engineBox->GetStaticBox(), wxID_ANY, _("Maximum additional time (seconds)")), 0, wxALIGN_CENTER_VERTICAL);
-  m_sComfortMaximumSeconds = new wxSpinCtrl(engineBox->GetStaticBox(), wxID_ANY, "20", wxDefaultPosition, wxSize(120,-1), wxSP_ARROW_KEYS, 0, 3600, 20);
-  m_sComfortMaximumSeconds->SetToolTip(_("Use the smaller of the percentage allowance and this cap, per departure. Stop further search work at the deadline; an in-flight provider call can overrun. Zero disables extras."));
-  comfortControls->Add(m_sComfortMaximumSeconds, 0);
-  engineBox->Add(comfortControls, 0, wxALL, 5);
-#ifdef __OCPN__ANDROID__
-  // Keep editable allowances and their explanations readable in portrait and
-  // with the soft keyboard open. The existing Engine page owns these controls.
-  comfortControls->SetCols(1);
-  m_sComfortAdditionalPercent->SetMinSize(wxSize(300, 72));
-  m_sComfortMaximumSeconds->SetMinSize(wxSize(300, 72));
-  const wxString comfortHelpText = _("Keep the normal valid route first, then search for up to four useful alternatives. Auto uses the engine that found that route. Extra search time is the smaller of the percentage allowance and the seconds cap, per departure. 200% allows twice the original computation time after success. Zero disables extras. These limits never restrict finding the first route.");
-  auto* comfortHelp = new wxStaticText(engineBox->GetStaticBox(), wxID_ANY, comfortHelpText);
-  engineBox->Add(comfortHelp, 0, wxALL | wxEXPAND, 5);
-#endif
-  m_cbExploreComfortAlternatives->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent& event) { OnUpdate(event); });
-  m_sComfortAdditionalPercent->Bind(wxEVT_SPINCTRL, [this](wxSpinEvent& event) { OnUpdateSpin(event); });
-  m_sComfortMaximumSeconds->Bind(wxEVT_SPINCTRL, [this](wxSpinEvent& event) { OnUpdateSpin(event); });
-  m_sComfortAdditionalPercent->Bind(wxEVT_TEXT, [this](wxCommandEvent& event) { OnUpdate(event); });
-  m_sComfortMaximumSeconds->Bind(wxEVT_TEXT, [this](wxCommandEvent& event) { OnUpdate(event); });
   fgSizer112->Add(engineBox, 0, wxEXPAND | wxALL, 5);
 
   wxStaticBoxSizer* sbOptions;
@@ -1927,6 +1901,61 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
 
   auto engineSettingsBox = new wxStaticBoxSizer(
       new wxStaticBox(m_pAdvanced, wxID_ANY, _("Engine settings")), wxVERTICAL);
+  engineSettingsBox->Add(new wxStaticText(engineSettingsBox->GetStaticBox(), wxID_ANY,
+      _("Search mode / individual engine")), 0, wxALL, 5);
+  m_cRoutingEngine = new wxChoice(engineSettingsBox->GetStaticBox(), wxID_ANY);
+  for (const auto* label : {"Auto", "Quick", "Standard", "Professional", "All (slow)", "Quick2", "Alternative"})
+    m_cRoutingEngine->Append(wxGetTranslation(label));
+  m_cRoutingEngine->SetSelection(0);
+  engineSettingsBox->Add(m_cRoutingEngine, 0, wxALL | wxEXPAND, 5);
+  auto membership = new wxFlexGridSizer(0, 3, 4, 12);
+  membership->Add(new wxStaticText(engineSettingsBox->GetStaticBox(), wxID_ANY, _("Engine order")));
+  membership->Add(new wxStaticText(engineSettingsBox->GetStaticBox(), wxID_ANY, _("Auto")));
+  membership->Add(new wxStaticText(engineSettingsBox->GetStaticBox(), wxID_ANY, _("All")));
+  const char* engineNames[] = {"Quick", "Quick2", "Standard", "Alternative", "Professional"};
+  for (unsigned i = 0; i < 5; ++i) {
+    membership->Add(new wxStaticText(engineSettingsBox->GetStaticBox(), wxID_ANY, wxGetTranslation(engineNames[i])));
+    m_cbAutoEngines[i] = new wxCheckBox(engineSettingsBox->GetStaticBox(), wxID_ANY, wxEmptyString,
+        wxDefaultPosition, wxDefaultSize, wxCHK_3STATE);
+    m_cbAllEngines[i] = new wxCheckBox(engineSettingsBox->GetStaticBox(), wxID_ANY, wxEmptyString,
+        wxDefaultPosition, wxDefaultSize, wxCHK_3STATE);
+    for (auto* check : {m_cbAutoEngines[i], m_cbAllEngines[i]}) {
+      membership->Add(check);
+      check->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent& event) { OnUpdate(event); });
+    }
+  }
+  engineSettingsBox->Add(membership, 0, wxALL, 5);
+  auto membershipHelp = new wxStaticText(engineSettingsBox->GetStaticBox(), wxID_ANY,
+      _("Unchecked engines are skipped. Auto retains Quick2 while later engines search independently with fresh allowances. All compares every selected engine. Select at least one engine per mode."));
+  membershipHelp->Wrap(430);
+  engineSettingsBox->Add(membershipHelp, 0, wxALL | wxEXPAND, 5);
+  engineSettingsBox->Add(new wxStaticText(engineSettingsBox->GetStaticBox(), wxID_ANY,
+      _("Fastest / Comfort extra-search limits")), 0, wxALL, 5);
+  auto* comfortControls = new wxFlexGridSizer(0, 2, 4, 6);
+  comfortControls->Add(new wxStaticText(engineSettingsBox->GetStaticBox(), wxID_ANY, _("Additional search allowance (%)")), 0, wxALIGN_CENTER_VERTICAL);
+  m_sComfortAdditionalPercent = new wxSpinCtrl(engineSettingsBox->GetStaticBox(), wxID_ANY, "200", wxDefaultPosition, wxSize(120,-1), wxSP_ARROW_KEYS, 0, 400, 200);
+  m_sComfortAdditionalPercent->SetToolTip(_("Extra computation time as a percentage of the normal route computation. 200% permits twice that time after the valid route is secured. Separate from Professional effort."));
+  comfortControls->Add(m_sComfortAdditionalPercent, 0);
+  comfortControls->Add(new wxStaticText(engineSettingsBox->GetStaticBox(), wxID_ANY, _("Maximum additional time (seconds)")), 0, wxALIGN_CENTER_VERTICAL);
+  m_sComfortMaximumSeconds = new wxSpinCtrl(engineSettingsBox->GetStaticBox(), wxID_ANY, "20", wxDefaultPosition, wxSize(120,-1), wxSP_ARROW_KEYS, 0, 3600, 20);
+  m_sComfortMaximumSeconds->SetToolTip(_("Use the smaller of the percentage allowance and this cap, per departure. Stop further search work at the deadline; an in-flight provider call can overrun. Zero disables extras."));
+  comfortControls->Add(m_sComfortMaximumSeconds, 0);
+  engineSettingsBox->Add(comfortControls, 0, wxALL, 5);
+#ifdef __OCPN__ANDROID__
+  // Keep editable allowances and their explanations readable in portrait and
+  // with the soft keyboard open. The existing Engine page owns these controls.
+  comfortControls->SetCols(1);
+  m_sComfortAdditionalPercent->SetMinSize(wxSize(300, 72));
+  m_sComfortMaximumSeconds->SetMinSize(wxSize(300, 72));
+  const wxString comfortHelpText = _("Keep the normal valid route first, then search for up to four useful alternatives. Auto can explore its retained candidates. Extra search time is the smaller of the percentage allowance and the seconds cap, per departure. 200% allows twice the original computation time after success. Zero disables extras. These limits never restrict finding the first route.");
+  auto* comfortHelp = new wxStaticText(engineSettingsBox->GetStaticBox(), wxID_ANY, comfortHelpText);
+  engineSettingsBox->Add(comfortHelp, 0, wxALL | wxEXPAND, 5);
+#endif
+  m_cbExploreComfortAlternatives->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent& event) { OnUpdate(event); });
+  m_sComfortAdditionalPercent->Bind(wxEVT_SPINCTRL, [this](wxSpinEvent& event) { OnUpdateSpin(event); });
+  m_sComfortMaximumSeconds->Bind(wxEVT_SPINCTRL, [this](wxSpinEvent& event) { OnUpdateSpin(event); });
+  m_sComfortAdditionalPercent->Bind(wxEVT_TEXT, [this](wxCommandEvent& event) { OnUpdate(event); });
+  m_sComfortMaximumSeconds->Bind(wxEVT_TEXT, [this](wxCommandEvent& event) { OnUpdate(event); });
   m_tEnginePresetStatus = new wxStaticText(engineSettingsBox->GetStaticBox(), wxID_ANY,
       _("Current settings: Custom"));
   engineSettingsBox->Add(m_tEnginePresetStatus, 0, wxALL, 5);

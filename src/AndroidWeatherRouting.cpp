@@ -302,6 +302,8 @@ wxWindow* WeatherRouting::BuildAndroidWorkspace(wxBoxSizer* root) {
     }
     if (label == _("Clear all computed results"))
       m_androidClearAllResultButtons.push_back(button);
+    if (label == _("Best partial route"))
+      m_androidPartialResultButtons.push_back(button);
     if (label == _("Delete all positions")) m_androidAnyPositionButtons.push_back(button);
     if (label == _("Edit selected position") || label == _("Delete selected position"))
       m_androidNeedsPosition.push_back(button);
@@ -464,6 +466,7 @@ wxWindow* WeatherRouting::BuildAndroidWorkspace(wxBoxSizer* root) {
       {_("Route position"), command(&WeatherRouting::OnRoutePosition)},
       {_("Stability corridor"), command(&WeatherRouting::OnViewStabilityCorridor)},
       {_("Fastest / Comfort"), [this]() { ShowRouteComparison(); }},
+      {_("Best partial route"), [this]() { ShowRouteComparison(true); }},
   });
   addActions(results, resultsContent, _("Use this route"), {
       {_("Save as OpenCPN route"), command(&WeatherRouting::OnSaveAsRoute)},
@@ -693,6 +696,8 @@ void WeatherRouting::RefreshAndroidWorkspace() {
       WR_WrapAndroidText(title, title->GetLabel(), cardWidth - 24);
       layout->Add(title, 0, wxEXPAND | wxALL, 9);
       wxString cardDetail = TabletRouteState(route->State);
+      if (!route->routemapoverlay->PartialCandidates().empty())
+        cardDetail += _("\nPartial results available: inspect Best partial route on Results. Destination not reached.");
       const auto configuration = route->routemapoverlay->GetConfiguration();
       if (configuration.IsMultiLegGenerated)
         cardDetail += wxString::Format(_("\nPassage leg %d of %d"),
@@ -859,6 +864,11 @@ void WeatherRouting::RefreshAndroidWorkspace() {
     allComplete &= map->Finished() && map->ReachedDestination();
   for (auto* button : m_androidNeedsResult)
     button->Enable(button->GetName() == "wr-all-selected-complete" ? allComplete : hasResult);
+  const auto selectedMaps = CurrentRouteMaps(false);
+  const bool hasPartials = selectedMaps.size() == 1 &&
+      !selectedMaps.front()->PartialCandidates().empty();
+  for (auto* button : m_androidPartialResultButtons)
+    button->Enable(hasPartials && !running);
   if (selected < 0) {
     const wxString none = _("No route selected. Create one on Plan or select a route on Routes.");
     m_androidPlanStatus->SetLabel(none);
@@ -881,6 +891,8 @@ void WeatherRouting::RefreshAndroidWorkspace() {
       _("Duration: ") + (hasResult ? TabletDuration(selectedMap->StartTime(), selectedMap->EndTime()) : route->Time) +
       _("   Distance: ") + route->Distance +
       _("   Weather: ") + route->WeatherSource;
+  if (hasPartials)
+    result += _("\nIncomplete: no destination ETA. Use Best partial route to inspect the available prefixes and their actual endpoints. Completed-route exports remain unavailable.");
   const auto outputGroups = SelectedRouteOutputGroups();
   if (outputGroups.size() == 1 && outputGroups.front().multi_leg &&
       !outputGroups.front().routes.empty()) {

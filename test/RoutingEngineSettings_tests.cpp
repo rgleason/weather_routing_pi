@@ -3,6 +3,7 @@
 #include <wx/fileconf.h>
 #include <wx/sstream.h>
 #include "ProfessionalQuickPolicy.h"
+#include "BundledDataUpgradePolicy.h"
 #include "RoutingEngineSettingsPersistence.h"
 #include "ShorelineSettings.h"
 
@@ -37,20 +38,20 @@ TEST(RoutingEngineSettings, ExperimentalProfessionalIdMigratesToMain) {
   EXPECT_EQ(settings.engine, wr::RoutingEngine::Main);
   EXPECT_EQ(settings.EngineId(), "main");
 }
-TEST(RoutingEngineSettings, FiveTitlesKeepStableSavedIdsAndBasicOrder) {
+TEST(RoutingEngineSettings, SevenAdvancedTitlesKeepStableSavedIds) {
   wr::RoutingEngineSettings settings;
-  const char* titles[] = {"Auto", "Quick", "Standard", "Professional", "All (slow)"};
-  const char* ids[] = {"auto", "original", "quick", "main", "all"};
-  for (int i = 0; i < 5; ++i) {
+  const char* titles[] = {"Auto", "Quick", "Standard", "Professional", "All (slow)", "Quick2", "Alternative"};
+  const char* ids[] = {"auto", "original", "quick", "main", "all", "quick2", "alternative"};
+  for (int i = 0; i < 7; ++i) {
     settings.engine = wr::EngineFromSelection(i);
     EXPECT_EQ(wr::EngineSelection(settings.engine), i);
     EXPECT_STREQ(wr::EngineTitle(settings.engine), titles[i]);
     EXPECT_EQ(settings.EngineId(), ids[i]);
   }
   EXPECT_EQ(wr::EngineFromSelection(-1), wr::RoutingEngine::Unsupported);
-  EXPECT_EQ(wr::EngineFromSelection(5), wr::RoutingEngine::Unsupported);
+  EXPECT_EQ(wr::EngineFromSelection(7), wr::RoutingEngine::Unsupported);
   settings.SetEngineId("alternative");
-  EXPECT_EQ(settings.engine, wr::RoutingEngine::Unsupported);
+  EXPECT_EQ(settings.engine, wr::RoutingEngine::Alternative);
 }
 TEST(RoutingEngineSettings, FirstInstallAutoButUpgradePreservesEveryExistingSelection) {
   wr::RoutingEngineSettings fresh;
@@ -94,7 +95,7 @@ TEST(RoutingEngineSettings, AllThreeBlocksSurviveSwitchSaveReinstallAndIndepende
   const int originalCacheMiB =
       wr::NormalizeGribTimelineCacheMiB(1024, true);
   settings.originalGribTimelineCacheMiB = originalCacheMiB;
-  for (int i = 0; i < 5; ++i) {
+  for (int i = 0; i < 7; ++i) {
     settings.engine = wr::EngineFromSelection(i);
     TiXmlElement xml("Configuration");
     wr::WriteRoutingEngineSettings(settings, xml);
@@ -373,4 +374,34 @@ TEST(ShorelineSettings, ChartChoiceMigratesSeparatelyAndSurvivesPresets) {
   Configuration c; c.ChartShorelineResolution = 3;
   wr::ResetMainToBalanced(c); c.EngineSettings.ResetQuickToBalanced();
   EXPECT_EQ(c.ChartShorelineResolution, 3);
+}
+
+TEST(RoutingEngineSettings, IndependentMembershipDefaultsAndPersistence) {
+  wr::RoutingEngineSettings settings;
+  EXPECT_EQ(settings.autoEngines, 23U);
+  EXPECT_EQ(settings.allEngines, 31U);
+  EXPECT_FALSE(settings.autoEngines & wr::EngineBit(wr::RoutingEngine::Alternative));
+  settings.autoEngines = wr::EngineBit(wr::RoutingEngine::Quick2) | wr::EngineBit(wr::RoutingEngine::Quick);
+  settings.allEngines = wr::EngineBit(wr::RoutingEngine::Alternative);
+  TiXmlElement xml("Configuration");
+  wr::WriteRoutingEngineSettings(settings, xml);
+  EXPECT_EQ(wr::ReadRoutingEngineSettings(xml), settings);
+  wxStringInputStream empty("");
+  wxFileConfig profile(empty);
+  wr::WriteRoutingEngineSettings(settings, profile);
+  EXPECT_EQ(wr::ReadRoutingEngineSettings(profile), settings);
+  xml.SetAttribute("AutoEngineMask", "0");
+  EXPECT_EQ(wr::ReadRoutingEngineSettings(xml).autoEngines, 0U);
+  xml.SetAttribute("AllEngineMask", "999");
+  EXPECT_EQ(wr::ReadRoutingEngineSettings(xml).allEngines, 0U);
+}
+
+TEST(RoutingEngineSettings, FeatureUpgradeDoesNotOfferToOverwritePersonalBoatsOrRoutes) {
+  for (int version=124; version<=131; ++version)
+    EXPECT_TRUE(wr::CanSkipBundledDataUpdate(version, 1, 32));
+  EXPECT_FALSE(wr::CanSkipBundledDataUpdate(0, 1, 32));
+  EXPECT_FALSE(wr::CanSkipBundledDataUpdate(123, 1, 32));
+  EXPECT_FALSE(wr::CanSkipBundledDataUpdate(133, 1, 32));
+  EXPECT_FALSE(wr::CanSkipBundledDataUpdate(131, 2, 0));
+  EXPECT_FALSE(wr::CanSkipBundledDataUpdate(131, 1, 33));
 }

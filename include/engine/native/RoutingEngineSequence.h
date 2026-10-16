@@ -9,13 +9,23 @@
 #include "supercpn/weather_routing/Engine.h"
 
 namespace weather_routing::native {
-// Alternative is deliberately internal: it has no persisted/UI engine
-// selection.
-enum class SequenceEngine { Original, Quick, Alternative, Main };
+enum class SequenceEngine { Original, Quick2, Quick, Alternative, Main };
+inline RoutingEngine SequenceRoutingEngine(SequenceEngine engine) {
+  switch (engine) {
+    case SequenceEngine::Original: return RoutingEngine::Original;
+    case SequenceEngine::Quick2: return RoutingEngine::Quick2;
+    case SequenceEngine::Quick: return RoutingEngine::Quick;
+    case SequenceEngine::Alternative: return RoutingEngine::Alternative;
+    case SequenceEngine::Main: return RoutingEngine::Main;
+  }
+  return RoutingEngine::Unsupported;
+}
 inline const char* SequenceEngineId(SequenceEngine engine) {
   switch (engine) {
     case SequenceEngine::Original:
       return "original";
+    case SequenceEngine::Quick2:
+      return "quick2";
     case SequenceEngine::Quick:
       return "quick";
     case SequenceEngine::Alternative:
@@ -29,6 +39,8 @@ inline const char* SequenceEngineTitle(SequenceEngine engine) {
   switch (engine) {
     case SequenceEngine::Original:
       return "Quick";
+    case SequenceEngine::Quick2:
+      return "Quick2";
     case SequenceEngine::Quick:
       return "Standard";
     case SequenceEngine::Alternative:
@@ -42,9 +54,7 @@ template <typename Configuration>
 Configuration ConfigurationForSequenceEngine(const Configuration& base,
                                              SequenceEngine engine) {
   auto candidate = base;
-  candidate.EngineSettings.SetEngineId(engine == SequenceEngine::Alternative
-                                           ? "main"
-                                           : SequenceEngineId(engine));
+  candidate.EngineSettings.SetEngineId(SequenceEngineId(engine));
   if (base.EngineSettings.engine == RoutingEngine::Auto &&
       engine == SequenceEngine::Main)
     candidate.RoutingEffortPercent = 400;
@@ -70,18 +80,25 @@ supercpn::weather_routing::RoutingResult RunRoutingEngineSequence(
     RoutingEngine mode,
     const supercpn::weather_routing::CancellationToken& cancel, Solve&& solve,
     const std::function<void(SequenceEngine,
-        const supercpn::weather_routing::RoutingResult&)>& accepted = {}) {
+        const supercpn::weather_routing::RoutingResult&)>& accepted = {},
+    unsigned enabled = 0xffffffffU) {
   namespace wr = supercpn::weather_routing;
   wr::RoutingResult best, last;
   bool haveBest = false;
   std::string failures;
   std::vector<wr::RoutingAttemptFailure> attempts;
-  constexpr std::array engines{SequenceEngine::Original, SequenceEngine::Quick,
+  if (enabled == 0xffffffffU)
+    enabled = mode == RoutingEngine::Auto ? kAutoEnginesMask : kAllEnginesMask;
+  if (!enabled || (enabled & ~kAllEnginesMask)) {
+    last.status = wr::RoutingStatus::InvalidVesselConfiguration;
+    last.message = "Select at least one routing engine in Advanced";
+    return last;
+  }
+  constexpr std::array engines{SequenceEngine::Original, SequenceEngine::Quick2, SequenceEngine::Quick,
                                SequenceEngine::Alternative,
                                SequenceEngine::Main};
   for (const auto engine : engines) {
-    if (mode == RoutingEngine::Auto && engine == SequenceEngine::Alternative)
-      continue;
+    if (!(enabled & EngineBit(SequenceRoutingEngine(engine)))) continue;
     if (cancel.cancelled()) {
       last = {};
       last.status = wr::RoutingStatus::Cancelled;
@@ -99,11 +116,15 @@ supercpn::weather_routing::RoutingResult RunRoutingEngineSequence(
     }
     if (AcceptedRoute(last)) {
       if (accepted) accepted(engine, last);
-      if (mode == RoutingEngine::Auto) return last;
       if (!haveBest || last.legs.back().endTime < best.legs.back().endTime) {
         best = std::move(last);
         haveBest = true;
       }
+      // Quick2 is a provisional fallback, held only here. The callback gets
+      // no incumbent or spent budget: selected Standard starts from scratch.
+      // A later accepted engine ends Auto with the best result found so far.
+      if (mode == RoutingEngine::Auto && engine != SequenceEngine::Quick2)
+        return best;
     } else {
       if (!failures.empty()) failures += "; ";
       std::string detail = last.message.empty() ? "no validated complete route" : last.message;

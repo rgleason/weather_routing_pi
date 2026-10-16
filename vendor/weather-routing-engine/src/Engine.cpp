@@ -1,4 +1,10 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Shared native search with Professional refinement policy.
+// Generic native callers and Quick bridges retain the legacy policy.
+#include "ProfessionalPolicy.h"
 #include "supercpn/weather_routing/Engine.h"
+#include "supercpn/weather_routing/PartialRoutes.h"
+#include "supercpn/weather_routing/Preview.h"
 #include "supercpn/weather_routing/CoastalEndpointPolicy.h"
 
 #include <algorithm>
@@ -11,12 +17,51 @@
 #include <set>
 #include <sstream>
 #include <tuple>
+#include <type_traits>
 #include <unordered_map>
 
 #include "RoutingInternal.h"
 #include "MotionKernel.h"
 
 namespace supercpn::weather_routing {
+using professional_policy::Options;
+using professional_policy::Diagnostics;
+using professional_policy::Policy;
+struct Context {
+  const Options& options;
+  Diagnostics& diagnostics;
+  unsigned effort{}, attempt{};
+  std::chrono::steady_clock::time_point began{std::chrono::steady_clock::now()};
+  bool sanity() const { return options.policy == Policy::Sanity; }
+  void emit(const std::string& stage, const std::string& action,
+            const std::string& reason, GeoPoint position, TimePoint time,
+            const RoutingDiagnostics& d, std::uint64_t parent = 0,
+            std::uint64_t node = 0) {
+    if (!options.trace) return;
+    if (diagnostics.events >= options.maximumTraceEvents) {
+      ++diagnostics.droppedEvents; return;
+    }
+    ++diagnostics.events;
+    try { options.trace({stage, action, reason, position, time,
+        d.generatedStates, d.retainedStates, d.landChecks, parent, node,
+        effort, attempt,
+        std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-began).count()}); }
+    catch (...) { ++diagnostics.observerErrors; }
+  }
+};
+class Solver {
+ public:
+  Solver(const Options& o, Diagnostics& d) : context_{o,d} {}
+  RoutingResult route(const RoutingRequest&, const RoutingEnvironment&) const;
+  RoutingResult routeThroughEffortTier(const RoutingRequest&, const RoutingEnvironment&, unsigned,
+      unsigned minimumEffortTier=100, std::uint64_t sharedGeneratedBudget=0) const;
+ private:
+  mutable Context context_;
+  RoutingResult routeMember(const RoutingRequest&, const RoutingEnvironment&) const;
+  RoutingPreflightResult preflight(const RoutingRequest& r, const RoutingEnvironment& e) const {
+    return supercpn::weather_routing::RoutingEngine{}.preflight(r,e);
+  }
+};
 namespace {
 using internal::ResolvedEnvironment;
 
@@ -41,6 +86,7 @@ struct Node {
   // position: doing so would incorrectly grant departure-egress semantics
   // elsewhere on the route.
   bool departureEgressActive{};
+  bool motionChecked{};
   Duration motorDuration{};
   Duration waitDuration{};
   double fuel{};
@@ -141,6 +187,7 @@ std::optional<Node> waitInPlace(const RoutingRequest& request,
   }
 
   Node node = from;
+  node.motionChecked = false;
   node.time += duration;
   node.waitDuration += duration;
   node.incomingLeg = {};
@@ -392,7 +439,7 @@ std::optional<MotionReplay> integrateMotion(
     const VesselPerformanceModel& performanceModel, const Node& from,
     double heading, const PerformanceCandidate& selected, TimePoint movingStart,
     Duration moving, Duration maximumSlice, RoutingDiagnostics& diagnostics,
-    RoutingStatus* dataFailure) {
+    RoutingStatus* dataFailure, const ResolvedEnvironment* initialResolved = nullptr) {
   if (moving <= Duration::zero()) return {};
   MotionReplay replay;
   replay.end = from.position;
@@ -401,9 +448,9 @@ std::optional<MotionReplay> integrateMotion(
       std::clamp(maximumSlice, Duration{1}, Duration{std::chrono::minutes{5}});
   Duration elapsed{};
   double speedSeconds = 0.0;
-  auto predictorResolved = internal::resolveEnvironment(
-      request, environment, replay.end, movingStart);
-  ++diagnostics.weatherSamples;
+  auto predictorResolved = initialResolved ? *initialResolved :
+      internal::resolveEnvironment(request, environment, replay.end, movingStart);
+  if (!initialResolved) ++diagnostics.weatherSamples;
   if (predictorResolved.failureStatus != RoutingStatus::Complete) {
     if (dataFailure) *dataFailure = predictorResolved.failureStatus;
     return {};
@@ -504,7 +551,11 @@ std::optional<MotionReplay> integrateMotion(
 
 bool nodeMotionForbidden(const RoutingRequest& request,
                          const RoutingEnvironment& environment,
-                         Node& node, RoutingDiagnostics& diagnostics) {
+                         Node& node, RoutingDiagnostics& diagnostics, Context* context = nullptr) {
+  if (context && context->sanity() && node.motionChecked) {
+    ++context->diagnostics.reusedMotionChecks;
+    return false;
+  }
   if (!environment.landAndBoundaries) return false;
   double departureClearanceNm = std::numeric_limits<double>::infinity();
   bool departureEgress = node.departureEgressActive;
@@ -623,15 +674,24 @@ bool nodeMotionForbidden(const RoutingRequest& request,
     }
   }
   node.departureEgressActive = departureEgress;
+  if (context && context->sanity()) node.motionChecked = true;
   return false;
 }
 
 std::optional<Node> directConnection(
     const RoutingRequest& request, const RoutingEnvironment& environment,
     const VesselPerformanceModel& performanceModel, const Node& from,
-    Duration maximumDuration, RoutingDiagnostics& diagnostics) {
+    Duration maximumDuration, RoutingDiagnostics& diagnostics,
+    bool refineBoundedTrial=false) {
   const double distance = distanceNm(from.position, request.destination);
   if (distance <= 1e-9) return {};
+  const auto remainingHorizon=std::max(Duration::zero(),
+      std::chrono::duration_cast<Duration>(request.departure+
+          request.limits.maximumRouteDuration-from.time));
+  // Preserve cheap stage-window rejection. Refinement is needed when the
+  // actual arrival horizon, rather than the ordinary approach window, clips
+  // the solve. This avoids long speculative probes on distant offshore fans.
+  refineBoundedTrial=refineBoundedTrial && maximumDuration==remainingHorizon;
   const double groundCourse =
       initialBearingDegrees(from.position, request.destination);
   const auto resolved = internal::resolveEnvironment(request, environment,
@@ -665,6 +725,8 @@ std::optional<Node> directConnection(
       std::optional<MotionReplay> accepted;
       Duration acceptedPenalty{};
       Tack acceptedTack{Tack::Unknown};
+      std::array<std::pair<double,Duration>,10> tried{};
+      std::size_t triedCount=0;
       for (int iteration = 0; iteration < 10; ++iteration) {
         const double trialTwa =
             trueWindAngleDegrees(resolved.snapshot.wind.velocity, trialHeading);
@@ -673,9 +735,20 @@ std::optional<Node> directConnection(
         const Duration penalty =
             transitionPenalty(request, from, candidate.mode, nextTack,
                               candidate.sailPlan, trialTwa);
+        // An initial VMG estimate can be too long even when evolving current
+        // permits arrival inside the window. Refine from the window boundary
+        // instead of treating that estimate as proof of infeasibility.
+        if (refineBoundedTrial && penalty < maximumDuration)
+          trialMoving=std::min(trialMoving,maximumDuration-penalty);
         if (trialMoving <= Duration::zero() ||
             trialMoving + penalty > maximumDuration)
           break;
+        if (refineBoundedTrial) {
+          const auto trial=std::pair{trialHeading,trialMoving};
+          if (std::find(tried.begin(),tried.begin()+triedCount,trial)!=
+              tried.begin()+triedCount)break;
+          tried[triedCount++]=trial;
+        }
         RoutingStatus ignoredFailure = RoutingStatus::Complete;
         auto replay = integrateMotion(
             request, environment, performanceModel, from, trialHeading,
@@ -718,6 +791,7 @@ std::optional<Node> directConnection(
       const Vector2 groundVelocity =
           speedDirectionToVector(groundSpeed, groundCourse);
       Node node = from;
+  node.motionChecked = false;
       node.position = request.destination;
       node.time = from.time + total;
       node.incomingHeading = trialHeading;
@@ -775,10 +849,17 @@ std::vector<Node> propagate(const RoutingRequest& request,
                             const Node& from, double heading, Duration step,
                             RoutingDiagnostics& diagnostics,
                             Duration maximumIntegrationSlice,
-                            RoutingStatus* dataFailure) {
-  const auto resolved = internal::resolveEnvironment(request, environment,
-                                                     from.position, from.time);
-  ++diagnostics.weatherSamples;
+                            RoutingStatus* dataFailure,
+                            std::optional<ResolvedEnvironment>* fanWeather = nullptr,
+                            Context* context = nullptr) {
+  const bool reuse = fanWeather && fanWeather->has_value();
+  const auto resolved = reuse ? **fanWeather : internal::resolveEnvironment(
+      request, environment, from.position, from.time);
+  if (reuse) ++context->diagnostics.initialWeatherReuses;
+  else {
+    ++diagnostics.weatherSamples;
+    if (fanWeather) *fanWeather=resolved;
+  }
   if (resolved.failureStatus != RoutingStatus::Complete) {
     if (dataFailure) *dataFailure = resolved.failureStatus;
     return {};
@@ -805,10 +886,17 @@ std::vector<Node> propagate(const RoutingRequest& request,
         request, from, performance.mode, nextTack, performance.sailPlan, twa);
     if (penalty >= step) continue;
     const Duration moving = step - penalty;
+    // Every heading starts at exactly the same point and UTC instant.
+    // Reuse only that immutable forecast sample, never a spatial/time bucket
+    // or a preceding midpoint. Manoeuvre penalties require a fresh sample.
+    const auto* initialResolved = fanWeather && penalty==Duration::zero()
+        ? &resolved : nullptr;
+    if (initialResolved) ++context->diagnostics.initialWeatherReuses;
     auto replay =
         integrateMotion(request, environment, performanceModel, from, heading,
                         performance, from.time + penalty, moving,
-                        maximumIntegrationSlice, diagnostics, dataFailure);
+                        maximumIntegrationSlice, diagnostics, dataFailure,
+                        initialResolved);
     if (!replay) continue;
     const GeoPoint end = replay->end;
     if (std::abs(end.latitude) > request.constraints.maximumLatitudeDegrees)
@@ -823,6 +911,7 @@ std::vector<Node> propagate(const RoutingRequest& request,
       continue;
     }
     Node node = from;
+  node.motionChecked = false;
     node.position = end;
     node.time = from.time + step;
     node.incomingHeading = heading;
@@ -855,14 +944,15 @@ std::vector<Node> propagate(const RoutingRequest& request,
   return result;
 }
 
-using CellKey = std::tuple<int, int, int, int, int>;
+using CellKey = std::tuple<int, int, int, int, int, int, int,
+                           std::string, std::int64_t, bool>;
 
 struct CellKeyHash {
   std::size_t operator()(const CellKey& key) const noexcept {
     std::size_t value = 0;
     std::apply(
-        [&](const auto... fields) {
-          ((value ^= std::hash<int>{}(fields) + 0x9e3779b9U + (value << 6U) +
+        [&](const auto&... fields) {
+          ((value ^= std::hash<std::decay_t<decltype(fields)>>{}(fields) + 0x9e3779b9U + (value << 6U) +
                      (value >> 2U)),
            ...);
         },
@@ -871,8 +961,8 @@ struct CellKeyHash {
   }
 };
 
-CellKey stateCell(const RoutingRequest&, const Node& node, double cellNm,
-                  double headingTolerance) {
+CellKey stateCell(const RoutingRequest& request, const Node& node, double cellNm,
+                  double headingTolerance, bool preserveContinuation = false) {
   const double latScale = 60.0 / std::max(0.1, cellNm);
   const double lonScale = 60.0 *
                           std::max(0.1, std::cos(node.position.latitude *
@@ -883,17 +973,26 @@ CellKey stateCell(const RoutingRequest&, const Node& node, double cellNm,
               normalizeLongitude(node.position.longitude) * lonScale)),
           static_cast<int>(node.tack), static_cast<int>(node.mode),
           static_cast<int>(std::floor(node.incomingHeading /
-                                      std::max(1.0, headingTolerance)))};
+                                      std::max(1.0, headingTolerance))),
+          preserveContinuation ? static_cast<int>(node.role) : 0,
+          preserveContinuation ? node.sailPlan : 0,
+          preserveContinuation ? node.profileIdentity : std::string{},
+          preserveContinuation && node.mode != PropulsionMode::Sail
+              ? std::max<std::int64_t>(0,
+                    (request.vessel.propulsion.minimumMotorRun-node.modeDuration).count())
+              : 0,
+          preserveContinuation && node.departureEgressActive};
 }
 
 std::vector<Node> pruneLayer(const RoutingRequest& request,
                              const RoutingEnvironment& environment,
                              std::vector<Node> candidates, unsigned labelCap,
-                             RoutingDiagnostics& diagnostics) {
+                             RoutingDiagnostics& diagnostics, Context& context) {
   std::unordered_map<CellKey, std::vector<Node>, CellKeyHash> cells;
   for (auto& candidate : candidates)
     cells[stateCell(request, candidate, request.options.spatialCellNm,
-                    request.options.dominanceHeadingToleranceDegrees)]
+                    request.options.dominanceHeadingToleranceDegrees,
+                    context.sanity() && context.options.preserveContinuationState)]
         .push_back(std::move(candidate));
   std::vector<Node> retained;
   for (auto& [key, labels] : cells) {
@@ -928,6 +1027,9 @@ std::vector<Node> pruneLayer(const RoutingRequest& request,
                            request.options.epsilonDominance;
           });
       if (dominated) {
+        if (context.options.detailedTrace)
+          context.emit("prune", "cell_deferred", "cell resources/cost; lineage rescue remains possible",
+              label.position, label.time, diagnostics, label.predecessor);
         ++diagnostics.pruned.dominated;
         // A locally cheaper state can become a dead end after a later wind,
         // tide, tack or coastal constraint. Preserve one bounded alternative
@@ -943,8 +1045,12 @@ std::vector<Node> pruneLayer(const RoutingRequest& request,
       // deterministic spatial/Pareto pruning, but before it can enter a
       // frontier.  Existing safe labels are the only labels allowed to
       // dominate here, so an unsafe candidate can never hide a safe one.
-      if (nodeMotionForbidden(request, environment, label, diagnostics))
+      if (nodeMotionForbidden(request, environment, label, diagnostics, &context)) {
+        if (context.options.detailedTrace)
+          context.emit("prune", "motion_rejected", "incoming motion constraint",
+              label.position,label.time,diagnostics,label.predecessor);
         continue;
+      }
       pareto.push_back(std::move(label));
     }
     if (pareto.size() < labelCap && !lineageAlternatives.empty()) {
@@ -955,13 +1061,17 @@ std::vector<Node> pruneLayer(const RoutingRequest& request,
         if (pareto.size() >= labelCap) break;
         if (representedPredecessors.contains(alternative.predecessor))
           continue;
-        if (nodeMotionForbidden(request, environment, alternative, diagnostics))
+        if (nodeMotionForbidden(request, environment, alternative, diagnostics, &context))
           continue;
         representedPredecessors.insert(alternative.predecessor);
         pareto.push_back(std::move(alternative));
       }
     }
     if (pareto.size() > labelCap) {
+      if (context.options.detailedTrace)
+        for (std::size_t i=labelCap;i<pareto.size();++i)
+          context.emit("prune","cell_cap_excluded","cell label work cap",
+              pareto[i].position,pareto[i].time,diagnostics,pareto[i].predecessor);
       diagnostics.pruned.cellLabelCap += pareto.size() - labelCap;
       pareto.resize(labelCap);
     }
@@ -1002,6 +1112,7 @@ std::vector<Node> pruneLayer(const RoutingRequest& request,
           .push_back(std::move(node));
     }
     std::vector<Node> balanced;
+    std::map<Sector,std::size_t> kept;
     balanced.reserve(frontierCap);
     for (std::size_t rank = 0; balanced.size() < frontierCap; ++rank) {
       bool added = false;
@@ -1009,12 +1120,18 @@ std::vector<Node> pruneLayer(const RoutingRequest& request,
         (void)key;
         if (rank < labels.size()) {
           balanced.push_back(std::move(labels[rank]));
+          ++kept[key];
           added = true;
           if (balanced.size() == frontierCap) break;
         }
       }
       if (!added) break;
     }
+    if (context.options.detailedTrace)
+      for (const auto& [key,labels] : sectors)
+        for (std::size_t i=kept[key];i<labels.size();++i)
+          context.emit("prune","sector_cap_excluded","frontier work cap",
+              labels[i].position,labels[i].time,diagnostics,labels[i].predecessor);
     diagnostics.pruned.cellLabelCap += retained.size() - balanced.size();
     retained = std::move(balanced);
     std::stable_sort(
@@ -1176,8 +1293,10 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
                               std::uint64_t endpointGeneratedStateCeiling,
                               std::uint64_t forwardGeneratedStateCeiling,
                               std::uint64_t arrivalGeneratedStateReserve,
-                              RoutingDiagnostics& diagnostics) {
+                              RoutingDiagnostics& diagnostics, Context& context) {
+  context.attempt=attempt;
   SearchArtifacts result;
+  RoutingPreviewPublisher preview(request);
   WorkProgress workerProgress;
   Node initial;
   initial.position = request.start;
@@ -1212,17 +1331,20 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
   // sparse is important: every survivor otherwise incurs an authoritative
   // chart/depth query before ordinary layer pruning can reject it.
   const double focusedCorridorWidthNm =
-      focusedCorridorCoreWidthNm * 1.5;
+      context.sanity() && context.diagnostics.useMotionFringe
+          ? focusedCorridorCoreWidthNm : focusedCorridorCoreWidthNm * 1.5;
   constexpr std::size_t kDetourFringeCandidatesPerSide = 128;
   const bool focusForwardBeforeGraphRecovery =
       request.options.useGraphFallback &&
+      (!context.sanity() || context.options.focusForwardCorridor) &&
       std::isfinite(focusedCorridorWidthNm) && focusedCorridorWidthNm > 0.0;
   if (focusForwardBeforeGraphRecovery) {
     diagnostics.stageStopReasons.push_back(
         "forward isochrone focused corridor: full core " +
         graphCorridorDescription(focusedCorridorCoreWidthNm) +
-        ", sparse detour fringe to " +
-        graphCorridorDescription(focusedCorridorWidthNm) +
+        (context.sanity() && context.diagnostics.useMotionFringe
+            ? ", fringe derived from each layer's integrated lateral motion"
+            : ", sparse detour fringe to " + graphCorridorDescription(focusedCorridorWidthNm)) +
         "; wider states deferred to progressive graph recovery");
   }
   while (!result.retained.empty() &&
@@ -1290,6 +1412,9 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
           layerStep = request.options.minimumTimeStep;
       }
     }
+    if (context.sanity())
+      layerStep=std::min(layerStep,std::chrono::duration_cast<Duration>(
+          deadline-result.nodes[result.retained.front()].time));
     // Inspect the retained layer for complete connections before spending
     // any more of its generated-state budget. Otherwise a later, incomplete
     // predecessor can exhaust that budget and discard an already found
@@ -1306,7 +1431,7 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
         if (auto direct = directConnection(
                 request, environment, performance, from,
                 directConnectionWindow(request, from, layerStep * 2),
-                diagnostics)) {
+                diagnostics, context.sanity() && context.options.refineBoundedConnections)) {
           direct->predecessor = index;
           directCandidates.push_back(std::move(*direct));
           if (directCandidates.size() >= kMaximumDirectCandidates) break;
@@ -1360,7 +1485,8 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
           continue;
         auto direct = directConnection(
             request, environment, performance, from,
-            directConnectionWindow(request, from, layerStep * 2), diagnostics);
+            directConnectionWindow(request, from, layerStep * 2), diagnostics,
+            context.sanity() && context.options.refineBoundedConnections);
         if (!direct) continue;
         if (result.nodes.size() >= request.limits.maximumRetainedStates ||
             request.limits.maximumRetainedStates - result.nodes.size() <
@@ -1427,6 +1553,7 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
       const std::size_t candidatesBefore = candidates.size();
       const double bearing =
           initialBearingDegrees(from.position, request.destination);
+      std::optional<ResolvedEnvironment> fanWeather;
       for (double heading :
            headings(layerHeadingStep, bearing, request.options.adaptiveHeadings,
                     request.options.refinedHeadingStepDegrees,
@@ -1444,7 +1571,8 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
                 : std::chrono::minutes{15}};
         for (auto& next : propagate(request, environment, performance, from,
                                     heading, layerStep, diagnostics,
-                                    integrationSlice, &dataFailure)) {
+                                    integrationSlice, &dataFailure,
+                                    context.sanity()?&fanWeather:nullptr, &context)) {
           const std::uint64_t ordinaryForwardGenerated =
               diagnostics.generatedStates -
               diagnostics.coastalEndpointGeneratedStates;
@@ -1517,6 +1645,19 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
       }
     }
     if (focusForwardBeforeGraphRecovery) {
+      double layerCorridorWidthNm = focusedCorridorWidthNm;
+      if (context.sanity() && context.diagnostics.useMotionFringe) {
+        double lateralMotionNm = 0;
+        for (const auto& candidate : candidates) {
+          const double before = crossTrackDistanceNm(request.start, request.destination,
+              result.nodes[candidate.predecessor].position);
+          const double after = crossTrackDistanceNm(request.start, request.destination,
+              candidate.position);
+          if (std::isfinite(before) && std::isfinite(after))
+            lateralMotionNm = std::max(lateralMotionNm, std::abs(after-before));
+        }
+        layerCorridorWidthNm += lateralMotionNm;
+      }
       std::vector<Node> coreCandidates;
       std::vector<Node> portFringeCandidates;
       std::vector<Node> starboardFringeCandidates;
@@ -1524,12 +1665,24 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
       for (auto& candidate : candidates) {
         const double crossTrack = crossTrackDistanceNm(
             request.start, request.destination, candidate.position);
+        // Record the actual weather/polar/current motion footprint before the
+        // corridor discards it. This is a search hint, not a claim of chart
+        // clearance: retained labels and delivered routes still need the
+        // authoritative segment/depth checks and chronological replay.
+        if (context.sanity() && context.options.adaptiveCorridor &&
+            std::isfinite(crossTrack) &&
+            std::abs(crossTrack) > layerCorridorWidthNm)
+          context.diagnostics.deferredCrossTrackNm = std::max(
+              context.diagnostics.deferredCrossTrackNm, std::abs(crossTrack));
         if (std::abs(crossTrack) <= focusedCorridorCoreWidthNm) {
           coreCandidates.push_back(std::move(candidate));
-        } else if (std::abs(crossTrack) <= focusedCorridorWidthNm) {
+        } else if (std::abs(crossTrack) <= layerCorridorWidthNm) {
           (crossTrack < 0.0 ? portFringeCandidates
                             : starboardFringeCandidates)
               .push_back(std::move(candidate));
+        } else if (context.options.detailedTrace) {
+          context.emit("prune","corridor_excluded","outside forward envelope",
+              candidate.position,candidate.time,diagnostics,candidate.predecessor);
         }
       }
       const auto retainBestFringe = [&](std::vector<Node>& fringe) {
@@ -1544,8 +1697,42 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
                                                  request.destination),
                                       stateCost(request, b), b.predecessor};
                          });
-        if (fringe.size() > kDetourFringeCandidatesPerSide)
+        if (context.sanity() && context.options.refillSafeFringe) {
+          std::vector<Node> safe;
+          safe.reserve(std::min(fringe.size(), kDetourFringeCandidatesPerSide));
+          for (auto& candidate : fringe) {
+            ++context.diagnostics.fringeChecked;
+            if (nodeMotionForbidden(request, environment, candidate, diagnostics, &context)) {
+              ++context.diagnostics.fringeRejected;
+              if (context.options.detailedTrace)
+                context.emit("forward", "fringe_reject", "motion constraint",
+                    candidate.position, candidate.time, diagnostics, candidate.predecessor);
+              continue;
+            }
+            safe.push_back(std::move(candidate));
+            if (safe.size() == kDetourFringeCandidatesPerSide) break;
+          }
+          fringe = std::move(safe);
+        } else if (fringe.size() > kDetourFringeCandidatesPerSide) {
+          if (context.options.detailedTrace)
+            for (std::size_t i=kDetourFringeCandidatesPerSide;i<fringe.size();++i)
+              context.emit("prune","fringe_quota_excluded","fringe work cap before motion check",
+                  fringe[i].position,fringe[i].time,diagnostics,fringe[i].predecessor);
+          // The fringe quota is also a geometric exclusion, even when the
+          // candidate lies inside the nominal envelope. Preserve its motion
+          // footprint for an independent restart; do not pay for a chart
+          // query simply to learn where capped alternatives were dropped.
+          if (context.sanity() && context.options.adaptiveCorridor) {
+            for (std::size_t i=kDetourFringeCandidatesPerSide;i<fringe.size();++i) {
+              const double extent=std::abs(crossTrackDistanceNm(request.start,
+                  request.destination,fringe[i].position));
+              if (std::isfinite(extent))
+                context.diagnostics.deferredCrossTrackNm=std::max(
+                    context.diagnostics.deferredCrossTrackNm,extent);
+            }
+          }
           fringe.resize(kDetourFringeCandidatesPerSide);
+        }
       };
       retainBestFringe(portFringeCandidates);
       retainBestFringe(starboardFringeCandidates);
@@ -1563,7 +1750,7 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
       diagnostics.pruned.outsideCorridor += before - candidates.size();
     }
     auto retainedNodes = pruneLayer(request, environment, std::move(candidates),
-                                    labelCap, diagnostics);
+                                    labelCap, diagnostics, context);
     // A long offshore step can leave a perfectly usable coastal frontier with
     // every heading rejected: each chord cuts the same headland or island even
     // though shorter motions can follow the water around either side. Treat
@@ -1588,6 +1775,7 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
         const Node& from = result.nodes[index];
         const double bearing =
             initialBearingDegrees(from.position, request.destination);
+        std::optional<ResolvedEnvironment> fanWeather;
         for (double heading : headings(
                  request.options.refinedHeadingStepDegrees, bearing,
                  request.options.adaptiveHeadings,
@@ -1600,7 +1788,8 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
           for (auto& next : propagate(
                    request, environment, performance, from, heading,
                    request.options.minimumTimeStep, diagnostics,
-                   Duration{std::chrono::minutes{5}}, &dataFailure)) {
+                   Duration{std::chrono::minutes{5}}, &dataFailure,
+                   context.sanity()?&fanWeather:nullptr, &context)) {
             const std::uint64_t ordinaryForwardGenerated =
                 diagnostics.generatedStates -
                 diagnostics.coastalEndpointGeneratedStates;
@@ -1629,7 +1818,7 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
       if (!landGuidedCandidates.empty()) {
         retainedNodes = pruneLayer(request, environment,
                                    std::move(landGuidedCandidates), labelCap,
-                                   diagnostics);
+                                   diagnostics, context);
         if (!retainedNodes.empty()) {
           ++diagnostics.landGuidedRecoveryLayers;
           ++landGuidedLayersThisSearch;
@@ -1677,10 +1866,16 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
       result.nodes.push_back(std::move(node));
       result.retained.push_back(result.nodes.size() - 1);
       ++diagnostics.retainedStates;
+      if (context.options.detailedTrace)
+        context.emit("forward", "retain", "frontier label",
+            result.nodes.back().position, result.nodes.back().time, diagnostics,
+            result.nodes.back().predecessor, result.nodes.size()-1);
     }
     if (!result.retained.empty())
       result.isochrones.push_back(buildIsochroneLayer(
           request, environment, result.nodes, result.retained, headingStep));
+    if (!result.isochrones.empty())
+      preview.publish([&] { return PreviewFromLayer(result.isochrones.back()); });
     if (!result.retained.empty()) {
       constexpr std::size_t kRecoveryFrontierHistory = 8;
       result.recoveryFrontiers.push_back(result.retained);
@@ -1757,6 +1952,10 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
         }
       }
     }
+    context.emit("forward", "layer", std::to_string(layer),
+        result.retained.empty() ? request.start : result.nodes[result.retained.front()].position,
+        result.retained.empty() ? request.departure : result.nodes[result.retained.front()].time,
+        diagnostics);
     ++layer;
     if (!allowCompletion && (diagnostics.closestApproachNm <=
                                  request.options.destinationToleranceNm * 3.0 ||
@@ -1791,6 +1990,36 @@ std::vector<RouteLeg> reconstruct(const SearchArtifacts& search,
   return reversed;
 }
 
+void captureSearchPartials(const RoutingRequest& request,
+                          const SearchArtifacts& search, const std::string& stage,
+                          PartialRoutePhase phase) {
+  if (!request.partials || request.cancellation.cancelled()) return;
+  for (const auto& node : search.nodes) {
+    if (node.predecessor == std::numeric_limits<std::size_t>::max()) continue;
+    const auto index = static_cast<std::size_t>(&node - search.nodes.data());
+    request.partials->offer(node.position, node.time,
+        stage + " / " + std::to_string(request.options.routingEffortPercent) + "%", [&] {
+          std::vector<RouteLeg> legs;
+          std::size_t bytes = sizeof(PartialRouteTrace);
+          for (auto i = index; i != std::numeric_limits<std::size_t>::max();) {
+            const auto& n = search.nodes[i];
+            if (n.predecessor == std::numeric_limits<std::size_t>::max()) break;
+            // Bound the transient copy too. The existing arena remains the
+            // solver's responsibility; optional retention cannot duplicate it.
+            bytes += sizeof(RouteLeg) + n.incomingLeg.profileIdentity.capacity();
+            for (const auto* source : {&n.incomingLeg.windSource, &n.incomingLeg.currentSource,
+                                      &n.incomingLeg.waveSource, &n.incomingLeg.waves.metadata})
+              bytes += source->datasetIdentity.capacity() + source->modelIdentity.capacity() + source->fallbackReason.capacity();
+            if (bytes > request.partials->byteBudget()) return PartialRouteTrace{};
+            legs.push_back(n.incomingLeg);
+            i = n.predecessor;
+          }
+          std::reverse(legs.begin(), legs.end());
+          return FreezePartialLegs(std::move(legs));
+        }, phase);
+  }
+}
+
 std::vector<std::size_t> reconstructNodeIndices(const SearchArtifacts& search,
                                                 std::size_t solution) {
   std::vector<std::size_t> reversed;
@@ -1812,7 +2041,8 @@ std::vector<std::size_t> diverseFrontierRecoveryCandidates(
 std::optional<std::pair<SearchArtifacts, std::size_t>> reverseRecovery(
     const RoutingRequest& request, const RoutingEnvironment& environment,
     const VesselPerformanceModel& performance, SearchArtifacts search,
-    RoutingDiagnostics& diagnostics) {
+    RoutingDiagnostics& diagnostics, Context& context) {
+  RoutingPreviewPublisher preview(request);
   diagnostics.stagesAttempted.push_back(SolverPath::ReverseRecovery);
   ++diagnostics.reverseLayers;
   const std::uint64_t configuredCandidateLimit =
@@ -1895,9 +2125,60 @@ std::optional<std::pair<SearchArtifacts, std::size_t>> reverseRecovery(
       approaches.push_back(point);
     }
   }
+  // Replay a seed only when it produces a complete bridge. An invalid
+  // chronological prefix invalidates all bridges from that seed, but must
+  // not terminate recovery from the remaining independent lineages.
+  std::map<std::size_t, bool> validPrefixes;
+  const auto prefixValid = [&](std::size_t index) {
+    if (!context.sanity()) return true;
+    if (const auto it=validPrefixes.find(index); it!=validPrefixes.end())
+      return it->second;
+    const auto validation=RouteValidator{}.validatePrefix(request, environment,
+        performance, reconstruct(search,index), &diagnostics);
+    diagnostics.validationSamples+=validation.samples;
+    validPrefixes[index]=validation.passed;
+    if (!validation.passed) {
+      ++context.diagnostics.reversePrefixRejections;
+      context.emit("reverse", "reject-prefix", validation.failureReason,
+          search.nodes[index].position, search.nodes[index].time, diagnostics,
+          search.nodes[index].predecessor, index);
+    }
+    return validation.passed;
+  };
+  const auto bridgeValid = [&](std::size_t solution) {
+    if (!context.sanity()) return true;
+    const auto validation=RouteValidator{}.validate(request, environment,
+        performance, reconstruct(search,solution), &diagnostics);
+    diagnostics.validationSamples+=validation.samples;
+    if (!validation.passed)
+      context.emit("reverse", "reject-bridge", validation.failureReason,
+          search.nodes[solution].position, search.nodes[solution].time,
+          diagnostics, search.nodes[solution].predecessor, solution);
+    return validation.passed;
+  };
+  const auto bridgeWindow = [&](const Node& from) {
+    if (!context.sanity()) return request.options.reverseHorizon;
+    return std::min(request.options.reverseHorizon,
+        std::max(Duration::zero(),std::chrono::duration_cast<Duration>(
+            request.departure+request.limits.maximumRouteDuration-from.time)));
+  };
   for (std::size_t index : candidates) {
     if (request.cancellation.cancelled()) return {};
+    if (context.sanity() && bridgeWindow(search.nodes[index])<=Duration::zero())continue;
     if (bridgeBudgetExhausted()) return {};
+    preview.publish([&] {
+      RoutingPreview view;
+      view.stage = RoutingProgressStage::ReverseRecovery;
+      view.time = search.nodes[index].time;
+      view.frontier.push_back(search.nodes[index].position);
+      for (auto id = index; id != std::numeric_limits<std::size_t>::max() && view.path.size() < RoutingPreviewPublisher::maximumPathPoints; id = search.nodes[id].predecessor)
+        view.path.push_back(search.nodes[id].position);
+      std::reverse(view.path.begin(), view.path.end());
+      return view;
+    });
+    context.emit("reverse", "seed", "destination approach bridge",
+        search.nodes[index].position, search.nodes[index].time, diagnostics,
+        search.nodes[index].predecessor, index);
     ++diagnostics.reverseNodes;
     if ((diagnostics.reverseNodes & 63U) == 0U)
       reportProgress(request, RoutingProgressStage::ReverseRecovery,
@@ -1905,11 +2186,14 @@ std::optional<std::pair<SearchArtifacts, std::size_t>> reverseRecovery(
     ++diagnostics.reverseCandidateBridges;
     if (auto bridge = directConnection(
             request, environment, performance, search.nodes[index],
-            request.options.reverseHorizon, diagnostics)) {
+            bridgeWindow(search.nodes[index]), diagnostics,
+            context.sanity() && context.options.refineBoundedConnections)) {
+      if (!prefixValid(index)) continue;
       bridge->predecessor = index;
       search.nodes.push_back(std::move(*bridge));
       const std::size_t solution = search.nodes.size() - 1;
-      return std::pair{std::move(search), solution};
+      if (bridgeValid(solution)) return std::pair{std::move(search), solution};
+      search.nodes.pop_back();
     }
     ++diagnostics.reverseRejectedBridges;
     diagnostics.reverseRejectionReasons.push_back(
@@ -1942,25 +2226,29 @@ std::optional<std::pair<SearchArtifacts, std::size_t>> reverseRecovery(
       approachRequest.destination = approach;
       auto first = directConnection(
           approachRequest, environment, performance, search.nodes[index],
-          request.options.reverseHorizon, diagnostics);
+          bridgeWindow(search.nodes[index]), diagnostics,
+          context.sanity() && context.options.refineBoundedConnections);
       if (!first) {
         ++diagnostics.reverseRejectedBridges;
         continue;
       }
       auto second =
           directConnection(request, environment, performance, *first,
-                           request.options.reverseHorizon, diagnostics);
+                           bridgeWindow(*first), diagnostics,
+                           context.sanity() && context.options.refineBoundedConnections);
       if (!second) {
         ++diagnostics.reverseRejectedBridges;
         continue;
       }
+      if (!prefixValid(index)) break;
       first->predecessor = index;
       const std::size_t firstIndex = search.nodes.size();
       second->predecessor = firstIndex;
       search.nodes.push_back(std::move(*first));
       search.nodes.push_back(std::move(*second));
       const std::size_t solution = search.nodes.size() - 1;
-      return std::pair{std::move(search), solution};
+      if (bridgeValid(solution)) return std::pair{std::move(search), solution};
+      search.nodes.resize(firstIndex);
     }
   }
   diagnostics.stageStopReasons.push_back(
@@ -2107,7 +2395,7 @@ SearchArtifacts graphSearch(const RoutingRequest& request,
                             std::uint64_t generatedStateBudget,
                             std::uint64_t graphLabelBudget,
                             GraphSearchKind kind,
-                            RoutingDiagnostics& diagnostics) {
+                            RoutingDiagnostics& diagnostics, Context& context) {
   generatedStateBudget = std::min(
       generatedStateBudget,
       request.limits.maximumGeneratedStates -
@@ -2115,6 +2403,10 @@ SearchArtifacts graphSearch(const RoutingRequest& request,
                    diagnostics.generatedStates));
   SearchArtifacts result;
   WorkProgress workerProgress;
+  const bool improveGoals = context.sanity() &&
+      (request.objective.kind == ObjectiveKind::Fastest ||
+       request.objective.kind == ObjectiveKind::FastestUnderSafetyLimits ||
+       request.objective.kind == ObjectiveKind::RobustFastest);
   const bool frontierRecovery = kind == GraphSearchKind::FrontierRecovery;
   const std::string stageName =
       frontierRecovery ? "frontier recovery" : "graph fallback";
@@ -2236,7 +2528,8 @@ SearchArtifacts graphSearch(const RoutingRequest& request,
               .count() /
           std::max<std::int64_t>(1, step.count());
       labels[{stateCell(request, node, request.options.spatialCellNm / 2.0,
-                        request.options.dominanceHeadingToleranceDegrees),
+                        request.options.dominanceHeadingToleranceDegrees,
+                        context.sanity() && context.options.preserveContinuationState),
               elapsedBucket, static_cast<int>(node.role)}]
           .push_back(index);
       ++diagnostics.graphLabels;
@@ -2273,7 +2566,8 @@ SearchArtifacts graphSearch(const RoutingRequest& request,
         std::max<std::int64_t>(1, step.count());
     return GraphLabelKey{
         stateCell(request, node, request.options.spatialCellNm / 2.0,
-                  request.options.dominanceHeadingToleranceDegrees),
+                  request.options.dominanceHeadingToleranceDegrees,
+                  context.sanity() && context.options.preserveContinuationState),
         elapsedBucket, static_cast<int>(node.role)};
   };
   const auto outsideActiveCorridor = [&](const Node& node) {
@@ -2337,7 +2631,7 @@ SearchArtifacts graphSearch(const RoutingRequest& request,
     // Deferred labels have not yet incurred any expensive chart query.
     // Perform the complete constraint and chart-safety check only when their
     // corridor stage becomes active.
-    if (nodeMotionForbidden(request, environment, next, diagnostics)) return;
+    if (nodeMotionForbidden(request, environment, next, diagnostics, &context)) return;
     if (graphLabelsThisSearch >= graphLabelBudget) {
       graphLabelLimitReached = true;
       return;
@@ -2436,7 +2730,36 @@ SearchArtifacts graphSearch(const RoutingRequest& request,
     return true;
   };
 
+  RoutingPreviewPublisher graphPreview(request);
+  std::uint64_t graphPreviewChecks = 0;
   while (true) {
+    if (request.cancellation.cancelled()) {
+      result.solution.reset();
+      result.failure = RoutingStatus::Cancelled;
+      result.reason = "routing cancelled";
+      return result;
+    }
+    if (improveGoals && result.solution &&
+        (open.empty() || open.top().priority >= stateCost(request, result.nodes[*result.solution]))) {
+      const auto bestCost = stateCost(request, result.nodes[*result.solution]);
+      bool deferredCanImprove = false;
+      for (const auto& [key, values] : deferredLabels) {
+        (void)key;
+        for (const auto& value : values)
+          if (stateCost(request, value) < bestCost) { deferredCanImprove = true; break; }
+        if (deferredCanImprove) break;
+      }
+      if ((open.empty() || open.top().priority >= bestCost) && !deferredCanImprove) {
+        ++context.diagnostics.graphBoundStops;
+        context.emit(stageName, "finish", "remaining cost bound", request.destination,
+            result.nodes[*result.solution].time, diagnostics);
+        return result;
+      }
+      if (deferredCanImprove && (open.empty() || open.top().priority >= bestCost)) {
+        if (!widenCorridor()) return result;
+        continue;
+      }
+    }
     if (corridorStage + 1 < corridorWidths.size() &&
         deferredLabelCount > 0 &&
         (diagnostics.generatedStates >= stageGeneratedStateCeiling() ||
@@ -2463,13 +2786,31 @@ SearchArtifacts graphSearch(const RoutingRequest& request,
       continue;
     }
     if (request.cancellation.cancelled()) {
+      result.solution.reset();
       result.failure = RoutingStatus::Cancelled;
       result.reason = "routing cancelled";
       return result;
     }
+    if ((graphPreviewChecks++ & 255U) == 0U && !open.empty()) {
+      graphPreview.publish([&] {
+        RoutingPreview view;
+        view.stage = progressStage;
+        auto id = open.top().node;
+        view.time = result.nodes[id].time;
+        view.frontier.push_back(result.nodes[id].position);
+        while (id != std::numeric_limits<std::size_t>::max() && view.path.size() < RoutingPreviewPublisher::maximumPathPoints) {
+          view.path.push_back(result.nodes[id].position);
+          id = result.nodes[id].predecessor;
+        }
+        std::reverse(view.path.begin(), view.path.end());
+        return view;
+      });
+    }
     const QueueEntry entry = open.top();
     open.pop();
     const Node from = result.nodes[entry.node];
+    const auto routeDeadline=request.departure+request.limits.maximumRouteDuration;
+    if (context.sanity() && from.time>routeDeadline)continue;
     if (localGraphDeadline && from.time >= *localGraphDeadline) continue;
     const double remaining = distanceNm(from.position, request.destination);
     if (remaining < closestExpandedNm) {
@@ -2487,8 +2828,11 @@ SearchArtifacts graphSearch(const RoutingRequest& request,
                                     reconstruct(result, entry.node), nullptr);
       diagnostics.validationSamples += validation.samples;
       if (validation.passed) {
-        result.solution = entry.node;
-        return result;
+        if (!result.solution || stateCost(request, from) <
+                                stateCost(request, result.nodes[*result.solution]))
+          result.solution = entry.node;
+        if (!improveGoals) return result;
+        continue;
       }
       diagnostics.stageStopReasons.push_back(
           "destination-zone graph candidate rejected by independent forward "
@@ -2500,12 +2844,14 @@ SearchArtifacts graphSearch(const RoutingRequest& request,
       // allowing one bad prefix to consume the graph budget repeatedly.
       continue;
     }
+    if (context.sanity() && from.time>=routeDeadline)continue;
     if (remaining <=
         std::max(request.options.destinationToleranceNm,
                  static_cast<double>(step.count()) / 3600.0 * 20.0)) {
       if (auto direct = directConnection(
               request, environment, performance, from,
-              directConnectionWindow(request, from, step * 3), diagnostics)) {
+              directConnectionWindow(request, from, step * 3), diagnostics,
+              context.sanity() && context.options.refineBoundedConnections)) {
         if (graphLabelsThisSearch >= graphLabelBudget) {
           result.failure = RoutingStatus::ResourceLimitReached;
           result.reason = "maximum graph labels reached";
@@ -2523,22 +2869,32 @@ SearchArtifacts graphSearch(const RoutingRequest& request,
                                       reconstruct(result, candidate), nullptr);
         diagnostics.validationSamples += validation.samples;
         if (validation.passed) {
-          result.solution = candidate;
-          return result;
+          if (!result.solution || stateCost(request, result.nodes[candidate]) <
+                                  stateCost(request, result.nodes[*result.solution])) {
+            result.solution = candidate;
+            ++context.diagnostics.graphGoalUpdates;
+            context.emit(stageName, "incumbent", "validated goal connection",
+                request.destination, result.nodes[candidate].time, diagnostics,
+                entry.node, candidate);
+          }
+          if (!improveGoals) return result;
         }
-        diagnostics.stageStopReasons.push_back(
+        if (!validation.passed) diagnostics.stageStopReasons.push_back(
             "graph candidate rejected by independent forward replay: " +
             validation.failureReason);
       }
     }
     const double bearing =
         initialBearingDegrees(from.position, request.destination);
-    const Duration expansionStep =
+    Duration expansionStep =
         request.options.adaptiveTimeStep &&
                 remaining <= std::max(10.0, request.options.spatialCellNm * 5.0)
             ? request.options.minimumTimeStep
             : step;
+    if (context.sanity())
+      expansionStep=std::min(expansionStep,std::chrono::duration_cast<Duration>(routeDeadline-from.time));
     bool movementGenerated = false;
+    std::optional<ResolvedEnvironment> fanWeather;
     for (double heading :
          headings(request.options.graphHeadingStepDegrees, bearing, true,
                   request.options.graphHeadingStepDegrees / 2.0,
@@ -2553,7 +2909,8 @@ SearchArtifacts graphSearch(const RoutingRequest& request,
       workerProgress.tick(request, progressStage, diagnostics);
       auto propagated = propagate(
           request, environment, performance, from, heading, expansionStep,
-          diagnostics, Duration{std::chrono::minutes{15}}, &dataFailure);
+          diagnostics, Duration{std::chrono::minutes{15}}, &dataFailure,
+          context.sanity()?&fanWeather:nullptr, &context);
       for (auto& next : propagated) {
         if (diagnostics.generatedStates >= graphGeneratedStateLimit) {
           result.failure = RoutingStatus::ResourceLimitReached;
@@ -2703,6 +3060,7 @@ RoutingStatus preflightStatus(const RoutingPreflightResult& preflight) {
   return RoutingStatus::InvalidVesselConfiguration;
 }
 }  // namespace
+
 
 namespace internal {
 namespace {
@@ -2897,175 +3255,16 @@ void summariseDeliveredRoute(RoutingResult& result) {
   calculateResultSummaries(result);
 }
 
-RoutingResult ProfessionalEngine::route(
-    const RoutingRequest& request,
-    const RoutingEnvironment& environment) const {
-  return route(request, environment, nullptr);
-}
-
-RoutingResult ProfessionalEngine::route(
-    const RoutingRequest& request, const RoutingEnvironment& environment,
-    const RoutingResult* quickIncumbent) const {
-  const bool quickComplete =
-      quickIncumbent &&
-      (quickIncumbent->status == RoutingStatus::Complete ||
-       quickIncumbent->status == RoutingStatus::CompleteUsingReverseRecovery ||
-       quickIncumbent->status == RoutingStatus::CompleteUsingFrontierRecovery ||
-       quickIncumbent->status == RoutingStatus::CompleteUsingGraphFallback) &&
-      quickIncumbent->validation.passed && !quickIncumbent->legs.empty() &&
-      quickIncumbent->legs.front().startTime == request.departure &&
-      distanceNm(quickIncumbent->legs.front().start, request.start) < 0.05 &&
-      distanceNm(quickIncumbent->legs.back().end, request.destination) < 0.05;
-
-  RoutingRequest adaptive = request;
-  const double passageNm = distanceNm(request.start, request.destination);
-  double bestGainKnots = 0.0;
-  double selectedOffsetNm = 0.0;
-  unsigned selectedSamples = 0;
-  // This tiny weather survey estimates velocity made good along plausible
-  // offshore lanes before the expensive forward fan starts. It is evidence
-  // for search ordering only: every resulting motion and route still passes
-  // Professional's ordinary constraints and independent replay.
-  const bool fastestObjective =
-      request.objective.kind == ObjectiveKind::Fastest ||
-      request.objective.kind == ObjectiveKind::FastestUnderSafetyLimits ||
-      request.objective.kind == ObjectiveKind::RobustFastest;
-  if (passageNm >= 400.0 && fastestObjective && environment.grib) {
-    PolarPerformanceModel fallbackPerformance(request.vessel);
-    const VesselPerformanceModel& performance = environment.performance
-        ? *environment.performance : fallbackPerformance;
-    const double directBearing =
-        initialBearingDegrees(request.start, request.destination);
-    const std::array<double, 3> fractions{0.2, 0.5, 0.8};
-    const auto score = [&](GeoPoint point, TimePoint time) {
-      const WindSample wind = environment.grib->wind(point, time);
-      if (!wind.available) return std::numeric_limits<double>::quiet_NaN();
-      const WaveSample waves = request.environment.useWaves
-          ? environment.grib->waves(point, time) : WaveSample{};
-      const double bearing = initialBearingDegrees(point, request.destination);
-      const double windKnots = vectorMagnitudeKnots(wind.velocity);
-      double best = -std::numeric_limits<double>::infinity();
-      const int surveyAngle = std::clamp(
-          static_cast<int>(std::floor(
-              request.options.maximumSearchAngleDegrees)), 0, 90);
-      for (int angle = -surveyAngle; angle <= surveyAngle; angle += 15) {
-        const double heading = normalizeHeading(bearing + angle);
-        const double twa = trueWindAngleDegrees(wind.velocity, heading);
-        for (const PerformanceCandidate& candidate :
-             performance.candidatesAt(point, time, windKnots, twa, waves,
-                                      PropulsionMode::Sail, Duration{})) {
-          if (candidate.valid && candidate.speedThroughWaterKnots > 0.0)
-            best = std::max(best, candidate.speedThroughWaterKnots *
-                std::cos(angle * std::numbers::pi / 180.0));
-        }
-      }
-      return std::isfinite(best) ? best
-          : std::numeric_limits<double>::quiet_NaN();
-    };
-    std::array<GeoPoint, 3> centerPoints;
-    std::array<TimePoint, 3> times;
-    std::array<double, 3> centerScores;
-    for (std::size_t i = 0; i < fractions.size(); ++i) {
-      centerPoints[i] = destinationPoint(
-          request.start, directBearing, passageNm * fractions[i]);
-      times[i] = request.departure + Duration{static_cast<std::int64_t>(
-          std::llround(passageNm * fractions[i] / 5.0 * 3600.0))};
-      centerScores[i] = score(centerPoints[i], times[i]);
-    }
-    for (double offsetNm : {80.0, 160.0}) {
-      for (double side : {-1.0, 1.0}) {
-        double gain = 0.0;
-        double center = 0.0;
-        unsigned samples = 0;
-        for (std::size_t i = 0; i < fractions.size(); ++i) {
-          if (!std::isfinite(centerScores[i])) continue;
-          const GeoPoint lane = destinationPoint(
-              centerPoints[i], directBearing + side * 90.0, offsetNm);
-          const double laneScore = score(lane, times[i]);
-          if (!std::isfinite(laneScore)) continue;
-          gain += laneScore - centerScores[i];
-          center += centerScores[i];
-          ++samples;
-        }
-        if (samples < 2) continue;
-        const double meanGain = gain / samples;
-        const double meanCenter = center / samples;
-        if (meanGain >= std::max(0.4, meanCenter * 0.08) &&
-            meanGain > bestGainKnots) {
-          bestGainKnots = meanGain;
-          selectedOffsetNm = offsetNm;
-          selectedSamples = samples;
-        }
-      }
-    }
-    if (selectedOffsetNm > 0.0) {
-      // The sparse fringe reaches the surveyed lane without retaining its
-      // entire width on every layer. A full-width Pacific trial added over
-      // two million shoreline checks for less than four minutes' passage gain.
-      const double suggestedCoreNm = std::ceil(
-          (selectedOffsetNm + 5.0) / 15.0) * 10.0;
-      adaptive.options.graphCorridorWidthNm = std::max(
-          adaptive.options.graphCorridorWidthNm,
-          std::min(180.0, suggestedCoreNm));
-    }
-  }
-  // A Quick incumbent guarantees a valid result. Spend only the first
-  // Professional tier trying to improve it; reserve the full requested
-  // recovery ladder for passages that Quick could not solve.
-  RoutingResult result = quickComplete
-      ? RoutingEngine{}.routeThroughEffortTier(adaptive, environment, 100)
-      : RoutingEngine{}.route(adaptive, environment);
-  if (result.status == RoutingStatus::Cancelled)
-    return result;
-  std::ostringstream survey;
-  survey << "Professional weather scout: passage_nm=" << passageNm
-         << " lane_offset_nm=" << selectedOffsetNm
-         << " mean_vmg_gain_kn=" << bestGainKnots
-         << " samples=" << selectedSamples
-         << " initial_core_nm=" << adaptive.options.graphCorridorWidthNm;
-  const bool professionalComplete =
-      (result.status == RoutingStatus::Complete ||
-       result.status == RoutingStatus::CompleteUsingReverseRecovery ||
-       result.status == RoutingStatus::CompleteUsingFrontierRecovery ||
-       result.status == RoutingStatus::CompleteUsingGraphFallback) &&
-      result.validation.passed;
-  const bool selectQuick = quickComplete &&
-      (!professionalComplete ||
-       quickIncumbent->metrics.elapsed <= result.metrics.elapsed);
-  std::ostringstream comparison;
-  comparison << "Professional comparison: quick="
-             << (quickIncumbent ? toString(quickIncumbent->status) : "not_run")
-             << " quick_passage_s="
-             << (quickComplete ? quickIncumbent->metrics.elapsed.count() : -1)
-             << " professional=" << toString(result.status)
-             << " professional_passage_s="
-             << (professionalComplete ? result.metrics.elapsed.count() : -1);
-  RoutingResult selected = selectQuick ? *quickIncumbent
-                                       : std::move(result);
-  selected.diagnostics.stageStopReasons.insert(
-      selected.diagnostics.stageStopReasons.begin(), survey.str());
-  selected.diagnostics.stageStopReasons.insert(
-      selected.diagnostics.stageStopReasons.begin(), comparison.str());
-  selected.diagnostics.stageStopReasons.insert(
-      selected.diagnostics.stageStopReasons.begin(),
-      "Professional Quick incumbent: " +
-          std::string(quickComplete ? "validated" : "unavailable") +
-          "; Professional tier cap=" +
-          std::to_string(quickComplete ? 100 :
-              request.options.routingEffortPercent) +
-          "% ; selected=" + (selectQuick ? "Quick" : "Professional"));
-  return selected;
-}
-
-RoutingResult RoutingEngine::route(
+RoutingResult Solver::route(
     const RoutingRequest& request,
     const RoutingEnvironment& environment) const {
   return routeThroughEffortTier(request, environment, 400);
 }
 
-RoutingResult RoutingEngine::routeThroughEffortTier(
+RoutingResult Solver::routeThroughEffortTier(
     const RoutingRequest& request, const RoutingEnvironment& environment,
-    unsigned maximumEffortTier) const {
+    unsigned maximumEffortTier, unsigned minimumEffortTier,
+    std::uint64_t sharedGeneratedBudget) const {
   const auto normalizedEffort = [](unsigned effort) {
     if (effort <= 125) return 100U;
     if (effort <= 175) return 150U;
@@ -3100,10 +3299,15 @@ RoutingResult RoutingEngine::routeThroughEffortTier(
   RoutingResult last;
   for (const unsigned tier : tiers) {
     if (tier > selectedEffort || tier > maximumEffortTier) break;
+    if (tier < minimumEffortTier) continue;
+    if (sharedGeneratedBudget && cumulativeGenerated >= sharedGeneratedBudget) break;
     RoutingRequest tierRequest = request;
     tierRequest.options.routingEffortPercent = tier;
     tierRequest.limits.maximumGeneratedStates =
         scale(request.limits.maximumGeneratedStates, tier);
+    if (sharedGeneratedBudget)
+      tierRequest.limits.maximumGeneratedStates=std::min(
+          tierRequest.limits.maximumGeneratedStates,sharedGeneratedBudget-cumulativeGenerated);
     tierRequest.limits.maximumCoastalEndpointGeneratedStates =
         scale(request.limits.maximumCoastalEndpointGeneratedStates, tier);
     tierRequest.limits.maximumForwardGeneratedStates =
@@ -3125,7 +3329,13 @@ RoutingResult RoutingEngine::routeThroughEffortTier(
     tierRequest.limits.maximumGraphLabels =
         scale(request.limits.maximumGraphLabels, tier);
 
+    context_.effort=tier;context_.attempt=0;
+    context_.emit("effort", "begin", std::to_string(tier), request.start,
+        request.departure, RoutingDiagnostics{});
     last = routeMember(tierRequest, environment);
+    context_.emit("effort", "end", std::to_string(tier) + ":" + toString(last.status),
+        request.destination, last.legs.empty() ? request.departure : last.legs.back().endTime,
+        last.diagnostics);
     attempted.push_back(tier);
     cumulativeGenerated += last.diagnostics.generatedStates;
     last.diagnostics.effortTiersAttempted = attempted;
@@ -3145,7 +3355,7 @@ RoutingResult RoutingEngine::routeThroughEffortTier(
   return last;
 }
 
-RoutingResult RoutingEngine::routeMember(
+RoutingResult Solver::routeMember(
     const RoutingRequest& request,
     const RoutingEnvironment& environment) const {
   RoutingResult result;
@@ -3287,6 +3497,12 @@ RoutingResult RoutingEngine::routeMember(
   const auto acceptCandidate = [&](const SearchArtifacts& search,
                                    std::size_t solution, SolverPath path) {
     auto legs = reconstruct(search, solution);
+    if (context_.sanity() && !legs.empty() &&
+        legs.back().endTime>request.departure+request.limits.maximumRouteDuration) {
+      lastValidationFailure="candidate exceeds permitted route horizon";
+      result.diagnostics.stageStopReasons.push_back(lastValidationFailure);
+      return false;
+    }
     const auto validation = candidateValidator.validate(
         request, environment, performance, legs, &result.diagnostics);
     result.diagnostics.validationSamples += validation.samples;
@@ -3317,6 +3533,60 @@ RoutingResult RoutingEngine::routeMember(
           validation.failureReason + "; accepted prefix legs " +
           std::to_string(validation.acceptedPrefixLegs));
       return false;
+    }
+    context_.emit("route", "accepted", toString(path), request.destination,
+        legs.back().endTime, result.diagnostics, 0, solution);
+    const bool fastest = request.objective.kind==ObjectiveKind::Fastest ||
+        request.objective.kind==ObjectiveKind::FastestUnderSafetyLimits ||
+        request.objective.kind==ObjectiveKind::RobustFastest;
+    const double passageNm=distanceNm(request.start,request.destination);
+    double sailedNm=0;
+    for (const auto& leg:legs) sailedNm+=distanceNm(leg.start,leg.end);
+    // This is a quality pass over an already valid incumbent, not a rule
+    // forbidding detours or tidal revisits. Each shortcut starts from the
+    // exact saved vessel state and recomputes its weather/current trajectory.
+    // It cannot make the incumbent's arrival later or replace it with an
+    // unreplayed geometric shortcut.
+    if (context_.sanity() && context_.options.improveCircuitousArrivals &&
+        fastest && passageNm>1 && passageNm<=200 && sailedNm>passageNm*1.8 &&
+        context_.options.maximumArrivalShortcuts>0) {
+      const auto originalArrival=legs.back().endTime;
+      auto lineage=reconstructNodeIndices(search,solution);
+      if (!lineage.empty()) lineage.pop_back(); // already at destination
+      lineage.insert(lineage.begin(),0); // known departure state
+      const std::size_t count=std::min<std::size_t>(
+          context_.options.maximumArrivalShortcuts,lineage.size());
+      std::set<std::size_t> tested;
+      for (std::size_t i=0;i<count;++i) {
+        if (request.cancellation.cancelled() ||
+            context_.diagnostics.shortcutAttempts >= context_.options.maximumArrivalShortcuts) break;
+        const std::size_t slot=count==1 ? 0 :
+            i*(lineage.size()-1)/(count-1);
+        const std::size_t prefix=lineage[slot];
+        if (!tested.insert(prefix).second) continue;
+        const Node& from=search.nodes[prefix];
+        const Duration allowance=std::min(Duration{std::chrono::hours{24}},
+            std::chrono::duration_cast<Duration>(legs.back().endTime-from.time)-Duration{1});
+        if (allowance<=Duration::zero()) continue;
+        ++context_.diagnostics.shortcutAttempts;
+        auto bridge=directConnection(request,environment,performance,from,
+            allowance,result.diagnostics);
+        if (!bridge || bridge->time>=legs.back().endTime) continue;
+        auto candidate=reconstruct(search,prefix);
+        candidate.push_back(bridge->incomingLeg);
+        const auto replay=candidateValidator.validate(request,environment,
+            performance,candidate,&result.diagnostics);
+        result.diagnostics.validationSamples+=replay.samples;
+        if (!replay.passed) continue;
+        legs=std::move(candidate);
+        ++context_.diagnostics.shortcutAccepted;
+        context_.emit("shortcut","incumbent","earlier chronological arrival",
+            request.destination,legs.back().endTime,result.diagnostics,prefix);
+      }
+      const auto saved=std::chrono::duration_cast<Duration>(originalArrival-legs.back().endTime);
+      context_.diagnostics.shortcutSaved+=saved;
+      result.diagnostics.stageStopReasons.push_back(
+          "bounded chronological arrival shortcuts: saved "+std::to_string(saved.count())+" s");
     }
     result.legs = std::move(legs);
     result.solverPath = path;
@@ -3431,7 +3701,8 @@ RoutingResult RoutingEngine::routeMember(
         attemptRequest, environment, performance, headingStep, step, labels,
         !request.options.forceForwardFailureForTesting, attempt + 1, attempts,
         refinement > 0, endpointGeneratedStateCeiling, forwardGeneratedStateCeiling,
-        arrivalGeneratedStateReserve, result.diagnostics);
+        arrivalGeneratedStateReserve, result.diagnostics, context_);
+    captureSearchPartials(request, latest, "Professional forward " + std::to_string(attempt + 1), PartialRoutePhase::Forward);
     previousAttemptGenerated =
         (result.diagnostics.generatedStates - generatedBefore) -
         (result.diagnostics.coastalEndpointGeneratedStates -
@@ -3513,8 +3784,9 @@ RoutingResult RoutingEngine::routeMember(
                    result.diagnostics);
     const std::size_t forwardNodeCount = latest.nodes.size();
     if (auto recovered = reverseRecovery(request, environment, performance,
-                                         latest, result.diagnostics)) {
+                                         latest, result.diagnostics, context_)) {
       latest = std::move(recovered->first);
+      captureSearchPartials(request, latest, "Professional reverse recovery", PartialRoutePhase::Reverse);
       found = acceptCandidate(latest, recovered->second,
                               SolverPath::ReverseRecovery);
       if (!found) {
@@ -3570,7 +3842,8 @@ RoutingResult RoutingEngine::routeMember(
       latest = graphSearch(
           request, environment, performance, &latest,
           frontierRecoveryGeneratedStateBudget, frontierRecoveryLabelBudget,
-          GraphSearchKind::FrontierRecovery, result.diagnostics);
+          GraphSearchKind::FrontierRecovery, result.diagnostics, context_);
+      captureSearchPartials(request, latest, "Professional frontier recovery", PartialRoutePhase::Frontier);
       result.diagnostics.frontierRecoveryGeneratedStates =
           result.diagnostics.generatedStates - generatedBefore;
       result.diagnostics.frontierRecoveryLabels =
@@ -3602,7 +3875,8 @@ RoutingResult RoutingEngine::routeMember(
     latest = graphSearch(
         request, environment, performance, nullptr,
         globalGraphGeneratedStateBudget, request.limits.maximumGraphLabels,
-        GraphSearchKind::GlobalFallback, result.diagnostics);
+        GraphSearchKind::GlobalFallback, result.diagnostics, context_);
+    captureSearchPartials(request, latest, "Professional graph fallback", PartialRoutePhase::Graph);
     result.diagnostics.graphGeneratedStates =
         result.diagnostics.generatedStates - generatedBefore;
     if (latest.solution) {
@@ -3664,4 +3938,547 @@ RoutingResult RoutingEngine::routeMember(
   return result;
 }
 
+RoutingResult professional_policy::detail::solveNative(const RoutingRequest& request,
+    const RoutingEnvironment& environment, const Options& options,
+    Diagnostics& diagnostics) {
+  return Solver{options, diagnostics}.route(request, environment);
+}
+
+RoutingResult professional_policy::detail::solveProfessional(
+    const RoutingRequest& request, const RoutingEnvironment& environment,
+    const RoutingResult* quickIncumbent, const Options& options, Diagnostics& diagnostics) {
+  const bool quickComplete =
+      quickIncumbent &&
+      (quickIncumbent->status == RoutingStatus::Complete ||
+       quickIncumbent->status == RoutingStatus::CompleteUsingReverseRecovery ||
+       quickIncumbent->status == RoutingStatus::CompleteUsingFrontierRecovery ||
+       quickIncumbent->status == RoutingStatus::CompleteUsingGraphFallback) &&
+      quickIncumbent->validation.passed && !quickIncumbent->legs.empty() &&
+      quickIncumbent->legs.front().startTime == request.departure &&
+      distanceNm(quickIncumbent->legs.front().start, request.start) < 0.05 &&
+      distanceNm(quickIncumbent->legs.back().end, request.destination) < 0.05 &&
+      (options.policy!=Policy::Sanity || quickIncumbent->legs.back().endTime<=
+          request.departure+request.limits.maximumRouteDuration);
+
+  RoutingRequest adaptive = request;
+  const double passageNm = distanceNm(request.start, request.destination);
+  double bestGainKnots = 0.0;
+  double selectedOffsetNm = 0.0;
+  unsigned selectedSamples = 0;
+  // This tiny weather survey estimates velocity made good along plausible
+  // offshore lanes before the expensive forward fan starts. It is evidence
+  // for search ordering only: every resulting motion and route still passes
+  // Professional's ordinary constraints and independent replay.
+  const bool fastestObjective =
+      request.objective.kind == ObjectiveKind::Fastest ||
+      request.objective.kind == ObjectiveKind::FastestUnderSafetyLimits ||
+      request.objective.kind == ObjectiveKind::RobustFastest;
+  if (options.policy == Policy::Sanity && options.deriveMotionEnvelope &&
+      adaptive.options.useGraphFallback && environment.landAndBoundaries &&
+      finitePoint(request.start) && finitePoint(request.destination)) {
+    PolarPerformanceModel fallback(request.vessel);
+    const VesselPerformanceModel& performance = environment.performance
+        ? *environment.performance : fallback;
+    const auto resolved = internal::resolveEnvironment(request, environment,
+        request.start, request.departure);
+    if (performance.valid() && resolved.failureStatus == RoutingStatus::Complete &&
+        hardEnvironmentConstraints(request, resolved.snapshot)) {
+      const double bearing = initialBearingDegrees(request.start, request.destination);
+      const double radians = bearing * std::numbers::pi / 180.0;
+      const double tws = vectorMagnitudeKnots(resolved.snapshot.wind.velocity);
+      double lateralSpeed = 0;
+      bool motionAvailable = false;
+      for (double heading : headings(request.options.refinedHeadingStepDegrees,
+               bearing, request.options.adaptiveHeadings,
+               request.options.refinedHeadingStepDegrees,
+               request.options.maximumSearchAngleDegrees)) {
+        const double twa = trueWindAngleDegrees(resolved.snapshot.wind.velocity, heading);
+        for (const auto& candidate : performance.candidatesAt(request.start,
+                 request.departure, tws, twa, resolved.snapshot.waves,
+                 PropulsionMode::Sail, Duration{})) {
+          if (!candidate.valid || !hardMotionConstraints(request, resolved.snapshot,
+                  heading, candidate, performance, request.start, request.departure))
+            continue;
+          const auto water = speedDirectionToVector(candidate.speedThroughWaterKnots, heading);
+          const auto current = resolved.snapshot.current.velocity;
+          const double across = (water.eastKnots+current.eastKnots)*std::cos(radians)
+              - (water.northKnots+current.northKnots)*std::sin(radians);
+          if (!std::isfinite(across)) continue;
+          lateralSpeed = std::max(lateralSpeed,std::abs(across));
+          motionAvailable = true;
+        }
+      }
+      if (motionAvailable) {
+        // One nominal motion's lateral footprint, with at least one spatial
+        // cell diagonal. Both scale with this vessel, weather and resolution.
+        // This is initial work ordering, not a route-clearance certificate.
+        const double motionNm = lateralSpeed * request.options.timeStep.count()/3600.0;
+        const double cellDiagonalNm = std::sqrt(2.0)*request.options.spatialCellNm;
+        double width = std::max(cellDiagonalNm,
+            motionNm+request.constraints.landSafetyMarginNm);
+        width = std::min(width,request.options.maximumGraphCorridorWidthNm);
+        if (std::isfinite(width) && width>0) {
+          diagnostics.motionEnvelopeNm=width;
+        }
+      }
+    }
+  }
+  if (passageNm >= 400.0 && fastestObjective && environment.grib) {
+    PolarPerformanceModel fallbackPerformance(request.vessel);
+    const VesselPerformanceModel& performance = environment.performance
+        ? *environment.performance : fallbackPerformance;
+    const double directBearing =
+        initialBearingDegrees(request.start, request.destination);
+    const std::array<double, 3> fractions{0.2, 0.5, 0.8};
+    const auto score = [&](GeoPoint point, TimePoint time) {
+      const WindSample wind = environment.grib->wind(point, time);
+      if (!wind.available) return std::numeric_limits<double>::quiet_NaN();
+      const WaveSample waves = request.environment.useWaves
+          ? environment.grib->waves(point, time) : WaveSample{};
+      const double bearing = initialBearingDegrees(point, request.destination);
+      const double windKnots = vectorMagnitudeKnots(wind.velocity);
+      double best = -std::numeric_limits<double>::infinity();
+      const int surveyAngle = std::clamp(
+          static_cast<int>(std::floor(
+              request.options.maximumSearchAngleDegrees)), 0, 90);
+      for (int angle = -surveyAngle; angle <= surveyAngle; angle += 15) {
+        const double heading = normalizeHeading(bearing + angle);
+        const double twa = trueWindAngleDegrees(wind.velocity, heading);
+        for (const PerformanceCandidate& candidate :
+             performance.candidatesAt(point, time, windKnots, twa, waves,
+                                      PropulsionMode::Sail, Duration{})) {
+          if (candidate.valid && candidate.speedThroughWaterKnots > 0.0)
+            best = std::max(best, candidate.speedThroughWaterKnots *
+                std::cos(angle * std::numbers::pi / 180.0));
+        }
+      }
+      return std::isfinite(best) ? best
+          : std::numeric_limits<double>::quiet_NaN();
+    };
+    std::array<GeoPoint, 3> centerPoints;
+    std::array<TimePoint, 3> times;
+    std::array<double, 3> centerScores;
+    for (std::size_t i = 0; i < fractions.size(); ++i) {
+      centerPoints[i] = destinationPoint(
+          request.start, directBearing, passageNm * fractions[i]);
+      times[i] = request.departure + Duration{static_cast<std::int64_t>(
+          std::llround(passageNm * fractions[i] / 5.0 * 3600.0))};
+      centerScores[i] = score(centerPoints[i], times[i]);
+    }
+    for (double offsetNm : {80.0, 160.0}) {
+      for (double side : {-1.0, 1.0}) {
+        double gain = 0.0;
+        double center = 0.0;
+        unsigned samples = 0;
+        for (std::size_t i = 0; i < fractions.size(); ++i) {
+          if (!std::isfinite(centerScores[i])) continue;
+          const GeoPoint lane = destinationPoint(
+              centerPoints[i], directBearing + side * 90.0, offsetNm);
+          const double laneScore = score(lane, times[i]);
+          if (!std::isfinite(laneScore)) continue;
+          gain += laneScore - centerScores[i];
+          center += centerScores[i];
+          ++samples;
+        }
+        if (samples < 2) continue;
+        const double meanGain = gain / samples;
+        const double meanCenter = center / samples;
+        if (meanGain >= std::max(0.4, meanCenter * 0.08) &&
+            meanGain > bestGainKnots) {
+          bestGainKnots = meanGain;
+          selectedOffsetNm = offsetNm;
+          selectedSamples = samples;
+        }
+      }
+    }
+    if (selectedOffsetNm > 0.0) {
+      // The sparse fringe reaches the surveyed lane without retaining its
+      // entire width on every layer. A full-width Pacific trial added over
+      // two million shoreline checks for less than four minutes' passage gain.
+      const double suggestedCoreNm = std::ceil(
+          (selectedOffsetNm + 5.0) / 15.0) * 10.0;
+      adaptive.options.graphCorridorWidthNm = std::max(
+          adaptive.options.graphCorridorWidthNm,
+          std::min(180.0, suggestedCoreNm));
+    }
+  }
+  RoutingResult broadInitial;
+  const bool unrestrictedInitialTried = options.policy == Policy::Sanity &&
+      options.unrestrictedFirst && options.focusForwardCorridor && !quickComplete &&
+      fastestObjective && adaptive.options.useGraphFallback;
+  if (unrestrictedInitialTried) {
+    Context observer{options,diagnostics};
+    observer.emit("unrestricted_initial","begin","no forward corridor or fringe",
+        request.start,request.departure,RoutingDiagnostics{});
+    auto broadOptions=options;
+    broadOptions.focusForwardCorridor=false;
+    broadOptions.adaptiveCorridor=false;
+    broadOptions.unrestrictedFirst=false;
+    broadInitial = quickComplete
+        ? Solver{broadOptions,diagnostics}.routeThroughEffortTier(adaptive,environment,100)
+        : Solver{broadOptions,diagnostics}.route(adaptive,environment);
+    observer.emit("unrestricted_initial","end",toString(broadInitial.status),
+        request.destination,broadInitial.legs.empty()?request.departure:broadInitial.legs.back().endTime,
+        broadInitial.diagnostics);
+    if (request.cancellation.cancelled() || broadInitial.status==RoutingStatus::Cancelled) {
+      broadInitial.status=RoutingStatus::Cancelled;
+      broadInitial.message="routing cancelled";
+      broadInitial.legs.clear();broadInitial.validation.passed=false;
+      return broadInitial;
+    }
+  }
+  const bool broadInitialComplete = unrestrictedInitialTried &&
+      broadInitial.validation.passed && !broadInitial.legs.empty();
+  RoutingRequest focusedRequest=adaptive;
+  if (options.policy==Policy::Sanity && options.unrestrictedFirst && quickComplete && fastestObjective)
+    focusedRequest.limits.maximumRouteDuration=std::min(
+        focusedRequest.limits.maximumRouteDuration,quickIncumbent->metrics.elapsed);
+  if (unrestrictedInitialTried) {
+    if (broadInitialComplete)
+      focusedRequest.limits.maximumRouteDuration=std::min(
+          focusedRequest.limits.maximumRouteDuration,broadInitial.metrics.elapsed);
+    if (quickComplete)
+      focusedRequest.limits.maximumRouteDuration=std::min(
+          focusedRequest.limits.maximumRouteDuration,quickIncumbent->metrics.elapsed);
+    Context observer{options,diagnostics};
+    observer.emit("focused_comparison","begin",
+        "horizon_s="+std::to_string(focusedRequest.limits.maximumRouteDuration.count()),
+        request.start,request.departure,RoutingDiagnostics{});
+  }
+  // Quick keeps its established one-tier improvement budget. A broad native
+  // solve is evidence of the refinement actually needed; do not reduce its
+  // independent focused comparison back to 100% regardless of difficulty.
+  const unsigned focusedTier = broadInitialComplete
+      ? std::max(100U,broadInitial.diagnostics.completedEffortPercent) : 100U;
+  RoutingResult result = quickComplete
+      ? Solver{options, diagnostics}.routeThroughEffortTier(focusedRequest, environment, 100)
+      : broadInitialComplete
+          ? Solver{options, diagnostics}.routeThroughEffortTier(
+                focusedRequest,environment,focusedTier,focusedTier)
+          : Solver{options, diagnostics}.route(focusedRequest, environment);
+  // Cancellation of the whole request dominates both incumbents, including
+  // a cancellation delivered after candidate acceptance or during replay.
+  // Keep the instrumented baseline policy unchanged for comparisons.
+  if (options.policy==Policy::Sanity && request.cancellation.cancelled()) {
+    result.status=RoutingStatus::Cancelled;
+    result.message="routing cancelled";
+    result.legs.clear();
+    result.validation.passed=false;
+    return result;
+  }
+  if (result.status == RoutingStatus::Cancelled)
+    return result;
+  std::ostringstream survey;
+  survey << "Professional weather scout: passage_nm=" << passageNm
+         << " lane_offset_nm=" << selectedOffsetNm
+         << " mean_vmg_gain_kn=" << bestGainKnots
+         << " samples=" << selectedSamples
+         << " initial_core_nm=" << adaptive.options.graphCorridorWidthNm;
+  const bool professionalComplete =
+      (result.status == RoutingStatus::Complete ||
+       result.status == RoutingStatus::CompleteUsingReverseRecovery ||
+       result.status == RoutingStatus::CompleteUsingFrontierRecovery ||
+       result.status == RoutingStatus::CompleteUsingGraphFallback) &&
+      result.validation.passed;
+  const bool selectQuick = quickComplete &&
+      (!professionalComplete ||
+       quickIncumbent->metrics.elapsed <= result.metrics.elapsed);
+  std::ostringstream comparison;
+  comparison << "Professional comparison: quick="
+             << (quickIncumbent ? toString(quickIncumbent->status) : "not_run")
+             << " quick_passage_s="
+             << (quickComplete ? quickIncumbent->metrics.elapsed.count() : -1)
+             << " professional=" << toString(result.status)
+             << " professional_passage_s="
+             << (professionalComplete ? result.metrics.elapsed.count() : -1);
+  const std::uint64_t nativeGenerated = result.diagnostics.cumulativeGeneratedStates +
+      broadInitial.diagnostics.cumulativeGeneratedStates;
+  const unsigned comparisonEffort = result.diagnostics.completedEffortPercent
+      ? result.diagnostics.completedEffortPercent
+      : result.diagnostics.effortTiersAttempted.empty() ? 100U
+          : result.diagnostics.effortTiersAttempted.back();
+  RoutingResult selected = selectQuick ? *quickIncumbent
+                                       : std::move(result);
+  bool selectedFromQuick = selectQuick;
+  if (broadInitialComplete && (!selected.validation.passed ||
+      broadInitial.metrics.elapsed < selected.metrics.elapsed)) {
+    selected=std::move(broadInitial);
+    selectedFromQuick=false;
+  }
+  if (unrestrictedInitialTried) {
+    std::ostringstream note;
+    note << "Professional unrestricted initial: validated=" << broadInitialComplete
+         << " broad_generated=" << broadInitial.diagnostics.cumulativeGeneratedStates
+         << " focused_horizon_s=" << focusedRequest.limits.maximumRouteDuration.count()
+         << " focused_tier_cap=" << (broadInitialComplete?focusedTier:quickComplete?100:400);
+    selected.diagnostics.stageStopReasons.push_back(note.str());
+  }
+  const auto complete = [](const RoutingResult& candidate) {
+    return candidate.validation.passed && !candidate.legs.empty() &&
+        (candidate.status == RoutingStatus::Complete ||
+         candidate.status == RoutingStatus::CompleteUsingReverseRecovery ||
+         candidate.status == RoutingStatus::CompleteUsingFrontierRecovery ||
+         candidate.status == RoutingStatus::CompleteUsingGraphFallback);
+  };
+  const auto retryable = [](RoutingStatus status) {
+    return status == RoutingStatus::NoFeasibleRoute ||
+        status == RoutingStatus::SearchIncomplete ||
+        status == RoutingStatus::ResourceLimitReached ||
+        status == RoutingStatus::ValidationFailure;
+  };
+  const auto worthRevisiting = [&]() {
+    if (!complete(selected)) return retryable(selected.status);
+    if (std::isfinite(options.corridorQualityDistanceRatio) &&
+        options.corridorQualityDistanceRatio > 0)
+      return passageNm > 0 && selected.metrics.distanceNm >
+          passageNm * std::max(1.0,options.corridorQualityDistanceRatio);
+    // Re-entering a cell after leaving it indicates a temporal/geographic
+    // revisit. It may be legitimate tidal sailing; it only schedules a
+    // comparison and never invalidates or penalises the incumbent.
+    std::set<std::pair<int,int>> visited;
+    std::optional<std::pair<int,int>> previous;
+    const auto revisit = [&](GeoPoint position) {
+      Node node;node.position=position;
+      const auto key=stateCell(request,node,request.options.spatialCellNm,
+          request.options.dominanceHeadingToleranceDegrees);
+      const std::pair<int,int> cell{std::get<0>(key),std::get<1>(key)};
+      if (previous && *previous==cell) return false;
+      previous=cell;
+      return !visited.insert(cell).second;
+    };
+    if (revisit(selected.legs.front().start)) return true;
+    for (const auto& leg : selected.legs) if (revisit(leg.end)) return true;
+    return false;
+  };
+  if (options.policy == Policy::Sanity && options.adaptiveCorridor &&
+      options.unrestrictedRecovery && options.focusForwardCorridor &&
+      !options.unrestrictedFirst && !unrestrictedInitialTried &&
+      fastestObjective && adaptive.options.useGraphFallback && nativeGenerated &&
+      worthRevisiting()) {
+    const double fraction = std::isfinite(options.corridorWorkFraction)
+        ? std::clamp(options.corridorWorkFraction, 0.0, 1.0) : 0.0;
+    diagnostics.corridorGeneratedBudget = static_cast<std::uint64_t>(
+        static_cast<long double>(nativeGenerated) * fraction);
+    if (diagnostics.corridorGeneratedBudget) {
+      const auto began = std::chrono::steady_clock::now();
+      const auto deadline = options.maximumCorridorMilliseconds
+          ? began + std::chrono::milliseconds{options.maximumCorridorMilliseconds}
+          : std::chrono::steady_clock::time_point::max();
+      auto recoveryOptions = options;
+      recoveryOptions.focusForwardCorridor = false;
+      recoveryOptions.adaptiveCorridor = false;
+      RoutingRequest recovery = adaptive;
+      recovery.cancellation = request.cancellation.bounded(deadline, {});
+      if (complete(selected))
+        recovery.limits.maximumRouteDuration = std::min(
+            recovery.limits.maximumRouteDuration, selected.metrics.elapsed);
+      Context observer{options, diagnostics};
+      observer.emit("unrestricted_recovery", "begin", "original departure; no forward corridor or fringe",
+          request.start, request.departure, selected.diagnostics);
+      auto alternative = Solver{recoveryOptions, diagnostics}.routeThroughEffortTier(
+          recovery, environment, comparisonEffort, comparisonEffort,
+          diagnostics.corridorGeneratedBudget);
+      diagnostics.corridorGenerated += alternative.diagnostics.cumulativeGeneratedStates;
+      diagnostics.corridorLandChecks += alternative.diagnostics.landChecks;
+      const auto previousElapsed = selected.metrics.elapsed;
+      bool accepted = false;
+      if (complete(alternative) && !recovery.cancellation.cancelled() &&
+          (!complete(selected) || alternative.metrics.elapsed < selected.metrics.elapsed)) {
+        PolarPerformanceModel fallback(request.vessel);
+        const VesselPerformanceModel& performance = environment.performance
+            ? *environment.performance : fallback;
+        auto replayRequest = request;
+        replayRequest.cancellation = recovery.cancellation;
+        const auto replay = RouteValidator{}.validate(replayRequest, environment,
+            performance, alternative.legs, &alternative.diagnostics);
+        alternative.diagnostics.validationSamples += replay.samples;
+        if (replay.passed && !recovery.cancellation.cancelled()) {
+          alternative.validation = replay;
+          selected = std::move(alternative);
+          selectedFromQuick = false;
+          ++diagnostics.corridorAccepted;
+          accepted = true;
+          if (previousElapsed > Duration::zero())
+            diagnostics.corridorSaved += previousElapsed-selected.metrics.elapsed;
+        }
+      }
+      diagnostics.corridorMilliseconds += std::chrono::duration<double,std::milli>(
+          std::chrono::steady_clock::now()-began).count();
+      diagnostics.corridorBudgetExhausted =
+          (!request.cancellation.cancelled() && recovery.cancellation.cancelled()) ||
+          alternative.status == RoutingStatus::ResourceLimitReached;
+      observer.emit("unrestricted_recovery", accepted ? "accepted" : "retained_incumbent",
+          "original constraints and chronological replay", request.destination,
+          selected.legs.empty() ? request.departure : selected.legs.back().endTime,
+          selected.diagnostics);
+      std::ostringstream note;
+      note << "unrestricted recovery: forward_corridor=none fringe=none"
+           << " accepted=" << accepted
+           << " pilot_generated=" << nativeGenerated
+           << " generated=" << diagnostics.corridorGenerated
+           << " generated_budget=" << diagnostics.corridorGeneratedBudget
+           << " comparison_effort=" << comparisonEffort
+           << " saved_s=" << diagnostics.corridorSaved.count();
+      selected.diagnostics.stageStopReasons.push_back(note.str());
+    }
+  }
+  // Preserve the independently validated first-pass/Quick incumbent. Merely
+  // replacing one fixed width with a larger constant can lose that result
+  // under capped Pareto/sector frontiers. Instead, reopen the original
+  // departure (and hence its original tide/weather phase) only when useful
+  // motion was excluded and the selected route is circuitous, or no route
+  // survived. Width comes from those integrated motions, not a new NM limit.
+  if (options.policy == Policy::Sanity && options.adaptiveCorridor &&
+      !options.unrestrictedRecovery &&
+      !options.unrestrictedFirst && !unrestrictedInitialTried &&
+      fastestObjective && environment.landAndBoundaries &&
+      adaptive.options.useGraphFallback && options.maximumCorridorPasses &&
+      nativeGenerated && worthRevisiting()) {
+    const auto began = std::chrono::steady_clock::now();
+    const auto deadline = options.maximumCorridorMilliseconds
+        ? began + std::chrono::milliseconds{options.maximumCorridorMilliseconds}
+        : std::chrono::steady_clock::time_point::max();
+    const double fraction = std::isfinite(options.corridorWorkFraction)
+        ? std::clamp(options.corridorWorkFraction, 0.0, 1.0) : 0.0;
+    diagnostics.corridorGeneratedBudget = static_cast<std::uint64_t>(
+        static_cast<long double>(nativeGenerated) * fraction);
+    const Duration originalElapsed = selected.metrics.elapsed;
+    double previousWidth = adaptive.options.graphCorridorWidthNm;
+    for (unsigned pass = 0; pass < options.maximumCorridorPasses &&
+         worthRevisiting(); ++pass) {
+      if (request.cancellation.cancelled()) break;
+      if (std::chrono::steady_clock::now() >= deadline ||
+          diagnostics.corridorGenerated >= diagnostics.corridorGeneratedBudget) {
+        diagnostics.corridorBudgetExhausted = true;
+        break;
+      }
+      double width = std::max(diagnostics.deferredCrossTrackNm,
+          diagnostics.motionEnvelopeNm);
+      if (!std::isfinite(width) || width <= previousWidth) break;
+      width = std::min(std::nextafter(width,
+          std::numeric_limits<double>::infinity()),
+          adaptive.options.maximumGraphCorridorWidthNm);
+      if (!std::isfinite(width) || width <= previousWidth) break;
+      previousWidth = width;
+      diagnostics.corridorWidthsNm.push_back(width);
+      RoutingRequest expanded = adaptive;
+      expanded.options.graphCorridorWidthNm = width;
+      diagnostics.useMotionFringe = options.deriveMotionEnvelope;
+      expanded.cancellation = request.cancellation.bounded(deadline, {});
+      // Reuse the refinement tier the compatibility solve actually required.
+      // An 08:30 production case needed 400%; repeating only 100% exhausted
+      // neither its work allowance nor the useful refinement strategies.
+      // Apply the shared remaining ceiling after tier scaling, rather than
+      // multiplying a child limit and accidentally enlarging higher tiers.
+      const auto remaining = diagnostics.corridorGeneratedBudget - diagnostics.corridorGenerated;
+      if (complete(selected))
+        expanded.limits.maximumRouteDuration = std::min(
+            expanded.limits.maximumRouteDuration, selected.metrics.elapsed);
+      Context observer{options, diagnostics};
+      observer.emit("corridor", "begin", std::to_string(width),
+          request.start, request.departure, selected.diagnostics);
+      // A separate observed-tier attempt keeps old native/reverse budgets
+      // intact. Its bounded child can expire without cancelling the parent.
+      auto alternative = Solver{options, diagnostics}.routeThroughEffortTier(
+          expanded, environment, comparisonEffort, comparisonEffort, remaining);
+      diagnostics.corridorGenerated += alternative.diagnostics.cumulativeGeneratedStates;
+      diagnostics.corridorLandChecks += alternative.diagnostics.landChecks;
+      const bool better = complete(alternative) &&
+          (!complete(selected) || alternative.metrics.elapsed < selected.metrics.elapsed);
+      bool accepted = false;
+      if (better && !expanded.cancellation.cancelled()) {
+        PolarPerformanceModel fallback(request.vessel);
+        const VesselPerformanceModel& performance = environment.performance
+            ? *environment.performance : fallback;
+        RoutingRequest replayRequest = request;
+        replayRequest.cancellation = expanded.cancellation;
+        const auto replay = RouteValidator{}.validate(replayRequest, environment,
+            performance, alternative.legs, &alternative.diagnostics);
+        alternative.diagnostics.validationSamples += replay.samples;
+        if (replay.passed && !expanded.cancellation.cancelled()) {
+          alternative.validation = replay;
+          selected = std::move(alternative);
+          selectedFromQuick = false;
+          ++diagnostics.corridorAccepted;
+          accepted = true;
+        }
+      }
+      observer.emit("corridor", accepted ? "accepted" : "retained_incumbent",
+          std::to_string(width), request.destination,
+          selected.legs.empty() ? request.departure : selected.legs.back().endTime,
+          selected.diagnostics);
+      if (accepted) break;
+      if (expanded.cancellation.cancelled() && !request.cancellation.cancelled()) {
+        diagnostics.corridorBudgetExhausted = true;
+        break;
+      }
+    }
+    diagnostics.corridorMilliseconds += std::chrono::duration<double,std::milli>(
+        std::chrono::steady_clock::now() - began).count();
+    if (originalElapsed > Duration::zero() && complete(selected))
+      diagnostics.corridorSaved += std::max(Duration::zero(),
+          originalElapsed - selected.metrics.elapsed);
+    if (!diagnostics.corridorWidthsNm.empty()) {
+      std::ostringstream note;
+      note << "adaptive corridor: learned cores_nm=";
+      for (double width : diagnostics.corridorWidthsNm) note << width << ',';
+      note << " accepted=" << diagnostics.corridorAccepted
+           << " saved_s=" << diagnostics.corridorSaved.count()
+           << " generated=" << diagnostics.corridorGenerated
+           << " generated_budget=" << diagnostics.corridorGeneratedBudget
+           << " comparison_effort=" << comparisonEffort
+           << " optional_deadline_ms=" << options.maximumCorridorMilliseconds;
+      selected.diagnostics.stageStopReasons.push_back(note.str());
+    }
+  }
+  if (options.policy == Policy::Sanity)
+    selected.diagnostics.cumulativeGeneratedStates = nativeGenerated + diagnostics.corridorGenerated;
+  if (options.policy == Policy::Sanity && request.cancellation.cancelled()) {
+    selected.status = RoutingStatus::Cancelled;
+    selected.message = "routing cancelled";
+    selected.legs.clear();
+    selected.validation.passed = false;
+    return selected;
+  }
+  selected.diagnostics.stageStopReasons.insert(
+      selected.diagnostics.stageStopReasons.begin(), survey.str());
+  selected.diagnostics.stageStopReasons.insert(
+      selected.diagnostics.stageStopReasons.begin(), comparison.str());
+  selected.diagnostics.stageStopReasons.insert(
+      selected.diagnostics.stageStopReasons.begin(),
+      "Professional Quick incumbent: " +
+          std::string(quickComplete ? "validated" : "unavailable") +
+          "; Professional tier cap=" +
+          std::to_string(quickComplete ? 100 :
+              request.options.routingEffortPercent) +
+          "% ; selected=" + (selectedFromQuick ? "Quick" : "Professional"));
+  return selected;
+}
+
+
+RoutingResult RoutingEngine::route(const RoutingRequest& request,
+    const RoutingEnvironment& environment) const {
+  professional_policy::Options options;
+  options.policy=professional_policy::Policy::Baseline;
+  professional_policy::Diagnostics diagnostics;
+  return Solver{options,diagnostics}.route(request,environment);
+}
+RoutingResult RoutingEngine::routeThroughEffortTier(const RoutingRequest& request,
+    const RoutingEnvironment& environment,unsigned maximumEffortTier) const {
+  professional_policy::Options options;
+  options.policy=professional_policy::Policy::Baseline;
+  professional_policy::Diagnostics diagnostics;
+  return Solver{options,diagnostics}.routeThroughEffortTier(request,environment,maximumEffortTier);
+}
+RoutingResult ProfessionalEngine::route(const RoutingRequest& request,
+    const RoutingEnvironment& environment) const {
+  return route(request,environment,nullptr);
+}
+RoutingResult ProfessionalEngine::route(const RoutingRequest& request,
+    const RoutingEnvironment& environment,const RoutingResult* quick) const {
+  professional_policy::Options options;
+  options.runInternalQuick=false; // supplied by the host's existing adapter
+  professional_policy::Diagnostics diagnostics;
+  return professional_policy::detail::solveProfessional(request,environment,quick,options,diagnostics);
+}
 }  // namespace supercpn::weather_routing

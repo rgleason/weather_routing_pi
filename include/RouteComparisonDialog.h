@@ -11,7 +11,7 @@
 class WeatherRouting;
 class RouteComparisonDialog : public wxDialog {
  public:
-  explicit RouteComparisonDialog(WeatherRouting& routing);
+  explicit RouteComparisonDialog(WeatherRouting& routing, bool partials = false);
  private:
   struct Segment {
     RouteMapOverlay* owner{};
@@ -28,6 +28,7 @@ class RouteComparisonDialog : public wxDialog {
   void Collect();
   void Populate();
   void Choose();
+  weather_routing::RouteComparisonSelection Selection() const;
   void Preview(std::size_t index);
 #ifdef __OCPN__ANDROID__
   void RefreshAndroidComparison();
@@ -39,6 +40,7 @@ class RouteComparisonDialog : public wxDialog {
   wxButton* m_AndroidShowChart{};
 #endif
   void RunHostContract(bool lifecycle);
+  void RunPartialHostContract();
   bool Current(const Segment& segment) const;
   WeatherRouting& m_Routing;
   std::vector<Entry> m_Entries;
@@ -49,6 +51,7 @@ class RouteComparisonDialog : public wxDialog {
   wxChoice* m_Order{};
   wxStaticText* m_Summary{};
   bool m_Updating{};
+  bool m_Partials{};
   int m_SortColumn{4};
   bool m_Ascending{true};
   std::string m_PreviewId;

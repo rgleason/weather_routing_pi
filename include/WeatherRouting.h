@@ -20,6 +20,7 @@
 #ifndef _WEATHER_ROUTING_H_
 #define _WEATHER_ROUTING_H_
 
+#include <chrono>
 #include <wx/treectrl.h>
 #include <wx/fileconf.h>
 #include <wx/collpane.h>
@@ -575,7 +576,7 @@ private:
   // CUSTOMIZATION
   void OnRoutePosition(wxCommandEvent& event);
   void OnWeatherTable(wxCommandEvent& event);
-  void ShowRouteComparison();
+  void ShowRouteComparison(bool partials = false);
   void OnManual(wxCommandEvent& event);
   void OnInformation(wxCommandEvent& event);
   void OnAbout(wxCommandEvent& event);
@@ -920,6 +921,8 @@ private:
   bool m_bRunning;
   int m_RoutePreparationDepth;
   wxTimeSpan m_RunTime;
+  bool m_LivePreviewDirty{false};
+  std::chrono::steady_clock::time_point m_LastLivePreviewRefresh{};
   wxDateTime m_StartTime;
 
   wxString m_default_configuration_path;
@@ -1001,6 +1004,7 @@ private:
   std::vector<wxButton*> m_androidNavigation;
   std::vector<wxButton*> m_androidNeedsRoute;
   std::vector<wxButton*> m_androidNeedsResult;
+  std::vector<wxButton*> m_androidPartialResultButtons;
   std::vector<wxButton*> m_androidAnyResultButtons;
   std::vector<wxButton*> m_androidNeedsPosition;
   std::vector<wxButton*> m_androidAnyRouteButtons;

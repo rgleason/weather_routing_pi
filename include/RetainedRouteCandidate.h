@@ -4,6 +4,7 @@
 #include <memory>
 #include "RouteComfort.h"
 #include "RouteMap.h"
+#include "supercpn/weather_routing/PartialRoutes.h"
 
 namespace weather_routing {
 struct RetainedRouteCandidate {
@@ -13,6 +14,10 @@ struct RetainedRouteCandidate {
   RouteComfort comfort;
   RouteComfort windOnlyComfort;
   double processingMilliseconds{};
+  // Only populated in the separate failed-All partial collection.
+  double remainingNm{};
+  std::string partialStage;
+  std::size_t partialBytes{};
 };
 inline RetainedRouteCandidate RetainRouteCandidate(
     const wr::RoutingResult& result, const RouteMapConfiguration& configuration) {

@@ -481,3 +481,21 @@ algorithm.
 For completed combined-mode results, `engine` retains the requested mode
 and `selectedEngine` identifies the solver that supplied the selected route.
 `searchSettings` and `shoreline` describe the winning solver's configuration.
+
+## v1.32 engine membership
+
+`route.routingEngine` accepts `quick2` and `alternative` as individual choices,
+in addition to the stable existing IDs (`original` is Quick, `quick` is Standard).
+Optional `route.autoEngines` and `route.allEngines` are nonempty arrays of individual
+engine IDs. Omission preserves saved/default membership; unknown IDs and empty
+arrays are errors. Example:
+
+```json
+{"routingEngine":"auto", "autoEngines":["original","quick2","quick","main"]}
+```
+
+Both modes run serially in Quick, Quick2, Standard, Alternative, Professional
+order, skipping unchecked engines. A retained Quick2 candidate cannot reduce
+Standard's allowance or restrict its search. `WR_HEADLESS_ENGINE_CONFIGURATION_CONTRACT=1`
+in a disposable scenario exercises the real Basic/Advanced controls and saved
+membership, and logs `WR_ENGINE_CONFIGURATION_CONTRACT passed=1` on success.

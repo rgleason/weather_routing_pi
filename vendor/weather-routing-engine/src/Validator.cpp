@@ -1,4 +1,5 @@
 #include "supercpn/weather_routing/Engine.h"
+#include "supercpn/weather_routing/PartialRoutes.h"
 #include "supercpn/weather_routing/CoastalEndpointPolicy.h"
 
 #include <algorithm>
@@ -485,7 +486,7 @@ RouteValidationResult validateRoute(const RoutingRequest& request,
     // numerical difference between those integrations, then trigger millions
     // of unnecessary recovery states.  Keep this tightly bounded at 0.15 NM
     // and explicitly chart-check the small reconciliation below.
-    constexpr double endpointToleranceNm = 0.15;
+    constexpr double endpointToleranceNm = kReplayEndpointToleranceNm;
     const double endpointErrorNm = distanceNm(replayPoint, leg.end);
     if (endpointErrorNm > endpointToleranceNm) {
       std::ostringstream message;
