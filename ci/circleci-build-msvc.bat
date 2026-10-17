@@ -136,9 +136,6 @@ cmake --build . --config %CONFIGURATION% --parallel 2
 if errorlevel 1 exit /b %errorlevel%
 
 if not exist test-results mkdir test-results
-if not exist ..\artifacts\windows-x86 mkdir ..\artifacts\windows-x86
-dumpbin /dependents test\%CONFIGURATION%\weather_routing_pi_tests.exe > ..\artifacts\windows-x86\test-dependencies.txt
-if errorlevel 1 exit /b %errorlevel%
 ctest --test-dir . -C %CONFIGURATION% --output-on-failure --timeout 180 --output-junit test-results\ctest.xml
 if errorlevel 1 exit /b %errorlevel%
 
