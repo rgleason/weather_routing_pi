@@ -215,6 +215,10 @@ set(TEST_SRC
    endif()
 
    if(WIN32)
+       # These tests provide their own StandardPath and run without a host.
+       # ocpn_plugin.h otherwise marks its API classes/functions dllexport,
+       # forcing an opencpn.exe runtime dependency into the test executable.
+       target_compile_definitions(weather_routing_pi_tests PRIVATE DECL_EXP=)
        # GoogleTest DLLs are built for the selected architecture. Both Win32
        # and x64 discovery need them beside the test executable.
        add_custom_command(TARGET weather_routing_pi_tests POST_BUILD
