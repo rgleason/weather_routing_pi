@@ -51,8 +51,10 @@ TEST_F(BoatXML, SaveReloadAndReorderKeepEachPolarsSettings) {
   Boat loaded;
   ASSERT_TRUE(loaded.OpenXML(file, false).empty());
   ASSERT_EQ(loaded.Polars.size(), 2U);
+  // Reloading uses native path separators, including backslashes on Windows.
   for (std::size_t index = 0; index < 2; ++index) {
-    EXPECT_EQ(loaded.Polars[index].FileName, boat.Polars[index].FileName);
+    EXPECT_TRUE(wxFileName(loaded.Polars[index].FileName).SameAs(
+        wxFileName(boat.Polars[index].FileName)));
     EXPECT_EQ(loaded.Polars[index].lowWindPolicy, boat.Polars[index].lowWindPolicy);
     EXPECT_EQ(loaded.Polars[index].highWindPolicy, boat.Polars[index].highWindPolicy);
     EXPECT_NEAR(loaded.Polars[index].m_crossoverpercentage,
@@ -64,10 +66,12 @@ TEST_F(BoatXML, SaveReloadAndReorderKeepEachPolarsSettings) {
   Boat reordered;
   ASSERT_TRUE(reordered.OpenXML(file, false).empty());
   ASSERT_EQ(reordered.Polars.size(), 2U);
-  EXPECT_EQ(reordered.Polars[0].FileName, boat.Polars[1].FileName);
+  EXPECT_TRUE(wxFileName(reordered.Polars[0].FileName).SameAs(
+      wxFileName(boat.Polars[1].FileName)));
   EXPECT_EQ(reordered.Polars[0].lowWindPolicy, LowWindPolicy::Taper);
   EXPECT_EQ(reordered.Polars[0].highWindPolicy, HighWindPolicy::Strict);
-  EXPECT_EQ(reordered.Polars[1].FileName, boat.Polars[0].FileName);
+  EXPECT_TRUE(wxFileName(reordered.Polars[1].FileName).SameAs(
+      wxFileName(boat.Polars[0].FileName)));
   EXPECT_EQ(reordered.Polars[1].lowWindPolicy, LowWindPolicy::Strict);
   EXPECT_EQ(reordered.Polars[1].highWindPolicy, HighWindPolicy::Hold);
 }
@@ -86,8 +90,10 @@ TEST_F(BoatXML, LegacyBoatRetainsMultiplePolarsAndAutomaticDefaults) {
   Boat loaded;
   ASSERT_TRUE(loaded.OpenXML(file, false).empty());
   ASSERT_EQ(loaded.Polars.size(), 2U);
+  // Reloading uses native path separators, including backslashes on Windows.
   for (std::size_t index = 0; index < 2; ++index) {
-    EXPECT_EQ(loaded.Polars[index].FileName, boat.Polars[index].FileName);
+    EXPECT_TRUE(wxFileName(loaded.Polars[index].FileName).SameAs(
+        wxFileName(boat.Polars[index].FileName)));
     EXPECT_EQ(loaded.Polars[index].lowWindPolicy, LowWindPolicy::Automatic);
     EXPECT_EQ(loaded.Polars[index].highWindPolicy, HighWindPolicy::Automatic);
     EXPECT_NEAR(loaded.Polars[index].m_crossoverpercentage, .2, 1e-8);
