@@ -182,8 +182,15 @@ BoatDialog::BoatDialog(WeatherRouting& weatherrouting)
 }
 
 void BoatDialog::BuildWindPolicyControls() {
-  auto* panel = new wxPanel(m_panel21, wxID_ANY);
+  // These settings belong to the selected polar, but must not consume the
+  // polar list's space or mix siblings and children of its static box.
+  auto* panel = new wxScrolledWindow(m_nNotebook, wxID_ANY,
+      wxDefaultPosition, wxDefaultSize, wxVSCROLL | wxTAB_TRAVERSAL);
+  panel->SetScrollRate(0, 8);
   auto* controls = new wxBoxSizer(wxVERTICAL);
+  m_windPolicyPolar = new wxStaticText(panel, wxID_ANY, _("No polar selected"));
+  m_windPolicyPolar->SetMinSize(wxSize(0, -1));
+  controls->Add(m_windPolicyPolar, 0, wxEXPAND | wxALL, 8);
   controls->Add(new wxStaticText(panel, wxID_ANY, _("Below polar wind range")),
                 0, wxEXPAND | wxALL, 4);
   m_lowWindPolicy = new wxChoice(panel, wxID_ANY);
@@ -199,6 +206,7 @@ void BoatDialog::BuildWindPolicyControls() {
   auto* note = new wxStaticText(panel, wxID_ANY,
       _("Automatic tapers below the boat's lowest wind data. A single polar holds its final speeds in stronger winds; multiple polars keep their upper wind limits."));
 #ifdef __OCPN__ANDROID__
+  WR_EnableAndroidScrolling(panel);
   const wxString text = note->GetLabel();
   WR_WrapAndroidText(note, text, wxGetDisplaySize().x - 90);
   note->Bind(wxEVT_SIZE, [note, text, width = 0](wxSizeEvent& event) mutable {
@@ -213,7 +221,8 @@ void BoatDialog::BuildWindPolicyControls() {
 #endif
   controls->Add(note, 0, wxEXPAND | wxALL, 4);
   panel->SetSizer(controls);
-  m_panel21->GetSizer()->Add(panel, 0, wxEXPAND | wxALL, 8);
+  m_nNotebook->AddPage(panel, _("Wind range"));
+  panel->FitInside();
   m_lowWindPolicy->Enable(false);
   m_highWindPolicy->Enable(false);
   auto changed = [this](wxCommandEvent&) {
@@ -985,6 +994,17 @@ void BoatDialog::OnPolarSelected() {
       static_cast<int>(m_Boat.Polars[i].lowWindPolicy));
   m_highWindPolicy->SetSelection(i < 0 ? 0 :
       static_cast<int>(m_Boat.Polars[i].highWindPolicy));
+  const wxString selected = i < 0 ? _("No polar selected") :
+      _("Selected polar: ") + wxFileName(m_Boat.Polars[i].FileName).GetFullName();
+#ifdef __OCPN__ANDROID__
+  WR_WrapAndroidText(m_windPolicyPolar, selected, wxGetDisplaySize().x - 90);
+#else
+  m_windPolicyPolar->SetLabel(selected);
+  m_windPolicyPolar->Wrap(wxMax(180,
+      m_windPolicyPolar->GetParent()->GetClientSize().x - 24));
+#endif
+  m_windPolicyPolar->GetParent()->Layout();
+  static_cast<wxScrolledWindow*>(m_windPolicyPolar->GetParent())->FitInside();
   if (i != -1)
     m_sOverlapPercentage->SetValue(m_Boat.Polars[i].m_crossoverpercentage *
                                    100);

@@ -70,7 +70,7 @@ Chart, depth, weather, boundary and propulsion limits continue to apply.
 Missing or rejected polar performance does not count as zero sailing speed.</p>
 
 <h3>Polar wind range policies (1.28.1)</h3>
-<p>Boat &rarr; Polars provides separate choices for wind below and above each
+<p>Select a polar in Boat &rarr; Polars, then open <b>Wind range</b> for separate choices for wind below and above each
 polar's supplied range. Below the range, <b>Taper to zero</b> scales the first
 column's speed towards zero at zero wind. Above the range, <b>Hold final
 speeds</b> uses the final column at the current wind angle. <b>Reject</b> keeps
@@ -263,6 +263,12 @@ identify incomplete wave coverage and local wave-height estimates.</p>
 
 <p>
 The boat dialog displays the polar plot of the boat's speed vs true wind direction as well as showing other details.  An xml file specifies the boat parameters and each sail plan.  Two file types of polars are supported; CSV (same as qtVlm) and xml parameters which describe how to compute the polar.
+
+<p>Select a polar in the list to inspect or edit it. Add, Edit, Remove, Up and Down manage the boat's collection of polars. Open Boat, Save Boat and Save As Boat operate on the boat XML file, including the polar order, crossover percentages and each polar's wind-range settings. On Android, use the Polars page and its polar picker; the page picker also opens Plot, Cross Over Chart, Stats and Wind range.</p>
+
+<h4>Wind range tab</h4>
+<p>These settings apply to the polar named at the top of the page. Below its wind range, choose Automatic, Reject or Taper to zero. Above its wind range, choose Automatic, Reject or Hold final speeds. Save the boat to retain these choices.</p>
+<p>Automatic tapers below the boat's lowest wind data. A single polar holds its final speeds above its highest recorded wind; a boat with multiple polars retains their individual upper wind limits. Explicit zero-speed cells remain authoritative. Older boat XML files continue to load with Automatic defaults.</p>
 
 <p>
 <h4>Plot tab</h4>

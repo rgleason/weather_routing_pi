@@ -63,6 +63,8 @@ set(TEST_SRC
     ReachabilityPrewarmPolicy_tests.cpp
     RouteDisplayPolicy_tests.cpp
     Polar_tests.cpp
+    BoatXML_tests.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/src/Boat.cpp
     PolarRoutingPolicy_tests.cpp
     LowWindMotor_tests.cpp
     PolygonRegion_tests.cpp
@@ -165,6 +167,7 @@ set(TEST_SRC
             ${WEATHER_ROUTING_SOURCE_DIR}/opencpn-libs/tinyxml/include
             ${WEATHER_ROUTING_SOURCE_DIR}/opencpn-libs/odapi
             ${WEATHER_ROUTING_SOURCE_DIR}/opencpn-libs/jsonlib/include
+            ${WEATHER_ROUTING_SOURCE_DIR}/opencpn-libs/plugin_dc/dc_utils/include
    #         ${WEATHER_ROUTING_SOURCE_DIR}/opencpn-libs/plugin_dc/dc_utils/include
    #         ${WEATHER_ROUTING_SOURCE_DIR}/opencpn-libs/jsonlib/include
    #         ${WEATHER_ROUTING_SOURCE_DIR}/opencpn-libs/odapi

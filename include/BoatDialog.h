@@ -40,6 +40,7 @@ public:
 private:
   wxChoice* m_lowWindPolicy{nullptr};
   wxChoice* m_highWindPolicy{nullptr};
+  wxStaticText* m_windPolicyPolar{nullptr};
   void BuildWindPolicyControls();
   void OnMouseEventsPolarPlot(wxMouseEvent& event);
 
