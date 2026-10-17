@@ -207,6 +207,13 @@ set(TEST_SRC
        )
    endif()
 
+   if(MSVC)
+       # Boat XML tests use the production Boat.cpp and plugin header. The
+       # latter includes pidc.h, which needs the bundled GL extension headers
+       # on Windows just as the plugin target does.
+       target_link_libraries(weather_routing_pi_tests PRIVATE windows::headers)
+   endif()
+
    if(WIN32)
        # GoogleTest DLLs are built for the selected architecture. Both Win32
        # and x64 discovery need them beside the test executable.
