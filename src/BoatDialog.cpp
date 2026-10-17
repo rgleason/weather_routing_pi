@@ -60,6 +60,130 @@ static const int wind_speeds[] = {0,  2,  4,  6,  8,  10, 12, 15, 18, 21,
                                   24, 28, 32, 36, 40, 45, 50, 55, 60};
 static const int num_wind_speeds = (sizeof wind_speeds) / (sizeof *wind_speeds);
 
+namespace {
+// Shared display geometry only: neither the polar data nor crossover selection
+// is modified when fitting a chart to its client area.
+struct PolarChartLayout {
+  wxPoint centre;
+  int radius;
+};
+
+PolarChartLayout FitPolarChart(wxDC& dc, const wxRect& area, bool full) {
+  const wxSize label = dc.GetTextExtent(wxString::FromUTF8("180\xC2\xB0"));
+  const int margin = wxMax(label.x / 2 + 8, label.y + 8);
+  const int width = wxMax(2, area.width - 2 * margin);
+  const int height = wxMax(2, area.height - 2 * margin);
+  const int radius = wxMax(1, wxMin(full ? width / 2 : width, height / 2));
+  const int left = area.x + margin + (width - (full ? 2 : 1) * radius) / 2;
+  return {{left + (full ? radius : 0), area.y + area.height / 2}, radius};
+}
+
+void DrawChartText(wxDC& dc, const wxString& text, int x, int y,
+                   const wxRect& area) {
+  const wxSize size = dc.GetTextExtent(text);
+  dc.DrawText(text, wxMax(area.x, wxMin(x, area.GetRight() - size.x)),
+              wxMax(area.y, wxMin(y, area.GetBottom() - size.y)));
+}
+
+int DrawChartHeading(wxDC& dc, int width, const wxString& radial,
+                      const wxString& angular) {
+  const int line = dc.GetCharHeight() + 4;
+  dc.SetTextForeground(*wxBLACK);
+  dc.DrawText(wxControl::Ellipsize(radial, dc, wxELLIPSIZE_END,
+                                  wxMax(1, width - 16)), 8, 4);
+  dc.DrawText(wxControl::Ellipsize(angular, dc, wxELLIPSIZE_END,
+                                  wxMax(1, width - 16)), 8, 4 + line);
+  return 8 + 2 * line;
+}
+
+void DrawPolarGrid(wxDC& dc, const PolarChartLayout& chart,
+                   const wxRect& area, bool full, double maximum,
+                   double step) {
+  const int cx = chart.centre.x, cy = chart.centre.y;
+  dc.SetBrush(*wxTRANSPARENT_BRUSH);
+  dc.SetPen(wxPen(wxColour(130, 140, 150), 1));
+  for (double value = step; value <= maximum + 1e-6; value += step) {
+    const int radius = wxRound(chart.radius * value / maximum);
+    // Use outlines on every backend: wxQt differs in arc direction and can
+    // fill a transparent-brush circle, obscuring the curves beneath the grid.
+    wxPoint arc[121];
+    const int count = full ? 121 : 61;
+    for (int point = 0; point < count; ++point) {
+      const double radians = deg2rad(point * 3);
+      arc[point] = wxPoint(cx + wxRound(radius * sin(radians)),
+                           cy - wxRound(radius * cos(radians)));
+    }
+    dc.DrawLines(count, arc);
+  }
+  const int angleStep = chart.radius < dc.GetCharHeight() * 4 ? 45 :
+                        chart.radius < dc.GetCharHeight() * 6 ? 30 : 15;
+  for (int angle = 0; angle <= 180; angle += angleStep) {
+    const double radians = deg2rad(angle);
+    const int x = wxRound(chart.radius * sin(radians));
+    const int y = wxRound(chart.radius * cos(radians));
+    dc.DrawLine(cx, cy, cx + x, cy - y);
+    if (full) dc.DrawLine(cx, cy, cx - x, cy - y);
+  }
+  // Labels are painted last, outside the coloured sail-selection regions.
+  dc.SetTextForeground(wxColour(20, 40, 65));
+  for (int angle = 0; angle <= 180; angle += angleStep) {
+    const double radians = deg2rad(angle);
+    const int labelRadius = chart.radius + dc.GetCharHeight() / 2 + 5;
+    const int x = wxRound(labelRadius * sin(radians));
+    const int y = wxRound(labelRadius * cos(radians));
+    const wxString text = wxString::Format("%d", angle) + wxString::FromUTF8("\xC2\xB0");
+    const wxSize size = dc.GetTextExtent(text);
+    DrawChartText(dc, text, cx + x - size.x / 2, cy - y - size.y / 2, area);
+    if (full && angle > 0 && angle < 180)
+      DrawChartText(dc, text, cx - x - size.x / 2, cy - y - size.y / 2, area);
+  }
+  // Ring labels sit beside the centre line, with a white backing so both the
+  // grid and sail colours remain readable.
+  double labelStep = step;
+  while (chart.radius * labelStep / maximum < dc.GetCharHeight() + 3)
+    labelStep += step;
+  for (double value = labelStep; value <= maximum + 1e-6; value += labelStep) {
+    const wxString text = wxString::Format("%.0f", value);
+    const wxSize size = dc.GetTextExtent(text);
+    const int y = cy + wxRound(chart.radius * value / maximum) - size.y;
+    dc.SetPen(*wxTRANSPARENT_PEN);
+    dc.SetBrush(*wxWHITE_BRUSH);
+    dc.DrawRectangle(cx + 3, y, size.x + 4, size.y);
+    DrawChartText(dc, text, cx + 5, y, area);
+  }
+}
+
+wxColour CrossOverColour(std::size_t index) {
+  const wxColour colours[] = {wxColour(200, 55, 55), wxColour(35, 140, 75),
+      wxColour(45, 105, 190), wxColour(165, 90, 185), wxColour(210, 145, 35),
+      wxColour(40, 150, 160), wxColour(140, 100, 55), wxColour(125, 125, 125)};
+  return colours[index % (sizeof(colours) / sizeof(*colours))];
+}
+
+int DrawCrossOverLegend(wxDC& dc, int width, int top, const Boat& boat,
+                         long selected) {
+  const int line = dc.GetCharHeight() + 8;
+  const int swatch = dc.GetCharHeight();
+  const int preferred = dc.GetTextExtent("Example-15-30.pol").x + swatch + 24;
+  const int columns = wxMax(1, (width - 16) / preferred);
+  const int cell = wxMax(1, (width - 16) / columns);
+  for (std::size_t i = 0; i < boat.Polars.size(); ++i) {
+    const int x = 8 + (i % columns) * cell;
+    const int y = top + (i / columns) * line;
+    dc.SetPen(wxPen(i == static_cast<std::size_t>(selected) ? *wxBLACK :
+                    CrossOverColour(i), i == static_cast<std::size_t>(selected) ? 2 : 1));
+    dc.SetBrush(wxBrush(CrossOverColour(i)));
+    dc.DrawRectangle(x, y + 3, swatch, swatch);
+    dc.SetTextForeground(*wxBLACK);
+    const wxString name = wxFileName(boat.Polars[i].FileName).GetFullName();
+    dc.DrawText(wxControl::Ellipsize(name, dc, wxELLIPSIZE_MIDDLE,
+                                    wxMax(1, cell - swatch - 14)),
+                 x + swatch + 6, y + 2);
+  }
+  return top + ((boat.Polars.size() + columns - 1) / columns) * line + 4;
+}
+}  // namespace
+
 BoatDialog::BoatDialog(WeatherRouting& weatherrouting)
 #ifndef __WXOSX__
     : BoatDialogBase(&weatherrouting),
@@ -175,10 +299,26 @@ BoatDialog::BoatDialog(WeatherRouting& weatherrouting)
   WR_AddAndroidBookPicker(this, m_nNotebook, 1);
   WR_WrapAndroidText(polarNote, polarNote->GetLabel(), wxGetDisplaySize().x - 90);
 #else
-  // hack to adjust items
+  // Keep Full Plot visible when the left pane is narrower than the three
+  // controls' combined best width. Android already stacks its touch controls.
+  for (wxWindow* control : {static_cast<wxWindow*>(m_cPlotType),
+                            static_cast<wxWindow*>(m_cPlotVariable),
+                            static_cast<wxWindow*>(m_cbFullPlot)})
+    control->GetContainingSizer()->Detach(control);
+  auto* choices = new wxBoxSizer(wxVERTICAL);
+  auto* selectors = new wxBoxSizer(wxHORIZONTAL);
+  selectors->Add(m_cPlotType, 0, wxALL, 4);
+  selectors->Add(m_cPlotVariable, 1, wxALL | wxEXPAND, 4);
+  choices->Add(selectors, 0, wxEXPAND);
+  choices->Add(m_cbFullPlot, 0, wxLEFT | wxRIGHT | wxBOTTOM, 4);
+  m_panel20->GetSizer()->Add(choices, 0, wxEXPAND);
   BuildWindPolicyControls();
-  SetSize(wxSize(w, h));
+  SetSize(wxSize(w, wxMin(wxGetDisplaySize().y - 60, wxMax(h, 560))));
 #endif
+  m_CrossOverChart->Bind(wxEVT_SIZE, [this](wxSizeEvent& event) {
+    RefreshPlots();
+    event.Skip();
+  });
 }
 
 void BoatDialog::BuildWindPolicyControls() {
@@ -377,6 +517,7 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
   dc.SetBackground(*wxWHITE_BRUSH);
   dc.Clear();
   dc.SetBackgroundMode(wxTRANSPARENT);
+  dc.SetFont(window->GetFont());
 #ifdef __OCPN__ANDROID__
   wxFont labelFont = window->GetFont();
   labelFont.SetPointSize(14);
@@ -395,7 +536,8 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
 
   int plottype = m_cPlotType->GetSelection();
   int w, h;
-  m_PlotWindow->GetSize(&w, &h);
+  m_PlotWindow->GetClientSize(&w, &h);
+  if (w < 40 || h < 40) return;
   double maxVB = 0;
 
   Polar& polar = m_Boat.Polars[index];
@@ -425,56 +567,47 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
   double Vstep = ceil(maxVB / 5);
   maxVB += Vstep;
 
-  m_PlotScale = (w < h ? w : h) / 1.8 / (maxVB + 1);
-  //    m_PlotScale = h/1.8 / (maxVB+1);
-
-  bool full = m_cbFullPlot->GetValue();
-  int xc = full ? w / 2 : 0;
-
+  const bool full = m_cbFullPlot->GetValue();
+  const wxString angle = selection % 2 == 0 ? _("True wind angle (degrees)") :
+                                               _("Apparent wind angle (degrees)");
+  const int heading = DrawChartHeading(dc, w, _("Boat speed (knots)"),
+      plottype == 0 ? angle : selection < 2 ? _("True wind speed (knots)") :
+                                                 _("Apparent wind speed (knots)"));
+  const wxRect chartArea(0, heading, w, wxMax(1, h - heading));
+  const PolarChartLayout chart = FitPolarChart(dc, chartArea, full);
+  int cx = chart.centre.x, cy = chart.centre.y;
   if (plottype == 0) {
-    /* polar circles */
-    for (double V = Vstep; V <= maxVB; V += Vstep) {
-      dc.DrawCircle(xc, h / 2, V * m_PlotScale);
-      dc.DrawText(wxString::Format(_T("%.0f"), V), xc,
-                  h / 2 + (int)V * m_PlotScale);
-    }
+    m_PlotScale = chart.radius / maxVB;
   } else {
-    for (double V = Vstep; V <= maxVB; V += Vstep) {
-      int y = h - 2 * V * m_PlotScale;
+    // Cartesian plots retain their existing wind-speed axis and curves, with
+    // space around the axes for their labels.
+    const int margin = dc.GetTextExtent("60").x + 12;
+    dc.SetDeviceOrigin(margin, heading + dc.GetCharHeight() + 4);
+    w = wxMax(1, w - margin - 12);
+    h = wxMax(1, h - heading - 2 * dc.GetCharHeight() - 12);
+    m_PlotScale = h / (2 * maxVB);
+    dc.SetPen(wxPen(wxColour(160, 170, 180)));
+    dc.SetTextForeground(wxColour(20, 40, 65));
+    for (double value = Vstep; value <= maxVB; value += Vstep) {
+      const int y = h - 2 * value * m_PlotScale;
       dc.DrawLine(0, y, w, y);
-      dc.DrawText(wxString::Format(_T("%.0f"), V), 0, y);
+      dc.DrawText(wxString::Format("%.0f", value), -margin + 3, y);
     }
-  }
-
-  dc.SetTextForeground(wxColour(0, 0, 155));
-
-  if (plottype == 0) {
-    /* polar meridians */
-    for (double ctw = 0; ctw < DEGREES; ctw += 15) {
-      double x = maxVB * m_PlotScale * sin(deg2rad(ctw));
-      double y = maxVB * m_PlotScale * cos(deg2rad(ctw));
-      if (ctw < 180) dc.DrawLine(xc - x, h / 2 + y, xc + x, h / 2 - y);
-
-      wxString str = wxString::Format(_T("%.0f"), ctw);
-      int sw, sh;
-      dc.GetTextExtent(str, &sw, &sh);
-      dc.DrawText(str, xc + .9 * x - sw / 2, h / 2 - .9 * y - sh / 2);
-    }
-  } else {
-    for (int s = 0; s < num_wind_speeds; s++) {
-      double windspeed = wind_speeds[s];
-
-      double x = s * w / num_wind_speeds;
+    for (int step = 0; step < num_wind_speeds; ++step) {
+      const int x = step * w / num_wind_speeds;
       dc.DrawLine(x, 0, x, h);
-
-      wxString str = wxString::Format(_T("%.0f"), windspeed);
-      int sw, sh;
-      dc.GetTextExtent(str, &sw, &sh);
-      dc.DrawText(str, x, 0);
+      dc.DrawText(wxString::Format("%d", wind_speeds[step]), x, h + 2);
     }
   }
 
-  int cx = (full ? w / 2 : 0), cy = h / 2;
+  auto windPosition = [w](double wind) {
+    int index = 0;
+    while (index < num_wind_speeds - 2 && wind > wind_speeds[index + 1])
+      ++index;
+    const double fraction = (wind - wind_speeds[index]) /
+        (wind_speeds[index + 1] - wind_speeds[index]);
+    return wxRound((index + fraction) * w / num_wind_speeds);
+  };
 
   dc.SetPen(wxPen(wxColor(255, 0, 0), 2));
 
@@ -598,16 +731,7 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
 #endif
 
         int px, py;
-        int s;
-        for (s = 0; s < num_wind_speeds - 1; s++)
-          if (wind_speeds[s] > windspeed) break;
-        {  // interpolate into non-linear windspeed space
-          double x = windspeed, x1 = wind_speeds[s], x2 = wind_speeds[s + 1];
-          double y1 = s * w / num_wind_speeds;
-          double y2 = (s + 1) * w / num_wind_speeds;
-
-          px = x2 - x1 ? (y2 - y1) * (x - x1) / (x2 - x1) + y1 : y1;
-        }
+        px = windPosition(windspeed);
         py = h - 2 * stw * m_PlotScale;
 
         if (lastvalid) {
@@ -670,16 +794,7 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
         p.x = m_PlotScale * stw * sin(deg2rad(a)) + cx;
         p.y = -m_PlotScale * stw * cos(deg2rad(a)) + cy;
       } else {
-        int s;
-        for (s = 0; s < num_wind_speeds - 1; s++)
-          if (wind_speeds[s] > windspeed) break;
-        {  // interpolate into non-linear windspeed space
-          double x = windspeed, x1 = wind_speeds[s], x2 = wind_speeds[s + 1];
-          double y1 = s * w / num_wind_speeds;
-          double y2 = (s + 1) * w / num_wind_speeds;
-
-          p.x = x2 - x1 ? (y2 - y1) * (x - x1) / (x2 - x1) + y1 : y1;
-        }
+        p.x = windPosition(windspeed);
         p.y = h - 2 * stw * m_PlotScale;
       }
 
@@ -688,176 +803,109 @@ void BoatDialog::OnPaintPlot(wxPaintEvent& event) {
       lastpvalid[i] = true;
     }
   }
-}
+  if (plottype == 0)
+    DrawPolarGrid(dc, chart, chartArea, full, maxVB, Vstep);
+  else
+    dc.SetDeviceOrigin(0, 0);
 
-static int CalcPolarPoints(wxPoint p0, wxPoint p1) {
-  return floor(fabs((double)p0.x - p1.x) / 5) + 1;
 }
 
 void BoatDialog::OnPaintCrossOverChart(wxPaintEvent& event) {
-  wxWindow* window = m_CrossOverChart;
-
-  wxPaintDC dc(window);
-
+  wxPaintDC dc(m_CrossOverChart);
   dc.SetBackground(*wxWHITE_BRUSH);
   dc.Clear();
   dc.SetBackgroundMode(wxTRANSPARENT);
+  dc.SetFont(m_CrossOverChart->GetFont());
 #ifdef __OCPN__ANDROID__
-  wxFont labelFont = window->GetFont();
+  wxFont labelFont = m_CrossOverChart->GetFont();
   labelFont.SetPointSize(14);
   dc.SetFont(labelFont);
 #endif
-
-  long index = SelectedPolar();
-  bool polar = !m_cPlotType->GetSelection();
-
-  int w, h;
-  m_CrossOverChart->GetSize(&w, &h);
-
-  dc.SetPen(wxPen(wxColor(0, 0, 0)));
-  dc.SetBrush(*wxTRANSPARENT_BRUSH);
-  dc.SetTextForeground(wxColour(0, 55, 75));
-
-  bool full = m_cbFullPlot->GetValue();
-  double scale = 0;
-  int xc = full ? w / 2 : 0;
-  if (polar) scale = wxMin(full ? w / 2 : w, h / 2) / 40.0;
-
-  for (double VW = 0; VW < 40; VW += 10) {
-    if (polar) {
-      dc.DrawCircle(xc, h / 2, VW * scale);
-      dc.DrawText(wxString::Format(_T("%.0f"), VW), xc,
-                  h / 2 + (int)VW * scale);
-    } else {
-      int y = h - VW * h / 40;
-      dc.DrawLine(0, y, w, y);
-      dc.DrawText(wxString::Format(_T("%.0f"), VW), 0, y);
-    }
-  }
-
-  for (double H = 0; H < 180; H += 10) {
-    if (polar) {
-#ifdef __OCPN__ANDROID__
-      // Meridians and labels belong at the outer wind-speed circle.
-      double x = 35 * scale * sin(deg2rad(H));
-      double y = 35 * scale * cos(deg2rad(H));
-#else
-      double x = scale * sin(deg2rad(H));
-      double y = scale * cos(deg2rad(H));
-#endif
-      if (H < 180) dc.DrawLine(xc - x, h / 2 + y, xc + x, h / 2 - y);
-
-      wxString str = wxString::Format(_T("%.0f"), H);
-      int sw, sh;
-      dc.GetTextExtent(str, &sw, &sh);
-      dc.DrawText(str, xc + .9 * x - sw / 2, h / 2 - .9 * y - sh / 2);
-    } else {
-      int x = H * w / 180;
-      dc.DrawLine(x, 0, x, h);
-      dc.DrawText(wxString::Format(_T("%.0f"), H), x, 0);
-    }
-  }
-
-  wxColour colors[] = {*wxRED,  *wxGREEN,  *wxBLUE,
-                       *wxCYAN, *wxYELLOW, wxColour(255, 0, 255)};
-  int c = 0;
-  for (int i = 0; i < (int)m_Boat.Polars.size(); i++) {
-    bool bold = i == index;
-    wxColour col(colors[c].Red(), colors[c].Green(), colors[c].Blue(),
-                 bold ? 230 : 90);
+  const wxSize size = m_CrossOverChart->GetClientSize();
+  if (size.x < 40 || size.y < 40) return;
+  const bool polar = m_cPlotType->GetSelection() == 0;
+  const bool full = m_cbFullPlot->GetValue();
+  const long selected = SelectedPolar();
+  const int heading = DrawChartHeading(dc, size.x, _("True wind speed (knots)"),
+                                        _("True wind angle (degrees)"));
+  const int top = DrawCrossOverLegend(dc, size.x, heading, m_Boat, selected);
+  const wxRect area(0, top, size.x, wxMax(1, size.y - top));
+  if (area.height < 2 * dc.GetCharHeight()) return;
+  const PolarChartLayout chart = FitPolarChart(dc, area, full);
+  // Crossover generation has always covered 0–40 knots. Keep this display
+  // range aligned with those existing regions; do not invent sail coverage.
+  const double maximumWind = 40;
+  const double scale = chart.radius / maximumWind;
+  const int margin = dc.GetTextExtent("180").x + 12;
+  const wxRect rectangle(margin, top + 4, wxMax(1, size.x - margin - 12),
+                          wxMax(1, size.y - top - dc.GetCharHeight() - 12));
+  auto point = [&](double angle, double wind) {
+    if (polar)
+      return wxPoint(chart.centre.x + wxRound(scale * wind * sin(deg2rad(angle))),
+                       chart.centre.y - wxRound(scale * wind * cos(deg2rad(angle))));
+    return wxPoint(rectangle.x + wxRound(angle * rectangle.width / 180),
+                     rectangle.GetBottom() - wxRound(wind * rectangle.height / maximumWind));
+  };
+  for (std::size_t index = 0; index < m_Boat.Polars.size(); ++index) {
+    const wxColour base = CrossOverColour(index);
+    const wxColour colour(base.Red(), base.Green(), base.Blue(),
+                           static_cast<long>(index) == selected ? 150 : 80);
 #if wxUSE_GRAPHICS_CONTEXT
-    wxGCDC gdc(dc);
-    gdc.SetPen(*wxTRANSPARENT_PEN);
-    gdc.SetBrush(col);
+    wxGCDC graphics(dc);
+    wxDC& fill = graphics;
 #else
-    dc.SetPen(*wxTRANSPARENT_PEN);
-    if (bold) dc.SetBrush(*wxBLACK);
-    dc.SetBrush(col);
+    wxDC& fill = dc;
 #endif
-    if (++c == (sizeof colors) / (sizeof *colors)) c = 0;
-
-    bool tri = true;
-    TESStesselator* tess = m_Boat.Polars[i].CrossOverRegion.Tesselate(tri);
-
+    fill.SetPen(*wxTRANSPARENT_PEN);
+    fill.SetBrush(wxBrush(colour));
+    TESStesselator* tess = m_Boat.Polars[index].CrossOverRegion.Tesselate(true);
     if (!tess) continue;
-
-    const float* verts = tessGetVertices(tess);
-    //        const int* vinds = tessGetVertexIndices(tess);
-    const int* elems = tessGetElements(tess);
-    //        const int nverts = tessGetVertexCount(tess);
-    const int nelems = tessGetElementCount(tess);
-
-    // Draw polygons.
-    for (int i = 0; i < nelems; ++i) {
-      if (tri) {
-        const int* p = &elems[i * 3];
-        wxPoint points[3];
-        for (unsigned j = 0; j < 3 && p[j] != TESS_UNDEF; ++j) {
-          double H = verts[p[j] * 2 + 0];
-          double VW = verts[p[j] * 2 + 1];
-          points[j] = wxPoint(H * w / 180, h - VW * h / 40);
-        }
-        if (polar) {
-          int count[3] = {CalcPolarPoints(points[0], points[1]),
-                          CalcPolarPoints(points[1], points[2]),
-                          CalcPolarPoints(points[2], points[0])};
-          wxPoint* pts = new wxPoint[count[0] + count[1] + count[2]];
-          int c = 0;
-          for (int j = 0; j < 3; j++) {
-            int jp1 = j + 1 == 3 ? 0 : j + 1;
-            for (int k = 0; k < count[j]; k++) {
-              double d = (double)k / count[j];
-              double px = points[j].x * (1 - d) + points[jp1].x * d;
-              double py = points[j].y * (1 - d) + points[jp1].y * d;
-              double H = px / w * 180;
-              double VW = (h - py) / h * 40;
-              pts[c++] = wxPoint(xc + scale * VW * sin(deg2rad(H)),
-                                 h / 2 - scale * VW * cos(deg2rad(H)));
-            }
-          }
-#if wxUSE_GRAPHICS_CONTEXT
-          gdc.DrawPolygon(c, pts);
-#else
-          dc.DrawPolygon(c, pts);
-#endif
-          if (full) {
-            for (int j = 0; j < c; j++) pts[j].x = 2 * xc - pts[j].x;
-#if wxUSE_GRAPHICS_CONTEXT
-            gdc.DrawPolygon(c, pts);
-#else
-            dc.DrawPolygon(c, pts);
-#endif
-          }
-          delete[] pts;
-        } else {
-#if wxUSE_GRAPHICS_CONTEXT
-          gdc.DrawPolygon(3, points);
-#else
-          dc.DrawPolygon(3, points);
-#endif
-        }
-      } else {
-        int b = elems[i * 2];
-        int n = elems[i * 2 + 1];
-
-        wxPoint pl;
-        for (int j = 0; j <= n; j++) {
-          int k = j < n ? j : 0;
-          float H = verts[2 * (b + k) + 0], VW = verts[2 * (b + k) + 1];
-          wxPoint p0;
-          if (polar)
-            p0 = wxPoint(xc + scale * VW * sin(deg2rad(H)),
-                         h / 2 - scale * VW * cos(deg2rad(H)));
-          else
-            p0 = wxPoint(H * w / 180, h - VW * h / 40);
-
-          if (j > 0) dc.DrawLine(pl, p0);
-          pl = p0;
+    const float* vertices = tessGetVertices(tess);
+    const int* elements = tessGetElements(tess);
+    for (int triangle = 0; triangle < tessGetElementCount(tess); ++triangle) {
+      const int* indices = &elements[triangle * 3];
+      if (indices[0] == TESS_UNDEF || indices[1] == TESS_UNDEF ||
+          indices[2] == TESS_UNDEF) continue;
+      std::vector<wxPoint> points;
+      for (int edge = 0; edge < 3; ++edge) {
+        const int first = indices[edge], last = indices[(edge + 1) % 3];
+        const double angle0 = vertices[2 * first], wind0 = vertices[2 * first + 1];
+        const double angle1 = vertices[2 * last], wind1 = vertices[2 * last + 1];
+        // Subdivide curved polar edges using their display arc length. Work
+        // directly in wind/angle coordinates, without rounding through an
+        // intermediate Cartesian plot.
+        const int samples = polar ? wxMax(1, static_cast<int>(ceil(
+            fabs(deg2rad(angle1 - angle0)) * chart.radius / 5))) : 1;
+        for (int sample = 0; sample < samples; ++sample) {
+          const double fraction = static_cast<double>(sample) / samples;
+          points.push_back(point(angle0 + fraction * (angle1 - angle0),
+                                   wind0 + fraction * (wind1 - wind0)));
         }
       }
+      fill.DrawPolygon(points.size(), points.data());
+      if (polar && full) {
+        for (auto& p : points) p.x = 2 * chart.centre.x - p.x;
+        fill.DrawPolygon(points.size(), points.data());
+      }
     }
-
     tessDeleteTess(tess);
+  }
+  if (polar) {
+    DrawPolarGrid(dc, chart, area, full, maximumWind, 10);
+  } else {
+    dc.SetPen(wxPen(wxColour(130, 140, 150)));
+    dc.SetTextForeground(wxColour(20, 40, 65));
+    for (int wind = 0; wind <= maximumWind; wind += 10) {
+      const wxPoint p = point(0, wind);
+      dc.DrawLine(rectangle.x, p.y, rectangle.GetRight(), p.y);
+      dc.DrawText(wxString::Format("%d", wind), 4, p.y - dc.GetCharHeight() / 2);
+    }
+    for (int angle = 0; angle <= 180; angle += 30) {
+      const wxPoint p = point(angle, 0);
+      dc.DrawLine(p.x, rectangle.y, p.x, rectangle.GetBottom());
+      DrawChartText(dc, wxString::Format("%d", angle) + wxString::FromUTF8("\xC2\xB0"),
+                     p.x, p.y + 3, wxRect(0, top, size.x, size.y - top));
+    }
   }
 }
 

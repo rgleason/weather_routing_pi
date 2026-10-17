@@ -18,6 +18,15 @@ to use Automatic where no wind-range policy was saved.
 
 The routing engines, polar interpolation and crossover selection are unchanged.
 
+The polar and crossover charts now fit their client area in half-plot and
+full-plot modes, with space for the labels. Plot rings show boat speed in knots;
+crossover rings show true wind speed in knots. Angular spokes and labels extend
+to the outer circle, and the crossover grid is drawn above the coloured regions.
+A colour/filename legend identifies each polar. Crossover coverage retains its
+existing 0–40 knot range. The Full Plot checkbox remains visible on desktop;
+Android retains its stacked touch controls. Cartesian plots use the same wind
+intervals for their ticks, curves and VMG markers.
+
 Validation includes the full native test suite (559 enabled tests passed;
 one pre-existing optional timing test disabled), production Boat XML round trips
 with two polars, legacy XML defaults and multi-polar selection limits. Isolated

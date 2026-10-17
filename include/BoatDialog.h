@@ -45,7 +45,7 @@ private:
   void OnMouseEventsPolarPlot(wxMouseEvent& event);
 
   void OnPaintPlot(wxPaintEvent& event);
-  void OnUpdatePlot(wxSizeEvent& event) { OnUpdatePlot(); }
+  void OnUpdatePlot(wxSizeEvent& event) { OnUpdatePlot(); event.Skip(); }
   void OnPaintCrossOverChart(wxPaintEvent& event);
   void OnOverlapPercentage(wxSpinEvent& event);
   void OnSizePlot(wxSizeEvent& event) { RefreshPlots(); }
