@@ -46,7 +46,7 @@ PROFILES = {
                             "https://github.com/rgleason/weather_routing_pi"},
     },
 }
-SUMMARY = "Weather routing with Atlas, six engines and configurable Auto/All."
+SUMMARY = "Weather routing with six engines and a clear multi-polar boat editor."
 PREVIOUS_SUMMARY = "Weather routing, passage planning and existing-route chart checks."
 OLDER_SUMMARY = "Advanced weather routing with departure and arrival planning."
 LEGACY_SUMMARY = "Advanced deterministic weather routing with departure and arrival planning."

@@ -63,6 +63,8 @@ set(TEST_SRC
     ReachabilityPrewarmPolicy_tests.cpp
     RouteDisplayPolicy_tests.cpp
     Polar_tests.cpp
+    BoatXML_tests.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/src/Boat.cpp
     PolarRoutingPolicy_tests.cpp
     LowWindMotor_tests.cpp
     PolygonRegion_tests.cpp
@@ -165,6 +167,7 @@ set(TEST_SRC
             ${WEATHER_ROUTING_SOURCE_DIR}/opencpn-libs/tinyxml/include
             ${WEATHER_ROUTING_SOURCE_DIR}/opencpn-libs/odapi
             ${WEATHER_ROUTING_SOURCE_DIR}/opencpn-libs/jsonlib/include
+            ${WEATHER_ROUTING_SOURCE_DIR}/opencpn-libs/plugin_dc/dc_utils/include
    #         ${WEATHER_ROUTING_SOURCE_DIR}/opencpn-libs/plugin_dc/dc_utils/include
    #         ${WEATHER_ROUTING_SOURCE_DIR}/opencpn-libs/jsonlib/include
    #         ${WEATHER_ROUTING_SOURCE_DIR}/opencpn-libs/odapi
@@ -204,7 +207,18 @@ set(TEST_SRC
        )
    endif()
 
+   if(MSVC)
+       # Boat XML tests use the production Boat.cpp and plugin header. The
+       # latter includes pidc.h, which needs the bundled GL extension headers
+       # on Windows just as the plugin target does.
+       target_link_libraries(weather_routing_pi_tests PRIVATE windows::headers)
+   endif()
+
    if(WIN32)
+       # These tests provide their own StandardPath and run without a host.
+       # ocpn_plugin.h otherwise marks its API classes/functions dllexport,
+       # forcing an opencpn.exe runtime dependency into the test executable.
+       target_compile_definitions(weather_routing_pi_tests PRIVATE DECL_EXP=)
        # GoogleTest DLLs are built for the selected architecture. Both Win32
        # and x64 discovery need them beside the test executable.
        add_custom_command(TARGET weather_routing_pi_tests POST_BUILD
