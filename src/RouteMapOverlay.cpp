@@ -35,6 +35,7 @@
 #include "Boat.h"
 #include "ConstraintChecker.h"
 #include "WeatherDataProvider.h"
+#include "engine/native/RouteGust.h"
 #include "RouteMapOverlay.h"
 #include "RoutingFootprint.h"
 #include "SettingsDialog.h"
@@ -666,6 +667,7 @@ void RouteMapOverlay::InstallModernNativeResult(
           wr::normalizeHeading(wr::vectorDirectionToDegrees(leg.wind) + 180.0);
       data.twsOverGround = data.twsOverWater;
       data.twdOverGround = data.twdOverWater;
+      data.VW_GUST = weather_routing::native::RouteGustKnots(leg);
       data.currentSpeed = wr::vectorMagnitudeKnots(leg.current);
       data.currentDir = wr::vectorDirectionToDegrees(leg.current);
       data.WVHT = leg.waves.available
@@ -2396,6 +2398,7 @@ double RouteMapOverlay::RouteInfo(enum RouteInfoType type, bool cursor_route) {
   std::list<PlotData>& plotdata = GetPlotData(cursor_route);
 
   double total = 0, count = 0, lat0 = 0, lon0 = 0;
+  bool haveGust = false;
   int comfort = 0, current_comfort = 0;
   for (std::list<PlotData>::iterator it = plotdata.begin();
        it != plotdata.end(); it++) {
@@ -2426,7 +2429,10 @@ double RouteMapOverlay::RouteInfo(enum RouteInfoType type, bool cursor_route) {
         if (total < it->twsOverWater) total = it->twsOverWater;
         break;
       case MAXWINDGUST:
-        if (total < it->VW_GUST) total = it->VW_GUST;
+        if (std::isfinite(it->VW_GUST) && it->VW_GUST >= 0.0) {
+          haveGust = true;
+          if (total < it->VW_GUST) total = it->VW_GUST;
+        }
         break;
       case AVGCURRENT:
         total += it->currentSpeed;
@@ -2459,6 +2465,7 @@ double RouteMapOverlay::RouteInfo(enum RouteInfoType type, bool cursor_route) {
   }
 
   /* fixup data */
+  if (type == MAXWINDGUST && !haveGust) return NAN;
   switch (type) {
     case TACKS:
       return plotdata.size() ? plotdata.back().tacks : 0;

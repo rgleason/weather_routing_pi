@@ -4417,6 +4417,14 @@ void WeatherRouting::CompleteHeadlessSingleRouteTest(bool timed_out,
     }
     const double distance_nm =
         is_complete ? route->RouteInfo(RouteMapOverlay::DISTANCE) : NAN;
+    if (is_complete) {
+      const auto& points = route->GetPlotData(false);
+      const auto gusts = std::count_if(points.begin(), points.end(),
+          [](const PlotData& point) { return std::isfinite(point.VW_GUST); });
+      wxLogMessage("WR_HEADLESS_ROUTE_TEST gusts index=%lu rows=%lu available=%lu max_knots=%.6f",
+          static_cast<unsigned long>(i), static_cast<unsigned long>(points.size()),
+          static_cast<unsigned long>(gusts), route->RouteInfo(RouteMapOverlay::MAXWINDGUST));
+    }
     wxLogMessage(
         "WR_HEADLESS_ROUTE_TEST route_result index=%lu offset=%d "
         "start=\"%s\" end=\"%s\" complete=%d failed=%d running=%d "
