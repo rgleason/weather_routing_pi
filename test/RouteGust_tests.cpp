@@ -15,7 +15,10 @@ TEST(RouteGust, SamplesEachLegAtItsOwnStartPositionAndTime) {
       [&](wr::GeoPoint position, wr::TimePoint time) {
         const auto& expected = legs[calls++];
         EXPECT_EQ(position, expected.start);
-        EXPECT_EQ(time, expected.startTime);
+        // Keep diagnostics compatible with the macOS 11 deployment baseline;
+        // formatting a chrono time point requires newer libc++ APIs.
+        EXPECT_EQ(time.time_since_epoch().count(),
+                  expected.startTime.time_since_epoch().count());
         return time == legs[0].startTime ? 24.5 : 31.2;
       });
   EXPECT_EQ(calls, 2);
