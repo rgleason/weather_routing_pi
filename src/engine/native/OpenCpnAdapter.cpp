@@ -32,6 +32,7 @@
 #include "engine/native/ConstraintTime.h"
 #include "engine/native/CoordinateNormalization.h"
 #include "engine/native/RoutingEngineSequence.h"
+#include "engine/native/RouteGust.h"
 #include "quick2_routing/Engine.h"
 #include "atlas_routing/Engine.h"
 #include "engine/native/WeatherCoverage.h"
@@ -2212,6 +2213,33 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
   }
   if (!Complete(result.status) || configuration.chart_safety_scout_preview)
     retainedCandidates.clear();
+  // The solvers retain wind/current/waves, but gusts are optional output data.
+  // Capture them before releasing the worker's GRIB service, including every
+  // retained alternative so later GUI selection cannot use a different file.
+  auto gustConfiguration = configuration;
+  const auto sampleGust = [&](wr::GeoPoint position, wr::TimePoint time) {
+    gustConfiguration.grib = nullptr;
+    gustConfiguration.time = ToWx(time);
+    Shared_GribRecordSet frame;
+    if (!configuration.UseGrib ||
+        !overlay.AcquireGribTimelineFrame(gustConfiguration.time, frame))
+      return std::numeric_limits<double>::quiet_NaN();
+    gustConfiguration.grib = frame.GetGribRecordSet();
+    if (!gustConfiguration.grib)
+      return std::numeric_limits<double>::quiet_NaN();
+    return WeatherDataProvider::GetGust(
+        gustConfiguration, position.latitude, position.longitude);
+  };
+  weather_routing::native::PopulateRouteGusts(result.legs, sampleGust);
+  const auto captureCandidateGusts = [&](auto& candidates) {
+    for (auto& candidate : candidates) {
+      auto captured = std::make_shared<wr::RoutingResult>(*candidate.result);
+      weather_routing::native::PopulateRouteGusts(captured->legs, sampleGust);
+      candidate.result = std::move(captured);
+    }
+  };
+  captureCandidateGusts(retainedCandidates);
+  captureCandidateGusts(partialCandidates);
   overlay.SetRetainedCandidates(std::move(retainedCandidates));
   overlay.InstallModernNativeResult(result);
   if (Complete(result.status) || result.status == wr::RoutingStatus::Cancelled ||

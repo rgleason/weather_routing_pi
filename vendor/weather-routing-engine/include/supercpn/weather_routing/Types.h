@@ -535,6 +535,9 @@ struct RouteLeg {
   double estimatedFuelLitres{};
   ConstraintMargins margins;
   std::vector<RoutingWarning> warnings;
+  // Optional output sampled at the leg's start position/time. Retain it with
+  // delivered routes so inspection never depends on a later loaded forecast.
+  std::optional<double> windGustKnots;
 };
 
 // Bounded, deterministic solver geometry intended only for inspection.  Route

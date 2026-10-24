@@ -4417,6 +4417,14 @@ void WeatherRouting::CompleteHeadlessSingleRouteTest(bool timed_out,
     }
     const double distance_nm =
         is_complete ? route->RouteInfo(RouteMapOverlay::DISTANCE) : NAN;
+    if (is_complete) {
+      const auto& points = route->GetPlotData(false);
+      const auto gusts = std::count_if(points.begin(), points.end(),
+          [](const PlotData& point) { return std::isfinite(point.VW_GUST); });
+      wxLogMessage("WR_HEADLESS_ROUTE_TEST gusts index=%lu rows=%lu available=%lu max_knots=%.6f",
+          static_cast<unsigned long>(i), static_cast<unsigned long>(points.size()),
+          static_cast<unsigned long>(gusts), route->RouteInfo(RouteMapOverlay::MAXWINDGUST));
+    }
     wxLogMessage(
         "WR_HEADLESS_ROUTE_TEST route_result index=%lu offset=%d "
         "start=\"%s\" end=\"%s\" complete=%d failed=%d running=%d "
@@ -5573,11 +5581,14 @@ void WeatherRouting::UpdateRoutePositionDialog() {
   SetInspectorLabel(dlg.m_stWaves, wxString::Format(_T("%.0f m"), data.WVHT));
 
   // WIND GUST
-  SetInspectorLabel(dlg.m_stWindGust, wxString::Format(_T("%.0f knts"), data.VW_GUST));
+  SetInspectorLabel(dlg.m_stWindGust,
+      std::isfinite(data.VW_GUST)
+          ? wxString::Format(_T("%.1f %s"), toUsrSpeed_Plugin(data.VW_GUST),
+                             getUsrSpeedUnit_Plugin())
+          : _("Unavailable"));
 
 #ifdef __OCPN__ANDROID__
   if (!std::isfinite(data.WVHT)) SetInspectorLabel(dlg.m_stWaves, _("Unavailable"));
-  if (!std::isfinite(data.VW_GUST)) SetInspectorLabel(dlg.m_stWindGust, _("Unavailable"));
 #endif
   // CLIMATOLOGY DATA
   wxString weatherdata;

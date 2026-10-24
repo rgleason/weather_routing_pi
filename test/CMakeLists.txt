@@ -92,6 +92,7 @@ set(TEST_SRC
     GpxRouteTime_tests.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/navobj_util.cpp
     NearbyWaveHeight_tests.cpp
+    RouteGust_tests.cpp
     ModernNativeEngine_tests.cpp
     ProfessionalSearchPolicy_tests.cpp
     OriginalEngine_tests.cpp
