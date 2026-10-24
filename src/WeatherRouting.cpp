@@ -5581,11 +5581,14 @@ void WeatherRouting::UpdateRoutePositionDialog() {
   SetInspectorLabel(dlg.m_stWaves, wxString::Format(_T("%.0f m"), data.WVHT));
 
   // WIND GUST
-  SetInspectorLabel(dlg.m_stWindGust, wxString::Format(_T("%.0f knts"), data.VW_GUST));
+  SetInspectorLabel(dlg.m_stWindGust,
+      std::isfinite(data.VW_GUST)
+          ? wxString::Format(_T("%.1f %s"), toUsrSpeed_Plugin(data.VW_GUST),
+                             getUsrSpeedUnit_Plugin())
+          : _("Unavailable"));
 
 #ifdef __OCPN__ANDROID__
   if (!std::isfinite(data.WVHT)) SetInspectorLabel(dlg.m_stWaves, _("Unavailable"));
-  if (!std::isfinite(data.VW_GUST)) SetInspectorLabel(dlg.m_stWindGust, _("Unavailable"));
 #endif
   // CLIMATOLOGY DATA
   wxString weatherdata;
