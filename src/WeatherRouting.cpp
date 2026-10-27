@@ -1386,8 +1386,8 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
 
   int confVersion;
   pConf->Read(_T ( "ConfigVersion" ), &confVersion, 0);
-  // v1.25 through v1.33 retain the v1.24 bundled boats and polars. A feature-only
-  // upgrade must not prompt to overwrite existing user data.
+  // Known feature-only upgrades retain the preceding bundled data and must
+  // not prompt to overwrite existing user boats, polars or routes.
   if (weather_routing::CanSkipBundledDataUpdate(
           confVersion, PLUGIN_VERSION_MAJOR, PLUGIN_VERSION_MINOR)) {
     confVersion = PLUGIN_VERSION_MAJOR * 100 + PLUGIN_VERSION_MINOR;
