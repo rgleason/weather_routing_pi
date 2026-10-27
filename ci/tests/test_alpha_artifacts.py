@@ -129,7 +129,7 @@ class AlphaArtifacts(unittest.TestCase):
         output = self.root / 'release'
         with self.assertRaisesRegex(ValueError, 'compatibility matrix'):
             prepare.prepare(self.root / 'artifacts', output, 'abcdef1', '23',
-                            self.root / 'compatibility')
+                            compatibility_root=self.root / 'compatibility')
         self.assertFalse(output.exists())
 
     def test_compatibility_variant_must_have_the_same_release_version(self):
@@ -141,7 +141,7 @@ class AlphaArtifacts(unittest.TestCase):
         directory.parent.rename(compatibility / directory.parent.name)
         output = self.root / 'release'
         with self.assertRaisesRegex(ValueError, 'Mixed versions'):
-            prepare.prepare(self.root / 'artifacts', output, 'abcdef1', '23', compatibility)
+            prepare.prepare(self.root / 'artifacts', output, 'abcdef1', '23', compatibility_root=compatibility)
         self.assertFalse(output.exists())
 
 
