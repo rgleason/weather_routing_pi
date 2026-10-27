@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <math.h>
+#include <errno.h>
 
 #ifdef _MSC_VER
 #include <windows.h>

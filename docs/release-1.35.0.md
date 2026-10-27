@@ -41,6 +41,9 @@ No new, unsupported catalogue target is invented.
   the exact wxWidgets version requested by the pinned build.
 - Boat crossover completion explicitly joins its worker without nested GUI
   event dispatch, giving both wxWidgets versions the same wait behaviour.
+- The Windows monotonic-clock helper includes its standard time and error
+  declarations directly; wxWidgets 3.3.4 no longer supplies `timespec`
+  indirectly through its array headers.
 - Climatology compatibility includes the main-catalogue 1.6 family and
   Climatology 2.0.0 with the `ocpn-climatology-2026.2` dataset. Both retain
   the same wind/current, wind-atlas and cyclone callback interfaces and
