@@ -39,7 +39,7 @@ bool ExtractOpenCPNRouteWaypoints(const wxString& routeGuid,
   }
 
   int index = 1;
-  for (wxPlugin_WaypointListNode* node = route->pWaypointList->GetFirst(); node;
+  for (auto node = route->pWaypointList->GetFirst(); node;
        node = node->GetNext()) {
     PlugIn_Waypoint* waypoint = node->GetData();
     if (!waypoint) {

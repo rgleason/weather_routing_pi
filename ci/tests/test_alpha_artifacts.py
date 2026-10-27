@@ -104,6 +104,25 @@ class AlphaArtifacts(unittest.TestCase):
                           embedded.findtext("tarball-url"))
             self.assertNotIn("--pkg_repo--", embedded.findtext("tarball-url"))
 
+    def test_wx334_download_cannot_collide_with_the_wx32_catalogue_package(self):
+        for name in prepare.TARGETS:
+            self.pair(name)
+        directory, _, _ = self.pair('windows-x64-wx334')
+        compatibility = self.root / 'compatibility'
+        compatibility.mkdir()
+        directory.parent.rename(compatibility / directory.parent.name)
+        output = self.root / 'release'
+        prepare.prepare(self.root / 'artifacts', output, 'abcdef1', '23', compatibility_root=compatibility)
+        uploads = json.loads((output / 'uploads.json').read_text())
+        self.assertEqual(len({item['name'] for item in uploads}), len(uploads))
+        supplemental = [item for item in uploads if not item['catalogue']]
+        self.assertEqual(len(supplemental), 2)
+        self.assertTrue(all(Path(item['file']).parent == output / 'windows-x64-wx334'
+                            for item in supplemental))
+        # Ordinary catalogue readers enumerate only the top-level metadata.
+        self.assertEqual(len(list(output.glob('*.xml'))), len(prepare.TARGETS))
+        self.assertEqual(len(list(output.rglob('*.xml'))), len(prepare.TARGETS) + 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -115,6 +115,9 @@ Further architecture and validation details are in
 [`docs/modern_native_engine.md`](docs/modern_native_engine.md) and
 [`docs/chart_safety_cache.md`](docs/chart_safety_cache.md).
 
+For the wxWidgets 3.2 and 3.3.4 build variants and matching Windows x64
+packages, see [`docs/release-1.35.0.md`](docs/release-1.35.0.md).
+
 ## Status
 
 The package, library, catalogue and UI use the standard identity:

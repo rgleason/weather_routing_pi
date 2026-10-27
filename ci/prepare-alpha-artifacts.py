@@ -25,10 +25,12 @@ EXPECTED_TARGETS = {
     "flatpak-aarch64": ("flatpak-aarch64", "25.08", "aarch64"),
     "windows-x86": ("msvc-wx32", "10.0.20348", "x86"),
     "windows-x64": ("msvc-64", "10", "x86_64"),
+    "windows-x64-wx334": ("msvc-64", "10", "x86_64"),
     "macos-arm64": ("darwin-wx32", "15.3.2", "arm64"),
     "android-arm64": ("android-arm64", "16", "arm64"),
 }
-TARGETS = set(EXPECTED_TARGETS)
+SUPPLEMENTAL_TARGETS = {"windows-x64-wx334"}
+TARGETS = set(EXPECTED_TARGETS) - SUPPLEMENTAL_TARGETS
 PACKAGE = "xweather_routing_pi"
 REPOSITORY = "pob220/xweather-routing-alpha-oss"
 PROFILES = {
@@ -141,7 +143,7 @@ def inspect_pair(directory, channel="xweather-alpha"):
 
 
 def prepare(artifact_root, output, revision, build_number, channel="xweather-alpha",
-            source_repository=None):
+            source_repository=None, compatibility_root=None):
     profile = profile_for(channel)
     package_name, repository = profile["package"], profile["repository"]
     source_repository = source_repository or profile["source"]
@@ -152,26 +154,41 @@ def prepare(artifact_root, output, revision, build_number, channel="xweather-alp
     directories = {path.parent.name: path for path in artifact_root.glob("*/package")}
     if set(directories) != TARGETS:
         raise ValueError(f"Incomplete/unexpected matrix: {sorted(directories)}")
-    pairs = [inspect_pair(directories[name], channel) for name in sorted(TARGETS)]
-    if len({pair[2] for pair in pairs}) != 1 or len({pair[3] for pair in pairs}) != len(TARGETS):
+    pairs = [(name, *inspect_pair(directories[name], channel)) for name in sorted(TARGETS)]
+    if len({pair[3] for pair in pairs}) != 1 or len({pair[4] for pair in pairs}) != len(TARGETS):
         raise ValueError("Mixed versions or duplicate platform metadata")
+    if compatibility_root is not None:
+        supplemental = {path.parent.name: path for path in compatibility_root.glob("*/package")}
+        if set(supplemental) != SUPPLEMENTAL_TARGETS:
+            raise ValueError(f"Incomplete/unexpected compatibility matrix: {sorted(supplemental)}")
+        pairs += [(name, *inspect_pair(supplemental[name], channel)) for name in sorted(SUPPLEMENTAL_TARGETS)]
+        if len({pair[3] for pair in pairs}) != 1:
+            raise ValueError("Mixed versions in compatibility packages")
     output.mkdir(parents=True, exist_ok=False)
     embed_spec = spec_from_file_location("embed", Path(__file__).with_name("embed-package-metadata.py"))
     embed_module = module_from_spec(embed_spec)
     embed_spec.loader.exec_module(embed_module)
     uploads = []
     inputs = []
-    for archive, root, version, target, metadata_name in pairs:
+    for matrix_name, archive, root, version, target, metadata_name in pairs:
         cloud_version = f"{version}+{build_number}.{revision[:7]}"
         base = f"{package_name}-{version}-{'-'.join(target)}"
+        destination = output
+        catalogue = matrix_name not in SUPPLEMENTAL_TARGETS
+        if not catalogue:
+            # Both wx ABIs currently share the host label msvc-64. Publish
+            # the new one for explicit import without mixing catalogue rows.
+            base += "-wx334"
+            destination = output / matrix_name
+            destination.mkdir()
         url = f"https://dl.cloudsmith.io/public/{repository}/raw/names/{base}-tarball/versions/{cloud_version}/{archive.name}"
         root.find("source").text = source_repository
         if root.find("info-url") is not None:
             root.find("info-url").text = source_repository
         root.find("tarball-url").text = "\n    " + url + "\n  "
-        staged_metadata = output / metadata_name
+        staged_metadata = destination / metadata_name
         ET.ElementTree(root).write(staged_metadata, encoding="utf-8", xml_declaration=True)
-        staged_archive = output / archive.name
+        staged_archive = destination / archive.name
         embed_module.embed(archive, staged_metadata, staged_archive)
         with tarfile.open(staged_archive, "r:gz") as package:
             embedded = package.extractfile("metadata.xml").read()
@@ -184,7 +201,7 @@ def prepare(artifact_root, output, revision, build_number, channel="xweather-alp
         for name, file in ((base + "-metadata", staged_metadata), (base + "-tarball", staged_archive)):
             with file.open("rb") as stream:
                 digest = hashlib.file_digest(stream, "sha256").hexdigest()
-            uploads.append({"name": name, "version": cloud_version,
+            uploads.append({"name": name, "version": cloud_version, "catalogue": catalogue,
                             "file": str(file.resolve()), "sha256": digest})
     (output / "uploads.json").write_text(json.dumps(uploads, indent=2) + "\n")
     (output / "publication.json").write_text(json.dumps({
@@ -203,5 +220,7 @@ if __name__ == "__main__":
     parser.add_argument("output", type=Path)
     parser.add_argument("revision")
     parser.add_argument("build_number")
+    parser.add_argument("--compatibility-root", type=Path)
     arguments = parser.parse_args()
-    prepare(arguments.artifact_root, arguments.output, arguments.revision, arguments.build_number)
+    prepare(arguments.artifact_root, arguments.output, arguments.revision, arguments.build_number,
+            compatibility_root=arguments.compatibility_root)

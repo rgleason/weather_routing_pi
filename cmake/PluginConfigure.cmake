@@ -629,11 +629,11 @@ if (NOT QT_ANDROID)
   if (NOT USE_WX_CONFIG_MODE)
     message(STATUS "${CMLOC}Using legacy FindwxWidgets")
 
-	if (MSVC AND wxWidgets_ROOT_DIR)
-		set(wxWidgets_LIB_DIR "${wxWidgets_ROOT_DIR}/lib/vc_dll")
-		set(wxWidgets_INCLUDE_DIRS "${wxWidgets_ROOT_DIR}/lib/vc_dll/mswud")
-		set(wxWidgets_EXCLUDE_COMMON_LIBRARIES TRUE)
-	endif ()
+    if (MSVC)
+      # FindwxWidgets handles the selected architecture and configuration.
+      # Preserve an explicit SDK directory (e.g. lib/vc14x_x64_dll).
+      set(wxWidgets_EXCLUDE_COMMON_LIBRARIES TRUE)
+    endif ()
 
     find_package(wxWidgets MODULE REQUIRED COMPONENTS ${wxWidgets_USE_LIBS})
     include(${wxWidgets_USE_FILE})
@@ -659,6 +659,12 @@ if (NOT QT_ANDROID)
         target_link_libraries(wx::${_comp} INTERFACE ${wxWidgets_LIBRARIES})
       endif ()
     endforeach ()
+  endif ()
+
+  if (WEATHER_ROUTING_EXPECTED_WX_VERSION AND
+      NOT wxWidgets_VERSION_STRING VERSION_EQUAL WEATHER_ROUTING_EXPECTED_WX_VERSION)
+    message(FATAL_ERROR
+      "Expected wxWidgets ${WEATHER_ROUTING_EXPECTED_WX_VERSION}, found ${wxWidgets_VERSION_STRING}")
   endif ()
 
   # ---------------------------------------------------------------------------

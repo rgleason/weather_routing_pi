@@ -8,7 +8,8 @@ if [[ -z "${CLOUDSMITH_API_KEY:-}" ]]; then
 fi
 
 python3 ci/prepare-alpha-artifacts.py artifacts alpha-publication \
-  "$(git rev-parse HEAD)" "${CIRCLE_BUILD_NUM:?CircleCI build number required}"
+  "$(git rev-parse HEAD)" "${CIRCLE_BUILD_NUM:?CircleCI build number required}" \
+  --compatibility-root compatibility
 
 python3 - <<'PY'
 import json

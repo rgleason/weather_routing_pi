@@ -9915,7 +9915,7 @@ bool WeatherRouting::AddConfiguration(RouteMapConfiguration& configuration) {
     if (!proute) return false;
 
     PlugIn_Waypoint* pwp;
-    wxPlugin_WaypointListNode* pwpnode = proute->pWaypointList->GetFirst();
+    auto pwpnode = proute->pWaypointList->GetFirst();
     if (!pwpnode) return false;
 
     pwp = pwpnode->GetData();

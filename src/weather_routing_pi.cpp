@@ -586,8 +586,8 @@ void weather_routing_pi::SetPluginMessage(wxString& message_id,
     Json::Reader reader;
     // check for errors before retreiving values...
     if (!reader.parse(static_cast<std::string>(message_body), root)) {
-      wxLogMessage(_T("weather_routing_pi: Error parsing JSON message - ") +
-                   reader.getFormattedErrorMessages() + " : " + message_body);
+      wxLogMessage("weather_routing_pi: Error parsing JSON message - %s : %s",
+                   wxString::FromUTF8(reader.getFormattedErrorMessages()), message_body);
     }
 
     if (root["Type"].asString() == "Response" &&

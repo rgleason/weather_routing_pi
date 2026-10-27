@@ -227,7 +227,7 @@ bool RouteSafetyDialog::Snapshot(std::vector<SafetyCheckWaypoint>& points,
   auto route = GetRoute_Plugin(route_guid_);
   if (!route || !route->pWaypointList) { error = _("The route is no longer available."); return false; }
   route_name = route->m_NameString;
-  for (auto* node = route->pWaypointList->GetFirst(); node; node = node->GetNext()) {
+  for (auto node = route->pWaypointList->GetFirst(); node; node = node->GetNext()) {
     const auto* p = node->GetData();
     if (!p) { error = _("The route contains an unavailable waypoint."); return false; }
     points.push_back({p->m_GUID.ToStdString(), p->m_MarkName.ToStdString(), p->m_lat, p->m_lon});
@@ -356,24 +356,24 @@ void RouteSafetyDialog::RefreshReport() {
   for (long i = first; i < static_cast<long>(rows.size()); ++i) {
     const auto& row = rows[i];
     if (i >= findings_->GetItemCount()) findings_->InsertItem(i, wxString::Format("%zu", row.leg));
-    findings_->SetItem(i, 1, _(RouteSafetyCheck::Reason(row.status)));
+    findings_->SetItem(i, 1, wxGetTranslation(RouteSafetyCheck::Reason(row.status)));
     findings_->SetItem(i, 2, wxString::Format("%.5f, %.5f", row.lat, row.lon));
     findings_->SetItem(i, 3, row.has_depth ? wxString::Format("%.2f", row.minimum_depth_m) : wxString("—"));
-    findings_->SetItem(i, 4, row.chart_path.empty() ? _(SourceName(row.source)) : wxFileName(Utf8(row.chart_path)).GetFullName());
+    findings_->SetItem(i, 4, row.chart_path.empty() ? wxGetTranslation(SourceName(row.source)) : wxFileName(Utf8(row.chart_path)).GetFullName());
   }
   if (selected_ >= 0 && selected_ < static_cast<long>(rows.size())) {
     const auto& row = rows[selected_];
     const auto& points = check_->Waypoints();
     details_->ChangeValue(wxString::Format(_("Leg %zu: %s → %s\n%s (%.1f–%.1f%% along this leg)\nChart: %s\n%s"),
         row.leg, Utf8(points[row.leg - 1].name), Utf8(points[row.leg].name),
-        _(RouteSafetyCheck::Reason(row.status)), 100 * row.from_fraction, 100 * row.to_fraction,
-        row.chart_path.empty() ? _(SourceName(row.source)) : Utf8(row.chart_path), Utf8(row.message)));
+        wxGetTranslation(RouteSafetyCheck::Reason(row.status)), 100 * row.from_fraction, 100 * row.to_fraction,
+        row.chart_path.empty() ? wxGetTranslation(SourceName(row.source)) : Utf8(row.chart_path), Utf8(row.message)));
   }
 #ifdef __OCPN__ANDROID__
   while (android_findings_->GetCount() < rows.size()) {
     const auto& row = rows[android_findings_->GetCount()];
     android_findings_->Append(wxString::Format(_("Leg %zu: %s"), row.leg,
-        _(RouteSafetyCheck::Reason(row.status))));
+        wxGetTranslation(RouteSafetyCheck::Reason(row.status))));
   }
   android_findings_->Enable(!rows.empty());
   android_findings_->SetSelection(selected_);
