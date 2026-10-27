@@ -41,6 +41,14 @@ No new, unsupported catalogue target is invented.
   the exact wxWidgets version requested by the pinned build.
 - Boat crossover completion explicitly joins its worker without nested GUI
   event dispatch, giving both wxWidgets versions the same wait behaviour.
+- Climatology compatibility includes the main-catalogue 1.6 family and
+  Climatology 2.0.0 with the `ocpn-climatology-2026.2` dataset. Both retain
+  the same wind/current, wind-atlas and cyclone callback interfaces and
+  units. The additional typed query API in 2.0 is optional for this consumer.
+- Every Climatology advertisement is checked, including provider unload
+  and replacement. Unsupported or malformed advertisements clear all three
+  callbacks so a previously accepted provider cannot leave stale pointers.
+  The existing 0.10 through 1.6 compatibility range is retained.
 
 ## Qualification
 

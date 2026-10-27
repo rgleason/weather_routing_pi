@@ -86,6 +86,8 @@ set(TEST_SRC
     RoutingResourcePolicy_tests.cpp
     RoutingFootprint_tests.cpp
     ClimatologyThreadGuard_tests.cpp
+    ClimatologyCompatibility_tests.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/src/ClimatologyCompatibility.cpp
     ConstraintTime_tests.cpp
     SunCalculator_tests.cpp
     TimeZoneDisplay_tests.cpp

@@ -255,6 +255,7 @@ SET(SRCS
             src/ShorelineManager.cpp
             src/AppendOnlyCache.cpp
             src/ChartSafetyCache.cpp
+            src/ClimatologyCompatibility.cpp
             src/ChartSafetyAtlas.cpp
             src/ChartHazardEvaluator.cpp
             src/ChartSafetyHost.cpp

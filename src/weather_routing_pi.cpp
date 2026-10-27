@@ -34,6 +34,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <mutex>
 #include <type_traits>
 #ifdef __OCPN__ANDROID__
 #include <QCoreApplication>
@@ -42,6 +43,7 @@
 
 #include "Utilities.h"
 #include "ChartSafetyHost.h"
+#include "ClimatologyCompatibility.h"
 #include "Boat.h"
 #include "RoutePoint.h"
 #include "RouteMap.h"
@@ -83,12 +85,6 @@ constexpr long long kChartSafetyAtlasGuiQuietMs = 30000;
 #define GRIB_MAX_MINOR 0
 #define GRIB_MIN_MAJOR 4
 #define GRIB_MIN_MINOR 1
-
-// Define minimum and maximum versions of the climatology plugin supported
-#define CLIMATOLOGY_MAX_MAJOR 1
-#define CLIMATOLOGY_MAX_MINOR 6
-#define CLIMATOLOGY_MIN_MAJOR 0
-#define CLIMATOLOGY_MIN_MINOR 10
 
 static Json::Value g_ReceivedODVersionJSONMsg;
 static bool ODVersionNewerThan(int major, int minor, int patch) {
@@ -516,52 +512,18 @@ void weather_routing_pi::SetPluginMessage(wxString& message_id,
   } else if (message_id == _T("CLIMATOLOGY")) {
     if (!m_pWeather_Routing) return; /* not ready */
 
-    Json::Reader r;
-    Json::Value v;
-    r.parse(static_cast<std::string>(message_body), v);
-
-    static bool shown_warnings;
-    if (!shown_warnings) {
-      shown_warnings = true;
-
-      int climatology_version_major = v["ClimatologyVersionMajor"].asInt();
-      int climatology_version_minor = v["ClimatologyVersionMinor"].asInt();
-
-      int climatology_version =
-          1000 * climatology_version_major + climatology_version_minor;
-      int climatology_min =
-          1000 * CLIMATOLOGY_MIN_MAJOR + CLIMATOLOGY_MIN_MINOR;
-      int climatology_max =
-          1000 * CLIMATOLOGY_MAX_MAJOR + CLIMATOLOGY_MAX_MINOR;
-
-      if (climatology_version < climatology_min ||
-          climatology_version > climatology_max) {
-        wxString ver = _("Use versions");
-        WR_MessageDialog mdlg(
-            m_parent_window,
-            _("Climatology plugin version not supported, no climatology "
-              "data.") +
-                _T("\n\n") +
-                wxString::Format("%s %d.%d to %d.%d", ver,
-                                 CLIMATOLOGY_MIN_MAJOR, CLIMATOLOGY_MIN_MINOR,
-                                 CLIMATOLOGY_MAX_MAJOR, CLIMATOLOGY_MAX_MINOR),
-            _("Weather Routing"), wxOK | wxICON_WARNING);
-        mdlg.ShowModal();
-        return;
-      }
+    const auto api = weather_routing::ReadClimatologyMessage(
+        std::string(message_body.ToUTF8()));
+    {
+      std::lock_guard<std::recursive_mutex> lock(
+          ClimatologyThreadGuard::InvocationMutex());
+      // Validate every advertisement, including unload and replacement.
+      // Rejected messages must never leave callbacks from an older provider.
+      RouteMap::ClimatologyData = api.data;
+      RouteMap::ClimatologyWindAtlasData = api.wind_atlas;
+      RouteMap::ClimatologyCycloneTrackCrossings = api.cyclones;
+      WeatherDataProvider::ResetClimatologyPreparation();
     }
-
-    wxString sptr = v["ClimatologyDataPtr"].asString();
-    sscanf(sptr.To8BitData().data(), "%p", &RouteMap::ClimatologyData);
-
-    sptr = v["ClimatologyWindAtlasDataPtr"].asString();
-    sscanf(sptr.To8BitData().data(), "%p", &RouteMap::ClimatologyWindAtlasData);
-
-    sptr = v["ClimatologyCycloneTrackCrossingsPtr"].asString();
-    sscanf(sptr.To8BitData().data(), "%p",
-           &RouteMap::ClimatologyCycloneTrackCrossings);
-
-    WeatherDataProvider::ResetClimatologyPreparation();
 
     if (m_pWeather_Routing) {
       if (RouteMap::ClimatologyData == nullptr) {
@@ -573,6 +535,20 @@ void weather_routing_pi::SetPluginMessage(wxString& message_id,
       }
       m_pWeather_Routing->m_ConfigurationDialog.m_cbAvoidCycloneTracks->Enable(
           RouteMap::ClimatologyCycloneTrackCrossings != nullptr);
+    }
+    wxLogMessage("WR_CLIMATOLOGY_API version=%d.%d supported=%d valid=%d "
+                 "dataset=\"%s\" data=%d wind_atlas=%d cyclone_tracks=%d",
+                 api.major, api.minor, api.supported, api.valid,
+                 wxString::FromUTF8(api.dataset.c_str()), api.data != nullptr,
+                 api.wind_atlas != nullptr, api.cyclones != nullptr);
+    static bool shown_warning = false;
+    if ((!api.valid || !api.supported) && !shown_warning) {
+      shown_warning = true;
+      WR_MessageDialog dialog(m_parent_window,
+          _("Climatology did not provide a supported data interface.\n\n"
+            "Supported plugin families: 0.10 to 1.6, and 2.0 (2026 datasets)."),
+          _("Weather Routing"), wxOK | wxICON_WARNING);
+      dialog.ShowModal();
     }
   } else if (message_id == wxS("OCPN_DRAW_PI_READY_FOR_REQUESTS")) {
     if (message_body == "FALSE") {
