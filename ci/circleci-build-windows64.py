@@ -202,6 +202,8 @@ def main():
         '-DwxWidgets_ROOT_DIR=' + str(wx), '-DwxWidgets_LIB_DIR=' + str(wxlib),
         '-DWEATHER_ROUTING_EXPECTED_WX_VERSION=' + WX_VERSION,
         '-DwxWidgets_CONFIGURATION=mswu', '-DCMAKE_CXX_FLAGS=/we4302 /we4311 /we4312')
+    run('cmake', '--build', work, '--config', 'Release', '--parallel', '4',
+        '--target', 'wr_wx_sdk_link_probe')
     run('cmake', '--build', work, '--config', 'Release', '--parallel', '4')
     test_executable = work / 'test/Release/weather_routing_pi_tests.exe'
     pe_sections(test_executable)

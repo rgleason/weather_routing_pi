@@ -4496,13 +4496,14 @@ PlotDialogBase::PlotDialogBase(wxWindow* parent, wxWindowID id,
   const VariableInfo* variableInfos = GetVariables(variableInfoCount);
 
   // Create the display strings array for wxChoice
-  std::vector<wxString> variableChoices(variableInfoCount);
+  wxArrayString variableChoices;
+  variableChoices.Alloc(variableInfoCount);
   for (int i = 0; i < variableInfoCount; i++) {
-    variableChoices[i] = variableInfos[i].displayName;
+    variableChoices.Add(variableInfos[i].displayName);
   }
 
   m_cVariable1 = new wxChoice(this, wxID_ANY, wxDefaultPosition, wxDefaultSize,
-                              variableInfoCount, variableChoices.data(), 0);
+                              variableChoices, 0);
   m_cVariable1->SetSelection(
       GetVariableIndexFromEnum(APPARENT_WIND_SPEED_OVER_WATER));
   fgSizer78->Add(m_cVariable1, 1, wxALL | wxEXPAND | wxALIGN_CENTER_VERTICAL,
@@ -4518,7 +4519,7 @@ PlotDialogBase::PlotDialogBase(wxWindow* parent, wxWindowID id,
   fgSizer78->Add(m_stMousePosition1, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
   m_cVariable2 = new wxChoice(this, wxID_ANY, wxDefaultPosition, wxDefaultSize,
-                              variableInfoCount, variableChoices.data(), 0);
+                              variableChoices, 0);
   m_cVariable2->SetSelection(
       GetVariableIndexFromEnum(TRUE_WIND_SPEED_OVER_WATER));
   fgSizer78->Add(m_cVariable2, 1, wxALL | wxALIGN_CENTER_VERTICAL | wxEXPAND,
@@ -4533,7 +4534,7 @@ PlotDialogBase::PlotDialogBase(wxWindow* parent, wxWindowID id,
   fgSizer78->Add(m_stMousePosition2, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
   m_cVariable3 = new wxChoice(this, wxID_ANY, wxDefaultPosition, wxDefaultSize,
-                              variableInfoCount, variableChoices.data(), 0);
+                              variableChoices, 0);
   m_cVariable3->SetSelection(GetVariableIndexFromEnum(SPEED_THROUGH_WATER));
   fgSizer78->Add(m_cVariable3, 1, wxALL | wxALIGN_CENTER_VERTICAL | wxEXPAND,
                  5);

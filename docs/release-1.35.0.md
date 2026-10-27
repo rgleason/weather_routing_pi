@@ -44,6 +44,10 @@ No new, unsupported catalogue target is invented.
 - The Windows monotonic-clock helper includes its standard time and error
   declarations directly; wxWidgets 3.3.4 no longer supplies `timespec`
   indirectly through its array headers.
+- String collections use wxWidgets' string-array interface consistently,
+  avoiding MSVC's conflicting exported `std::vector<wxString>` instantiations
+  and SDK-specific STL helpers. The Windows DLL supplies the API waypoint
+  list helpers required by wxWidgets 3.3's inline STL-backed lists.
 - Climatology compatibility includes the main-catalogue 1.6 family and
   Climatology 2.0.0 with the `ocpn-climatology-2026.2` dataset. Both retain
   the same wind/current, wind-atlas and cyclone callback interfaces and

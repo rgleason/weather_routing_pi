@@ -106,7 +106,8 @@ bool ResolveWaypoint(wxString& name, wxString& guid, double& lat, double& lon) {
     return true;
   }
 
-  for (const auto& waypoint_guid : waypoint_guids) {
+  for (size_t i = 0; i < waypoint_guids.GetCount(); ++i) {
+    const wxString& waypoint_guid = waypoint_guids[i];
     if (!GetSingleWaypoint(waypoint_guid, &waypoint)) continue;
     if (waypoint.m_MarkName != name) continue;
 

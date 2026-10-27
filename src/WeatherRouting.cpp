@@ -5203,7 +5203,7 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
   }
 
   wxString selected_group;
-  std::vector<wxString> seen_groups;
+  wxArrayString seen_groups;
   for (auto weatherroute : m_WeatherRoutes) {
     if (!weatherroute || !weatherroute->routemapoverlay) continue;
     RouteMapConfiguration configuration =
@@ -5212,15 +5212,9 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
         configuration.MultiLegGroupId.IsEmpty())
       continue;
 
-    bool seen = false;
-    for (const auto& group : seen_groups) {
-      if (group == configuration.MultiLegGroupId) {
-        seen = true;
-        break;
-      }
-    }
-    if (seen) continue;
-    seen_groups.push_back(configuration.MultiLegGroupId);
+    if (seen_groups.Index(configuration.MultiLegGroupId) != wxNOT_FOUND)
+      continue;
+    seen_groups.Add(configuration.MultiLegGroupId);
 
     wxString haystack =
         wxString::Format(_("%s %s %s %s"), configuration.MultiLegGroupId,

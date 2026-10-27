@@ -256,6 +256,7 @@ SET(SRCS
             src/AppendOnlyCache.cpp
             src/ChartSafetyCache.cpp
             src/ClimatologyCompatibility.cpp
+            src/PluginWaypointLists.cpp
             src/ChartSafetyAtlas.cpp
             src/ChartHazardEvaluator.cpp
             src/ChartSafetyHost.cpp
@@ -603,5 +604,15 @@ endforeach ()
 if(OCPN_BUILD_TEST)
     message(STATUS "Building with tests enabled")
     enable_testing()
+    if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+      # Fail early on DLL/STL boundary problems before the full plugin build.
+      add_library(wr_wx_sdk_link_probe SHARED
+        test/WindowsWxSdkLinkProbe.cpp
+        src/TimeZoneDisplay.cpp src/PluginWaypointLists.cpp src/cutil.cpp)
+      target_include_directories(wr_wx_sdk_link_probe PRIVATE include)
+      target_compile_features(wr_wx_sdk_link_probe PRIVATE cxx_std_20)
+      target_link_libraries(wr_wx_sdk_link_probe PRIVATE
+        ocpn::api wx::base wx::core wx::net wx::xml wx::html wx::adv wx::aui)
+    endif()
     add_subdirectory(test)
 endif()
