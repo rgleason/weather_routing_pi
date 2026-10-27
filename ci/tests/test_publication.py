@@ -180,12 +180,24 @@ class QualifiedWorkflow(unittest.TestCase):
                 for name in recover.EXPECTED_JOBS]
         return workflow, pipeline, jobs
 
-    def test_all_22_builds_can_qualify_even_when_publication_failed(self):
+    def test_all_24_builds_can_qualify_even_when_publication_failed(self):
         workflow, pipeline, jobs = self.source()
         workflow["status"] = "failed"
         _, revision, selected = recover.check_source(workflow, pipeline, jobs, "production")
         self.assertEqual(revision, "a" * 40)
-        self.assertEqual(len(selected), 22)
+        self.assertEqual(len(selected), 24)
+
+    def test_missing_or_failed_wx334_build_prevents_promotion(self):
+        for name in recover.SUPPLEMENTAL_JOBS:
+            for missing in (False, True):
+                workflow, pipeline, jobs = self.source()
+                candidate = next(job for job in jobs if job["name"] == name)
+                if missing:
+                    jobs.remove(candidate)
+                else:
+                    candidate["status"] = "failed"
+                with self.assertRaises(ValueError):
+                    recover.check_source(workflow, pipeline, jobs, "production")
 
     def test_missing_or_failed_api122_build_prevents_promotion(self):
         for missing in (False, True):

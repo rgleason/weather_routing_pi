@@ -534,6 +534,7 @@ workflows:
           requires: [publication-preflight]
           filters: *validation-filters
       - windows-x64:
+          requires: [publication-preflight]
           name: windows-x64-wx334
           wx_version: "3.3.4"
           target: windows-x64-wx334
@@ -608,6 +609,7 @@ workflows:
           api_headers: "1.22"
           filters: *validation-filters
       - windows-x64:
+          requires: [publication-preflight]
           name: windows-x64-wx334-api122
           api_headers: "1.22"
           wx_version: "3.3.4"

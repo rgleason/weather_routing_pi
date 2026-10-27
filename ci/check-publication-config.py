@@ -27,7 +27,11 @@ def check(path):
             builds = {job for job, options in jobs.items() if options.get("job") in (
                 "linux-catalogue", "flatpak", "windows-x86", "windows-x64",
                 "macos-universal", "android-arm64")}
-            assert len(builds) == 22
+            assert len(builds) == 24
+            for suffix in ("", "-api122"):
+                variant = jobs["windows-x64-wx334" + suffix]
+                assert variant["wx_version"] == "3.3.4"
+                assert variant["artifact_root"] == "compatibility"
             assert set(jobs["stage-publication"]["requires"]) == builds
             assert all(jobs[job]["requires"] == ["publication-preflight"] for job in builds)
         else:

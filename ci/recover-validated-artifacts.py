@@ -22,7 +22,10 @@ TARGETS = {
     "windows-x64": "windows-x64", "macos-universal": "macos-arm64",
     "android-arm64": "android-arm64",
 }
-EXPECTED_JOBS = set(TARGETS) | {name + "-api122" for name in TARGETS}
+# The supplemental wx ABI is qualified alongside catalogue builds, but its
+# packages are kept out of the ordinary msvc-64 catalogue/publication matrix.
+SUPPLEMENTAL_JOBS = {"windows-x64-wx334", "windows-x64-wx334-api122"}
+EXPECTED_JOBS = set(TARGETS) | {name + "-api122" for name in TARGETS} | SUPPLEMENTAL_JOBS
 
 
 def fetch_json(path):
@@ -151,7 +154,7 @@ def recover(workflow_id, output, channel):
                "revision": revision, "jobs": sorted(EXPECTED_JOBS),
                "packages": packages, "runtime": runtime}
     (output / "validated-source.json").write_text(json.dumps(receipt, indent=2) + "\n")
-    print(f"Qualified source {repository} @ {revision}; 22 passing build jobs", flush=True)
+    print(f"Qualified source {repository} @ {revision}; {len(EXPECTED_JOBS)} passing build jobs", flush=True)
 
 
 if __name__ == "__main__":
