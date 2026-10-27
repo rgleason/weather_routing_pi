@@ -247,7 +247,8 @@ def main():
         digest(path) + '  ' + path.name for path in sorted(destination.iterdir()) if path.name != 'SHA256SUMS') + '\n')
     shutil.copy2(work / 'CMakeCache.txt', ARTIFACTS)
     run(sys.executable, ROOT / 'ci/test-installed-host.py', WORK / 'host/opencpn.exe',
-        WORK / 'host/opencpn-cmd.exe', archives[0], ARTIFACTS / 'normal-runtime')
+        WORK / 'host/opencpn-cmd.exe', archives[0], ARTIFACTS / 'normal-runtime',
+        '--host-version', pin['host_version'])
     run(sys.executable, ROOT / 'ci/test-windows-host.py', WORK / 'host',
         archives[0], ARTIFACTS / 'runtime', '--host-version', pin['host_version'])
 

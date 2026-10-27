@@ -10,6 +10,16 @@ spec.loader.exec_module(host)
 
 
 class StockHostVersion(unittest.TestCase):
+    def test_selected_wx334_host_requires_its_own_version(self):
+        binary = b'5.15.0-0+02cf533\0' + b'2026-10-15\0'
+        self.assertEqual(host.host_build(binary, '5.15.0'),
+                         ('5.15.0-0+02cf533', '2026-10-15'))
+        with self.assertRaises(RuntimeError):
+            host.host_build(binary)
+        for wrong in [b'5.14.2-0+bd6986a\0', b'5.15.0.html\0']:
+            with self.assertRaises(RuntimeError):
+                host.host_build(wrong + b'2026-10-15\0', '5.15.0')
+
     def test_linux_windows_and_official_universal_mac_formats(self):
         for version, date in [('5.14.2', '2026-10-12'),
                               ('5.14.2-0+bd6986a', '2026-09-24'),
