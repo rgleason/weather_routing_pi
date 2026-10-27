@@ -593,8 +593,8 @@ if (NOT QT_ANDROID)
   # The Flatpak SDK's wxWidgets CONFIG export can reference OpenGL::GLU even
   # when that target is unavailable. The module finder uses wx-config and
   # avoids importing the broken wx::wxgl link interface.
-  if (MSVC OR OCPN_FLATPAK_BUILD)
-    message(STATUS "${CMLOC}Using legacy FindwxWidgets for MSVC/Flatpak")
+  if (MSVC OR OCPN_FLATPAK_BUILD OR wxWidgets_CONFIG_EXECUTABLE)
+    message(STATUS "${CMLOC}Using FindwxWidgets for MSVC/Flatpak or an explicit wx-config")
   else ()
     # 1) Try CONFIG-mode with explicit root, if provided
     if (wxWidgets_ROOT_DIR)
@@ -661,6 +661,9 @@ if (NOT QT_ANDROID)
     endforeach ()
   endif ()
 
+  if (NOT wxWidgets_VERSION_STRING AND wxWidgets_VERSION)
+    set(wxWidgets_VERSION_STRING "${wxWidgets_VERSION}")
+  endif ()
   if (WEATHER_ROUTING_EXPECTED_WX_VERSION AND
       NOT wxWidgets_VERSION_STRING VERSION_EQUAL WEATHER_ROUTING_EXPECTED_WX_VERSION)
     message(FATAL_ERROR

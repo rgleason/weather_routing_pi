@@ -40,6 +40,8 @@ option(WEATHER_ROUTING_XWEATHER_IDENTITY
        "Build the separately installable xWeatherRouting variant"
        ${_xweather_identity_default})
 unset(_xweather_identity_default)
+set(WEATHER_ROUTING_EXPECTED_WX_VERSION "" CACHE STRING
+    "Require this exact wxWidgets version when building a pinned host package")
 
 # define minimum cmake version
 cmake_minimum_required(VERSION 3.10)
