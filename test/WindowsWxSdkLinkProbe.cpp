@@ -12,11 +12,16 @@ extern "C" __declspec(dllexport) size_t WrWxSdkLinkProbe(wxWindow* parent) {
   wxArrayString choices;
   for (size_t i = 0; i < zones.GetCount(); ++i) choices.Add(zones[i]);
   wxChoice choice(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, choices);
-  Plugin_WaypointList waypoints;
-  Plugin_WaypointExV2List extendedWaypoints;
-  waypoints.DeleteContents(true);
-  extendedWaypoints.DeleteContents(true);
-  waypoints.Append(new PlugIn_Waypoint);
-  extendedWaypoints.Append(new PlugIn_Waypoint_ExV2);
+  // The SDK owns construction of its legacy list types. Construct the same
+  // host route/track objects used by output code, rather than a new local
+  // wx 3.2 list whose non-exported virtual node helpers belong to the host.
+  PlugIn_Track track;
+  PlugIn_Route_ExV2 route;
+  track.pWaypointList->Append(new PlugIn_Waypoint);
+  route.pWaypointList->Append(new PlugIn_Waypoint_ExV2);
+  track.pWaypointList->DeleteContents(true);
+  track.pWaypointList->Clear();
+  route.pWaypointList->DeleteContents(true);
+  route.pWaypointList->Clear();
   return choices.GetCount() + guids.GetCount();
 }
