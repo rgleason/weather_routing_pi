@@ -116,8 +116,9 @@ def profile(output, identity):
                        XDG_CACHE_HOME=str(home / '.cache'),
                        XDG_DATA_DIRS='/usr/local/share:/usr/share', NO_AT_BRIDGE='1')
     if sys.platform == 'win32':
-        require(os.environ.get('CIRCLECI') == 'true',
-                'Native Windows normal-profile tests require a disposable CircleCI VM')
+        require(os.environ.get('CIRCLECI') == 'true' or
+                os.environ.get('GITHUB_ACTIONS') == 'true',
+                'Native Windows normal-profile tests require a disposable CI VM')
         local = output / 'local-appdata'
         roaming = output / 'roaming-appdata'
         environment.update(LOCALAPPDATA=str(local), APPDATA=str(roaming))

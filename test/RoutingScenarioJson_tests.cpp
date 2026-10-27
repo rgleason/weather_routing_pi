@@ -68,7 +68,8 @@ TEST(RoutingScenarioJson, LoadsSelfContainedGuiRegressionSettings) {
 }
 
 TEST(RoutingScenarioJson, ClimatologyFallbackIsExplicitAndDefaultsOff) {
-  const wxString enabledPath = "/tmp/weather-routing-climatology-on.json";
+  const wxString enabledPath = wxFileName::CreateTempFileName("wr-climatology-on-");
+  ASSERT_FALSE(enabledPath.empty());
   {
     std::ofstream output(enabledPath.mb_str());
     output << R"({
@@ -88,7 +89,8 @@ TEST(RoutingScenarioJson, ClimatologyFallbackIsExplicitAndDefaultsOff) {
   EXPECT_TRUE(enabled.environment.allowClimatologyFallback);
   std::remove(enabledPath.mb_str());
 
-  const wxString absentPath = "/tmp/weather-routing-climatology-absent.json";
+  const wxString absentPath = wxFileName::CreateTempFileName("wr-climatology-off-");
+  ASSERT_FALSE(absentPath.empty());
   {
     std::ofstream output(absentPath.mb_str());
     output << R"({
@@ -172,7 +174,8 @@ TEST(RoutingScenarioJson, LoadsPracticalDepthAwareDepartureAcceptance) {
 }
 
 TEST(RoutingScenarioJson, PreservesExplicitUtcAcrossLocalTimezone) {
-  const wxString scenarioPath = "/tmp/weather-routing-utc-scenario.json";
+  const wxString scenarioPath = wxFileName::CreateTempFileName("wr-utc-");
+  ASSERT_FALSE(scenarioPath.empty());
   {
     std::ofstream output(scenarioPath.mb_str());
     output << R"({
