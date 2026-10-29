@@ -1,4 +1,5 @@
 #include <wx/wx.h>
+#include <wx/filename.h>
 
 #include <gtest/gtest.h>
 
@@ -181,7 +182,8 @@ TEST(StabilityCorridor, WritesGeoJsonWithBandsAndRealMedoid) {
       routes, StabilityCorridorOptions());
   ASSERT_TRUE(result.success);
 
-  const wxString path = "/tmp/weather-routing-stability-test.geojson";
+  const wxString path = wxFileName::CreateTempFileName("wr-stability-");
+  ASSERT_FALSE(path.empty());
   wxString error;
   ASSERT_TRUE(weather_routing_engine::WriteStabilityCorridorGeoJson(
       path, routes, result, error))

@@ -593,8 +593,8 @@ if (NOT QT_ANDROID)
   # The Flatpak SDK's wxWidgets CONFIG export can reference OpenGL::GLU even
   # when that target is unavailable. The module finder uses wx-config and
   # avoids importing the broken wx::wxgl link interface.
-  if (MSVC OR OCPN_FLATPAK_BUILD)
-    message(STATUS "${CMLOC}Using legacy FindwxWidgets for MSVC/Flatpak")
+  if (MSVC OR OCPN_FLATPAK_BUILD OR wxWidgets_CONFIG_EXECUTABLE)
+    message(STATUS "${CMLOC}Using FindwxWidgets for MSVC/Flatpak or an explicit wx-config")
   else ()
     # 1) Try CONFIG-mode with explicit root, if provided
     if (wxWidgets_ROOT_DIR)
@@ -629,11 +629,11 @@ if (NOT QT_ANDROID)
   if (NOT USE_WX_CONFIG_MODE)
     message(STATUS "${CMLOC}Using legacy FindwxWidgets")
 
-	if (MSVC AND wxWidgets_ROOT_DIR)
-		set(wxWidgets_LIB_DIR "${wxWidgets_ROOT_DIR}/lib/vc_dll")
-		set(wxWidgets_INCLUDE_DIRS "${wxWidgets_ROOT_DIR}/lib/vc_dll/mswud")
-		set(wxWidgets_EXCLUDE_COMMON_LIBRARIES TRUE)
-	endif ()
+    if (MSVC)
+      # FindwxWidgets handles the selected architecture and configuration.
+      # Preserve an explicit SDK directory (e.g. lib/vc14x_x64_dll).
+      set(wxWidgets_EXCLUDE_COMMON_LIBRARIES TRUE)
+    endif ()
 
     find_package(wxWidgets MODULE REQUIRED COMPONENTS ${wxWidgets_USE_LIBS})
     include(${wxWidgets_USE_FILE})
@@ -659,6 +659,15 @@ if (NOT QT_ANDROID)
         target_link_libraries(wx::${_comp} INTERFACE ${wxWidgets_LIBRARIES})
       endif ()
     endforeach ()
+  endif ()
+
+  if (NOT wxWidgets_VERSION_STRING AND wxWidgets_VERSION)
+    set(wxWidgets_VERSION_STRING "${wxWidgets_VERSION}")
+  endif ()
+  if (WEATHER_ROUTING_EXPECTED_WX_VERSION AND
+      NOT wxWidgets_VERSION_STRING VERSION_EQUAL WEATHER_ROUTING_EXPECTED_WX_VERSION)
+    message(FATAL_ERROR
+      "Expected wxWidgets ${WEATHER_ROUTING_EXPECTED_WX_VERSION}, found ${wxWidgets_VERSION_STRING}")
   endif ()
 
   # ---------------------------------------------------------------------------

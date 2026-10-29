@@ -247,7 +247,7 @@ void RouteMapOverlay::RouteAnalysis(PlugIn_Route* proute) {
   configuration.boundary_crossing = false;
   configuration.land_crossing = false;
 
-  wxPlugin_WaypointListNode* pwpnode = proute->pWaypointList->GetFirst();
+  auto pwpnode = proute->pWaypointList->GetFirst();
   PlugIn_Waypoint* pwp;
   wxDateTime curtime;
 

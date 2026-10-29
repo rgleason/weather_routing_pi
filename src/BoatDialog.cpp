@@ -1256,7 +1256,9 @@ void BoatDialog::OnEvtThread(wxThreadEvent& event) {
 
   m_gCrossOverChart->Disable();
 
-  m_CrossOverGenerationThread->Wait();
+  // The worker has queued its completion event. Join without dispatching
+  // nested GUI events, consistently with both wxWidgets 3.2 and 3.3.
+  m_CrossOverGenerationThread->Wait(wxTHREAD_WAIT_BLOCK);
   Boat& tboat = m_CrossOverGenerationThread->m_Boat;
   for (unsigned int i = 0; i < m_Boat.Polars.size() && i < tboat.Polars.size();
        i++)

@@ -14,7 +14,7 @@ import tarfile
 import xml.etree.ElementTree as ET
 
 
-def test(host, archive_path, output, source):
+def test(host, archive_path, output, source, host_version='5.14.2'):
     host = host.resolve()
     output.mkdir(parents=True, exist_ok=True)
     with tarfile.open(archive_path) as archive:
@@ -40,11 +40,11 @@ def test(host, archive_path, output, source):
     if not (host / 'plugins' / (package + '.dll')).is_file():
         raise ValueError('Packaged plugin DLL is missing')
     binary = (host / 'opencpn.exe').read_bytes()
-    version = re.search(rb'5\.14\.2-0\+[a-f0-9]+\x00', binary)
+    version = re.search(re.escape(host_version.encode('ascii')) + rb'-0\+[a-f0-9]+\x00', binary)
     if not version:
         raise ValueError('Unexpected host version string')
     full_version = version[0][:-1].decode()
-    # The pinned 5.14.2 hosts embed VERSION_DATE as their newest ISO date
+    # The pinned hosts embed VERSION_DATE as their newest ISO date
     # literal (the other date is a historical 2010 constant). Match the
     # actual executable: a stale date triggers the blocking Welcome dialog.
     dates = re.findall(rb'20\d{2}-\d{2}-\d{2}\x00', binary)
@@ -139,5 +139,6 @@ if __name__ == '__main__':
     parser.add_argument('host', type=Path)
     parser.add_argument('archive', type=Path)
     parser.add_argument('output', type=Path)
+    parser.add_argument('--host-version', default='5.14.2')
     args = parser.parse_args()
-    test(args.host, args.archive, args.output, Path(__file__).resolve().parents[1])
+    test(args.host, args.archive, args.output, Path(__file__).resolve().parents[1], args.host_version)

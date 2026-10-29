@@ -205,7 +205,8 @@ bool GetWaypointByGuid(const wxString& guid, PlugIn_Waypoint* waypoint) {
 bool FindWaypointByName(const wxString& name, PlugIn_Waypoint* waypoint,
                         wxString* guid = nullptr) {
   wxArrayString waypoint_guids = GetWaypointGUIDArray();
-  for (const auto& waypoint_guid : waypoint_guids) {
+  for (size_t i = 0; i < waypoint_guids.GetCount(); ++i) {
+    const wxString& waypoint_guid = waypoint_guids[i];
     PlugIn_Waypoint candidate;
     if (!GetSingleWaypoint(waypoint_guid, &candidate)) continue;
     if (candidate.m_MarkName != name) continue;
@@ -359,8 +360,9 @@ ConfigurationDialog::ConfigurationDialog(WeatherRouting& weatherrouting)
     m_cbUseExperimentalChartSafety->SetToolTip(unavailable);
     m_cbEnforceExperimentalChartSafety->SetToolTip(unavailable);
   }
-  for (const wxString& zone : marine_time::AvailableTimeZones())
-    m_cTimeZone->Append(zone);
+  const auto timeZones = marine_time::AvailableTimeZones();
+  for (size_t i = 0; i < timeZones.GetCount(); ++i)
+    m_cTimeZone->Append(timeZones[i]);
   wxString displayZone = marine_time::SystemTimeZone();
   if (m_cTimeZone->FindString(displayZone) == wxNOT_FOUND) {
     displayZone = "UTC";
@@ -1313,7 +1315,8 @@ void ConfigurationDialog::AddWaypoints(const bool toStart) {
   combo->Clear();
 
   wxArrayString waypoint_guids = GetWaypointGUIDArray();
-  for (const auto& guid : waypoint_guids) {
+  for (size_t i = 0; i < waypoint_guids.GetCount(); ++i) {
+    const wxString& guid = waypoint_guids[i];
     PlugIn_Waypoint waypoint;
     if (GetSingleWaypoint(guid, &waypoint)) {
       wxString label = waypoint.m_MarkName;

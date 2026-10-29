@@ -185,40 +185,46 @@ jobs:
   windows-x64:
     parameters:
       api_headers: {type: string, default: "1.21"}
+      wx_version: {type: string, default: "3.2.9"}
+      target: {type: string, default: windows-x64}
+      artifact_root: {type: string, default: artifacts}
+      work_dir: {type: string, default: .windows64}
+      sdk_pin: {type: string, default: ci/windows64-sdk.json}
     executor:
       name: win/server-2022
       shell: bash.exe
     environment:
       WEATHER_ROUTING_API_HEADER_VERSION: << parameters.api_headers >>
       WEATHER_ROUTING_CI_XWEATHER: << pipeline.parameters.build_xweather_identity >>
+      WEATHER_ROUTING_WINDOWS_WX_VERSION: << parameters.wx_version >>
       WR_HEADLESS_LIFECYCLE_CONTRACT: "1"
     steps:
       - checkout
       - restore_cache:
           keys:
-            - windows64-upstream-v1-{{ checksum "ci/windows64-sdk.json" }}
+            - windows64-upstream-v2-<< parameters.target >>-{{ checksum "<< parameters.sdk_pin >>" }}
       - run:
           shell: cmd.exe
-          name: Upstream OpenCPN 5.14.2 x64 build, tests and import verification
+          name: Matched OpenCPN x64 / wxWidgets << parameters.wx_version >> build and runtime tests
           command: ci\circleci-build-windows64.bat
           no_output_timeout: 45m
       - run:
           name: Verify Windows x64 package ABI
-          command: python ci/verify-package-abi.py artifacts/windows-x64/package --target windows-x64
+          command: python ci/verify-package-abi.py << parameters.artifact_root >>/<< parameters.target >>/package --target << parameters.target >>
       - save_cache:
-          key: windows64-upstream-v1-{{ checksum "ci/windows64-sdk.json" }}
-          paths: [.windows64/cache]
+          key: windows64-upstream-v2-<< parameters.target >>-{{ checksum "<< parameters.sdk_pin >>" }}
+          paths: [<< parameters.work_dir >>/cache]
       - store_test_results:
-          path: artifacts/windows-x64/tests
+          path: << parameters.artifact_root >>/<< parameters.target >>/tests
       - store_artifacts:
-          path: artifacts/windows-x64
+          path: << parameters.artifact_root >>/<< parameters.target >>
       - when:
           condition:
             equal: ["1.21", << parameters.api_headers >>]
           steps:
             - persist_to_workspace:
                 root: .
-                paths: [artifacts/windows-x64]
+                paths: [<< parameters.artifact_root >>/<< parameters.target >>]
 
   publication-contracts:
     docker:
@@ -376,6 +382,14 @@ workflows:
           filters: *validation-filters
       - windows-x64:
           filters: *validation-filters
+      - windows-x64:
+          name: windows-x64-wx334
+          wx_version: "3.3.4"
+          target: windows-x64-wx334
+          artifact_root: compatibility
+          work_dir: .windows64-wx334
+          sdk_pin: ci/windows64-wx334-sdk.json
+          filters: *validation-filters
       - macos-universal:
           filters: *validation-filters
       - android-arm64:
@@ -431,6 +445,15 @@ workflows:
           name: windows-x64-api122
           api_headers: "1.22"
           filters: *validation-filters
+      - windows-x64:
+          name: windows-x64-wx334-api122
+          api_headers: "1.22"
+          wx_version: "3.3.4"
+          target: windows-x64-wx334
+          artifact_root: compatibility
+          work_dir: .windows64-wx334
+          sdk_pin: ci/windows64-wx334-sdk.json
+          filters: *validation-filters
       - macos-universal:
           name: macos-universal-api122
           api_headers: "1.22"
@@ -450,6 +473,14 @@ workflows:
           filters: *validation-filters
       - windows-x64:
           filters: *validation-filters
+      - windows-x64:
+          name: windows-x64-wx334
+          wx_version: "3.3.4"
+          target: windows-x64-wx334
+          artifact_root: compatibility
+          work_dir: .windows64-wx334
+          sdk_pin: ci/windows64-wx334-sdk.json
+          filters: *validation-filters
       - windows-x86:
           name: windows-x86-api122
           api_headers: "1.22"
@@ -457,6 +488,15 @@ workflows:
       - windows-x64:
           name: windows-x64-api122
           api_headers: "1.22"
+          filters: *validation-filters
+      - windows-x64:
+          name: windows-x64-wx334-api122
+          api_headers: "1.22"
+          wx_version: "3.3.4"
+          target: windows-x64-wx334
+          artifact_root: compatibility
+          work_dir: .windows64-wx334
+          sdk_pin: ci/windows64-wx334-sdk.json
           filters: *validation-filters
 
   build_and_publish_reviewed:
@@ -493,6 +533,15 @@ workflows:
       - windows-x64:
           requires: [publication-preflight]
           filters: *validation-filters
+      - windows-x64:
+          requires: [publication-preflight]
+          name: windows-x64-wx334
+          wx_version: "3.3.4"
+          target: windows-x64-wx334
+          artifact_root: compatibility
+          work_dir: .windows64-wx334
+          sdk_pin: ci/windows64-wx334-sdk.json
+          filters: *validation-filters
       - macos-universal:
           requires: [publication-preflight]
           filters: *validation-filters
@@ -559,6 +608,16 @@ workflows:
           name: windows-x64-api122
           api_headers: "1.22"
           filters: *validation-filters
+      - windows-x64:
+          requires: [publication-preflight]
+          name: windows-x64-wx334-api122
+          api_headers: "1.22"
+          wx_version: "3.3.4"
+          target: windows-x64-wx334
+          artifact_root: compatibility
+          work_dir: .windows64-wx334
+          sdk_pin: ci/windows64-wx334-sdk.json
+          filters: *validation-filters
       - macos-universal:
           requires: [publication-preflight]
           name: macos-universal-api122
@@ -580,6 +639,7 @@ workflows:
             - flatpak25.08-aarch64
             - windows-x86
             - windows-x64
+            - windows-x64-wx334
             - macos-universal
             - android-arm64
             - debian13-x86_64-api122
@@ -591,6 +651,7 @@ workflows:
             - flatpak25.08-aarch64-api122
             - windows-x86-api122
             - windows-x64-api122
+            - windows-x64-wx334-api122
             - macos-universal-api122
             - android-arm64-api122
       - hold-for-publication-approval:

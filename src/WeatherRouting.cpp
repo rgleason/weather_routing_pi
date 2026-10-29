@@ -1386,8 +1386,8 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
 
   int confVersion;
   pConf->Read(_T ( "ConfigVersion" ), &confVersion, 0);
-  // v1.25 through v1.33 retain the v1.24 bundled boats and polars. A feature-only
-  // upgrade must not prompt to overwrite existing user data.
+  // Known feature-only upgrades retain the preceding bundled data and must
+  // not prompt to overwrite existing user boats, polars or routes.
   if (weather_routing::CanSkipBundledDataUpdate(
           confVersion, PLUGIN_VERSION_MAJOR, PLUGIN_VERSION_MINOR)) {
     confVersion = PLUGIN_VERSION_MAJOR * 100 + PLUGIN_VERSION_MINOR;
@@ -5203,7 +5203,7 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
   }
 
   wxString selected_group;
-  std::vector<wxString> seen_groups;
+  wxArrayString seen_groups;
   for (auto weatherroute : m_WeatherRoutes) {
     if (!weatherroute || !weatherroute->routemapoverlay) continue;
     RouteMapConfiguration configuration =
@@ -5212,15 +5212,9 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
         configuration.MultiLegGroupId.IsEmpty())
       continue;
 
-    bool seen = false;
-    for (const auto& group : seen_groups) {
-      if (group == configuration.MultiLegGroupId) {
-        seen = true;
-        break;
-      }
-    }
-    if (seen) continue;
-    seen_groups.push_back(configuration.MultiLegGroupId);
+    if (seen_groups.Index(configuration.MultiLegGroupId) != wxNOT_FOUND)
+      continue;
+    seen_groups.Add(configuration.MultiLegGroupId);
 
     wxString haystack =
         wxString::Format(_("%s %s %s %s"), configuration.MultiLegGroupId,
@@ -9915,7 +9909,7 @@ bool WeatherRouting::AddConfiguration(RouteMapConfiguration& configuration) {
     if (!proute) return false;
 
     PlugIn_Waypoint* pwp;
-    wxPlugin_WaypointListNode* pwpnode = proute->pWaypointList->GetFirst();
+    auto pwpnode = proute->pWaypointList->GetFirst();
     if (!pwpnode) return false;
 
     pwp = pwpnode->GetData();

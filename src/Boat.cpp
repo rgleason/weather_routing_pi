@@ -58,7 +58,7 @@ wxString Boat::OpenXML(wxString filename, bool shortcut) {
 
   TiXmlHandle root(doc.RootElement());
   if (strcmp(doc.RootElement()->Value(), "OpenCPNWeatherRoutingBoat"))
-    return _("Invalid xml file (no OCPWeatherRoutingBoat node): " + filename);
+    return _("Invalid xml file (no OCPWeatherRoutingBoat node): ") + filename;
 
   bool generateContours = false;
 

@@ -35,8 +35,9 @@ def require(condition, message):
         raise RuntimeError(message)
 
 
-def host_build(binary):
-    versions = re.findall(rb'5\.14\.2(?:-[A-Za-z0-9._]+)?(?:\+[A-Za-z0-9._]+)?\x00', binary)
+def host_build(binary, expected_version='5.14.2'):
+    versions = re.findall(re.escape(expected_version.encode()) +
+                          rb'(?:-[A-Za-z0-9._]+)?(?:\+[A-Za-z0-9._]+)?\x00', binary)
     dates = re.findall(rb'20\d{2}-\d{2}-\d{2}\x00', binary)
     require(versions and dates, 'Cannot determine the pinned stock host version/build date')
     return max(versions, key=len)[:-1].decode(), max(dates)[:-1].decode()
@@ -115,8 +116,9 @@ def profile(output, identity):
                        XDG_CACHE_HOME=str(home / '.cache'),
                        XDG_DATA_DIRS='/usr/local/share:/usr/share', NO_AT_BRIDGE='1')
     if sys.platform == 'win32':
-        require(os.environ.get('CIRCLECI') == 'true',
-                'Native Windows normal-profile tests require a disposable CircleCI VM')
+        require(os.environ.get('CIRCLECI') == 'true' or
+                os.environ.get('GITHUB_ACTIONS') == 'true',
+                'Native Windows normal-profile tests require a disposable CI VM')
         local = output / 'local-appdata'
         roaming = output / 'roaming-appdata'
         environment.update(LOCALAPPDATA=str(local), APPDATA=str(roaming))
@@ -143,7 +145,7 @@ def profile(output, identity):
     return environment, config, config_file, library, data
 
 
-def test(host, cli, archive_path, output, source):
+def test(host, cli, archive_path, output, source, host_version='5.14.2'):
     host, cli, archive_path, output, source = (p.resolve() for p in
                                              (host, cli, archive_path, output, source))
     output.mkdir(parents=True, exist_ok=False)
@@ -168,7 +170,7 @@ def test(host, cli, archive_path, output, source):
     log_file = (config.parents[1] / 'Logs/opencpn.log' if sys.platform == 'darwin'
                 else config / 'opencpn.log')
     environment['PATH'] = str(host.parent) + os.pathsep + environment.get('PATH', '')
-    version, build_date = host_build(host.read_bytes())
+    version, build_date = host_build(host.read_bytes(), host_version)
     config_version = int(metadata.findtext('version').strip().split('.')[0]) * 100 + int(
         metadata.findtext('version').strip().split('.')[1])
     plugin_key = library.name
@@ -352,7 +354,7 @@ def test(host, cli, archive_path, output, source):
         translation_catalogs_installed=len(catalogs), help_installed=True,
         private_data_overrides=False, private_data=str(private_data), host_log=str(log_file),
         reinstall_preserves_personal_data=True, uninstall_checked=False,
-        uninstall_limitation='Stock 5.14.2 CLI has an unset plugin activation callback',
+        uninstall_limitation='This test exercises installation/reinstallation rather than CLI uninstall',
         routes=receipts), indent=2) + '\n')
     print('Normal installation, shoreline routes and reinstall passed', flush=True)
 
@@ -363,5 +365,7 @@ if __name__ == '__main__':
     parser.add_argument('cli', type=Path)
     parser.add_argument('archive', type=Path)
     parser.add_argument('output', type=Path)
+    parser.add_argument('--host-version', default='5.14.2')
     args = parser.parse_args()
-    test(args.host, args.cli, args.archive, args.output, Path(__file__).resolve().parents[1])
+    test(args.host, args.cli, args.archive, args.output,
+         Path(__file__).resolve().parents[1], args.host_version)
