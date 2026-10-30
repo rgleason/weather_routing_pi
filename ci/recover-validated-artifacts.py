@@ -35,7 +35,14 @@ def fetch_json(path):
 
 def check_source(workflow, pipeline, jobs, channel):
     publication.profile_for(channel)
-    vcs = pipeline.get("vcs") or {}
+    vcs = pipeline.get("vcs")
+    if vcs is None and channel == "xweather-alpha" and workflow["project_slug"].startswith("circleci/"):
+        # GitHub App projects expose checkout provenance here instead of vcs.
+        # Keep production restricted to Rick's existing master qualification.
+        git = pipeline.get("trigger_parameters", {}).get("git", {})
+        vcs = {"origin_repository_url": git.get("repo_url", ""),
+               "branch": git.get("branch", ""), "revision": git.get("checkout_sha", "")}
+    vcs = vcs or {}
     repository = vcs.get("origin_repository_url", "").removesuffix(".git")
     revision = vcs.get("revision", "")
     if not re.fullmatch(r"[0-9a-f]{40}", revision):

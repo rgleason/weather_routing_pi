@@ -209,6 +209,28 @@ class QualifiedWorkflow(unittest.TestCase):
         self.assertEqual(revision, "a" * 40)
         self.assertEqual(len(selected), 24)
 
+    def test_github_app_alpha_uses_checkout_provenance(self):
+        workflow, _, jobs = self.source()
+        workflow["project_slug"] = "circleci/organisation/project"
+        for job in jobs:
+            job["project_slug"] = workflow["project_slug"]
+        pipeline = {"trigger_parameters": {"git": {
+            "repo_url": "https://github.com/pob220/xweather_routing_pi",
+            "branch": "release/xweather-1.35.1", "checkout_sha": "b" * 40}}}
+        repository, revision, selected = recover.check_source(workflow, pipeline, jobs, "xweather-alpha")
+        self.assertEqual(repository, "https://github.com/pob220/xweather_routing_pi")
+        self.assertEqual(revision, "b" * 40)
+        self.assertEqual(len(selected), 24)
+        for field, wrong in (("checkout_sha", ""), ("repo_url", "https://github.com/other/project")):
+            git = pipeline["trigger_parameters"]["git"]
+            previous = git[field]
+            git[field] = wrong
+            with self.assertRaises(ValueError):
+                recover.check_source(workflow, pipeline, jobs, "xweather-alpha")
+            git[field] = previous
+        with self.assertRaises(ValueError):
+            recover.check_source(workflow, pipeline, jobs, "production")
+
     def test_missing_or_failed_legacy_wx329_build_prevents_promotion(self):
         for name in recover.SUPPLEMENTAL_JOBS:
             for missing in (False, True):
