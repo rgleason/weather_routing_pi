@@ -19,7 +19,7 @@ TARGETS = {
     "flatpak25.08-aarch64": "flatpak-aarch64",
     "windows-x86": "windows-x86",
     "windows-x64": "windows-x64",
-    "windows-x64-wx334": "windows-x64-wx334",
+    "windows-x64-wx329": "windows-x64-wx329",
     "android-arm64": "android-arm64",
     "macos-universal": "macos-arm64",
 }
@@ -58,7 +58,7 @@ def recover(workflow_id, output):
 
     for job_name, target in TARGETS.items():
         job = selected[job_name]
-        prefix = PurePosixPath("compatibility" if target == "windows-x64-wx334" else "artifacts",
+        prefix = PurePosixPath("compatibility" if target == "windows-x64-wx329" else "artifacts",
                               target, "package")
         local_package = output / prefix
         local_archives = list(local_package.glob("xweather_routing_pi-*.tar.gz"))

@@ -14,6 +14,10 @@ import xml.etree.ElementTree as ET
 
 from importlib.util import module_from_spec, spec_from_file_location
 
+windows_spec = spec_from_file_location(
+    "windows_package_abi", Path(__file__).with_name("windows_package_abi.py"))
+windows_abi = module_from_spec(windows_spec)
+windows_spec.loader.exec_module(windows_abi)
 
 EXPECTED_TARGETS = {
     "trixie": ("debian-x86_64", "13", "x86_64"),
@@ -25,11 +29,11 @@ EXPECTED_TARGETS = {
     "flatpak-aarch64": ("flatpak-aarch64", "25.08", "aarch64"),
     "windows-x86": ("msvc-wx32", "10.0.20348", "x86"),
     "windows-x64": ("msvc-64", "10", "x86_64"),
-    "windows-x64-wx334": ("msvc-64", "10", "x86_64"),
+    "windows-x64-wx329": ("msvc-64", "10", "x86_64"),
     "macos-arm64": ("darwin-wx32", "15.3.2", "arm64"),
     "android-arm64": ("android-arm64", "16", "arm64"),
 }
-SUPPLEMENTAL_TARGETS = {"windows-x64-wx334"}
+SUPPLEMENTAL_TARGETS = {"windows-x64-wx329"}
 TARGETS = set(EXPECTED_TARGETS) - SUPPLEMENTAL_TARGETS
 PACKAGE = "xweather_routing_pi"
 REPOSITORY = "pob220/xweather-routing-alpha-oss"
@@ -119,6 +123,10 @@ def inspect_pair(directory, channel="xweather-alpha"):
             raise ValueError(f"Unsafe archive path: {archive}")
         if sum(item.isfile() and PurePosixPath(item.name).name in libraries for item in members) != 1:
             raise ValueError(f"Missing/duplicate {profile['name']} library: {archive}")
+        if matrix_name.startswith("windows-x64"):
+            library = next(item for item in members if item.isfile() and
+                           PurePosixPath(item.name).name == package_name + ".dll")
+            windows_abi.validate(package.extractfile(library).read(), matrix_name)
         if any(
             re.fullmatch(
                 rf"(?:lib)?{other_package}\.(?:so|dylib|dll)",
@@ -177,8 +185,8 @@ def prepare(artifact_root, output, revision, build_number, channel="xweather-alp
         catalogue = matrix_name not in SUPPLEMENTAL_TARGETS
         if not catalogue:
             # Both wx ABIs currently share the host label msvc-64. Publish
-            # the new one for explicit import without mixing catalogue rows.
-            base += "-wx334"
+            # the legacy one for explicit import without mixing catalogue rows.
+            base += "-wx329"
             destination = output / matrix_name
             destination.mkdir()
         url = f"https://dl.cloudsmith.io/public/{repository}/raw/names/{base}-tarball/versions/{cloud_version}/{archive.name}"

@@ -12,7 +12,7 @@ import tempfile
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
-PIN = Path(__file__).with_name('windows64-wx334-sdk.json')
+PIN = Path(__file__).with_name('windows64-sdk.json')
 API = 'https://api.github.com/repos/OpenCPN/OpenCPN/'
 # The maintainer cherry-picked #5499 and closed the PR, so GitHub's `merged`
 # flag is false. Verify ancestry of the actual accepted upstream commit.

@@ -18,16 +18,16 @@ import urllib.request
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
-WX_VERSION = os.environ.get('WEATHER_ROUTING_WINDOWS_WX_VERSION', '3.2.9')
-SDK_FILES = {'3.2.9': 'windows64-sdk.json', '3.3.4': 'windows64-wx334-sdk.json'}
+WX_VERSION = os.environ.get('WEATHER_ROUTING_WINDOWS_WX_VERSION', '3.3.4')
+SDK_FILES = {'3.2.9': 'windows64-wx329-sdk.json', '3.3.4': 'windows64-sdk.json'}
 if WX_VERSION not in SDK_FILES:
     raise ValueError(f'Unsupported Windows wxWidgets SDK: {WX_VERSION}')
 WX_SUFFIX = 'wx' + WX_VERSION.replace('.', '')
-TARGET = 'windows-x64' if WX_VERSION == '3.2.9' else 'windows-x64-wx334'
-WORK = ROOT / ('.windows64' if WX_VERSION == '3.2.9' else '.windows64-wx334')
-# Both hosts advertise msvc-64. Keep the newer ABI outside the ordinary
-# catalogue matrix until the host/catalogue can distinguish them.
-ARTIFACTS = ROOT / ('artifacts' if WX_VERSION == '3.2.9' else 'compatibility') / TARGET
+TARGET = 'windows-x64' if WX_VERSION == '3.3.4' else 'windows-x64-wx329'
+WORK = ROOT / ('.windows64' if WX_VERSION == '3.3.4' else '.windows64-wx329')
+# The current catalogue x64 host uses wxWidgets 3.3.4. Keep the legacy 3.2
+# testing-host package separate: both hosts advertise the same msvc-64 ABI.
+ARTIFACTS = ROOT / ('artifacts' if WX_VERSION == '3.3.4' else 'compatibility') / TARGET
 
 
 def run(*args, cwd=ROOT):

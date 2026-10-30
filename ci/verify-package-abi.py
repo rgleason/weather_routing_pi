@@ -54,6 +54,13 @@ def verify(directory, target):
             if package.getnames().count("metadata.xml") != 1:
                 raise ValueError(f"Missing/duplicate embedded metadata: {path}")
             root = ET.fromstring(package.extractfile("metadata.xml").read())
+            selected = ALIASES.get(target, target)
+            if selected.startswith("windows-x64"):
+                libraries = [m for m in package if m.isfile() and
+                             Path(m.name).name.endswith("weather_routing_pi.dll")]
+                if len(libraries) != 1:
+                    raise ValueError("Expected exactly one Windows plugin DLL")
+                targets.windows_abi.validate(package.extractfile(libraries[0]).read(), selected)
         validate(root, target)
         if ET.tostring(root) not in metadata:
             raise ValueError(f"Embedded metadata differs from generated metadata: {path}")
