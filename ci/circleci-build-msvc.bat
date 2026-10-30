@@ -10,7 +10,7 @@ set "GIT_HOME=C:\Program Files\Git"
 if "%CONFIGURATION%" == "" set "CONFIGURATION=RelWithDebInfo"
 set "WR_XWEATHER_IDENTITY=OFF"
 if /I "%WEATHER_ROUTING_CI_XWEATHER%" == "true" set "WR_XWEATHER_IDENTITY=ON"
-if /I "%CIRCLE_PROJECT_REPONAME%" == "xweather_routing_pi" set "WR_XWEATHER_IDENTITY=ON"
+if "%WEATHER_ROUTING_CI_XWEATHER%" == "" if /I "%CIRCLE_PROJECT_REPONAME%" == "xweather_routing_pi" set "WR_XWEATHER_IDENTITY=ON"
 
 rem CMake 4's FindGettext module requires msgfmt and msgmerge at configure
 rem time.  Install the same pinned package used by xGRIB's validated Windows

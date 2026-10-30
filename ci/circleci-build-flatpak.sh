@@ -86,7 +86,8 @@ else
 fi
 SET_IDENTITY="-DWEATHER_ROUTING_XWEATHER_IDENTITY=OFF"
 if [ "${WEATHER_ROUTING_CI_XWEATHER:-false}" = "true" ] ||
-   [ "${CIRCLE_PROJECT_REPONAME:-}" = "xweather_routing_pi" ]; then
+   { [ -z "${WEATHER_ROUTING_CI_XWEATHER:-}" ] &&
+     [ "${CIRCLE_PROJECT_REPONAME:-}" = "xweather_routing_pi" ]; }; then
     SET_IDENTITY="-DWEATHER_ROUTING_XWEATHER_IDENTITY=ON"
 fi
 
