@@ -24,7 +24,7 @@ TARGETS = {
 }
 # The supplemental wx ABI is qualified alongside catalogue builds, but its
 # packages are kept out of the ordinary msvc-64 catalogue/publication matrix.
-SUPPLEMENTAL_JOBS = {"windows-x64-wx334", "windows-x64-wx334-api122"}
+SUPPLEMENTAL_JOBS = {"windows-x64-wx329", "windows-x64-wx329-api122"}
 EXPECTED_JOBS = set(TARGETS) | {name + "-api122" for name in TARGETS} | SUPPLEMENTAL_JOBS
 
 

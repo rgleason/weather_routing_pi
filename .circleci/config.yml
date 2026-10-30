@@ -185,7 +185,7 @@ jobs:
   windows-x64:
     parameters:
       api_headers: {type: string, default: "1.21"}
-      wx_version: {type: string, default: "3.2.9"}
+      wx_version: {type: string, default: "3.3.4"}
       target: {type: string, default: windows-x64}
       artifact_root: {type: string, default: artifacts}
       work_dir: {type: string, default: .windows64}
@@ -383,12 +383,12 @@ workflows:
       - windows-x64:
           filters: *validation-filters
       - windows-x64:
-          name: windows-x64-wx334
-          wx_version: "3.3.4"
-          target: windows-x64-wx334
+          name: windows-x64-wx329
+          wx_version: "3.2.9"
+          target: windows-x64-wx329
           artifact_root: compatibility
-          work_dir: .windows64-wx334
-          sdk_pin: ci/windows64-wx334-sdk.json
+          work_dir: .windows64-wx329
+          sdk_pin: ci/windows64-wx329-sdk.json
           filters: *validation-filters
       - macos-universal:
           filters: *validation-filters
@@ -446,13 +446,13 @@ workflows:
           api_headers: "1.22"
           filters: *validation-filters
       - windows-x64:
-          name: windows-x64-wx334-api122
+          name: windows-x64-wx329-api122
           api_headers: "1.22"
-          wx_version: "3.3.4"
-          target: windows-x64-wx334
+          wx_version: "3.2.9"
+          target: windows-x64-wx329
           artifact_root: compatibility
-          work_dir: .windows64-wx334
-          sdk_pin: ci/windows64-wx334-sdk.json
+          work_dir: .windows64-wx329
+          sdk_pin: ci/windows64-wx329-sdk.json
           filters: *validation-filters
       - macos-universal:
           name: macos-universal-api122
@@ -474,12 +474,12 @@ workflows:
       - windows-x64:
           filters: *validation-filters
       - windows-x64:
-          name: windows-x64-wx334
-          wx_version: "3.3.4"
-          target: windows-x64-wx334
+          name: windows-x64-wx329
+          wx_version: "3.2.9"
+          target: windows-x64-wx329
           artifact_root: compatibility
-          work_dir: .windows64-wx334
-          sdk_pin: ci/windows64-wx334-sdk.json
+          work_dir: .windows64-wx329
+          sdk_pin: ci/windows64-wx329-sdk.json
           filters: *validation-filters
       - windows-x86:
           name: windows-x86-api122
@@ -490,13 +490,13 @@ workflows:
           api_headers: "1.22"
           filters: *validation-filters
       - windows-x64:
-          name: windows-x64-wx334-api122
+          name: windows-x64-wx329-api122
           api_headers: "1.22"
-          wx_version: "3.3.4"
-          target: windows-x64-wx334
+          wx_version: "3.2.9"
+          target: windows-x64-wx329
           artifact_root: compatibility
-          work_dir: .windows64-wx334
-          sdk_pin: ci/windows64-wx334-sdk.json
+          work_dir: .windows64-wx329
+          sdk_pin: ci/windows64-wx329-sdk.json
           filters: *validation-filters
 
   build_and_publish_reviewed:
@@ -535,12 +535,12 @@ workflows:
           filters: *validation-filters
       - windows-x64:
           requires: [publication-preflight]
-          name: windows-x64-wx334
-          wx_version: "3.3.4"
-          target: windows-x64-wx334
+          name: windows-x64-wx329
+          wx_version: "3.2.9"
+          target: windows-x64-wx329
           artifact_root: compatibility
-          work_dir: .windows64-wx334
-          sdk_pin: ci/windows64-wx334-sdk.json
+          work_dir: .windows64-wx329
+          sdk_pin: ci/windows64-wx329-sdk.json
           filters: *validation-filters
       - macos-universal:
           requires: [publication-preflight]
@@ -610,13 +610,13 @@ workflows:
           filters: *validation-filters
       - windows-x64:
           requires: [publication-preflight]
-          name: windows-x64-wx334-api122
+          name: windows-x64-wx329-api122
           api_headers: "1.22"
-          wx_version: "3.3.4"
-          target: windows-x64-wx334
+          wx_version: "3.2.9"
+          target: windows-x64-wx329
           artifact_root: compatibility
-          work_dir: .windows64-wx334
-          sdk_pin: ci/windows64-wx334-sdk.json
+          work_dir: .windows64-wx329
+          sdk_pin: ci/windows64-wx329-sdk.json
           filters: *validation-filters
       - macos-universal:
           requires: [publication-preflight]
@@ -639,7 +639,7 @@ workflows:
             - flatpak25.08-aarch64
             - windows-x86
             - windows-x64
-            - windows-x64-wx334
+            - windows-x64-wx329
             - macos-universal
             - android-arm64
             - debian13-x86_64-api122
@@ -651,7 +651,7 @@ workflows:
             - flatpak25.08-aarch64-api122
             - windows-x86-api122
             - windows-x64-api122
-            - windows-x64-wx334-api122
+            - windows-x64-wx329-api122
             - macos-universal-api122
             - android-arm64-api122
       - hold-for-publication-approval:

@@ -11,6 +11,8 @@ import unittest
 from unittest.mock import patch
 import xml.etree.ElementTree as ET
 
+from windows_pe_fixture import pe_image
+
 
 def module(name, filename):
     spec = importlib.util.spec_from_file_location(name, Path(__file__).parents[1] / filename)
@@ -36,15 +38,17 @@ class Publication(unittest.TestCase):
         quiet.__enter__()
         self.addCleanup(quiet.__exit__, None, None, None)
 
-    def pair(self, target, channel="production"):
+    def pair(self, target, channel="production", wx_family=None):
         profile = prepare.profile_for(channel)
         directory = self.root / "artifacts" / target / "package"
         directory.mkdir(parents=True)
         archive = directory / f"{profile['package']}-1.30.1-{target}.tar.gz"
         library = (profile["package"] + ".dll" if target.startswith("windows") else
                    "lib" + profile["package"] + (".dylib" if target == "macos-arm64" else ".so"))
+        content = (pe_image(wx_family or ("32" if target.endswith("wx329") else "334"))
+                   if target.startswith("windows-x64") else b"original library bytes")
         with tarfile.open(archive, "w:gz") as output:
-            for name, data in [("lib/" + library, b"original library bytes"),
+            for name, data in [("lib/" + library, content),
                                ("share/nested/polar.pol", b"original polar bytes")]:
                 item = tarfile.TarInfo(name)
                 item.size = len(data)
@@ -87,6 +91,24 @@ class Publication(unittest.TestCase):
         directory, _, _ = self.pair("trixie")
         with self.assertRaisesRegex(ValueError, "Wrong archive identity"):
             prepare.inspect_pair(directory, "xweather-alpha")
+
+    def test_wx329_dll_with_wx334_filename_and_valid_xml_cannot_be_staged(self):
+        for target in prepare.TARGETS:
+            directory, archive, metadata = self.pair(
+                target, wx_family="32" if target == "windows-x64" else None)
+            if target == "windows-x64":
+                archive.rename(directory / "weather_routing_pi-1.30.1-msvc-64-x86_64-10.0-MSVC-x64-wx334.tar.gz")
+                metadata.rename(directory / "weather_routing_pi-1.30.1-msvc-64-x86_64-10.0-MSVC-x64-wx334.xml")
+        output = self.root / "publication"
+        with self.assertRaisesRegex(ValueError, "wxWidgets ABI"):
+            prepare.prepare(self.root / "artifacts", output, "abcdef1", "42", "production")
+        self.assertFalse(output.exists())
+
+    def test_build_verification_checks_the_delivered_dll(self):
+        verify = module("verify_delivered", "verify-package-abi.py")
+        directory, _, _ = self.pair("windows-x64", wx_family="32")
+        with self.assertRaisesRegex(ValueError, "wxWidgets ABI"):
+            verify.verify(directory, "windows-x64")
 
     def test_xweather_cannot_be_staged_as_native_production(self):
         directory, _, _ = self.pair("trixie", "xweather-alpha")
@@ -187,7 +209,7 @@ class QualifiedWorkflow(unittest.TestCase):
         self.assertEqual(revision, "a" * 40)
         self.assertEqual(len(selected), 24)
 
-    def test_missing_or_failed_wx334_build_prevents_promotion(self):
+    def test_missing_or_failed_legacy_wx329_build_prevents_promotion(self):
         for name in recover.SUPPLEMENTAL_JOBS:
             for missing in (False, True):
                 workflow, pipeline, jobs = self.source()
