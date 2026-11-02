@@ -119,11 +119,18 @@ TEST_F(BoatXML, SuccessfulLoadRetainsPolarWarningsAndReloadClearsRepairedWarning
     out << "60;4;5\n120;4;5\n";
   };
   writePolar(true);
+  // Use a real, empty cache so this warning-only fixture does not emit a
+  // missing-file error (wxWidgets can display it as a modal dialog on Windows).
+  const wxString contoursFile = boatTestPath + "empty.contours";
+  {
+    std::ofstream out(contoursFile.ToStdString(), std::ios::binary);
+    ASSERT_TRUE(out);
+  }
   TiXmlDocument document;
   auto* node = new TiXmlElement("OpenCPNWeatherRoutingBoat");
   auto* polar = new TiXmlElement("Polar");
   polar->SetAttribute("FileName", polarFile.ToUTF8().data());
-  polar->SetAttribute("CrossOverContours", "not-needed-for-this-test");
+  polar->SetAttribute("CrossOverContours", contoursFile.ToUTF8().data());
   node->LinkEndChild(polar);
   document.LinkEndChild(node);
   const wxString boatFile = boatTestPath + "warning.xml";
