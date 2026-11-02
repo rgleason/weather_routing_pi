@@ -17,6 +17,7 @@
 
 #include "weather_routing_engine/RoutingDiagnostics.h"
 #include "RouteComfort.h"
+#include "RouteDiagnostics.h"
 
 namespace weather_routing_engine {
 
@@ -63,6 +64,7 @@ struct RoutingCandidateResult {
   double distanceNm;
   wxString finalSafety;
   wxString failureReason;
+  weather_routing::RouteDiagnosticReport diagnostics;
   wxString coverageNotes;
   int offsetMinutes;
   bool reverseRecoveryUsed;

@@ -23,6 +23,7 @@ src/PlotDialog.cpp
 src/BoatDialog.cpp
 src/StatisticsDialog.cpp
 src/ReportDialog.cpp
+src/RouteDiagnostics.cpp
 src/FilterRoutesDialog.cpp
 src/ConfigurationBatchDialog.cpp
 src/EditPolarDialog.cpp

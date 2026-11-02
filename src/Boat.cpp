@@ -45,6 +45,7 @@ wxString Boat::OpenXML(wxString filename, bool shortcut) {
       m_last_filetime == last_filetime)
     return _T("");
 
+  loadWarnings.clear();
   bool cleared = false;
   Polars.clear();
 
@@ -58,7 +59,7 @@ wxString Boat::OpenXML(wxString filename, bool shortcut) {
 
   TiXmlHandle root(doc.RootElement());
   if (strcmp(doc.RootElement()->Value(), "OpenCPNWeatherRoutingBoat"))
-    return _("Invalid xml file (no OCPWeatherRoutingBoat node): ") + filename;
+    return _("Invalid xml file (no OpenCPNWeatherRoutingBoat node): ") + filename;
 
   bool generateContours = false;
 
@@ -95,6 +96,7 @@ wxString Boat::OpenXML(wxString filename, bool shortcut) {
 
       wxString message;
       if (!polar.Open(polar.FileName, message)) return message;
+      if (!message.empty()) loadWarnings += message;
 
       polar.m_crossoverpercentage =
           AttributeDouble(e, "CrossOverPercentage", 0.2) / 100.0;
@@ -115,7 +117,9 @@ wxString Boat::OpenXML(wxString filename, bool shortcut) {
 
   if (generateContours) {
     GenerateCrossOverChart();
-    SaveXML(filename);
+    const wxString saveError = SaveXML(filename);
+    if (!saveError.empty())
+      loadWarnings += _("Generated boat data could not be saved: ") + saveError + "\n";
   }
 
   m_last_filename = filename;

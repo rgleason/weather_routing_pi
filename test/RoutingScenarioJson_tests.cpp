@@ -208,6 +208,12 @@ TEST(RoutingScenarioJson, WritesStabilitySummaryAsValidJson) {
   departure.MakeFromTimezone(wxDateTime::UTC);
   candidate.departure = departure;
   candidate.state = "complete";
+  candidate.diagnostics.hasResult = true;
+  candidate.diagnostics.complete = true;
+  candidate.diagnostics.status = supercpn::weather_routing::RoutingStatus::Complete;
+  candidate.diagnostics.Add({"usage.test", weather_routing::DiagnosticSeverity::Warning,
+      "Coverage warning", "An unknown wave section\nwith a quoted \"source\"", "Review coverage"});
+
   candidate.engine = "quick";
   candidate.route.emplace_back(53.31, -4.63, departure);
   candidate.route.emplace_back(55.12, -6.95);
@@ -247,6 +253,16 @@ TEST(RoutingScenarioJson, WritesStabilitySummaryAsValidJson) {
                                ["latitudeDegrees"].asDouble());
   EXPECT_EQ("2026-08-01T10:00:00Z",
             root["candidates"][0]["route"][0]["timeUtc"].asString());
+
+  const auto& diagnostic = root["candidates"][0]["diagnostics"];
+  EXPECT_TRUE(diagnostic["complete"].asBool());
+  EXPECT_FALSE(diagnostic["cancelled"].asBool());
+  EXPECT_EQ(diagnostic["outcome"].asString(), "complete");
+  EXPECT_NE(diagnostic["summary"].asString().find("warning"), std::string::npos);
+  ASSERT_EQ(diagnostic["items"].size(), 1U);
+  EXPECT_EQ(diagnostic["items"][0]["severity"].asString(), "warning");
+  EXPECT_EQ(diagnostic["items"][0]["detail"].asString(),
+            "An unknown wave section\nwith a quoted \"source\"");
   EXPECT_EQ(7, root["stabilityCorridor"]["validRoutes"].asInt());
   EXPECT_EQ(2, root["stabilityCorridor"]["routeFamilies"].asInt());
   EXPECT_EQ("candidate-0",

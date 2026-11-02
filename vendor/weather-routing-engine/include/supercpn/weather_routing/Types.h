@@ -687,11 +687,13 @@ struct EnsembleMetrics {
   std::vector<EnsembleMemberResult> members;
 };
 
-struct RoutingAttemptFailure {
+struct RoutingAttempt {
   std::string engine;
   RoutingStatus status{RoutingStatus::InternalError};
   std::string detail;
 };
+
+using RoutingAttemptFailure = RoutingAttempt;
 
 struct RoutingResult {
   RoutingStatus status{RoutingStatus::InternalError};
@@ -711,6 +713,7 @@ struct RoutingResult {
   std::string engineIdentity;
   std::string searchVariant;
   std::vector<RoutingAttemptFailure> attemptFailures;
+  std::vector<RoutingAttempt> engineAttempts;
 };
 
 }  // namespace supercpn::weather_routing

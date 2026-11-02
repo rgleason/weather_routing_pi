@@ -21,6 +21,8 @@
 
 #include <wx/wx.h>
 #include <wx/progdlg.h>
+#include <wx/clipbrd.h>
+#include <wx/dataobj.h>
 
 #include <map>
 
@@ -38,6 +40,7 @@
 #include "AndroidDialogHeader.h"
 #ifdef __OCPN__ANDROID__
 #include <QTextBrowser>
+#include <QClipboard>
 #include <QVBoxLayout>
 #endif
 
@@ -52,6 +55,15 @@ ReportDialog::ReportDialog(WeatherRouting& weatherrouting)
 #endif
       m_WeatherRouting(weatherrouting) {
   m_bReportStale = true;
+  SetTitle(_("Route details and report"));
+  m_CopyDiagnostics = new wxButton(this, wxID_ANY, _("Copy diagnostic report"));
+  m_CopyDiagnostics->SetToolTip(_("Copy the displayed route positions, settings, errors and warnings for support. Nothing is uploaded."));
+  m_CopyDiagnostics->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { CopyDiagnostics(); });
+#ifndef __OCPN__ANDROID__
+  auto* buttons = static_cast<wxFlexGridSizer*>(m_bClose->GetContainingSizer());
+  buttons->SetCols(3);
+  buttons->Insert(1, m_CopyDiagnostics, 0, wxALL, 5);
+#endif
 #ifdef __OCPN__ANDROID__
   SetBackgroundColour(wxColour(233, 238, 241));
   GetHandle()->setAutoFillBackground(true);
@@ -85,6 +97,10 @@ ReportDialog::ReportDialog(WeatherRouting& weatherrouting)
   m_bInformation->Show();
   m_bInformation->SetMinSize(wxSize(200, 72));
   header->GetSizer()->Add(m_bInformation, 0, wxALL, 5);
+  m_CopyDiagnostics->Reparent(header);
+  m_CopyDiagnostics->SetMinSize(wxSize(240, 72));
+  m_CopyDiagnostics->Show();
+  header->GetSizer()->Add(m_CopyDiagnostics, 0, wxALL, 5);
   wxSize sz = ::wxGetDisplaySize();
   SetSize(0, 0, sz.x, sz.y - 40);
 #endif
@@ -114,6 +130,8 @@ void ReportDialog::SetRoutesReportHTML(const wxString& html) {
 void ReportDialog::SetRouteMapOverlays(
     std::list<RouteMapOverlay*> routemapoverlays) {
   GenerateRoutesReport();
+  m_DiagnosticText = _("Weather Routing diagnostic report\nIncludes the displayed route positions and settings; review before sharing.\n");
+  m_CopyDiagnostics->Enable(!routemapoverlays.empty());
 
   if (routemapoverlays.empty()) {
     SetConfigurationReportHTML(_("No Configuration selected."));
@@ -123,9 +141,18 @@ void ReportDialog::SetRouteMapOverlays(
   wxString page;
   for (std::list<RouteMapOverlay*>::iterator it = routemapoverlays.begin();
        it != routemapoverlays.end(); it++) {
+    const auto diagnosis = (*it)->GetDiagnostics();
+    const wxString diagnosticText = diagnosis.Text();
+    m_DiagnosticText += "\n----------------------------------------\n" + diagnosticText;
+    wxString diagnosticHtml = diagnosticText;
+    diagnosticHtml.Replace("&", "&amp;");
+    diagnosticHtml.Replace("<", "&lt;");
+    diagnosticHtml.Replace(">", "&gt;");
+    diagnosticHtml.Replace("\n", "<br>");
+    page += "<h3>" + _("Checks, errors and warnings") + "</h3><p>" + diagnosticHtml + "</p>";
     page += _T("<p>");
     if (!(*it)->ReachedDestination()) {
-      wxString reason = (*it)->GetFailureReason();
+      wxString reason = (*it)->GetDiagnosticError();
       reason.Replace("&", "&amp;"); reason.Replace("<", "&lt;"); reason.Replace(">", "&gt;");
       reason.Replace("\n", "<br>");
       page += _("Destination not yet reached.") + _T("<br>") + reason;
@@ -480,6 +507,21 @@ void ReportDialog::GenerateRoutesReport() {
   }
 
   SetRoutesReportHTML(page);
+}
+
+void ReportDialog::CopyDiagnostics() {
+  if (m_DiagnosticText.empty()) return;
+#ifdef __OCPN__ANDROID__
+  QApplication::clipboard()->setText(QString::fromUtf8(m_DiagnosticText.ToUTF8().data()));
+#else
+  if (!wxTheClipboard->Open()) {
+    WR_MessageBox(_("The clipboard is unavailable. Please try again."),
+                  _("Copy diagnostic report"), wxOK | wxICON_WARNING, this);
+    return;
+  }
+  wxTheClipboard->SetData(new wxTextDataObject(m_DiagnosticText));
+  wxTheClipboard->Close();
+#endif
 }
 
 void ReportDialog::OnInformation(wxCommandEvent& event) {

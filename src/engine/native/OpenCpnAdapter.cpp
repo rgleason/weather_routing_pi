@@ -159,12 +159,19 @@ public:
         sharedCache_(SharedWeatherCacheFor(configuration_)) {}
 
   wr::ParameterCoverage windCoverage() const override {
-    // This provider implements the user's explicit climatology/deficient-data
-    // fallback internally. Do not reject that policy using GRIB-only bounds.
-    if (configuration_.ClimatologyType >
-            RouteMapConfiguration::CURRENTS_ONLY ||
-        (configuration_.UseGrib && configuration_.AllowDataDeficient))
+    // A fallback setting alone cannot establish provider readiness. Keep the
+    // solver's blended-source policy, but inspect the GRIB bounds separately
+    // for the user's setup/coverage report.
+    const bool fallbackReady = configuration_.ClimatologyType == RouteMapConfiguration::AVERAGE
+        ? RouteMap::ClimatologyData && WeatherDataProvider::CanInvokeClimatology(ClimatologyService::Wind)
+        : configuration_.ClimatologyType > RouteMapConfiguration::CURRENTS_ONLY &&
+            RouteMap::ClimatologyWindAtlasData && WeatherDataProvider::CanInvokeClimatology(ClimatologyService::WindAtlas);
+    if (fallbackReady)
       return {true, {}, {}, {-180.0, -90.0, 180.0, 90.0}, identity()};
+    return forecastWindCoverage();
+  }
+
+  wr::ParameterCoverage forecastWindCoverage() const {
     if (windCoverage_) return *windCoverage_;
     wr::ParameterCoverage coverage;
     Shared_GribRecordSet frame;
@@ -242,6 +249,8 @@ public:
                      ? wr::EnvironmentalSource::XtdCurrentPrediction
                      : wr::EnvironmentalSource::GribForecast,
                  sample.sampleTime);
+    if (sample.dataMask & Position::CLIMATOLOGY_CURRENT)
+      result.metadata.modelIdentity = "OpenCPN climatology current";
     return result;
   }
 
@@ -1148,6 +1157,51 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
   const wr::RoutingRequest request = BuildRequest(overlay, configuration);
   wr::RoutingEngine engine;
   wr::RoutingResult result;
+  auto setup = overlay.GetDiagnostics();
+  const bool fallbackReady = configuration.ClimatologyType == RouteMapConfiguration::AVERAGE
+      ? RouteMap::ClimatologyData && WeatherDataProvider::CanInvokeClimatology(ClimatologyService::Wind)
+      : configuration.ClimatologyType > RouteMapConfiguration::CURRENTS_ONLY &&
+          RouteMap::ClimatologyWindAtlasData && WeatherDataProvider::CanInvokeClimatology(ClimatologyService::WindAtlas);
+  if (configuration.UseGrib &&
+      configuration.TimeMode == RouteMapConfiguration::ROUTE_BY_DEPARTURE_TIME) {
+    const auto coverage = weather_routing::CheckForecastWindCoverage(
+        weather->forecastWindCoverage(), request.start, request.destination,
+        request.departure, fallbackReady);
+    setup = overlay.GetDiagnostics();
+    for (const auto& item : coverage.items) setup.Add(item);
+  }
+  if (request.cancellation.cancelled()) {
+    result.status = wr::RoutingStatus::Cancelled;
+    result.message = "Routing stopped";
+    overlay.InstallModernNativeResult(result);
+    error = overlay.GetDiagnostics().Summary();
+    return false;
+  }
+  if (configuration.DetectLand) {
+    if (weather_routing::IsCombinedEngine(configuration.EngineSettings.engine)) {
+      for (const auto selected : weather_routing::kSequenceEngines) {
+        if (!(configuration.EngineSettings.SelectedEngines() & weather_routing::EngineBit(selected))) continue;
+        auto effective = configuration;
+        effective.EngineSettings.engine = selected;
+        setup.context += "\n" + wxGetTranslation(weather_routing::EngineTitle(selected)) + ": " +
+            configuration.engine_shoreline_descriptions[effective.EffectiveShorelineResolution()];
+      }
+    } else setup.context += "\n" + configuration.shoreline_description;
+  }
+  overlay.SetDiagnostics(setup);
+  if (setup.HasErrors()) {
+    result.status = overlay.ResourceExhausted() ? wr::RoutingStatus::ResourceLimitReached
+                                               : wr::RoutingStatus::WindForecastRequired;
+    for (const auto& item : setup.items) {
+      if (item.code == "setup.start_land") result.status = wr::RoutingStatus::InvalidStart;
+      if (item.code == "setup.destination_land") result.status = wr::RoutingStatus::InvalidDestination;
+    }
+    result.message = setup.Summary().ToStdString();
+    overlay.InstallModernNativeResult(result);
+    error = overlay.GetDiagnostics().Summary();
+    overlay.SetFailureReason(error);
+    return false;
+  }
   std::uint64_t quickGenerated = 0;
   std::uint64_t originalGenerated = 0;
   std::uint64_t quick2Generated = 0;
@@ -1634,18 +1688,28 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
               diagnostics.interpolationMicroseconds;
           return candidateResult;
         });
-    if (arrivalPlan->route)
+    if (arrivalPlan->route) {
       result = std::move(*arrivalPlan->route);
-    else {
-      result.status =
-          arrivalPlan->status == wr::ArrivalPlanningStatus::Cancelled
-              ? wr::RoutingStatus::Cancelled
-              : wr::RoutingStatus::NoFeasibleRoute;
+      if (arrivalPlan->diagnostics.evaluationBudgetExhausted)
+        result.warnings.push_back({wr::RoutingWarningCode::SearchIncomplete,
+            "Arrival-time evaluation allowance was exhausted; the selected schedule is among tested validated departures"});
+    } else {
+      result.status = arrivalPlan->status == wr::ArrivalPlanningStatus::Cancelled
+          ? wr::RoutingStatus::Cancelled
+          : arrivalPlan->status == wr::ArrivalPlanningStatus::InvalidRequest
+              ? wr::RoutingStatus::InvalidVesselConfiguration
+              : arrivalPlan->diagnostics.evaluationBudgetExhausted
+                  ? wr::RoutingStatus::SearchIncomplete : wr::RoutingStatus::NoFeasibleRoute;
       result.message = arrivalPlan->message;
+      for (const auto& candidate : arrivalPlan->candidates)
+        result.message += "\nDeparture " + weather_routing::DiagnosticTimeUtc(candidate.departure).ToStdString() +
+            " UTC: " + wr::toString(candidate.routingStatus) + ": " + candidate.message;
     }
   } else {
     result = solve(request, environment);
   }
+  const auto operationAttempts = result.engineAttempts;
+  const auto operationFailures = result.attemptFailures;
   if (capturePartials && !Complete(result.status) &&
       result.status != wr::RoutingStatus::Cancelled && !request.cancellation.cancelled()) {
     if (configuration.DetectLand) {
@@ -1945,6 +2009,11 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
           sequenceWeatherCache.misses += cache.misses;
           sequenceWeatherCache.waits += cache.waits;
           sequenceWeatherCache.interpolationMicroseconds += cache.interpolationMicroseconds;
+          if ((explored.exhausted || explored.stopped) && Complete(result.status))
+            result.warnings.push_back({wr::RoutingWarningCode::SearchIncomplete,
+                explored.stopped
+                    ? "Additional alternatives search was stopped; the retained route remains validated"
+                    : "Additional alternatives search reached its allowance; the retained route remains validated"});
           wxLogMessage(
               "WR_COMFORT_SEARCH engine=%s wind_only=%d initial_ms=%lld allowance_ms=%lld "
               "elapsed_ms=%lld attempts=%u generated=%llu weather_calls=%llu validated=%u "
@@ -1967,6 +2036,10 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
     result = {};
     result.status = wr::RoutingStatus::Cancelled;
     result.message = "Routing cancelled";
+  }
+  if (!operationAttempts.empty()) {
+    result.engineAttempts = operationAttempts;
+    result.attemptFailures = operationFailures;
   }
   RouteMapConfiguration resultConfiguration = overlay.GetConfiguration();
   if (arrivalPlan) {
@@ -2167,39 +2240,9 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
     ConstraintChecker::LogSegmentSafetyDiagnostics(
         wxString::Format("native candidate offset=%d",
                          configuration.DepartureTimeOptimizationOffsetMinutes));
-  if (!Complete(result.status)) {
-    error = wxString::FromUTF8(result.message.c_str());
-    if (result.status == wr::RoutingStatus::WaveDataRequired &&
-        result.attemptFailures.empty())
-      error = _("Required wave coverage is unavailable. Load a wave forecast covering the route and time, or turn off Require wave coverage to proceed with a coverage warning.");
-    if (configuration.IsOriginal()) {
-      if (result.status == wr::RoutingStatus::CurrentDataRequired)
-        error = _("Quick requires current coverage while Currents is enabled. Supply current data, or deliberately turn Currents off.");
-      else if (result.status == wr::RoutingStatus::WindForecastRequired)
-        error = _("Quick requires wind coverage for this route and time. Extend the GRIB coverage or configure an available climatology provider.");
-    }
-    const bool searchFailed = result.status == wr::RoutingStatus::NoFeasibleRoute ||
-        result.status == wr::RoutingStatus::SearchIncomplete ||
-        result.status == wr::RoutingStatus::ResourceLimitReached;
-    if (searchFailed && configuration.DetectLand &&
-        configuration.MaxDivertedCourse < 180.0 &&
-        configuration.MaxSearchAngle <= configuration.MaxDivertedCourse) {
-      error += wxString::Format(
-          _(". Max Diverted Course (%d°) is a hard route-geometry limit. "
-            "A coastal departure may need to turn away from the destination. "
-            "Try increasing Max Diverted Course to permit that detour; "
-            "land clearance and minimum depth remain enforced"),
-          static_cast<int>(configuration.MaxDivertedCourse));
-    }
-    if (configuration.MaxSearchAngle > configuration.MaxDivertedCourse) {
-      error += wxString::Format(
-          _(". Max Diverted Course (%d°) is a separate hard route-geometry "
-            "limit and is narrower than Max Search Angle (%d°). Increase it "
-            "to permit wider detours around land"),
-          static_cast<int>(configuration.MaxDivertedCourse),
-          static_cast<int>(configuration.MaxSearchAngle));
-    }
-  }
+  if (!Complete(result.status))
+    error = weather_routing::DescribeRoutingResult(result).Summary();
+
   if (!result.engineIdentity.empty() && Complete(result.status)) {
     overlay.CaptureSearchSettings(reportingConfiguration, true,
                                   configuration.EngineSettings.EngineId(),
@@ -2240,11 +2283,20 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
   };
   captureCandidateGusts(retainedCandidates);
   captureCandidateGusts(partialCandidates);
+  for (auto& candidate : retainedCandidates) {
+    auto captured = std::make_shared<wr::RoutingResult>(*candidate.result);
+    captured->attemptFailures = result.attemptFailures;
+    captured->engineAttempts = result.engineAttempts;
+    candidate.result = std::move(captured);
+  }
   overlay.SetRetainedCandidates(std::move(retainedCandidates));
   overlay.InstallModernNativeResult(result);
   if (Complete(result.status) || result.status == wr::RoutingStatus::Cancelled ||
       request.cancellation.cancelled()) partialCandidates.clear();
   overlay.SetPartialCandidates(std::move(partialCandidates));
-  if (!Complete(result.status)) overlay.SetFailureReason(error);
+  if (!Complete(result.status)) {
+    error = overlay.GetDiagnostics().Summary();
+    overlay.SetFailureReason(error);
+  }
   return Complete(result.status);
 }

@@ -9,6 +9,7 @@
 
 #include <cmath>
 #include "RoutingScenarioJson.h"
+#include "supercpn/weather_routing/Engine.h"
 
 #include <algorithm>
 #include <fstream>
@@ -469,6 +470,28 @@ bool SaveRoutingResultJson(const wxString& path,
     AddOptionalLong(value, "elapsed", candidate.elapsedSeconds);
     AddOptionalDouble(value, "distanceNm", candidate.distanceNm);
     value["finalSafety"] = candidate.finalSafety.ToUTF8().data();
+    value["diagnostics"]["hasResult"] = candidate.diagnostics.hasResult;
+    value["diagnostics"]["complete"] = candidate.diagnostics.complete;
+    value["diagnostics"]["cancelled"] = candidate.diagnostics.cancelled;
+    value["diagnostics"]["outcome"] = candidate.diagnostics.hasResult
+        ? supercpn::weather_routing::toString(candidate.diagnostics.status)
+        : candidate.diagnostics.HasErrors() ? "setup_failed" : "not_computed";
+    value["diagnostics"]["summary"] = candidate.diagnostics.Summary().ToUTF8().data();
+    value["diagnostics"]["context"] = candidate.diagnostics.context.ToUTF8().data();
+    value["diagnostics"]["technical"] = candidate.diagnostics.technical.ToUTF8().data();
+    value["diagnostics"]["items"] = Json::Value(Json::arrayValue);
+    for (const auto& diagnostic : candidate.diagnostics.items) {
+      Json::Value item;
+      item["code"] = diagnostic.code;
+      item["severity"] = diagnostic.severity == weather_routing::DiagnosticSeverity::Error
+          ? "error" : diagnostic.severity == weather_routing::DiagnosticSeverity::Warning ? "warning" : "notice";
+      item["title"] = diagnostic.title.ToUTF8().data();
+      item["detail"] = diagnostic.detail.ToUTF8().data();
+      item["action"] = diagnostic.action.ToUTF8().data();
+      item["engine"] = diagnostic.engine.ToUTF8().data();
+      item["occurrences"] = static_cast<Json::UInt64>(diagnostic.occurrences);
+      value["diagnostics"]["items"].append(item);
+    }
     if (!candidate.coverageNotes.IsEmpty())
       value["coverageNotes"] = candidate.coverageNotes.ToUTF8().data();
     if (!candidate.failureReason.IsEmpty())

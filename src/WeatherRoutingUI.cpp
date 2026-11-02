@@ -195,7 +195,7 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
   m_mView->Append(m_mStatistics);
 
   wxMenuItem* m_mReport;
-  m_mReport = new wxMenuItem(m_mView, wxID_ANY, wxString(_("&Report")),
+  m_mReport = new wxMenuItem(m_mView, wxID_ANY, wxString(_("&Details and report")),
                              wxEmptyString, wxITEM_NORMAL);
   m_mView->Append(m_mReport);
 
@@ -343,7 +343,7 @@ WeatherRoutingBase::WeatherRoutingBase(wxWindow* parent, wxWindowID id,
   m_menu1->Append(m_mStatistics1);
 
   wxMenuItem* m_mReport1;
-  m_mReport1 = new wxMenuItem(m_menu1, wxID_ANY, wxString(_("&Report")),
+  m_mReport1 = new wxMenuItem(m_menu1, wxID_ANY, wxString(_("&Details and report")),
                               wxEmptyString, wxITEM_NORMAL);
   m_menu1->Append(m_mReport1);
 
