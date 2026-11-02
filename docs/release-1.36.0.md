@@ -53,6 +53,8 @@ included positions, filenames and technical details before sharing it.
   exceptions retain a diagnostic rather than escaping the worker.
 - Diagnostic state resets with a new calculation. Route-specific source-use
   warnings are regenerated when choosing another retained candidate.
+- Desktop configuration has one bottom-left OK button shared by Basic and
+  Advanced. Android retains its existing touch-oriented Done header.
 
 ## Coverage limits and next increments
 
@@ -84,3 +86,10 @@ round-tripping. The full local CTest suite is run for the final implementation.
 Windows/macOS/Android platform builds and installed-host qualification remain
 necessary before publication. Source changes to the Android report and clipboard
 path are not, by themselves, device qualification.
+
+The settings-footer follow-up also builds the Linux API 1.21 and 1.22 variants
+and the Android ARM64 variant; Android native libraries pass the 16 KB alignment
+check. Local installed-build checks verify OK closes settings from both desktop
+tabs and Android Done works in portrait and landscape on the attached SM-X210.
+The saved Android route configuration remains unchanged. These settings checks
+do not qualify every routing/reporting path or replace the full release matrix.

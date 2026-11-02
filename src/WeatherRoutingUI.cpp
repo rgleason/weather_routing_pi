@@ -1197,9 +1197,8 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   this->SetSizeHints(wxDefaultSize, wxDefaultSize);
 
   wxFlexGridSizer* fgSizer95;
-  fgSizer95 = new wxFlexGridSizer(0, 2, 0, 0);
+  fgSizer95 = new wxFlexGridSizer(0, 1, 0, 0);
   fgSizer95->AddGrowableCol(0);
-  fgSizer95->AddGrowableCol(1);
   fgSizer95->AddGrowableRow(0);
   fgSizer95->SetFlexibleDirection(wxBOTH);
   fgSizer95->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
@@ -1851,9 +1850,8 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
 
   fgSizer112->Add(sbData_Source, 1, wxEXPAND | wxALL, 5);
 
-  m_bOK = new wxButton(m_pBasic, wxID_ANY, _("OK"), wxDefaultPosition,
+  m_bOK = new wxButton(this, wxID_ANY, _("OK"), wxDefaultPosition,
                        wxDefaultSize, 0);
-  fgSizer112->Add(m_bOK, 0, wxALIGN_RIGHT | wxALL, 5);
 
   fgSizer106->Add(fgSizer112, 1, wxEXPAND | wxALL, 5);
 
@@ -3043,6 +3041,10 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
 #endif
 
   fgSizer95->Add(m_notebook7, 1, wxEXPAND | wxALL, 5);
+
+  // Keep the same close action available from both desktop settings tabs.
+  // Android hides this button in favour of its existing dialog header action.
+  fgSizer95->Add(m_bOK, 0, wxALIGN_LEFT | wxLEFT | wxRIGHT | wxBOTTOM, 10);
 
   this->SetSizer(fgSizer95);
   this->Layout();
