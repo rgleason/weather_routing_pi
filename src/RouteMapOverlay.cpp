@@ -132,6 +132,14 @@ void* RouteMapOverlayThread::Entry() {
     m_RouteMapOverlay.ReportResourceExhaustion(
         _("calculating the weather route"));
     wxLogError("Weather Routing stopped after a memory allocation failed");
+  } catch (const std::exception& error) {
+    m_RouteMapOverlay.AddDiagnostic({"worker.exception",
+        weather_routing::DiagnosticSeverity::Error,
+        _("Unexpected calculation error"), wxString::FromUTF8(error.what()),
+        _("Copy the diagnostic report for investigation.")});
+    m_RouteMapOverlay.SetError(_("Unexpected calculation error"));
+  } catch (...) {
+    m_RouteMapOverlay.SetError(_("Unexpected calculation error; copy the diagnostic report for investigation."));
   }
   //    m_RouteMapOverlay.m_Thread = nullptr;
   return 0;
@@ -170,21 +178,43 @@ RouteMapOverlay::~RouteMapOverlay() {
 
 bool RouteMapOverlay::Start(wxString& error) {
   if (m_Thread) {
-    error = _("error, thread already created\n");
+    error = _("This route already has a calculation in progress.");
     return false;
   }
 
-  error = LoadBoat();
-  if (error.size()) return false;
+  const RouteMapConfiguration configuration = GetConfiguration();
+  const bool climatologySelected =
+      configuration.ClimatologyType > RouteMapConfiguration::CURRENTS_ONLY;
+  const bool climatologyAvailable =
+      configuration.ClimatologyType == RouteMapConfiguration::AVERAGE
+          ? ClimatologyData && WeatherDataProvider::CanInvokeClimatology(ClimatologyService::Wind)
+          : ClimatologyWindAtlasData && WeatherDataProvider::CanInvokeClimatology(ClimatologyService::WindAtlas);
+  auto sources = weather_routing::CheckWindSourceSelection(
+      configuration.UseGrib, climatologySelected, climatologyAvailable);
+  for (auto& item : sources.items) AddDiagnostic(std::move(item));
+  const wxString boatError = LoadBoat();
+  if (!boatError.empty())
+    AddDiagnostic({"setup.boat", weather_routing::DiagnosticSeverity::Error,
+        _("Boat or polar file could not be loaded"), boatError,
+        _("Open the boat editor and select a valid local boat and polar file."), {}, true});
+  const auto loadedBoat = GetConfiguration().boat;
+  if (!loadedBoat.loadWarnings.empty())
+    AddDiagnostic({"setup.boat_warnings", weather_routing::DiagnosticSeverity::Warning,
+        _("Boat or polar data loaded with warnings"), loadedBoat.loadWarnings,
+        _("Review skipped polar measurements or unsaved generated data in the boat editor."), {}, true});
+  if (sources.HasErrors() || !boatError.empty()) {
+    error = GetDiagnostics().Summary();
+    SetError(error);
+    return false;
+  }
 
-  RouteMapConfiguration configuration = GetConfiguration();
   if (configuration.EngineSettings.engine == weather_routing::RoutingEngine::Unsupported) {
     error = _("Unsupported routing engine: ") +
         wxString::FromUTF8(configuration.EngineSettings.EngineId().c_str());
     return false;
   }
   if (!ModernNativeRouteEnabled(configuration)) {
-    error = _("Auto, Quick, Standard, Professional and All require native routing and cannot analyse an existing route or use cumulative climatology/legacy routing.");
+    error = _("The selected engine cannot analyse an existing route or use cumulative climatology. Review the routing mode and data-source settings.");
     return false;
   }
   /* test for cyclone data if needed */
@@ -488,6 +518,8 @@ void RouteMapOverlay::InstallModernNativeResult(
       result.status == wr::RoutingStatus::CompleteUsingReverseRecovery ||
       result.status == wr::RoutingStatus::CompleteUsingFrontierRecovery ||
       result.status == wr::RoutingStatus::CompleteUsingGraphFallback;
+  InstallResultDiagnostics(weather_routing::DescribeRoutingResult(
+      result, GetConfiguration().MaxSwellMeters > 0.0));
   const bool resourceExhausted = ResourceExhausted();
   const bool complete = resultComplete && !resourceExhausted;
   m_ModernNativeEstimatedPolar = complete &&
@@ -555,30 +587,8 @@ void RouteMapOverlay::InstallModernNativeResult(
         break;
       }
   }
-  if (!resourceExhausted) {
-    wxString reason = complete ? wxString()
-                              : wxString::FromUTF8(result.message.c_str());
-#ifdef __OCPN__ANDROID__
-    if (!complete && result.attemptFailures.empty()) {
-      switch (result.status) {
-        case wr::RoutingStatus::WindForecastRequired:
-          reason = _("Wind forecast does not cover this route and time. Load suitable weather in xGRIB or enable climatology wind fallback.");
-          break;
-        case wr::RoutingStatus::CurrentDataRequired:
-          reason = _("Current data are required. Load a forecast with currents or turn off currents in Weather settings.");
-          break;
-        case wr::RoutingStatus::WaveDataRequired:
-          reason = _("Required wave coverage is unavailable. Load a wave forecast covering the route and time, or turn off Require wave coverage to proceed with a coverage warning.");
-          break;
-        case wr::RoutingStatus::InvalidPolar:
-          reason = _("Select a valid sailing polar in Boat settings before computing this route.");
-          break;
-        default: break;
-      }
-    }
-#endif
-    SetFailureReason(reason);
-  }
+  if (!resourceExhausted)
+    SetFailureReason(complete ? wxString() : GetDiagnostics().Summary());
 
   RouteMapConfiguration configuration = GetConfiguration();
   configuration.ReverseRecoveryUsed =

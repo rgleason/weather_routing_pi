@@ -12,6 +12,24 @@ a certain time.  By merging the results of many calculations,
 it is possible to form a map determining routes
 to any given location within the map.
 
+<h3>Route checks, errors and warnings (1.36.0)</h3>
+<p>Select a route and open <b>View &gt; Details and report</b> to see the
+retained checks, causes and suggested next steps. The same action is available
+from the route context menu. <b>Copy diagnostic report</b> copies the displayed
+positions, settings, warnings and technical details locally for support;
+review the contents before sharing. Nothing is uploaded automatically.</p>
+<p>A completed route can still have warnings. The report identifies actual
+climatology use, assumed zero current, unknown or estimated waves, estimated
+polar performance, endpoint shore-buffer access and anchoring assumptions.
+Affected weather intervals include UTC times, positions and durations where
+recorded. Missing waves do not mean calm seas. A permitted fallback is not
+proof that it was used.</p>
+<p>GRIB wind displayed on the chart must also be selected as a routing data
+source. Forecast endpoint bounds do not certify the whole passage, and the
+report says when the weather provider has not supplied the full forecast time
+range. A bounded search that did not complete does not establish that a route
+is impossible. Inspect the details before changing inputs or constraints.</p>
+
 <h3>Atlas engine (1.33.0)</h3>
 <p>Atlas uses continuous physical connection solving, adaptive spatial decisions
 and time-dependent weather guidance. Every accepted route uses the original

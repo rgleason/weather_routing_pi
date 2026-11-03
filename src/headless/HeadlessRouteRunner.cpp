@@ -60,6 +60,7 @@ weather_routing_engine::RoutingCandidateResult CandidateFromRoute(
   candidate.departure = configuration.StartTime;
   candidate.offsetMinutes = configuration.DepartureTimeOptimizationOffsetMinutes;
   candidate.failureReason = route->GetDiagnosticError();
+  candidate.diagnostics = route->GetDiagnostics();
   const auto outcome = weather_routing::ClassifyRouteOutcome(
       route->Running(), route->Valid(), route->Finished(),
       route->ReachedDestination(), !candidate.failureReason.IsEmpty());

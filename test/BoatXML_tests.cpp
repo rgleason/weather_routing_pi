@@ -4,6 +4,7 @@
 
 #include "weather_routing_pi.h"
 #include "Boat.h"
+#include "tinyxml.h"
 
 namespace {
 wxString boatTestPath;
@@ -107,4 +108,41 @@ TEST_F(BoatXML, MultiplePolarSelectionRespectsSailWindLimits) {
   EXPECT_EQ(boat.FindBestPolarForCondition(0, 18.2, 60, 0, false), 1);
   EXPECT_EQ(boat.FindBestPolarForCondition(1, 12, 60, 0, false), -1);
   EXPECT_EQ(boat.FindBestPolarForCondition(1, 35, 60, 0, false), -1);
+}
+
+TEST_F(BoatXML, SuccessfulLoadRetainsPolarWarningsAndReloadClearsRepairedWarnings) {
+  const wxString polarFile = boatTestPath + "warning.pol";
+  auto writePolar = [&](bool badRow) {
+    std::ofstream out(polarFile.ToStdString());
+    out << "twa/tws;5;10\n30;3;4\n";
+    if (badRow) out << "-1;1;2\n";
+    out << "60;4;5\n120;4;5\n";
+  };
+  writePolar(true);
+  // Use a real, empty cache so this warning-only fixture does not emit a
+  // missing-file error (wxWidgets can display it as a modal dialog on Windows).
+  const wxString contoursFile = boatTestPath + "empty.contours";
+  {
+    std::ofstream out(contoursFile.ToStdString(), std::ios::binary);
+    ASSERT_TRUE(out);
+  }
+  TiXmlDocument document;
+  auto* node = new TiXmlElement("OpenCPNWeatherRoutingBoat");
+  auto* polar = new TiXmlElement("Polar");
+  polar->SetAttribute("FileName", polarFile.ToUTF8().data());
+  polar->SetAttribute("CrossOverContours", contoursFile.ToUTF8().data());
+  node->LinkEndChild(polar);
+  document.LinkEndChild(node);
+  const wxString boatFile = boatTestPath + "warning.xml";
+  ASSERT_TRUE(document.SaveFile(boatFile.ToUTF8().data()));
+  Boat boat;
+  ASSERT_TRUE(boat.OpenXML(boatFile, false).empty());
+  ASSERT_EQ(boat.Polars.size(), 1U);
+  EXPECT_FALSE(boat.loadWarnings.empty());
+  EXPECT_NE(boat.loadWarnings.Find("line"), wxNOT_FOUND);
+  ASSERT_TRUE(boat.OpenXML(boatFile).empty());
+  EXPECT_FALSE(boat.loadWarnings.empty());
+  writePolar(false);
+  ASSERT_TRUE(boat.OpenXML(boatFile, false).empty());
+  EXPECT_TRUE(boat.loadWarnings.empty());
 }

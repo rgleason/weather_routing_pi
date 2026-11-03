@@ -20,6 +20,7 @@
 #ifndef _WEATHER_ROUTING_ROUTE_MAP_H_
 #define _WEATHER_ROUTING_ROUTE_MAP_H_
 
+#include "RouteDiagnostics.h"
 #include "RoutingEngineSettings.h"
 
 #include "ShorelineDataset.h"
@@ -935,6 +936,11 @@ public:
    * Resets the RouteMap to initial state, clearing all isochrones and results.
    */
   void Reset();
+  void BeginDiagnosticRun(weather_routing::RouteDiagnosticReport report);
+  void SetDiagnostics(weather_routing::RouteDiagnosticReport report);
+  void AddDiagnostic(weather_routing::RouteDiagnostic diagnostic);
+  void InstallResultDiagnostics(weather_routing::RouteDiagnosticReport report);
+  weather_routing::RouteDiagnosticReport GetDiagnostics();
 
 #define LOCKING_ACCESSOR(name, flag) \
   bool name() {                      \
@@ -1362,6 +1368,15 @@ protected:
   WR_GribRecordSet* m_NewGrib;
 
 private:
+  class ScopedDiagnosticLock {
+  public:
+    explicit ScopedDiagnosticLock(RouteMap& route) : route_(route) { route_.Lock(); }
+    ~ScopedDiagnosticLock() { route_.Unlock(); }
+    ScopedDiagnosticLock(const ScopedDiagnosticLock&) = delete;
+    ScopedDiagnosticLock& operator=(const ScopedDiagnosticLock&) = delete;
+  private:
+    RouteMap& route_;
+  };
   /** Helper method to collect errors from a position and its parents. */
   void CollectPositionErrors(Position* position,
                              std::vector<Position*>& failed_positions);
@@ -1402,6 +1417,7 @@ private:
   bool m_bLandCrossing;
   bool m_bBoundaryCrossing;
 
+  weather_routing::RouteDiagnosticReport m_Diagnostics;
   wxString m_ErrorMsg;
   wxString m_FailureReason;
   bool m_bResourceExhausted{false};

@@ -23,7 +23,7 @@ class AlphaArtifacts(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
 
-    def pair(self, name, version="1.18.3", plugin="xWeatherRouting"):
+    def pair(self, name, version="1.18.3", plugin="xWeatherRouting", summary=None):
         directory = self.root / "artifacts" / name / "package"
         directory.mkdir(parents=True)
         archive = directory / f"xweather_routing_pi-{version}-{name}.tar.gz"
@@ -41,7 +41,7 @@ class AlphaArtifacts(unittest.TestCase):
         root = ET.Element("plugin", version="1")
         fields = {
             "name": plugin, "version": version, "api-version": "1.21",
-            "summary": prepare.SUMMARY,
+            "summary": prepare.SUMMARY if summary is None else summary,
             "source": "https://github.com/pob220/xweather_routing_pi",
             "target": prepare.EXPECTED_TARGETS[name][0],
             "target-version": prepare.EXPECTED_TARGETS[name][1],
@@ -69,6 +69,11 @@ class AlphaArtifacts(unittest.TestCase):
         summaries = re.findall(r'set\(SHORT_DESCRIPTION\s+"([^"]+)"\)', cmake)
         self.assertIn(prepare.SUMMARY, summaries)
         self.assertLessEqual(len(prepare.SUMMARY), 72)
+
+    def test_previous_multi_polar_summary_is_normalized(self):
+        directory, _, _ = self.pair("flatpak-x86_64", summary=prepare.MULTI_POLAR_SUMMARY)
+        _, normalized, _, _, _ = prepare.inspect_pair(directory)
+        self.assertEqual(normalized.findtext("summary"), prepare.SUMMARY)
 
     def test_rejects_mismatched_catalogue_target(self):
         directory, _, metadata = self.pair("flatpak-aarch64")

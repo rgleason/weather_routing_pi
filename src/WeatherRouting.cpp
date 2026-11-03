@@ -1851,6 +1851,11 @@ void WeatherRouting::RequestGribTimelineFrame(
     routeMapOverlay->SetNewGrib(static_cast<GribRecordSet*>(nullptr),
                                 static_cast<std::int64_t>(time.GetTicks()));
     routeMapOverlay->Unlock();
+    routeMapOverlay->AddDiagnostic({"provider.no_reply",
+        weather_routing::DiagnosticSeverity::Warning,
+        _("The weather service did not answer a request"),
+        _("Requested time: ") + time.Format("%Y-%m-%d %H:%M:%S", wxDateTime::UTC) + " UTC",
+        _("Check that the weather provider is enabled and ready. A missing reply is not proof that the GRIB contains no wind.")});
     wxLogWarning(
         "WR_GRIB_BROKER no synchronous response token=%s timeline=%s",
         requestToken, time.FormatISOCombined());
@@ -1874,6 +1879,20 @@ void WeatherRouting::HandleGribTimelineFrame(const wxString& requestToken,
     m_PendingGribRequests.erase(found);
   }
 
+  if (!frame)
+    routeMapOverlay->AddDiagnostic({"provider.no_frame",
+        weather_routing::DiagnosticSeverity::Warning,
+        _("The weather provider returned no forecast frame"),
+        _("Requested time: ") + wxDateTime(static_cast<time_t>(expectedTimelineKey)).Format(
+            "%Y-%m-%d %H:%M:%S", wxDateTime::UTC) + " UTC",
+        _("Review the loaded forecast and its valid times. The selected fallback may be needed.")});
+  else if (!frame->m_GribRecordPtrArray[Idx_WIND_VX] ||
+           !frame->m_GribRecordPtrArray[Idx_WIND_VY])
+    routeMapOverlay->AddDiagnostic({"provider.no_wind",
+        weather_routing::DiagnosticSeverity::Warning,
+        _("The requested forecast frame has no complete wind vector"),
+        _("At least one wind component is missing at the requested time."),
+        _("Load a forecast containing both wind components for the route and time.")});
   routeMapOverlay->Lock();
   routeMapOverlay->SetNewGrib(frame, expectedTimelineKey);
   routeMapOverlay->Unlock();
@@ -9245,9 +9264,14 @@ void WeatherRouting::OnComputationTimer(wxTimerEvent&) {
     if (routemapoverlay->Start(error))
       m_RunningRouteMaps.push_back(routemapoverlay);
     else {
-      WR_MessageDialog mdlg(this, _("Failed to start configuration: ") + error,
-                           _("Weather Routing"), wxOK | wxICON_ERROR);
-      mdlg.ShowModal();
+      routemapoverlay->SetError(error);
+      if (EnvString("WR_HEADLESS_ROUTE_TEST").empty() &&
+          m_WaitingRouteMaps.empty() && m_RunningRouteMaps.empty()) {
+        WR_MessageDialog mdlg(this,
+            error + "\n\n" + _("Open View > Details and report for the checks and corrective steps."),
+            _("Weather Routing"), wxOK | wxICON_ERROR);
+        mdlg.ShowModal();
+      }
     }
 
     UpdateRouteMap(routemapoverlay);
@@ -10002,6 +10026,10 @@ static wxString FormatRouteDistance(RouteMapOverlay* routemapoverlay,
 static wxString BuildRouteFailureState(RouteMapOverlay* routemapoverlay) {
   if (!routemapoverlay) return _("Failed");
 
+  const auto diagnostic = routemapoverlay->GetDiagnostics();
+  if (diagnostic.hasResult || diagnostic.HasErrors())
+    return diagnostic.Summary();
+
   wxString explicitReason = routemapoverlay->GetFailureReason();
   if (!explicitReason.IsEmpty()) {
     const wxString lowerReason = explicitReason.Lower();
@@ -10287,12 +10315,15 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
     State = _("Preparing chart safety grid");
   } else if (!routemapoverlay->Valid()) {
     State = _("Cannot compute");
-    wxString error = routemapoverlay->GetError();
+    wxString error = routemapoverlay->GetDiagnostics().Summary();
+    if (error.empty()) error = routemapoverlay->GetError();
     wxString weatherError = routemapoverlay->GetWeatherForecastError();
     if (!error.IsEmpty())
       State += ": " + error;
     else if (!weatherError.IsEmpty())
       State += ": " + weatherError;
+  } else if (!routemapoverlay->Running() && routemapoverlay->GetDiagnostics().cancelled) {
+    State = _("Stopped by user");
   } else if (routemapoverlay->Running()) {
     wxString stage, detail;
     State = routemapoverlay->GetModernNativeProgress(stage, detail)
@@ -10317,13 +10348,10 @@ void WeatherRoute::Update(WeatherRouting* wr, bool stateonly) {
         State = _("Complete") + (title.empty() ? wxString() : " — " + title);
 #endif
         if (!mode.empty()) State += " (" + mode + ")";
-        if (routemapoverlay->UsesEstimatedPolarPerformance())
-          State += _(" (estimated polar performance)");
-        if (routemapoverlay->HasUnknownWaveHeights()) State += _(" (wave coverage incomplete)");
-        else if (routemapoverlay->HasEstimatedWaveHeights()) State += _(" (wave heights estimated)");
-        if (routemapoverlay->HasAnchoringWaits()) State += _(" (anchoring assumed)");
-        if (routemapoverlay->HasModernNativeCoastalEndpointLeeway())
-          State += _(" (shore buffer at endpoint: check route)");
+        const auto warnings = routemapoverlay->GetDiagnostics().Count(
+            weather_routing::DiagnosticSeverity::Warning);
+        if (warnings) State += warnings == 1 ? _(" (1 warning; see Details)")
+            : wxString::Format(_(" (%u warnings; see Details)"), warnings);
       } else
         State = BuildRouteFailureState(routemapoverlay);
       if (routemapoverlay->HasSelectedPartial())
@@ -12532,7 +12560,7 @@ void WeatherRouting::ExportRoute(RouteMapOverlay& routemapoverlay) {
 }
 
 void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
-  if (!routemapoverlay) return;
+  if (!routemapoverlay || routemapoverlay->Running()) return;
   if (m_RoutePreparationDepth == 0)
     m_ChartSafetyPreparationCancelled.store(false,
                                              std::memory_order_relaxed);
@@ -12611,6 +12639,60 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
     configuration.Update();
     routemapoverlay->SetConfiguration(configuration);
   }
+  weather_routing::RouteDiagnosticReport setupDiagnostics;
+  setupDiagnostics.context = wxString::Format(
+      _("Weather Routing %d.%d.%d; %s; %u-bit\nRoute: %s to %s\nStart: %.6f, %.6f\nDestination: %.6f, %.6f\nConfigured departure: %s UTC\nEngine mode: %s; effort: %d%%\nBoat file: %s\nGRIB selected: %s; climatology mode: %d; currents: %s\nLand detection: %s; land margin: %.2f NM; minimum depth: %.2f m\nTime step: %.0f s; heading step: %.1f degrees; wind scale: %.1f%%\nMaximum true/apparent wind: %.1f / %.1f kn; maximum wave height: %.1f m"),
+      PLUGIN_VERSION_MAJOR, PLUGIN_VERSION_MINOR, PLUGIN_VERSION_PATCH,
+      wxGetOsDescription(), static_cast<unsigned>(sizeof(void*) * 8),
+      configuration.Start, configuration.End,
+      configuration.StartLat, configuration.StartLon,
+      configuration.EndLat, configuration.EndLon,
+      configuration.StartTime.IsValid()
+          ? configuration.StartTime.Format("%Y-%m-%d %H:%M:%S", wxDateTime::UTC)
+          : _("invalid"),
+      wxString::FromUTF8(configuration.EngineSettings.EngineId().c_str()),
+      configuration.RoutingEffortPercent,
+      wxFileName(configuration.boatFileName).GetFullName(),
+      configuration.UseGrib ? _("yes") : _("no"),
+      static_cast<int>(configuration.ClimatologyType),
+      configuration.Currents ? _("yes") : _("no"),
+      configuration.DetectLand ? _("yes") : _("no"),
+      configuration.SafetyMarginLand, configuration.MinimumDepthMeters,
+      configuration.DeltaTime, configuration.ByDegrees,
+      configuration.WindStrength * 100.0, configuration.MaxTrueWindKnots,
+      configuration.MaxApparentWindKnots, configuration.MaxSwellMeters);
+  setupDiagnostics.context += "\n" + wxString(wxVERSION_STRING);
+  if (routeByArrival)
+    setupDiagnostics.context += "\n" + _("Planned arrival: ") +
+        configuration.PlannedArrivalTime.Format("%Y-%m-%d %H:%M:%S", wxDateTime::UTC) + " UTC";
+  if (!configuration.DetectLand)
+    setupDiagnostics.Add({"setup.land_disabled", weather_routing::DiagnosticSeverity::Warning,
+        _("Land detection is switched off"),
+        _("The calculation does not enforce shoreline clearance or charted land avoidance."),
+        _("Review the land-detection setting before using the result."), {}, true});
+  if (!configuration.Currents)
+    setupDiagnostics.Add({"setup.current_disabled", weather_routing::DiagnosticSeverity::Notice,
+        _("Currents are switched off"),
+        _("Current effects are omitted by the route settings."), {}, {}, true});
+  if (configuration.UseMotor)
+    setupDiagnostics.Add({"setup.motor", weather_routing::DiagnosticSeverity::Notice,
+        _("Motoring is allowed"),
+        wxString::Format(_("Configured motor speed %.1f kn; sailing-speed threshold %.1f kn."),
+            configuration.MotorSpeed, configuration.MotorSpeedThreshold), {}, {}, true});
+  if (configuration.AllowDataDeficient)
+    setupDiagnostics.Add({"setup.last_valid", weather_routing::DiagnosticSeverity::Warning,
+        _("Last-valid weather fallback is unavailable in this routing mode"),
+        _("This setting does not extend GRIB coverage for this calculation. The route needs usable forecast data or the configured climatology source."),
+        _("Supply forecast coverage for the passage or configure an available climatology source."), {}, true});
+  if (configuration.WindStrength != 1.0 || configuration.UpwindEfficiency != 1.0 ||
+      configuration.DownwindEfficiency != 1.0 || configuration.NightCumulativeEfficiency != 1.0)
+    setupDiagnostics.Add({"setup.performance_adjusted", weather_routing::DiagnosticSeverity::Notice,
+        _("Wind or boat performance has been adjusted"),
+        wxString::Format(_("Wind strength %.1f%%; upwind efficiency %.1f%%; downwind efficiency %.1f%%; night efficiency %.1f%%."),
+            configuration.WindStrength * 100.0, configuration.UpwindEfficiency * 100.0,
+            configuration.DownwindEfficiency * 100.0, configuration.NightCumulativeEfficiency * 100.0),
+        _("Review these effective assumptions in Configuration."), {}, true});
+  routemapoverlay->BeginDiagnosticRun(std::move(setupDiagnostics));
   // Ensure we have valid start coordinates
   if (std::isnan(configuration.StartLat) ||
       std::isnan(configuration.StartLon)) {
@@ -12647,6 +12729,11 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
       weather_routing::ShouldUseAuthoritativeChartSearch(
           configuration.DetectLand, use_chart_safety, enforce_chart_safety,
           configuration.chart_safety_scout_preview);
+  if (configuration.DetectLand && (!use_chart_safety || !enforce_chart_safety))
+    routemapoverlay->AddDiagnostic({"setup.shoreline_only",
+        weather_routing::DiagnosticSeverity::Notice,
+        _("Shoreline land checks are active; chart and depth checks are not enforced"),
+        _("A shoreline-checked route does not establish charted depth or detailed chart-hazard safety."), {}, {}, true});
   routemapoverlay->SetConfiguration(configuration);
   if (configuration.MinimumDepthMeters > 0.0 &&
       (!configuration.DetectLand || !use_chart_safety ||
@@ -12885,21 +12972,20 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
               weather_routing::ShorelineManager::Description(configuration.EffectiveShorelineResolution());
         }
         configuration.shoreline_error.clear();
-        if (!combined && !use_experimental_chart_safety && configuration.shoreline_dataset->CrossesLand(
-                configuration.StartLat, configuration.StartLon,
-                configuration.StartLat, configuration.StartLon)) {
-          routemapoverlay->SetError(
-              _("Start position is on land in the selected GSHHG dataset. "
-                "Choose an offshore start position."));
-          return;
-        }
-        if (!combined && !use_experimental_chart_safety && configuration.shoreline_dataset->CrossesLand(
-                configuration.EndLat, configuration.EndLon,
-                configuration.EndLat, configuration.EndLon)) {
-          routemapoverlay->SetError(
-              _("Destination is on land in the selected GSHHG dataset. Choose "
-                "an offshore destination."));
-          return;
+        if (!combined && !use_experimental_chart_safety) {
+          for (const bool isStart : {true, false}) {
+            const double lat = isStart ? configuration.StartLat : configuration.EndLat;
+            const double lon = isStart ? configuration.StartLon : configuration.EndLon;
+            if (!configuration.shoreline_dataset->CrossesLand(lat, lon, lat, lon)) continue;
+            routemapoverlay->AddDiagnostic({isStart ? "setup.start_land" : "setup.destination_land",
+                weather_routing::DiagnosticSeverity::Error,
+                isStart ? _("Start is on land in the selected shoreline model")
+                        : _("Destination is on land in the selected shoreline model"),
+                wxString::Format("%s: %.6f, %.6f\n%s",
+                    isStart ? configuration.Start : configuration.End, lat, lon,
+                    configuration.shoreline_description),
+                _("Inspect the endpoint on the chart and choose an appropriate offshore routing position."), {}, true});
+          }
         }
         routemapoverlay->SetConfiguration(configuration);
         wxLogMessage("WR_ROUTE_SHORELINE route=\"%s to %s\" %s",
@@ -12977,7 +13063,9 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
   if (!m_GribTimelineCacheBatchActive)
     BeginGribTimelineCacheBatch(configuration);
   routemapoverlay->SetGribTimelineFrameCache(m_GribTimelineFrameCache);
+  auto retainedSetupDiagnostics = routemapoverlay->GetDiagnostics();
   routemapoverlay->Reset();
+  routemapoverlay->SetDiagnostics(std::move(retainedSetupDiagnostics));
   m_RoutesToRun++;
   m_WaitingRouteMaps.push_back(routemapoverlay);
   m_PreparingChartSafetyRoutes.erase(routemapoverlay);

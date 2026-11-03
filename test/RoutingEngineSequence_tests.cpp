@@ -339,6 +339,43 @@ TEST(RoutingEngineSequenceIntegration,
   }
 }
 }  // namespace
+TEST(RoutingEngineSequence, AllRetainsEveryAttemptIncludingFailuresWithSuccessfulWinner) {
+  const auto enabled = weather_routing::EngineBit(RoutingEngine::Original) |
+      weather_routing::EngineBit(RoutingEngine::Quick2) |
+      weather_routing::EngineBit(RoutingEngine::Quick);
+  const auto result = native::RunRoutingEngineSequence(
+      RoutingEngine::All, {}, [](auto engine) {
+        return engine == SequenceEngine::Original
+            ? Failure(wr::RoutingStatus::CurrentDataRequired)
+            : Success(engine == SequenceEngine::Quick2 ? 100 : 200);
+      }, {}, enabled);
+  EXPECT_EQ(result.engineIdentity, "quick2");
+  ASSERT_EQ(result.engineAttempts.size(), 3U);
+  EXPECT_EQ(result.engineAttempts.front().engine, "Quick");
+  EXPECT_EQ(result.engineAttempts.back().engine, "Standard");
+  EXPECT_EQ(result.engineAttempts.back().status, wr::RoutingStatus::Complete);
+  ASSERT_EQ(result.attemptFailures.size(), 1U);
+  EXPECT_EQ(result.attemptFailures.front().status, wr::RoutingStatus::CurrentDataRequired);
+}
+TEST(RoutingEngineSequence, ProvisionalWinnerKeepsFailuresFromLaterAttempts) {
+  const auto result = native::RunRoutingEngineSequence(
+      RoutingEngine::Auto, {}, [](auto engine) {
+        return engine == SequenceEngine::Quick2 ? Success(100) : Failure();
+      });
+  EXPECT_EQ(result.engineIdentity, "quick2");
+  EXPECT_EQ(result.engineAttempts.size(), 4U);
+  EXPECT_EQ(result.attemptFailures.size(), 3U);
+}
+TEST(RoutingEngineSequence, RejectedCompleteCandidateIsRecordedAsValidationFailure) {
+  const auto mask = weather_routing::EngineBit(RoutingEngine::Original);
+  const auto result = native::RunRoutingEngineSequence(
+      RoutingEngine::All, {}, [](auto) { return Success(100, false); }, {}, mask);
+  EXPECT_EQ(result.status, wr::RoutingStatus::ValidationFailure);
+  ASSERT_EQ(result.engineAttempts.size(), 1U);
+  EXPECT_EQ(result.engineAttempts[0].status, wr::RoutingStatus::ValidationFailure);
+  ASSERT_EQ(result.attemptFailures.size(), 1U);
+  EXPECT_EQ(result.attemptFailures[0].status, wr::RoutingStatus::ValidationFailure);
+}
 
 TEST(RoutingEngineSequence, FailureHeadlineSummarisesEveryAttemptHonestly) {
   const auto result = native::RunRoutingEngineSequence(RoutingEngine::Auto, {}, [](auto engine) {

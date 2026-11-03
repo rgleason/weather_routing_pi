@@ -92,6 +92,7 @@ supercpn::weather_routing::RoutingResult RunRoutingEngineSequence(
   bool haveBest = false;
   std::string failures;
   std::vector<wr::RoutingAttemptFailure> attempts;
+  std::vector<wr::RoutingAttempt> history;
   if (enabled == 0xffffffffU)
     enabled = mode == RoutingEngine::Auto ? kAutoEnginesMask : kAllEnginesMask;
   if (!enabled || (enabled & ~kSelectableEnginesMask)) {
@@ -108,6 +109,8 @@ supercpn::weather_routing::RoutingResult RunRoutingEngineSequence(
       last = {};
       last.status = wr::RoutingStatus::Cancelled;
       last.message = "Routing engine sequence cancelled";
+      last.attemptFailures = attempts;
+      last.engineAttempts = history;
       return last;
     }
     last = solve(engine);
@@ -117,9 +120,20 @@ supercpn::weather_routing::RoutingResult RunRoutingEngineSequence(
     if (cancel.cancelled() || last.status == wr::RoutingStatus::Cancelled) {
       last.status = wr::RoutingStatus::Cancelled;
       last.message = "Routing engine sequence cancelled";
+      last.attemptFailures = attempts;
+      last.engineAttempts = history;
       return last;
     }
+    if (!AcceptedRoute(last) &&
+        (last.status == wr::RoutingStatus::Complete ||
+         last.status == wr::RoutingStatus::CompleteUsingReverseRecovery ||
+         last.status == wr::RoutingStatus::CompleteUsingFrontierRecovery ||
+         last.status == wr::RoutingStatus::CompleteUsingGraphFallback))
+      last.status = wr::RoutingStatus::ValidationFailure;
+    history.push_back({SequenceEngineTitle(engine), last.status, last.message});
     if (AcceptedRoute(last)) {
+      last.attemptFailures = attempts;
+      last.engineAttempts = history;
       if (accepted) accepted(engine, last);
       if (!haveBest || last.legs.back().endTime < best.legs.back().endTime) {
         best = std::move(last);
@@ -128,8 +142,11 @@ supercpn::weather_routing::RoutingResult RunRoutingEngineSequence(
       // Quick2 is a provisional fallback, held only here. The callback gets
       // no incumbent or spent budget: selected Standard starts from scratch.
       // A later accepted engine ends Auto with the best result found so far.
-      if (mode == RoutingEngine::Auto && engine != SequenceEngine::Quick2)
+      if (mode == RoutingEngine::Auto && engine != SequenceEngine::Quick2) {
+        best.attemptFailures = attempts;
+        best.engineAttempts = history;
         return best;
+      }
     } else {
       if (!failures.empty()) failures += "; ";
       std::string detail = last.message.empty() ? "no validated complete route" : last.message;
@@ -140,15 +157,15 @@ supercpn::weather_routing::RoutingResult RunRoutingEngineSequence(
       attempts.push_back({SequenceEngineTitle(engine), last.status, detail});
       failures += std::string(SequenceEngineTitle(engine)) + ": [" +
           wr::toString(last.status) + "] " + detail;
-      if (last.status == wr::RoutingStatus::Complete ||
-          last.status == wr::RoutingStatus::CompleteUsingReverseRecovery ||
-          last.status == wr::RoutingStatus::CompleteUsingFrontierRecovery ||
-          last.status == wr::RoutingStatus::CompleteUsingGraphFallback)
-        last.status = wr::RoutingStatus::ValidationFailure;
     }
   }
-  if (haveBest) return best;
+  if (haveBest) {
+    best.attemptFailures = attempts;
+    best.engineAttempts = history;
+    return best;
+  }
   last.attemptFailures = std::move(attempts);
+  last.engineAttempts = std::move(history);
   last.message = "No validated route found with the selected settings.\n" + failures;
   return last;
 }

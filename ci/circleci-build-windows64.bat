@@ -1,6 +1,10 @@
 @echo off
 setlocal EnableExtensions
 choco install gettext --version 1.0.0.20260310 -y --no-progress
+if errorlevel 1 (
+  timeout /t 10 /nobreak
+  choco install gettext --version 1.0.0.20260310 -y --no-progress
+)
 if errorlevel 1 exit /b %errorlevel%
 call refreshenv
 if errorlevel 1 exit /b %errorlevel%
