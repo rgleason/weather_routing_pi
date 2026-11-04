@@ -75,7 +75,7 @@ echo Running CPack to generate tarball and XML metadata...
 cmake --build . --config RelWithDebInfo --target package >>OUTPUT.TXT 2>&1
 
 REM ------------------------------------------------------------
-REM 6. Insert metadata.xml into tarball (DOUBLE‑TAR REPACK)
+REM 6. Insert metadata.xml into tarball - DOUBLE TAR REPACK
 REM ------------------------------------------------------------
 
 for %%f in (%PLUGIN_NAME%-*.xml) do set XML_FILE=%%f

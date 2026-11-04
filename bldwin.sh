@@ -75,7 +75,7 @@ cmake --build . --config RelWithDebInfo --target package
 XML_FILE=$(ls "$PLUGIN_NAME"-*.xml)
 TARBALL=$(ls "$PLUGIN_NAME"-*.tar.gz)
 
-echo Inserting metadata.xml into tarball (DOUBLE TAR REPACK)
+echo Inserting metadata.xml into tarball DOUBLE TAR REPACK
 echo "Using XML: $XML_FILE"
 echo "Using TARBALL: $TARBALL"
 
