@@ -29,6 +29,13 @@ void LineBuffer::pushLine(float x0, float y0, float x1, float y1) {
   buffer.push_back(y1);
 }
 
+void LineBuffer::Clear() {
+  delete[] lines;
+  lines = nullptr;
+  count = 0;
+  buffer.clear();
+}
+
 void LineBuffer::Finalize() {
   count = buffer.size() / 4;
   delete[] lines;

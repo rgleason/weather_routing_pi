@@ -10,7 +10,7 @@ set "GIT_HOME=C:\Program Files\Git"
 if "%CONFIGURATION%" == "" set "CONFIGURATION=RelWithDebInfo"
 set "WR_XWEATHER_IDENTITY=OFF"
 if /I "%WEATHER_ROUTING_CI_XWEATHER%" == "true" set "WR_XWEATHER_IDENTITY=ON"
-if /I "%CIRCLE_PROJECT_REPONAME%" == "xweather_routing_pi" set "WR_XWEATHER_IDENTITY=ON"
+if "%WEATHER_ROUTING_CI_XWEATHER%" == "" if /I "%CIRCLE_PROJECT_REPONAME%" == "xweather_routing_pi" set "WR_XWEATHER_IDENTITY=ON"
 
 rem CMake 4's FindGettext module requires msgfmt and msgmerge at configure
 rem time.  Install the same pinned package used by xGRIB's validated Windows
@@ -26,6 +26,21 @@ if errorlevel 1 exit /b %errorlevel%
 where msgfmt
 if errorlevel 1 exit /b 1
 where msgmerge
+if errorlevel 1 exit /b 1
+
+rem Runner images do not consistently expose a standalone CMake. Probe both
+rem the standard installation and Visual Studio's bundled tools before
+rem installing the pinned fallback on this disposable build machine.
+set "PATH=C:\Program Files\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;%PATH%"
+where cmake >nul 2>&1
+if errorlevel 1 (
+  choco install cmake --version 3.31.8 -y --no-progress
+  if errorlevel 1 exit /b 1
+  call refreshenv
+  if errorlevel 1 exit /b 1
+  set "PATH=C:\Program Files\CMake\bin;%PATH%"
+)
+cmake --version
 if errorlevel 1 exit /b 1
 
 set wx_vers="wx%WX_VER%"
@@ -195,9 +210,7 @@ copy /y test-results\ctest.xml ..\artifacts\windows-x86\tests\ctest.xml
 if errorlevel 1 exit /b %errorlevel%
 dir ..\artifacts\windows-x86\package
 
-if /I "%WR_XWEATHER_IDENTITY%" == "ON" (
-  python "%SCRIPTDIR%run-windows86-host.py"
-  if errorlevel 1 exit /b 1
-)
+python "%SCRIPTDIR%run-windows86-host.py"
+if errorlevel 1 exit /b 1
 
 endlocal

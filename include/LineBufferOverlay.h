@@ -38,6 +38,7 @@ public:
 
   void pushLine(float x0, float y0, float x1, float y1);
   void Finalize();
+  void Clear();
 
   void pushTransformedBuffer(LineBuffer& buffer, int x, int y, double ang,
                              bool south = false, bool head = false,

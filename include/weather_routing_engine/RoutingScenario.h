@@ -56,14 +56,24 @@ struct RoutingScenarioEnvironment {
 };
 
 struct RoutingScenarioRouteSettings {
+  bool hasComfortAlternatives{false};
+  bool comfortAlternativesEnabled{false};
+  int comfortAdditionalPercent{200};
+  int comfortMaximumSeconds{20};
   double maxSwellMeters{20};
   bool hasMaxSwellMeters{false};
+  bool requireWaveCoverage{false};
+  bool hasRequireWaveCoverage{false};
+  bool anchoring{false};
+  bool hasAnchoring{false};
   int chartShorelineResolution{0};
   bool hasChartShorelineResolution{false};
   int shorelineResolution{4};
   bool hasShorelineResolution{false};
   wxString routingEngine;
   bool hasRoutingEngine{false};
+  unsigned autoEngineMask{23}, allEngineMask{31};
+  bool hasAutoEngineMask{false}, hasAllEngineMask{false};
   int quickOffshoreStepMinutes{180};
   bool hasQuickOffshoreStepMinutes{false};
   double quickHeadingStepDegrees{20.0};

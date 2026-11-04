@@ -1,0 +1,202 @@
+[
+  {
+    "name": "real_tpxo_dublin_offshore_00",
+    "start": [
+      53.4,
+      -4.8
+    ],
+    "end": [
+      53.35,
+      -5.9
+    ],
+    "grib": "/home/paul/.opencpn/grib/generated/environment_ukmo_ukv_tpxo_irish_sea_24h.grb",
+    "polar": "/home/paul/src/OpenCPN/.worktrees/xweather-sixth/test/testdata/polars/Hallberg-Rassy_40_test.pol",
+    "epoch": 1783047600,
+    "currents": true,
+    "shoreline": "/tmp/atlas-poly-f.dat",
+    "max_hours": 18,
+    "cache": true
+  },
+  {
+    "name": "real_tpxo_dublin_offshore_06",
+    "start": [
+      53.4,
+      -4.8
+    ],
+    "end": [
+      53.35,
+      -5.9
+    ],
+    "grib": "/home/paul/.opencpn/grib/generated/environment_ukmo_ukv_tpxo_irish_sea_24h.grb",
+    "polar": "/home/paul/src/OpenCPN/.worktrees/xweather-sixth/test/testdata/polars/Hallberg-Rassy_40_test.pol",
+    "epoch": 1783069200,
+    "currents": true,
+    "shoreline": "/tmp/atlas-poly-f.dat",
+    "max_hours": 18,
+    "cache": true
+  },
+  {
+    "name": "real_tpxo_north_anglesey_00",
+    "start": [
+      53.4,
+      -4.8
+    ],
+    "end": [
+      53.45,
+      -3.9
+    ],
+    "grib": "/home/paul/.opencpn/grib/generated/environment_ukmo_ukv_tpxo_irish_sea_24h.grb",
+    "polar": "/home/paul/src/OpenCPN/.worktrees/xweather-sixth/test/testdata/polars/Hallberg-Rassy_40_test.pol",
+    "epoch": 1783047600,
+    "currents": true,
+    "shoreline": "/tmp/atlas-poly-f.dat",
+    "max_hours": 18,
+    "cache": true
+  },
+  {
+    "name": "real_tpxo_north_anglesey_06",
+    "start": [
+      53.4,
+      -4.8
+    ],
+    "end": [
+      53.45,
+      -3.9
+    ],
+    "grib": "/home/paul/.opencpn/grib/generated/environment_ukmo_ukv_tpxo_irish_sea_24h.grb",
+    "polar": "/home/paul/src/OpenCPN/.worktrees/xweather-sixth/test/testdata/polars/Hallberg-Rassy_40_test.pol",
+    "epoch": 1783069200,
+    "currents": true,
+    "shoreline": "/tmp/atlas-poly-f.dat",
+    "max_hours": 18,
+    "cache": true
+  },
+  {
+    "name": "real_tpxo_offshore_00",
+    "start": [
+      53.6,
+      -5
+    ],
+    "end": [
+      53.9,
+      -5.6
+    ],
+    "grib": "/home/paul/.opencpn/grib/generated/environment_ukmo_ukv_tpxo_irish_sea_24h.grb",
+    "polar": "/home/paul/src/OpenCPN/.worktrees/xweather-sixth/test/testdata/polars/Hallberg-Rassy_40_test.pol",
+    "epoch": 1783047600,
+    "currents": true,
+    "shoreline": "/tmp/atlas-poly-f.dat",
+    "max_hours": 18,
+    "cache": true
+  },
+  {
+    "name": "real_tpxo_offshore_06",
+    "start": [
+      53.6,
+      -5
+    ],
+    "end": [
+      53.9,
+      -5.6
+    ],
+    "grib": "/home/paul/.opencpn/grib/generated/environment_ukmo_ukv_tpxo_irish_sea_24h.grb",
+    "polar": "/home/paul/src/OpenCPN/.worktrees/xweather-sixth/test/testdata/polars/Hallberg-Rassy_40_test.pol",
+    "epoch": 1783069200,
+    "currents": true,
+    "shoreline": "/tmp/atlas-poly-f.dat",
+    "max_hours": 18,
+    "cache": true
+  },
+  {
+    "name": "real_pacific_east",
+    "start": [
+      30,
+      -148
+    ],
+    "end": [
+      30,
+      -144
+    ],
+    "grib": "/home/paul/.opencpn/grib/generated/environment_ecmwf_ifs_copernicus_global_20260920_1635.grb",
+    "polar": "/home/paul/src/OpenCPN/.worktrees/xweather-sixth/test/testdata/polars/Hallberg-Rassy_40_test.pol",
+    "epoch": 1789894800,
+    "currents": true,
+    "max_hours": 240,
+    "cache": true,
+    "step_seconds": 10800
+  },
+  {
+    "name": "real_pacific_north",
+    "start": [
+      30,
+      -148
+    ],
+    "end": [
+      34,
+      -148
+    ],
+    "grib": "/home/paul/.opencpn/grib/generated/environment_ecmwf_ifs_copernicus_global_20260920_1635.grb",
+    "polar": "/home/paul/src/OpenCPN/.worktrees/xweather-sixth/test/testdata/polars/Hallberg-Rassy_40_test.pol",
+    "epoch": 1789894800,
+    "currents": true,
+    "max_hours": 240,
+    "cache": true,
+    "step_seconds": 10800
+  },
+  {
+    "name": "real_pacific_long",
+    "start": [
+      30,
+      -150
+    ],
+    "end": [
+      30,
+      -132
+    ],
+    "grib": "/home/paul/.opencpn/grib/generated/environment_ecmwf_ifs_copernicus_global_20260920_1635.grb",
+    "polar": "/home/paul/src/OpenCPN/.worktrees/xweather-sixth/test/testdata/polars/Hallberg-Rassy_40_test.pol",
+    "epoch": 1789894800,
+    "currents": true,
+    "max_hours": 240,
+    "cache": true,
+    "step_seconds": 10800
+  },
+  {
+    "name": "real_missing_coastal_current",
+    "start": [
+      53.334,
+      -4.618
+    ],
+    "end": [
+      53.338,
+      -6.065
+    ],
+    "grib": "/home/paul/.opencpn/grib/generated/environment_ukmo_ukv_tpxo_irish_sea_24h.grb",
+    "polar": "/home/paul/src/OpenCPN/.worktrees/xweather-sixth/test/testdata/polars/Hallberg-Rassy_40_test.pol",
+    "epoch": 1783047600,
+    "currents": true,
+    "shoreline": "/tmp/atlas-poly-f.dat",
+    "max_hours": 18,
+    "cache": true,
+    "expected_negative": true
+  },
+  {
+    "name": "real_before_current_forecast",
+    "start": [
+      30,
+      -148
+    ],
+    "end": [
+      30,
+      -144
+    ],
+    "grib": "/home/paul/.opencpn/grib/generated/environment_ecmwf_ifs_copernicus_global_20260920_1635.grb",
+    "polar": "/home/paul/src/OpenCPN/.worktrees/xweather-sixth/test/testdata/polars/Hallberg-Rassy_40_test.pol",
+    "epoch": 1789884000,
+    "currents": true,
+    "max_hours": 240,
+    "cache": true,
+    "step_seconds": 10800,
+    "expected_negative": true
+  }
+]

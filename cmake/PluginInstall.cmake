@@ -99,6 +99,8 @@ endif (WIN32)
 
 if (UNIX AND NOT APPLE)
   set(PREFIX_PARENTDATA ${PREFIX_DATA}/${PARENT})
+  # Stock OpenCPN Flatpak searches data/opencpn/plugins. The importer
+  # preserves the suffix after share/, so retain the opencpn parent here.
   set(PREFIX_PARENTLIB ${PREFIX_LIB}/${PARENT})
   message(STATUS "${CMLOC}PREFIX_PARENTLIB: ${PREFIX_PARENTLIB}")
   message(STATUS "${CMLOC}Library")

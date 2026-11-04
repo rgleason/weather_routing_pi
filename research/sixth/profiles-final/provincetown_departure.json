@@ -1,0 +1,19 @@
+{
+  "name": "provincetown_departure",
+  "start": [
+    42.08368,
+    -70.16199
+  ],
+  "east_nm": 20,
+  "north_nm": 0,
+  "wind_from": 0,
+  "max_hours": 48,
+  "cache": true,
+  "end": [
+    42.1,
+    -70.5
+  ],
+  "shoreline": "/tmp/atlas-poly-f.dat",
+  "margin_nm": 0.2,
+  "profile_providers": true
+}

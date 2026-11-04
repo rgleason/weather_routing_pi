@@ -3,6 +3,10 @@
 
 #include <string>
 #include <string_view>
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <array>
 #include "GribTimelineCachePolicy.h"
 
 namespace weather_routing {
@@ -15,27 +19,36 @@ constexpr int kDefaultMaxDivertedCourse = 120;
 
 // Serialized IDs remain stable: historical "quick" is Standard, while
 // "main" selects the current Professional implementation.
-enum class RoutingEngine { Main, Quick, Unsupported, Original, Auto, All };
+enum class RoutingEngine { Main, Quick, Unsupported, Original, Auto, All, Quick2, Alternative, Atlas };
+
+inline constexpr std::array kSequenceEngines{
+    RoutingEngine::Original, RoutingEngine::Quick2, RoutingEngine::Quick,
+    RoutingEngine::Alternative, RoutingEngine::Main, RoutingEngine::Atlas};
+// Execution/display order is independent of the historical saved bit positions.
+inline constexpr std::array kRoutingEngineOrder{
+    RoutingEngine::Original, RoutingEngine::Quick2, RoutingEngine::Atlas,
+    RoutingEngine::Quick, RoutingEngine::Alternative, RoutingEngine::Main};
+inline constexpr std::array kEngineChoices{
+    RoutingEngine::Auto, RoutingEngine::Original, RoutingEngine::Quick2,
+    RoutingEngine::Atlas, RoutingEngine::Quick, RoutingEngine::Alternative,
+    RoutingEngine::Main, RoutingEngine::All};
+// Historical defaults remain unchanged. Atlas is available only by opt-in.
+inline constexpr unsigned kAllEnginesMask = 31;
+inline constexpr unsigned kAutoEnginesMask = 23;
+inline constexpr unsigned kSelectableEnginesMask = 63;
+inline unsigned EngineBit(RoutingEngine engine) {
+  for (unsigned i = 0; i < kSequenceEngines.size(); ++i)
+    if (kSequenceEngines[i] == engine) return 1U << i;
+  return 0;
+}
 
 inline int EngineSelection(RoutingEngine engine) {
-  switch (engine) {
-    case RoutingEngine::Auto: return 0;
-    case RoutingEngine::Original: return 1;
-    case RoutingEngine::Quick: return 2;
-    case RoutingEngine::Main: return 3;
-    case RoutingEngine::All: return 4;
-    default: return -1;
-  }
+  const auto found = std::find(kEngineChoices.begin(), kEngineChoices.end(), engine);
+  return found == kEngineChoices.end() ? -1 : static_cast<int>(found - kEngineChoices.begin());
 }
 inline RoutingEngine EngineFromSelection(int selection) {
-  switch (selection) {
-    case 0: return RoutingEngine::Auto;
-    case 1: return RoutingEngine::Original;
-    case 2: return RoutingEngine::Quick;
-    case 3: return RoutingEngine::Main;
-    case 4: return RoutingEngine::All;
-    default: return RoutingEngine::Unsupported;
-  }
+  return selection >= 0 && static_cast<unsigned>(selection) < kEngineChoices.size()
+      ? kEngineChoices[selection] : RoutingEngine::Unsupported;
 }
 inline bool IsCombinedEngine(RoutingEngine engine) {
   return engine == RoutingEngine::Auto || engine == RoutingEngine::All;
@@ -45,6 +58,9 @@ inline const char* EngineTitle(RoutingEngine engine) {
     case RoutingEngine::Original: return "Quick";
     case RoutingEngine::Quick: return "Standard";
     case RoutingEngine::Main: return "Professional";
+    case RoutingEngine::Quick2: return "Quick2";
+    case RoutingEngine::Alternative: return "Alternative";
+    case RoutingEngine::Atlas: return "Atlas";
     case RoutingEngine::Auto: return "Auto";
     case RoutingEngine::All: return "All (slow)";
     default: return "Unsupported";
@@ -66,6 +82,15 @@ struct QuickSearchSettings {
   bool operator==(const QuickSearchSettings&) const = default;
 };
 
+// Quick (the hardened contour engine) uses the route's visible nominal
+// timestep, then reduces it near its endpoints. The saved Original offshore
+// value remains for Professional's separate contour incumbent; visible Quick
+// ignores it. Standard retains its own policy. Do not apply Professional's
+// 15-minute quality floor here.
+inline std::int64_t QuickTimeStepSeconds(double configuredSeconds) {
+  return std::max<std::int64_t>(60, std::llround(configuredSeconds));
+}
+
 // Main's numerical values retain their original RouteMapConfiguration fields
 // and serialization keys. Quick owns a separate block; switching selects only
 // the algorithm and never copies or resets numerical values.
@@ -77,6 +102,13 @@ struct RoutingEngineSettings {
   QuickSearchSettings original;
   int originalShorelineResolution{kDefaultQuickShorelineResolution};
   int originalGribTimelineCacheMiB{kQuickGribTimelineCacheDefaultMiB};
+  // Membership is independent of each engine's settings and resource limits.
+  // Explicit empty selections remain empty and are rejected before routing.
+  unsigned autoEngines{kAutoEnginesMask};
+  unsigned allEngines{kAllEnginesMask};
+  unsigned SelectedEngines() const {
+    return engine == RoutingEngine::Auto ? autoEngines : allEngines;
+  }
 
   QuickSearchSettings& FastSettings() {
     return engine == RoutingEngine::Original || engine == RoutingEngine::Main
@@ -94,6 +126,9 @@ struct RoutingEngineSettings {
       case RoutingEngine::Original: return "original";
       case RoutingEngine::Auto: return "auto";
       case RoutingEngine::All: return "all";
+      case RoutingEngine::Quick2: return "quick2";
+      case RoutingEngine::Alternative: return "alternative";
+      case RoutingEngine::Atlas: return "atlas";
       default: return unsupportedId;
     }
   }
@@ -104,6 +139,9 @@ struct RoutingEngineSettings {
     else if (id == "original") engine = RoutingEngine::Original;
     else if (id == "auto") engine = RoutingEngine::Auto;
     else if (id == "all") engine = RoutingEngine::All;
+    else if (id == "quick2") engine = RoutingEngine::Quick2;
+    else if (id == "alternative") engine = RoutingEngine::Alternative;
+    else if (id == "atlas") engine = RoutingEngine::Atlas;
     else {
       engine = RoutingEngine::Unsupported;
       unsupportedId = id;
@@ -151,13 +189,21 @@ struct RoutingSearchSnapshot {
     const auto& fast = c.EngineSettings.FastSettings();
     return {true, native ? c.EngineSettings.EngineId() : "legacy",
             quick ? fast.preset : c.EngineSettings.mainPreset,
-            quick ? fast.offshoreStepMinutes * 60.0 : c.DeltaTime,
+            c.EngineSettings.engine == RoutingEngine::Original
+                ? static_cast<double>(QuickTimeStepSeconds(c.DeltaTime))
+                : quick ? fast.offshoreStepMinutes * 60.0 : c.DeltaTime,
             quick ? fast.headingStepDegrees : c.ByDegrees,
             quick ? fast.memoryBudgetMiB : 0,
             static_cast<int>(quick ? fast.maximumSearchAngle : c.MaxSearchAngle),
             quick ? 100 : c.RoutingEffortPercent, c.EffectiveShorelineResolution(), c.DetectLand};
   }
 };
+
+template <typename Configuration>
+void ResetOriginalToBalanced(Configuration& configuration) {
+  configuration.DeltaTime = 3600;
+  configuration.EngineSettings.ResetOriginalToBalanced();
+}
 
 // This explicit action must never be called while loading/migrating settings.
 // Shared safety, vessel, weather and resource preferences are outside its scope.

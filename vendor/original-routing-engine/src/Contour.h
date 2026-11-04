@@ -82,6 +82,8 @@ struct Trace {
   double fuel{};
   unsigned profile{};
   bool tack{}, gybe{}, modeChange{};
+  bool stationaryWait{}, hasMotion{};
+  wr::Duration waitDuration{};
   Trace(Arena&, Trace*, wr::GeoPoint, wr::TimePoint);
   ~Trace();
   void retain() { ++refs; }

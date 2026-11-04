@@ -1,0 +1,28 @@
+{
+  "name": "generated_0101",
+  "start": [
+    30,
+    -140
+  ],
+  "east_nm": 18.09534493075111,
+  "north_nm": 0,
+  "wind_from": 0,
+  "max_hours": 72,
+  "cache": true,
+  "seed": 101,
+  "family": 5,
+  "rectangles_nm": [
+    [
+      2,
+      -20,
+      3,
+      -0.15
+    ],
+    [
+      2,
+      0.15,
+      3,
+      20
+    ]
+  ]
+}

@@ -26,20 +26,30 @@ Serialized identifiers are intentionally unchanged: `original` means new Quick,
 `quick` means Standard, and `main` means Professional. Unknown identifiers are
 preserved and explicitly rejected, not silently mapped to an engine.
 
-All three engines remember separate tuning, shoreline resolution and GRIB cache
-limits. Changing engines does not copy or reset another engine's settings.
+The engines remember separate heading/search tuning, shoreline resolution and
+GRIB cache limits. Quick and Professional share the route's nominal timestep;
+Standard retains its own offshore timestep. Changing engines does not reset settings.
 **Advanced → Engine settings** displays the selected engine's controls.
 **Reset engine to preset** previews an explicit Apply/Cancel action and changes
-only that engine's search tuning; safety, boat, weather and memory settings remain.
+only search tuning; Quick's reset also sets the shared nominal timestep to one
+hour. Safety, boat, weather and memory settings remain.
 
 ## First-use tuning and resources
 
-Quick and Standard start at 180-minute nominal offshore steps, 10-degree heading
+Quick uses the route's configured nominal time step (`dt`), one hour by default,
+with adaptive reductions near departure and destination. It has no automatic
+offshore coarsening or route-length switch. Larger steps require an explicit edit.
+The same nominal field controls Professional's main search and Quick's Auto/All
+attempts. Professional's separate contour recovery retains its existing saved
+search spacing and five-minute chronological validation; changing Quick's
+nominal step does not retune that recovery search.
+Standard retains its independent 180-minute nominal offshore step and existing
+short-route/endpoint refinement. Both fast engines start at 10-degree heading
 separation, a 120-degree maximum search angle and a 256 MiB search allowance.
 Professional starts at one hour, 10 degrees and 100% effort. Balanced preset
 revision 2 records these resolved values; upgrading never reapplies a preset.
 
-Quick's step becomes smaller near its destination. Its maximum search angle is
+Quick's step becomes smaller near its departure and destination. Its maximum search angle is
 relative to the previous sailing heading, as in the Original contour algorithm.
 Standard additionally refines departure/coastal search and has bounded retries.
 Professional's maximum search angle controls its destination-bearing search cone.
@@ -105,8 +115,11 @@ Use stable IDs, not display titles:
 }
 ```
 
-The historical `quick*` scenario tuning keys configure the selected fast engine;
-saved XML uses distinct `Original*` and `Quick*` blocks. The earlier `quickRoute`
+The historical `quick*` scenario tuning keys configure the selected fast engine,
+except `quickOffshoreStepMinutes`, which now controls Standard only. Quick uses
+`timeStepSeconds`. Saved `OriginalOffshoreStepMinutes` is retained for backwards
+compatibility but no longer overrides the visible route timestep.
+Saved XML uses distinct `Original*` and `Quick*` blocks. The earlier `quickRoute`
 boolean continues to select Standard, and an explicit `routingEngine` wins.
 Results record the stable engine ID and the settings used for that calculation.
 

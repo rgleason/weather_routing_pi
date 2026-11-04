@@ -106,7 +106,8 @@ bool ResolveWaypoint(wxString& name, wxString& guid, double& lat, double& lon) {
     return true;
   }
 
-  for (const auto& waypoint_guid : waypoint_guids) {
+  for (size_t i = 0; i < waypoint_guids.GetCount(); ++i) {
+    const wxString& waypoint_guid = waypoint_guids[i];
     if (!GetSingleWaypoint(waypoint_guid, &waypoint)) continue;
     if (waypoint.m_MarkName != name) continue;
 
@@ -151,6 +152,7 @@ RouteMapConfiguration::RouteMapConfiguration()
       ArrivalPlanningScheduleMarginSeconds(0),
       UseCurrentTime(false),
       DepartureTimeOptimizationEnabled(false),
+      DepartureTimeOptimizationChartDisplay(SELECTED_DEPARTURE),
       DepartureTimeOptimizationRangeMinutes(360),
       DepartureTimeOptimizationStepMinutes(60),
       DepartureTimeOptimizationConcurrentRoutes(0),
@@ -371,9 +373,11 @@ void RouteMap::MarkResourceExhaustionLocked(const wxString& context) {
   m_bReachedDestination = false;
   m_bFinished = true;
   m_FailureReason = wxString::Format(
-      _("Not enough memory while %s. Try a smaller-area or lower-resolution "
-        "GRIB, close unused routes, or use a 64-bit OpenCPN build."),
-      context);
+      _("Not enough memory while %s. Close unused routes or review the "
+        "cache/search memory budget. A smaller or lower-resolution GRIB may "
+        "help, but retain coverage for the passage."), context);
+  if (sizeof(void*) < 8)
+    m_FailureReason += _(" A 64-bit OpenCPN build can provide more address space.");
 }
 
 void RouteMap::ReportResourceExhaustion(const wxString& context) {
@@ -1093,6 +1097,50 @@ Position* RouteMap::ClosestPosition(double lat, double lon, wxDateTime* t,
   return minpos;
 }
 
+void RouteMap::BeginDiagnosticRun(weather_routing::RouteDiagnosticReport report) {
+  ScopedDiagnosticLock lock(*this);
+  m_ErrorMsg.clear();
+  m_FailureReason.clear();
+  m_bWeatherForecastError.clear();
+  m_bResourceExhausted = false;
+  m_Diagnostics = std::move(report);
+}
+
+void RouteMap::SetDiagnostics(weather_routing::RouteDiagnosticReport report) {
+  ScopedDiagnosticLock lock(*this);
+  m_Diagnostics = std::move(report);
+}
+
+void RouteMap::AddDiagnostic(weather_routing::RouteDiagnostic diagnostic) {
+  ScopedDiagnosticLock lock(*this);
+  if (diagnostic.code.rfind("provider.", 0) == 0) {
+    for (auto& existing : m_Diagnostics.items) {
+      if (existing.code != diagnostic.code) continue;
+      ++existing.occurrences;
+      return;
+    }
+  }
+  m_Diagnostics.Add(std::move(diagnostic));
+}
+
+void RouteMap::InstallResultDiagnostics(
+    weather_routing::RouteDiagnosticReport report) {
+  ScopedDiagnosticLock lock(*this);
+  report.context = m_Diagnostics.context;
+  auto resultItems = std::move(report.items);
+  report.items.clear();
+  for (const auto& item : m_Diagnostics.items)
+    if (item.setup || item.code.rfind("provider.", 0) == 0) report.Add(item);
+  for (auto& item : resultItems) report.Add(std::move(item));
+  m_Diagnostics = std::move(report);
+}
+
+weather_routing::RouteDiagnosticReport RouteMap::GetDiagnostics() {
+  ScopedDiagnosticLock lock(*this);
+  return weather_routing::ReconcileRouteDiagnostics(m_Diagnostics,
+      m_ErrorMsg, m_FailureReason, m_bWeatherForecastError, m_bResourceExhausted);
+}
+
 void RouteMap::Reset() {
   m_CancellationFlag->store(false, std::memory_order_relaxed);
   Lock();
@@ -1105,6 +1153,8 @@ void RouteMap::Reset() {
   m_NewTime = m_Configuration.StartTime;
   m_bNeedsGrib = m_Configuration.UseGrib && m_Configuration.RouteGUID.IsEmpty();
   m_bNeedsChartSafetyData = false;
+  m_Diagnostics = {};
+  m_bWeatherForecastError.clear();
   m_ErrorMsg = wxEmptyString;
   m_FailureReason = wxEmptyString;
   m_bResourceExhausted = false;

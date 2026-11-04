@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "name": "Atlas opt-in Auto and All integration",
+  "start": {
+    "name": "Offshore start",
+    "lat": 53.6,
+    "lon": -5
+  },
+  "end": {
+    "name": "Offshore finish",
+    "lat": 53.9,
+    "lon": -5.6
+  },
+  "startTime": "2026-07-03T03:00:00Z",
+  "departureOptimization": {
+    "enabled": false
+  },
+  "environment": {
+    "useGrib": true,
+    "useCurrents": true
+  },
+  "route": {
+    "boatFile": "/tmp/atlas-headless-boat.xml",
+    "routingEngine": "all",
+    "timeStepSeconds": 3600,
+    "headingFromDegrees": 40,
+    "headingToDegrees": 170,
+    "headingStepDegrees": 10,
+    "maxDivertedCourseDegrees": 180,
+    "maxCourseAngleDegrees": 180,
+    "maxSearchAngleDegrees": 180,
+    "maxTrueWindKnots": 50,
+    "maxApparentWindKnots": 60,
+    "maxSwellMeters": 0,
+    "requireWaveCoverage": false,
+    "optimizeTacking": false,
+    "anchoring": true,
+    "useMotor": false,
+    "shorelineResolution": 4,
+    "upwindEfficiency": 1,
+    "downwindEfficiency": 1,
+    "nightEfficiency": 1,
+    "autoEngines": [
+      "atlas",
+      "main"
+    ],
+    "allEngines": [
+      "quick2",
+      "atlas"
+    ]
+  },
+  "safety": {
+    "mode": "gshhs",
+    "enforce": true,
+    "landMarginNm": 0,
+    "minimumDepthM": 0
+  }
+}

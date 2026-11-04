@@ -148,6 +148,14 @@ bool BoatData::GetBoatSpeedForPolar(RouteMapConfiguration& configuration,
   PolarSpeedStatus polar_status;
   bool used_grib = false;  // true if grib data was used, false if climatology.
   bool using_motor = false;
+  bool estimated = false;
+  auto routingSpeed = [&](double angle, double wind) {
+    bool sampleEstimated = false;
+    const double speed = PolarSpeedForRouting(configuration.boat.Polars, newpolar,
+        angle, wind, &polar_status, configuration.OptimizeTacking, &sampleEstimated);
+    estimated = estimated || sampleEstimated;
+    return speed;
+  };
   if ((data_mask & Position::CLIMATOLOGY_WIND) &&
       (configuration.ClimatologyType == RouteMapConfiguration::CUMULATIVE_MAP ||
        configuration.ClimatologyType ==
@@ -163,12 +171,10 @@ bool BoatData::GetBoatSpeedForPolar(RouteMapConfiguration& configuration,
       double boatSpeed, mind = polar.MinDegreeStep();
       // if tacking
       if (fabs(dir) < mind)
-        boatSpeed = polar.Speed(mind, weather_data.atlas.VW[i], &polar_status,
-                                bound, configuration.OptimizeTacking) *
+        boatSpeed = routingSpeed(mind, weather_data.atlas.VW[i]) *
                     cos(deg2rad(mind)) / cos(deg2rad(dir));
       else
-        boatSpeed = polar.Speed(dir, weather_data.atlas.VW[i], &polar_status,
-                                bound, configuration.OptimizeTacking);
+        boatSpeed = routingSpeed(dir, weather_data.atlas.VW[i]);
       // Accumulate weighted boat speed based on probability of each wind
       // direction
       stw += weather_data.atlas.directions[i] * boatSpeed;
@@ -181,8 +187,7 @@ bool BoatData::GetBoatSpeedForPolar(RouteMapConfiguration& configuration,
     // Direct polar lookup - get boat speed from polar data for current heading
     // and wind speed.
     used_grib = true;
-    stw = polar.Speed(twa, weather_data.twsOverWater, &polar_status, bound,
-                      configuration.OptimizeTacking);
+    stw = routingSpeed(twa, weather_data.twsOverWater);
   }
 
   /* failed to determine speed. */
@@ -230,6 +235,10 @@ bool BoatData::GetBoatSpeedForPolar(RouteMapConfiguration& configuration,
   }
 
   // Calculate boat movement over ground by combining boat speed with current.
+  if (!using_motor) {
+    stw = std::min(stw, polar.MaximumSpeed());
+    if (estimated) data_mask |= Position::POLAR_WIND_ESTIMATED;
+  }
   WeatherDataProvider::TransformToGroundFrame(
       ctw, stw, weather_data.currentDir, weather_data.currentSpeed, cog, sog);
 
@@ -321,27 +330,9 @@ bool BoatData::GetBestPolarAndBoatSpeed(RouteMapConfiguration& configuration,
   newpolar = configuration.boat.FindBestPolarForCondition(
       polar, weather_data.twsOverWater, twa, weather_data.swell,
       configuration.OptimizeTacking, &status);
-  bool inside_polar_bounds = true;
-  if (newpolar == -1 || status != PolarSpeedStatus::POLAR_SPEED_SUCCESS) {
-    if (newpolar == -1 && polar >= 0) {
-      newpolar = polar;
-    }
-    if (status == PolarSpeedStatus::POLAR_SPEED_WIND_TOO_LIGHT ||
-        status == PolarSpeedStatus::POLAR_SPEED_WIND_TOO_STRONG) {
-      // In light winds, FindBestPolarForCondition() may return a polar
-      // where the heading and wind are not in the sail plan, but this is
-      // the best we can do. This is not an error, the boat will just not
-      // move in this direction, and perhaps the wind will pick up later.
-      // case PolarSpeedStatus::POLAR_SPEED_ANGLE_TOO_LOW:
-      // case PolarSpeedStatus::POLAR_SPEED_ANGLE_TOO_HIGH:
-      // For strong wind, we use the max wind in the polar
-      // If the polar goes to 30 knots and the wind is 31 knots,
-      // we use the boat speed for 30 knots.
-      inside_polar_bounds = false;
-    } else {
-      configuration.polar_status = status;
-      return false;  // failed to switch polar
-    }
+  if (newpolar < 0) {
+    configuration.polar_status = status;
+    return false;
   }
   if (polar > 0 && newpolar != polar) {
     // Apply penalty for changing sail plan.
@@ -362,16 +353,9 @@ bool BoatData::GetBestPolarAndBoatSpeed(RouteMapConfiguration& configuration,
     }
   }
 
-  // In light winds, we don't want to check the polar bounds, because
-  // we already know the wind is too light for the polar.
-
   if (!GetBoatSpeedForPolar(configuration, weather_data, timeseconds, newpolar,
-                            twa, ctw, data_mask,
-                            inside_polar_bounds, /* when using out-of-bound sail
-              plan, set bound=false */
-                            "Propagate")) {
+                            twa, ctw, data_mask, true, "Propagate"))
     return false;
-  }
   return true;
 }
 

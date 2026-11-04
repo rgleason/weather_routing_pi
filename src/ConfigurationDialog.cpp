@@ -205,7 +205,8 @@ bool GetWaypointByGuid(const wxString& guid, PlugIn_Waypoint* waypoint) {
 bool FindWaypointByName(const wxString& name, PlugIn_Waypoint* waypoint,
                         wxString* guid = nullptr) {
   wxArrayString waypoint_guids = GetWaypointGUIDArray();
-  for (const auto& waypoint_guid : waypoint_guids) {
+  for (size_t i = 0; i < waypoint_guids.GetCount(); ++i) {
+    const wxString& waypoint_guid = waypoint_guids[i];
     PlugIn_Waypoint candidate;
     if (!GetSingleWaypoint(waypoint_guid, &candidate)) continue;
     if (candidate.m_MarkName != name) continue;
@@ -319,7 +320,10 @@ ConfigurationDialog::ConfigurationDialog(WeatherRouting& weatherrouting)
   m_sSafetyMarginLand->SetToolTip(
       detect_land_note + _("\n\nSpecify a minimum distance in nautical miles "
                            "to maintain from land during routing "
-                           "calculations."));
+                           "calculations. Coastal departure/arrival access is "
+                           "local: at most twice this margin from the "
+                           "endpoint (minimum 0.5 NM, maximum 2 NM). Land and "
+                           "minimum-depth checks still apply there."));
   m_sMinimumDepthMeters->SetToolTip(
       _("Reject chart-aware routes through water charted shallower than this "
         "depth in metres. Zero disables the depth constraint. A positive "
@@ -356,8 +360,9 @@ ConfigurationDialog::ConfigurationDialog(WeatherRouting& weatherrouting)
     m_cbUseExperimentalChartSafety->SetToolTip(unavailable);
     m_cbEnforceExperimentalChartSafety->SetToolTip(unavailable);
   }
-  for (const wxString& zone : marine_time::AvailableTimeZones())
-    m_cTimeZone->Append(zone);
+  const auto timeZones = marine_time::AvailableTimeZones();
+  for (size_t i = 0; i < timeZones.GetCount(); ++i)
+    m_cTimeZone->Append(timeZones[i]);
   wxString displayZone = marine_time::SystemTimeZone();
   if (m_cTimeZone->FindString(displayZone) == wxNOT_FOUND) {
     displayZone = "UTC";
@@ -367,15 +372,31 @@ ConfigurationDialog::ConfigurationDialog(WeatherRouting& weatherrouting)
   m_cTimeZone->Enable(false);
   UpdateRoutingTimeModeControls();
 
+  m_cDepartureChartDisplay->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) {
+    if (m_bBlockUpdate) return;
+    const int mode = m_cDepartureChartDisplay->GetSelection();
+    if (mode == wxNOT_FOUND) return;
+    for (auto* route : m_WeatherRouting.CurrentRouteMaps())
+      m_WeatherRouting.SetDepartureChartDisplay(route, mode);
+    RefreshDepartureChartDisplayControls();
+  });
+
 #ifdef __OCPN__ANDROID__
   // Route settings keep the shared immediate-save behaviour. Done commits any
   // text still being edited by Qt before returning to the workspace.
   WR_AddAndroidDoneHeader(this, _("Route setup"), [this]() {
     // wxQt does not always emit a spin update when a value is typed with the
     // Android keyboard. Commit the visible editor values before closing.
-    for (auto* spin : GetHandle()->findChildren<QAbstractSpinBox*>())
+    bool typedSpinValue = false;
+    for (auto* spin : GetHandle()->findChildren<QAbstractSpinBox*>()) {
+      if (auto* editor = spin->findChild<QLineEdit*>())
+        typedSpinValue |= editor->isModified();
       spin->interpretText();
-    Update();
+    }
+    // Display choices use their own presentation setter. An unchanged Done
+    // must not apply all hidden controls (including rounded/clamped values)
+    // and invalidate an already computed departure candidate.
+    if (typedSpinValue || !m_edited_controls.empty()) Update();
     Hide();
   });
   auto* navigation = new wxPanel(this, wxID_ANY);
@@ -444,6 +465,7 @@ ConfigurationDialog::ConfigurationDialog(WeatherRouting& weatherrouting)
   m_cbUseOptimalAngles->SetMinSize(WR_FromDIP(this, wxSize(310, 40)));
   m_cbInvertedRegions->SetMinSize(WR_FromDIP(this, wxSize(300, 40)));
   m_cbAnchoring->SetMinSize(WR_FromDIP(this, wxSize(240, 40)));
+  m_cbRequireWaveCoverage->SetMinSize(WR_FromDIP(this, wxSize(340, 40)));
   m_cRoutingEffortPercent->Clear();
   for (const wxString& label : {_("100% / Standard"), _("150% / Extended"),
                                 _("200% / Thorough"), _("400% / Exhaustive")})
@@ -723,6 +745,26 @@ void ConfigurationDialog::OnRoutingTimeMode(wxCommandEvent& event) {
   Update();
 }
 
+void ConfigurationDialog::RefreshDepartureChartDisplayControls() {
+  const auto routes = m_WeatherRouting.CurrentRouteMaps();
+  int mode = wxNOT_FOUND;
+  bool first = true;
+  bool enabled = !routes.empty();
+  for (auto* route : routes) {
+    const auto configuration = route->GetConfiguration();
+    if (first) mode = configuration.DepartureTimeOptimizationChartDisplay;
+    else if (mode != configuration.DepartureTimeOptimizationChartDisplay)
+      mode = wxNOT_FOUND;
+    first = false;
+    enabled &= configuration.TimeMode ==
+                   RouteMapConfiguration::ROUTE_BY_DEPARTURE_TIME &&
+               (configuration.DepartureTimeOptimizationEnabled ||
+                configuration.DepartureTimeOptimizationCandidate);
+  }
+  m_cDepartureChartDisplay->SetSelection(mode);
+  m_cDepartureChartDisplay->Enable(enabled);
+}
+
 void ConfigurationDialog::UpdateRoutingTimeModeControls() {
   const bool arrival = m_rbRouteByArrivalTime->GetValue();
   m_staticTextPlannedTime->SetLabel(
@@ -747,6 +789,8 @@ void ConfigurationDialog::UpdateRoutingTimeModeControls() {
 
   m_cbDepartureTimeOptimizationEnabled->Enable(!arrival);
   if (arrival) m_cbDepartureTimeOptimizationEnabled->SetValue(true);
+  m_cDepartureChartDisplay->Enable(
+      !arrival && m_cbDepartureTimeOptimizationEnabled->IsChecked());
   m_staticTextDepartureRange->SetLabel(
 #ifdef __OCPN__ANDROID__
       arrival ? _("Search before arrival") : _("Departure window +/-"));
@@ -1004,6 +1048,11 @@ void ConfigurationDialog::SetConfigurations(
   m_cTimeZone->Enable(m_cbUseLocalTimeZone->GetValue());
   SET_CHECKBOX(UseCurrentTime);
   SET_CHECKBOX(DepartureTimeOptimizationEnabled);
+  int chartDisplay = it->DepartureTimeOptimizationChartDisplay;
+  for (const auto& configuration : configurations)
+    if (configuration.DepartureTimeOptimizationChartDisplay != chartDisplay)
+      chartDisplay = wxNOT_FOUND;
+  m_cDepartureChartDisplay->SetSelection(chartDisplay);
   if (routeByArrival) {
     m_cbUseCurrentTime->SetValue(false);
     m_cbDepartureTimeOptimizationEnabled->SetValue(true);
@@ -1030,10 +1079,28 @@ void ConfigurationDialog::SetConfigurations(
     sameEngine = sameEngine && config.EngineSettings.engine == firstEngine;
   m_cRoutingEngine->SetSelection(!sameEngine ? wxNOT_FOUND :
       weather_routing::EngineSelection(firstEngine));
+  m_cBasicRoutingMode->SetSelection(!sameEngine ? wxNOT_FOUND :
+      firstEngine == weather_routing::RoutingEngine::Auto ? 0 :
+      firstEngine == weather_routing::RoutingEngine::All ? 1 : wxNOT_FOUND);
+  for (unsigned i = 0; i < m_cbAutoEngines.size(); ++i) {
+    for (bool all : {false, true}) {
+      auto* check = all ? m_cbAllEngines[i] : m_cbAutoEngines[i];
+      const auto mask = all ? it->EngineSettings.allEngines : it->EngineSettings.autoEngines;
+      const bool value = (mask & (1U << i)) != 0;
+      bool same = true;
+      for (const auto& config : configurations)
+        same &= (((all ? config.EngineSettings.allEngines : config.EngineSettings.autoEngines) & (1U << i)) != 0) == value;
+      check->Set3StateValue(same ? (value ? wxCHK_CHECKED : wxCHK_UNCHECKED) : wxCHK_UNDETERMINED);
+    }
+  }
+  m_sQuickOffshoreStepMinutes->SetRange(it->IsQuick() ? 10 : 1,
+                                      it->IsQuick() ? 360 : 60060);
   SET_SPIN_VALUE(QuickMemoryBudgetMiB, (*it).EngineSettings.FastSettings().memoryBudgetMiB);
   SET_SPIN(MainGribTimelineCacheMiB);
   SET_SPIN_VALUE(QuickGribTimelineCacheMiB, (*it).FastGribTimelineCacheMiB());
-  SET_SPIN_VALUE(QuickOffshoreStepMinutes, (*it).EngineSettings.FastSettings().offshoreStepMinutes);
+  SET_SPIN_VALUE(QuickOffshoreStepMinutes, (*it).IsQuick()
+      ? (*it).EngineSettings.quick.offshoreStepMinutes
+      : static_cast<int>(weather_routing::QuickTimeStepSeconds((*it).DeltaTime) / 60));
   SET_SPIN_DOUBLE_VALUE(QuickHeadingStepDegrees, (*it).EngineSettings.FastSettings().headingStepDegrees);
   SET_SPIN_VALUE(QuickMaximumSearchAngle, (*it).EngineSettings.FastSettings().maximumSearchAngle);
   SET_SPIN(ArrivalSafetyMarginMinutes);
@@ -1189,10 +1256,14 @@ void ConfigurationDialog::SetConfigurations(
   SET_CHECKBOX(DetectBoundary);
   SET_CHECKBOX(Currents);
   SET_CHECKBOX(OptimizeTacking);
+  SET_CHECKBOX(ExploreComfortAlternatives);
+  SET_SPIN(ComfortAdditionalPercent);
+  SET_SPIN(ComfortMaximumSeconds);
 
   SET_CHECKBOX(InvertedRegions);
   SET_CHECKBOX(UseReverseReachabilityRecovery);
   SET_CHECKBOX(Anchoring);
+  SET_CHECKBOX(RequireWaveCoverage);
 
   SET_CHECKBOX(UseGrib);
   SET_CONTROL(ClimatologyType, m_cClimatologyType, SetSelection, int, -1);
@@ -1209,6 +1280,7 @@ void ConfigurationDialog::SetConfigurations(
   m_cEnginePreset->SetMinSize(wxSize(220, 72));
 #endif
   RefreshEnginePresetStatus();
+  RefreshDepartureChartDisplayControls();
   m_bBlockUpdate = false;
 }
 
@@ -1243,7 +1315,8 @@ void ConfigurationDialog::AddWaypoints(const bool toStart) {
   combo->Clear();
 
   wxArrayString waypoint_guids = GetWaypointGUIDArray();
-  for (const auto& guid : waypoint_guids) {
+  for (size_t i = 0; i < waypoint_guids.GetCount(); ++i) {
+    const wxString& guid = waypoint_guids[i];
     PlugIn_Waypoint waypoint;
     if (GetSingleWaypoint(guid, &waypoint)) {
       wxString label = waypoint.m_MarkName;
@@ -1301,11 +1374,15 @@ bool ConfigurationDialog::HandleEngineEdit(wxObject* control) {
       control == m_sMaxSearchAngle || control == m_cbUseReverseReachabilityRecovery;
   const bool quickField = control == m_sQuickOffshoreStepMinutes ||
       control == m_sQuickHeadingStepDegrees || control == m_sQuickMaximumSearchAngle;
-  if (!mainField && !quickField && control != m_cRoutingEngine &&
-      control != m_sQuickMemoryBudgetMiB &&
-      control != m_sMainGribTimelineCacheMiB &&
-      control != m_sQuickGribTimelineCacheMiB &&
-      control != m_cShorelineResolution) return false;
+  bool memberField = false;
+  for (unsigned i = 0; i < m_cbAutoEngines.size(); ++i)
+    memberField |= control == m_cbAutoEngines[i] || control == m_cbAllEngines[i];
+  if (!mainField && !quickField && !memberField && control != m_cBasicRoutingMode && control != m_cRoutingEngine &&
+      control != m_sQuickMemoryBudgetMiB && control != m_cbExploreComfortAlternatives &&
+      control != m_sComfortAdditionalPercent && control != m_sComfortMaximumSeconds &&
+      control != m_sMainGribTimelineCacheMiB && control != m_sQuickGribTimelineCacheMiB &&
+      control != m_cShorelineResolution)
+    return false;
   if (m_bBlockUpdate) return true;
   // Engine edits must not round-trip unrelated controls: some old controls
   // display rounded percentages or mixed values. Keep their exact saved data.
@@ -1326,6 +1403,26 @@ bool ConfigurationDialog::HandleEngineEdit(wxObject* control) {
       config.shoreline_dataset.reset();
       config.shoreline_description.clear();
       config.shoreline_error.clear();
+    }
+    if (control == m_cbExploreComfortAlternatives &&
+        m_cbExploreComfortAlternatives->Get3StateValue() != wxCHK_UNDETERMINED)
+      config.ExploreComfortAlternatives = m_cbExploreComfortAlternatives->IsChecked();
+    if (control == m_sComfortAdditionalPercent)
+      config.ComfortAdditionalPercent = std::clamp(m_sComfortAdditionalPercent->GetValue(), 0, 400);
+    if (control == m_sComfortMaximumSeconds)
+      config.ComfortMaximumSeconds = std::clamp(m_sComfortMaximumSeconds->GetValue(), 0, 3600);
+    for (unsigned i = 0; i < m_cbAutoEngines.size(); ++i) {
+      for (bool all : {false, true}) {
+        auto* check = all ? m_cbAllEngines[i] : m_cbAutoEngines[i];
+        if (control != check || check->Get3StateValue() == wxCHK_UNDETERMINED) continue;
+        auto& mask = all ? config.EngineSettings.allEngines : config.EngineSettings.autoEngines;
+        if (check->IsChecked()) mask |= 1U << i;
+        else mask &= ~(1U << i);
+      }
+    }
+    if (control == m_cBasicRoutingMode) {
+      if (m_cBasicRoutingMode->GetSelection() == wxNOT_FOUND) continue;
+      config.EngineSettings.SetEngineId(m_cBasicRoutingMode->GetSelection() == 0 ? "auto" : "all");
     }
     if (control == m_cRoutingEngine) {
       if (m_cRoutingEngine->GetSelection() == wxNOT_FOUND) continue;
@@ -1357,18 +1454,26 @@ bool ConfigurationDialog::HandleEngineEdit(wxObject* control) {
       config.FastGribTimelineCacheMiB() =
           weather_routing::NormalizeGribTimelineCacheMiB(
               m_sQuickGribTimelineCacheMiB->GetValue(), true);
-    if (control == m_sQuickOffshoreStepMinutes)
-      config.EngineSettings.FastSettings().offshoreStepMinutes = m_sQuickOffshoreStepMinutes->GetValue();
+    if (control == m_sQuickOffshoreStepMinutes) {
+      if (config.IsQuick())
+        config.EngineSettings.quick.offshoreStepMinutes = m_sQuickOffshoreStepMinutes->GetValue();
+      else {
+        config.DeltaTime = 60 * m_sQuickOffshoreStepMinutes->GetValue();
+        config.EngineSettings.mainPreset = {};
+      }
+    }
     if (control == m_sQuickHeadingStepDegrees)
       config.EngineSettings.FastSettings().headingStepDegrees = m_sQuickHeadingStepDegrees->GetValue();
     if (control == m_sQuickMaximumSearchAngle)
       config.EngineSettings.FastSettings().maximumSearchAngle = m_sQuickMaximumSearchAngle->GetValue();
     if (mainField) config.EngineSettings.mainPreset = {};
+    if (control == m_sTimeStepHours || control == m_sTimeStepMinutes)
+      config.EngineSettings.original.preset = {};
     if (quickField) config.EngineSettings.FastSettings().preset = {};
     route->SetConfiguration(config);
     m_WeatherRouting.SaveLastUsedConfigurationDefaults(config);
   }
-  if (control == m_cRoutingEngine) {
+  if (control == m_cRoutingEngine || control == m_cBasicRoutingMode) {
     std::list<RouteMapConfiguration> selected;
     for (auto* route : m_WeatherRouting.CurrentRouteMaps(false))
       selected.push_back(route->GetConfiguration());
@@ -1385,15 +1490,45 @@ bool ConfigurationDialog::HandleEngineEdit(wxObject* control) {
 void ConfigurationDialog::UpdateEngineControls() {
   const auto engine = weather_routing::EngineFromSelection(m_cRoutingEngine->GetSelection());
   const bool combined = weather_routing::IsCombinedEngine(engine);
-  m_pMainEngine->Show(engine == weather_routing::RoutingEngine::Main || combined);
+#ifdef __OCPN__ANDROID__
+  // The tablet keeps both mode and individual settings on one Engine page.
+  // An individual selection has no Auto/All item; avoid an empty picker.
+  m_cBasicRoutingMode->Show(combined);
+#endif
+  const bool atlas = engine == weather_routing::RoutingEngine::Atlas;
+  m_pMainEngine->Show(engine == weather_routing::RoutingEngine::Main || combined ||
+      engine == weather_routing::RoutingEngine::Quick2 || engine == weather_routing::RoutingEngine::Alternative ||
+      engine == weather_routing::RoutingEngine::Atlas);
   m_pQuickEngine->Show(engine == weather_routing::RoutingEngine::Original ||
                        engine == weather_routing::RoutingEngine::Quick ||
                        engine == weather_routing::RoutingEngine::Main);
+  const bool standard = engine == weather_routing::RoutingEngine::Quick;
+  // Professional/Auto already show the route's nominal timestep above.
+  m_tFastTimeStep->Show(engine != weather_routing::RoutingEngine::Main);
+  m_sQuickOffshoreStepMinutes->Show(engine != weather_routing::RoutingEngine::Main);
+  m_tFastTimeStep->SetLabel(standard ? _("Offshore time step (minutes)")
+                                   : _("Nominal time step (minutes)"));
+  m_sQuickOffshoreStepMinutes->SetRange(standard ? 10 : 1, standard ? 360 : 60060);
+  m_sQuickOffshoreStepMinutes->SetToolTip(standard
+      ? _("Standard's nominal offshore step. Routes under 120 NM are capped at one hour; departure and destination search use smaller steps.")
+      : _("Quick uses the configured nominal time step and reduces it near departure and destination. Larger steps must be selected explicitly."));
   m_bResetAdvanced->Enable(engine != weather_routing::RoutingEngine::Unsupported);
-  m_cEnginePreset->Enable(engine != weather_routing::RoutingEngine::Unsupported);
+  m_cEnginePreset->Enable(engine != weather_routing::RoutingEngine::Unsupported && !atlas);
+  if (atlas) m_bResetAdvanced->Enable(false);
   bool running = false;
   for (auto* route : m_WeatherRouting.CurrentRouteMaps(false)) running |= route->Running();
   m_cRoutingEngine->Enable(!running);
+  m_cBasicRoutingMode->Enable(!running);
+  for (unsigned i = 0; i < m_cbAutoEngines.size(); ++i) {
+    m_cbAutoEngines[i]->Enable(!running);
+    m_cbAllEngines[i]->Enable(!running);
+  }
+  const bool departureMode = m_rbRouteByDepartureTime->GetValue();
+  m_cbExploreComfortAlternatives->Enable(!running && departureMode);
+  m_sComfortAdditionalPercent->Enable(!running && departureMode &&
+                                      m_cbExploreComfortAlternatives->IsChecked());
+  m_sComfortMaximumSeconds->Enable(!running && departureMode &&
+                                   m_cbExploreComfortAlternatives->IsChecked());
   const bool chartAuthoritative = m_WeatherRouting.HasEnhancedChartSafety() &&
       m_cbUseExperimentalChartSafety->GetValue() && m_cbEnforceExperimentalChartSafety->GetValue();
   int shoreline = wxNOT_FOUND;
@@ -1430,20 +1565,45 @@ void ConfigurationDialog::UpdateEngineControls() {
       ? _("Chart geometry and depth checks are authoritative. This separately saved shoreline choice controls preliminary scouting. It starts at Crude; increase it for finer coastal detail.")
       : _("Shoreline detail for the selected engine. Quick, Standard and Professional remember independent choices. High and Full require installation from Shoreline data on Advanced. Lower resolutions omit smaller coastal features."));
   m_pMainEngine->Enable(!running);
-  m_cRoutingEffortPercent->Enable(!running && engine != weather_routing::RoutingEngine::Auto);
+  m_sTimeStepHours->Enable(!running && !atlas);
+  m_sTimeStepMinutes->Enable(!running && !atlas);
+  m_sMaxSearchAngle->Enable(!running && !atlas);
+  m_cRoutingEffortPercent->Enable(!running && engine != weather_routing::RoutingEngine::Auto &&
+                                 engine != weather_routing::RoutingEngine::Quick2 && !atlas);
+  m_sByDegrees->Enable(!running && engine != weather_routing::RoutingEngine::Quick2 && !atlas);
+  m_cbUseReverseReachabilityRecovery->Enable(!running && engine != weather_routing::RoutingEngine::Quick2 && !atlas);
   if (engine == weather_routing::RoutingEngine::Auto)
     m_cRoutingEffortPercent->SetSelection(RoutingEffortSelection(400));
   m_pQuickEngine->Enable(!running);
   if (running) m_bResetAdvanced->Enable(false);
   m_tRoutingEngineDescription->SetLabel(engine == weather_routing::RoutingEngine::Auto
-      ? _("Auto: Quick, then Standard, then Professional up to 400% effort; stops at the first validated route.")
+      ? _("Auto: finds a validated route using the engines selected in Advanced. Enable alternatives to compare passage time and comfort.")
       : engine == weather_routing::RoutingEngine::All
-      ? _("All (slow): compares Quick, Standard, Alternative and Professional, plus bounded comfort alternatives when enabled; returns the earliest validated arrival.")
+      ? _("All (slow): compares every engine selected in Advanced and keeps the earliest validated arrival. Enable alternatives to compare passage time and comfort.")
+      : engine == weather_routing::RoutingEngine::Quick2
+      ? _("Advanced selection: Quick2 CPU frontier. Bounded search may miss routes or return detours. Auto retains its candidate while Standard searches independently.")
+      : engine == weather_routing::RoutingEngine::Alternative
+      ? _("Advanced selection: Alternative search. Uses the shared route, vessel, weather and safety settings.")
+      : engine == weather_routing::RoutingEngine::Atlas
+      ? _("Atlas: adaptive spatial search with explicit arrival and waiting choices. Uses the shared vessel, weather and safety checks. Global optimality and completeness are not established.")
       : engine == weather_routing::RoutingEngine::Main
-      ? _("Professional: keeps a validated Quick candidate, then searches for a faster route with broader recovery. The Quick controls below tune its integrated candidate.")
-      : engine == weather_routing::RoutingEngine::Quick ? _("Standard: bounded adaptive search with recovery.")
-      : engine == weather_routing::RoutingEngine::Original ? _("Quick: fast contour search with independently validated arrival; may miss a feasible route.")
+      ? _("Advanced selection: Professional keeps a validated Quick candidate, then searches for a faster route with broader recovery. The Quick controls below tune its integrated candidate.")
+      : engine == weather_routing::RoutingEngine::Quick ? _("Advanced selection: Standard bounded adaptive search with recovery.")
+      : engine == weather_routing::RoutingEngine::Original ? _("Advanced selection: Quick fast contour search with independently validated arrival; may miss a feasible route.")
       : _("Mixed or unsupported engines. Select Auto, Quick, Standard, Professional or All (slow)."));
+  if (combined) {
+    int count = -1;
+    for (auto* route : m_WeatherRouting.CurrentRouteMaps(false)) {
+      unsigned mask = route->GetConfiguration().EngineSettings.SelectedEngines();
+      int value = 0;
+      for (unsigned i = 0; i < m_cbAutoEngines.size(); ++i) value += (mask >> i) & 1U;
+      if (count == -1) count = value;
+      else if (count != value) { count = -2; break; }
+    }
+    if (count >= 0) m_tRoutingEngineDescription->SetLabel(m_tRoutingEngineDescription->GetLabel() +
+        wxString::Format(_(" Selected engines: %d."), count) +
+        (count == 0 ? _(" Select at least one engine in Advanced before computing.") : wxString()));
+  }
   // These legacy controls do not tune either native engine. Preserve their
   // saved values for compatibility without suggesting that they affect search.
   bool allNative = true;
@@ -1488,6 +1648,7 @@ void ConfigurationDialog::RefreshEnginePresetStatus() {
     else if (status != label) { status = _("Mixed"); break; }
   }
   if (engine == weather_routing::RoutingEngine::Unsupported) status = _("Mixed or unsupported");
+  if (engine == weather_routing::RoutingEngine::Atlas) status = _("Atlas defaults");
 #ifdef __OCPN__ANDROID__
   WR_WrapAndroidText(m_tEnginePresetStatus, _("Current settings: ") + status,
       wxMax(300, m_pAdvanced->GetClientSize().x - 100));
@@ -1501,7 +1662,8 @@ void ConfigurationDialog::RefreshEnginePresetStatus() {
 void ConfigurationDialog::OnResetAdvanced(wxCommandEvent&) {
   const auto engine = weather_routing::EngineFromSelection(m_cRoutingEngine->GetSelection());
   const bool combined = weather_routing::IsCombinedEngine(engine);
-  if (m_bBlockUpdate || engine == weather_routing::RoutingEngine::Unsupported || m_cEnginePreset->GetSelection() != 0)
+  if (m_bBlockUpdate || engine == weather_routing::RoutingEngine::Unsupported ||
+      engine == weather_routing::RoutingEngine::Atlas || m_cEnginePreset->GetSelection() != 0)
     return;
   const auto routes = m_WeatherRouting.CurrentRouteMaps(false);
   if (routes.empty()) return;
@@ -1510,10 +1672,16 @@ void ConfigurationDialog::OnResetAdvanced(wxCommandEvent&) {
   // explicit reset gives it an Apply/Cancel boundary without changing that
   // established workflow or modifying routes before the user accepts.
   const wxString values = combined
-      ? _("Auto / All - Balanced\nReset Quick and Standard to 3-hour adaptive steps and 10-degree headings. Reset Professional to 1-hour steps, 10-degree headings and 100% effort. Auto always allows Professional up to 400% effort.")
+      ? _("Auto / All - Balanced\nReset the shared Quick / Professional nominal time step to 1 hour. Standard keeps its 3-hour adaptive offshore step. Reset headings to 10 degrees and Professional effort to 100%. Auto always allows Professional up to 400% effort.")
+      : engine == weather_routing::RoutingEngine::Quick2
+      ? _("Quick2 - Balanced\nTime step: 1 hour\nFixed bounded frontier and heading policy\nMaximum search angle: 120 degrees")
+      : engine == weather_routing::RoutingEngine::Alternative
+      ? _("Alternative - Balanced\nTime step: 1 hour\nHeading separation: 10 degrees\nMaximum search angle: 120 degrees")
       : engine == weather_routing::RoutingEngine::Main
       ? _("Professional - Balanced\nTime step: 1 hour\nHeading separation: 10 degrees\nRouting effort: 100%\nMaximum search angle: 120 degrees\nOptional reverse reachability recovery: off")
-      : _("Quick / Standard - Balanced\nOffshore time step: 3 hours (adaptive)\nHeading separation: 10 degrees (adaptive)\nMaximum search angle: 120 degrees");
+      : engine == weather_routing::RoutingEngine::Original
+      ? _("Quick - Balanced\nNominal time step: 1 hour (reduced near departure and destination)\nHeading separation: 10 degrees\nMaximum search angle: 120 degrees")
+      : _("Standard - Balanced\nOffshore time step: 3 hours (adaptive)\nHeading separation: 10 degrees (adaptive)\nMaximum search angle: 120 degrees");
   WR_MessageDialog preview(this, values +
       _("\n\nApplies to all selected routes. Memory and GRIB cache budgets, vessel, weather and safety settings are preserved."),
       _("Reset engine to preset"), wxOK | wxCANCEL);
@@ -1527,8 +1695,10 @@ void ConfigurationDialog::OnResetAdvanced(wxCommandEvent&) {
       config.EngineSettings.ResetOriginalToBalanced();
       config.EngineSettings.ResetQuickToBalanced();
     }
-    else if (engine == weather_routing::RoutingEngine::Main) weather_routing::ResetMainToBalanced(config);
-    else if (engine == weather_routing::RoutingEngine::Original) config.EngineSettings.ResetOriginalToBalanced();
+    else if (engine == weather_routing::RoutingEngine::Main ||
+             engine == weather_routing::RoutingEngine::Quick2 ||
+             engine == weather_routing::RoutingEngine::Alternative) weather_routing::ResetMainToBalanced(config);
+    else if (engine == weather_routing::RoutingEngine::Original) weather_routing::ResetOriginalToBalanced(config);
     else config.EngineSettings.ResetQuickToBalanced();
     route->SetConfiguration(config);
     m_WeatherRouting.SaveLastUsedConfigurationDefaults(config);
@@ -1877,8 +2047,16 @@ void ConfigurationDialog::Update() {
       configuration.FastGribTimelineCacheMiB() =
           weather_routing::NormalizeGribTimelineCacheMiB(
               m_sQuickGribTimelineCacheMiB->GetValue(), true);
-    if (edited(m_sQuickOffshoreStepMinutes))
-      configuration.EngineSettings.FastSettings().offshoreStepMinutes = m_sQuickOffshoreStepMinutes->GetValue();
+    if (edited(m_sQuickOffshoreStepMinutes)) {
+      if (configuration.IsQuick())
+        configuration.EngineSettings.quick.offshoreStepMinutes = m_sQuickOffshoreStepMinutes->GetValue();
+      else {
+        configuration.DeltaTime = 60 * m_sQuickOffshoreStepMinutes->GetValue();
+        configuration.EngineSettings.mainPreset = {};
+      }
+    }
+    if (edited(m_sTimeStepHours) || edited(m_sTimeStepMinutes))
+      configuration.EngineSettings.original.preset = {};
     if (edited(m_sQuickHeadingStepDegrees))
       configuration.EngineSettings.FastSettings().headingStepDegrees = m_sQuickHeadingStepDegrees->GetValue();
     if (edited(m_sQuickMaximumSearchAngle))
@@ -1894,6 +2072,7 @@ void ConfigurationDialog::Update() {
     GET_CHECKBOX(InvertedRegions);
     GET_CHECKBOX(UseReverseReachabilityRecovery);
     GET_CHECKBOX(Anchoring);
+    GET_CHECKBOX(RequireWaveCoverage);
     if (configuration.EngineSettings.engine != weather_routing::RoutingEngine::Auto &&
         (NO_EDITED_CONTROLS ||
          std::find(m_edited_controls.begin(), m_edited_controls.end(),
@@ -1982,4 +2161,117 @@ void ConfigurationDialog::Update() {
 
   // Schedule auto-save to persist any configuration changes
   m_WeatherRouting.ScheduleAutoSave();
+}
+
+// Invoked only by an explicit disposable headless scenario in the host.
+bool ConfigurationDialog::RunEngineHostContract() {
+  auto routes = m_WeatherRouting.CurrentRouteMaps(false);
+  if (routes.size() != 1 || routes.front()->Running()) return false;
+  const auto saved = routes.front()->GetConfiguration();
+  SetConfigurations({saved});
+  const auto choose = [&](wxChoice* control, int selection) {
+    control->SetSelection(selection);
+    wxCommandEvent event(wxEVT_CHOICE, control->GetId());
+    event.SetEventObject(control);
+    control->GetEventHandler()->ProcessEvent(event);
+  };
+  const auto tick = [&](wxCheckBox* control, bool value) {
+    control->SetValue(value);
+    wxCommandEvent event(wxEVT_CHECKBOX, control->GetId());
+    event.SetEventObject(control);
+    control->GetEventHandler()->ProcessEvent(event);
+  };
+  choose(m_cBasicRoutingMode, 0);
+  bool passed = routes.front()->GetConfiguration().EngineSettings.engine == weather_routing::RoutingEngine::Auto;
+  tick(m_cbAutoEngines[1], true);
+  tick(m_cbAutoEngines[2], true);
+  tick(m_cbAutoEngines[3], false);
+  tick(m_cbAllEngines[3], true);
+  const auto changed = routes.front()->GetConfiguration();
+  passed &= (changed.EngineSettings.autoEngines & 6U) == 6U &&
+            !(changed.EngineSettings.autoEngines & 8U) &&
+            (changed.EngineSettings.allEngines & 8U);
+  passed &= changed.StartTime == saved.StartTime && changed.DeltaTime == saved.DeltaTime &&
+            changed.SafetyMarginLand == saved.SafetyMarginLand &&
+            changed.MinimumDepthMeters == saved.MinimumDepthMeters &&
+            changed.ExploreComfortAlternatives == saved.ExploreComfortAlternatives;
+  choose(m_cBasicRoutingMode, 1);
+  passed &= m_cRoutingEngine->GetSelection() == weather_routing::EngineSelection(weather_routing::RoutingEngine::All);
+  choose(m_cRoutingEngine, weather_routing::EngineSelection(weather_routing::RoutingEngine::Quick2));
+  passed &= routes.front()->GetConfiguration().EngineSettings.EngineId() == "quick2" &&
+            m_cBasicRoutingMode->GetSelection() == wxNOT_FOUND;
+  SetConfigurations({routes.front()->GetConfiguration()});
+  passed &= m_cbAutoEngines[1]->IsChecked() && m_cbAutoEngines[2]->IsChecked() &&
+            !m_cbAutoEngines[3]->IsChecked() && m_cbAllEngines[3]->IsChecked();
+  if (auto* config = GetOCPNConfigObject())
+    passed &= config->ReadLong("/PlugIns/WeatherRouting/LastUsedConfiguration/AutoEngineMask", -1) ==
+              changed.EngineSettings.autoEngines;
+  else passed = false;
+  choose(m_cRoutingEngine, weather_routing::EngineSelection(weather_routing::RoutingEngine::Atlas));
+  tick(m_cbAutoEngines[5], true);
+  passed &= routes.front()->GetConfiguration().EngineSettings.EngineId() == "atlas" &&
+            (routes.front()->GetConfiguration().EngineSettings.autoEngines & 32U) &&
+            !m_sByDegrees->IsEnabled() && !m_sTimeStepHours->IsEnabled();
+  routes.front()->SetConfiguration(saved);
+  m_WeatherRouting.SaveLastUsedConfigurationDefaults(saved);
+  SetConfigurations({saved});
+  Show();
+  Raise();
+  wxLogMessage("WR_ENGINE_CONFIGURATION_CONTRACT passed=%d", passed ? 1 : 0);
+  return passed;
+}
+
+bool ConfigurationDialog::RunComfortHostContract() {
+  auto routes = m_WeatherRouting.CurrentRouteMaps(false);
+  if (routes.size() != 1 || routes.front()->Running()) return false;
+  const auto saved = routes.front()->GetConfiguration();
+  SetConfigurations({saved});
+  const auto checkbox = [&](bool value) {
+    m_cbExploreComfortAlternatives->SetValue(value);
+    wxCommandEvent event(wxEVT_CHECKBOX, m_cbExploreComfortAlternatives->GetId());
+    event.SetEventObject(m_cbExploreComfortAlternatives);
+    m_cbExploreComfortAlternatives->GetEventHandler()->ProcessEvent(event);
+  };
+  const auto spin = [&](wxSpinCtrl* control, int value) {
+    control->SetValue(value);
+    wxSpinEvent event(wxEVT_SPINCTRL, control->GetId());
+    event.SetEventObject(control);
+    control->GetEventHandler()->ProcessEvent(event);
+  };
+  checkbox(false);
+  bool passed = !routes.front()->GetConfiguration().ExploreComfortAlternatives &&
+                !m_sComfortAdditionalPercent->IsEnabled();
+  checkbox(true);
+  spin(m_sComfortAdditionalPercent, 400);
+  spin(m_sComfortMaximumSeconds, 3);
+  const auto changed = routes.front()->GetConfiguration();
+  passed = passed && changed.ExploreComfortAlternatives &&
+           changed.ComfortAdditionalPercent == 400 && changed.ComfortMaximumSeconds == 3 &&
+           m_sComfortAdditionalPercent->IsEnabled();
+  passed = passed && changed.StartTime == saved.StartTime && changed.DeltaTime == saved.DeltaTime &&
+           changed.MaxSwellMeters == saved.MaxSwellMeters &&
+           changed.RequireWaveCoverage == saved.RequireWaveCoverage &&
+           changed.EngineSettings.engine == saved.EngineSettings.engine;
+  SetConfigurations({changed});
+  passed = passed && m_cbExploreComfortAlternatives->IsChecked() &&
+           m_sComfortAdditionalPercent->GetValue() == 400 &&
+           m_sComfortMaximumSeconds->GetValue() == 3;
+  if (auto* config = GetOCPNConfigObject()) {
+    passed =
+        passed &&
+        config->ReadBool("/PlugIns/WeatherRouting/LastUsedConfiguration/ExploreComfortAlternatives",
+                         false) &&
+        config->ReadLong("/PlugIns/WeatherRouting/LastUsedConfiguration/ComfortAdditionalPercent",
+                         0) == 400 &&
+        config->ReadLong("/PlugIns/WeatherRouting/LastUsedConfiguration/ComfortMaximumSeconds",
+                         0) == 3;
+  } else
+    passed = false;
+  checkbox(saved.ExploreComfortAlternatives);
+  spin(m_sComfortAdditionalPercent, saved.ComfortAdditionalPercent);
+  spin(m_sComfortMaximumSeconds, saved.ComfortMaximumSeconds);
+  Show();
+  Raise();
+  wxLogMessage("WR_COMFORT_CONFIGURATION_CONTRACT passed=%d", passed ? 1 : 0);
+  return passed;
 }

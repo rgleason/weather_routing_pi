@@ -193,7 +193,7 @@ TEST(ChartHazardEvaluatorLongitude, EquivalentWesternLongitudesUseLocalTiles) {
     ASSERT_TRUE(evaluator.CheckSegment(.01, endpoints.first, .02,
                                        endpoints.second, Options(), &result));
     EXPECT_EQ(result.status, PI_SEGMENT_SAFETY_SAFE);
-    EXPECT_LE(result.segment_sample_count, 10);
+    EXPECT_LE(result.segment_sample_count, 40);
   }
 }
 
@@ -220,5 +220,49 @@ TEST(ChartHazardEvaluatorLongitude, CrossingDateLinePreservesLandAndDepthChecks)
       EXPECT_NEAR(result.hit_sample_lon, -179.99, 1e-9);
       EXPECT_LT(result.segment_sample_count, 30);
     }
+  }
+}
+
+TEST(ChartHazardEvaluator, ContinuousChordCannotSkipObservedCoastalCell) {
+  for (bool shallow : {false, true}) {
+    weather_routing::ChartSafetyCache cache;
+    cache.Configure("", 64, false);
+    cache.SetIdentity("coastal-chord-regression");
+    StoreTile(cache, 1069, -93, shallow ? -1 : 2, shallow ? -1 : 6,
+              shallow ? 2 : -1, shallow ? 6 : -1);
+    StoreTile(cache, 1069, -92);
+    weather_routing::ChartHazardEvaluator evaluator(cache);
+    auto options = Options();
+    options.check_depth = shallow;
+    options.minimum_depth_m = 3;
+    for (bool reverse : {false, true}) {
+      PlugInSegmentSafetyResult result{};
+      result.struct_size = sizeof(result);
+      ASSERT_TRUE(evaluator.CheckSegment(
+          reverse ? 53.47071793941519 : 53.45195161660605,
+          reverse ? -4.598902252876599 : -4.644820676740181,
+          reverse ? 53.45195161660605 : 53.47071793941519,
+          reverse ? -4.644820676740181 : -4.598902252876599,
+          options, &result));
+      EXPECT_EQ(result.status, shallow ? PI_SEGMENT_SAFETY_TOO_SHALLOW
+                                      : PI_SEGMENT_SAFETY_CROSSES_LAND);
+    }
+  }
+}
+
+TEST(ChartHazardEvaluator, DiagonalCornerAndBoundaryKeepAdjacentHazards) {
+  for (bool boundary : {false, true}) {
+    weather_routing::ChartSafetyCache cache;
+    cache.Configure("", 64, false);
+    cache.SetIdentity("cell-edge-regression");
+    StoreTile(cache, 0, 0, boundary ? 10 : 11, 10);
+    weather_routing::ChartHazardEvaluator evaluator(cache);
+    PlugInSegmentSafetyResult result{};
+    result.struct_size = sizeof(result);
+    ASSERT_TRUE(evaluator.CheckSegment(
+        (boundary ? 10.5 : 10.) * kResolution, 10 * kResolution,
+        (boundary ? 10.5 : 12.) * kResolution, 12 * kResolution,
+        Options(), &result));
+    EXPECT_EQ(result.status, PI_SEGMENT_SAFETY_CROSSES_LAND);
   }
 }

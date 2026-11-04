@@ -1,0 +1,25 @@
+{
+  "count": 40,
+  "passed": 40,
+  "binary_sha256": "afbd7580b0ec447a7f66f8cb0207e87e7b3f63fc70f3dc1e11575f9d533f4441",
+  "geodesic": {
+    "count": 10,
+    "passed": 10,
+    "max_ratio": 1.000032402341317
+  },
+  "timed_gate": {
+    "count": 10,
+    "passed": 10,
+    "max_ratio": 1.0002308453349242
+  },
+  "upwind_envelope": {
+    "count": 10,
+    "passed": 10,
+    "max_ratio": 1.0003287250299842
+  },
+  "visibility": {
+    "count": 10,
+    "passed": 10,
+    "max_ratio": 1.0205030497175267
+  }
+}

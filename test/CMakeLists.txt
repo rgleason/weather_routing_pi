@@ -43,6 +43,8 @@ REQUIRED)
 include(${wxWidgets_USE_FILE})
 
 set(TEST_SRC
+    RouteDiagnostics_tests.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/src/RouteDiagnostics.cpp
     ShorelineDataset_tests.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/ShorelineDataset.cpp
     RoutingProgressState_tests.cpp
@@ -50,6 +52,7 @@ set(TEST_SRC
     AppendOnlyCache_tests.cpp
     ChartSafetyCache_tests.cpp
     ChartSafetyHost_tests.cpp
+    RouteSafetyCheck_tests.cpp
     ChartSafetyAtlas_tests.cpp
     ChartHazardEvaluator_tests.cpp
     ChartSafetyPolicy_tests.cpp
@@ -62,6 +65,10 @@ set(TEST_SRC
     ReachabilityPrewarmPolicy_tests.cpp
     RouteDisplayPolicy_tests.cpp
     Polar_tests.cpp
+    BoatXML_tests.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/src/Boat.cpp
+    PolarRoutingPolicy_tests.cpp
+    LowWindMotor_tests.cpp
     PolygonRegion_tests.cpp
     Utilities_tests.cpp
     MultiLegRouteOutput_tests.cpp
@@ -71,20 +78,30 @@ set(TEST_SRC
     StabilityCorridorLifecycle_tests.cpp
     RoutingEngineSettings_tests.cpp
     RoutingEngineSequence_tests.cpp
+    Quick2Engine_tests.cpp
+    AtlasEngine_tests.cpp
     RouteComfort_tests.cpp
+    PartialRoutes_tests.cpp
     RoutingScenarioJson_tests.cpp
     DepartureScheduler_tests.cpp
     RoutingQualityPolicy_tests.cpp
     RoutingResourcePolicy_tests.cpp
     RoutingFootprint_tests.cpp
     ClimatologyThreadGuard_tests.cpp
+    ClimatologyCompatibility_tests.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/src/ClimatologyCompatibility.cpp
     ConstraintTime_tests.cpp
     SunCalculator_tests.cpp
     TimeZoneDisplay_tests.cpp
     GpxRouteTime_tests.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/navobj_util.cpp
+    NearbyWaveHeight_tests.cpp
+    RouteGust_tests.cpp
     ModernNativeEngine_tests.cpp
+    ProfessionalSearchPolicy_tests.cpp
     OriginalEngine_tests.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/vendor/quick2-routing-engine/src/Engine.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/vendor/atlas-routing-engine/src/Engine.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/vendor/original-routing-engine/src/Engine.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/vendor/original-routing-engine/src/Contour.cpp
     ArrivalPlanner_tests.cpp
@@ -92,6 +109,7 @@ set(TEST_SRC
     ${WEATHER_ROUTING_SOURCE_DIR}/src/ChartSafetyCache.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/SystemMemory.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/ChartSafetyHost.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/src/RouteSafetyCheck.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/ChartSafetyAtlas.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/ChartHazardEvaluator.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/georef.cpp
@@ -144,6 +162,8 @@ set(TEST_SRC
        PRIVATE
             ${WEATHER_ROUTING_SOURCE_DIR}/src
             ${WEATHER_ROUTING_SOURCE_DIR}/include
+            ${WEATHER_ROUTING_SOURCE_DIR}/vendor/quick2-routing-engine/include
+            ${WEATHER_ROUTING_SOURCE_DIR}/vendor/atlas-routing-engine/include
             ${WEATHER_ROUTING_ENGINE_DIR}/include
             ${WEATHER_ROUTING_ENGINE_DIR}/src
             ${CMAKE_SOURCE_DIR}/include
@@ -152,6 +172,7 @@ set(TEST_SRC
             ${WEATHER_ROUTING_SOURCE_DIR}/opencpn-libs/tinyxml/include
             ${WEATHER_ROUTING_SOURCE_DIR}/opencpn-libs/odapi
             ${WEATHER_ROUTING_SOURCE_DIR}/opencpn-libs/jsonlib/include
+            ${WEATHER_ROUTING_SOURCE_DIR}/opencpn-libs/plugin_dc/dc_utils/include
    #         ${WEATHER_ROUTING_SOURCE_DIR}/opencpn-libs/plugin_dc/dc_utils/include
    #         ${WEATHER_ROUTING_SOURCE_DIR}/opencpn-libs/jsonlib/include
    #         ${WEATHER_ROUTING_SOURCE_DIR}/opencpn-libs/odapi
@@ -191,7 +212,18 @@ set(TEST_SRC
        )
    endif()
 
+   if(MSVC)
+       # Boat XML tests use the production Boat.cpp and plugin header. The
+       # latter includes pidc.h, which needs the bundled GL extension headers
+       # on Windows just as the plugin target does.
+       target_link_libraries(weather_routing_pi_tests PRIVATE windows::headers)
+   endif()
+
    if(WIN32)
+       # These tests provide their own StandardPath and run without a host.
+       # ocpn_plugin.h otherwise marks its API classes/functions dllexport,
+       # forcing an opencpn.exe runtime dependency into the test executable.
+       target_compile_definitions(weather_routing_pi_tests PRIVATE DECL_EXP=)
        # GoogleTest DLLs are built for the selected architecture. Both Win32
        # and x64 discovery need them beside the test executable.
        add_custom_command(TARGET weather_routing_pi_tests POST_BUILD
@@ -255,3 +287,25 @@ target_compile_definitions(weather_routing_pi_tests
 
 include(GoogleTest)
 gtest_discover_tests(weather_routing_pi_tests DISCOVERY_MODE PRE_TEST)
+
+add_executable(partial_routes_qt_macro_tests
+    PartialRoutesQtMacro_tests.cpp
+    ${WEATHER_ROUTING_ENGINE_DIR}/src/Geometry.cpp)
+target_include_directories(partial_routes_qt_macro_tests PRIVATE
+    ${WEATHER_ROUTING_ENGINE_DIR}/include)
+target_link_libraries(partial_routes_qt_macro_tests PRIVATE GTest::gtest_main)
+# This executable needs the same test-only runtime lookup as the main suite;
+# the plugin's installation RPATH intentionally does not locate GoogleTest.
+set_target_properties(partial_routes_qt_macro_tests PROPERTIES
+    BUILD_WITH_INSTALL_RPATH FALSE
+    SKIP_BUILD_RPATH FALSE
+    BUILD_RPATH "${CMAKE_BINARY_DIR}/lib"
+    INSTALL_RPATH "../lib")
+if(WIN32)
+    add_custom_command(TARGET partial_routes_qt_macro_tests POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:GTest::gtest>"
+            "$<TARGET_FILE:GTest::gtest_main>"
+            "$<TARGET_FILE_DIR:partial_routes_qt_macro_tests>")
+endif()
+gtest_discover_tests(partial_routes_qt_macro_tests DISCOVERY_MODE PRE_TEST)

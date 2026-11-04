@@ -1,0 +1,12 @@
+{
+  "host_version": "5.14.2",
+  "core_revision": "de7e70699240a1f5988cd9c750e3052d8795de92",
+  "host_url": "https://dl.cloudsmith.io/public/david-register/opencpn-unstable-x64/raw/files/opencpn_5.14.2-0+22.de7e706_setup_x64.exe",
+  "host_sha256": "0652feceaafb3a7037705599ff406b18e9413528d186e05615a57c0eb62a69cb",
+  "wx_version": "3.2.9",
+  "wx_archives": {
+    "wxMSW-3.2.9_vc14x_x64_Dev.7z": "35ca42b8db2846ca9fbff4090155b38e4eeabdf0405664918e986e6514f27330",
+    "wxMSW-3.2.9_vc14x_x64_ReleaseDLL.7z": "dd8d5ebff6112480a9220063eee99d3d5ffa28707a05cdac0601e38e2ff8ea48",
+    "wxWidgets-3.2.9-headers.7z": "581c89747b1253ec7b6392e36f3d3306686f3ccfa04a7e5064a99460fd09c14d"
+  }
+}

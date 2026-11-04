@@ -21,6 +21,7 @@
 #include <wx/glcanvas.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <functional>
 #include <list>
@@ -34,6 +35,7 @@
 #include "Boat.h"
 #include "ConstraintChecker.h"
 #include "WeatherDataProvider.h"
+#include "engine/native/RouteGust.h"
 #include "RouteMapOverlay.h"
 #include "RoutingFootprint.h"
 #include "SettingsDialog.h"
@@ -130,6 +132,14 @@ void* RouteMapOverlayThread::Entry() {
     m_RouteMapOverlay.ReportResourceExhaustion(
         _("calculating the weather route"));
     wxLogError("Weather Routing stopped after a memory allocation failed");
+  } catch (const std::exception& error) {
+    m_RouteMapOverlay.AddDiagnostic({"worker.exception",
+        weather_routing::DiagnosticSeverity::Error,
+        _("Unexpected calculation error"), wxString::FromUTF8(error.what()),
+        _("Copy the diagnostic report for investigation.")});
+    m_RouteMapOverlay.SetError(_("Unexpected calculation error"));
+  } catch (...) {
+    m_RouteMapOverlay.SetError(_("Unexpected calculation error; copy the diagnostic report for investigation."));
   }
   //    m_RouteMapOverlay.m_Thread = nullptr;
   return 0;
@@ -137,7 +147,7 @@ void* RouteMapOverlayThread::Entry() {
 
 RouteMapOverlay::RouteMapOverlay()
     : m_UpdateOverlay(true),
-      m_bEndRouteVisible(false),
+      m_bEndRouteVisible(true),
       m_Thread(nullptr),
       m_bUpdatingDestination(false),
       last_cursor_lat(0),
@@ -168,21 +178,43 @@ RouteMapOverlay::~RouteMapOverlay() {
 
 bool RouteMapOverlay::Start(wxString& error) {
   if (m_Thread) {
-    error = _("error, thread already created\n");
+    error = _("This route already has a calculation in progress.");
     return false;
   }
 
-  error = LoadBoat();
-  if (error.size()) return false;
+  const RouteMapConfiguration configuration = GetConfiguration();
+  const bool climatologySelected =
+      configuration.ClimatologyType > RouteMapConfiguration::CURRENTS_ONLY;
+  const bool climatologyAvailable =
+      configuration.ClimatologyType == RouteMapConfiguration::AVERAGE
+          ? ClimatologyData && WeatherDataProvider::CanInvokeClimatology(ClimatologyService::Wind)
+          : ClimatologyWindAtlasData && WeatherDataProvider::CanInvokeClimatology(ClimatologyService::WindAtlas);
+  auto sources = weather_routing::CheckWindSourceSelection(
+      configuration.UseGrib, climatologySelected, climatologyAvailable);
+  for (auto& item : sources.items) AddDiagnostic(std::move(item));
+  const wxString boatError = LoadBoat();
+  if (!boatError.empty())
+    AddDiagnostic({"setup.boat", weather_routing::DiagnosticSeverity::Error,
+        _("Boat or polar file could not be loaded"), boatError,
+        _("Open the boat editor and select a valid local boat and polar file."), {}, true});
+  const auto loadedBoat = GetConfiguration().boat;
+  if (!loadedBoat.loadWarnings.empty())
+    AddDiagnostic({"setup.boat_warnings", weather_routing::DiagnosticSeverity::Warning,
+        _("Boat or polar data loaded with warnings"), loadedBoat.loadWarnings,
+        _("Review skipped polar measurements or unsaved generated data in the boat editor."), {}, true});
+  if (sources.HasErrors() || !boatError.empty()) {
+    error = GetDiagnostics().Summary();
+    SetError(error);
+    return false;
+  }
 
-  RouteMapConfiguration configuration = GetConfiguration();
   if (configuration.EngineSettings.engine == weather_routing::RoutingEngine::Unsupported) {
     error = _("Unsupported routing engine: ") +
         wxString::FromUTF8(configuration.EngineSettings.EngineId().c_str());
     return false;
   }
   if (!ModernNativeRouteEnabled(configuration)) {
-    error = _("Auto, Quick, Standard, Professional and All require native routing and cannot analyse an existing route or use cumulative climatology/legacy routing.");
+    error = _("The selected engine cannot analyse an existing route or use cumulative climatology. Review the routing mode and data-source settings.");
     return false;
   }
   /* test for cyclone data if needed */
@@ -213,8 +245,21 @@ bool RouteMapOverlay::Start(wxString& error) {
 
   Lock();
   m_ModernProgress.Begin();
+  m_LivePreview.Begin();
+  m_LivePreviewSequence = 0;
+  m_LivePreviewFrames.clear();
+  m_LivePreviewPublished.store(0);
+  m_LivePreviewRendered.store(0);
+  RequestModernPreview(false);
+  m_LivePreviewDrawCalls.store(0);
+  m_LivePreviewDrawUs.store(0);
+  m_LivePreviewMaxDrawUs.store(0);
+  m_ComfortStop->store(false);
+  m_ExploringComfort.store(false);
   m_RetainedCandidates.clear();
   m_SelectedRetainedCandidateId.clear();
+  m_PartialCandidates.clear();
+  m_SelectedPartialCandidateId.clear();
   Unlock();
 
   CaptureSearchSettings(configuration, ModernNativeRouteEnabled(configuration));
@@ -232,7 +277,7 @@ void RouteMapOverlay::RouteAnalysis(PlugIn_Route* proute) {
   configuration.boundary_crossing = false;
   configuration.land_crossing = false;
 
-  wxPlugin_WaypointListNode* pwpnode = proute->pWaypointList->GetFirst();
+  auto pwpnode = proute->pWaypointList->GetFirst();
   PlugIn_Waypoint* pwp;
   wxDateTime curtime;
 
@@ -363,22 +408,164 @@ bool RouteMapOverlay::GetModernNativeProgress(wxString& stage,
   return true;
 }
 
+void RouteMapOverlay::SetModernPreview(LivePreview value, std::uint64_t generation) {
+  if (!WantsModernPreview() || generation != ModernPreviewGeneration()) return;
+  m_LivePreview.Publish(generation, value);
+  ++m_LivePreviewPublished;
+}
+
+bool RouteMapOverlay::ConsumeModernPreview() {
+  const auto snapshot = m_LivePreview.Read();
+  if (!snapshot.value || snapshot.sequence == m_LivePreviewSequence) return false;
+  Lock();
+  if (snapshot.generation != ModernPreviewGeneration()) { Unlock(); return false; }
+  m_LivePreviewSequence = snapshot.sequence;
+  if (!m_LivePreviewFrames.empty() &&
+      (snapshot.value->phase != m_LivePreviewFrames.back()->phase ||
+       snapshot.value->stage != m_LivePreviewFrames.back()->stage ||
+       snapshot.value->time < m_LivePreviewFrames.back()->time))
+    m_LivePreviewFrames.clear();
+  if (!m_LivePreviewFrames.empty() && snapshot.value->time == m_LivePreviewFrames.back()->time)
+    m_LivePreviewFrames.back() = snapshot.value;
+  else
+    m_LivePreviewFrames.push_back(snapshot.value);
+  constexpr std::size_t maximumFrames = 16;
+  if (m_LivePreviewFrames.size() > maximumFrames)
+    m_LivePreviewFrames.erase(m_LivePreviewFrames.begin());
+  Unlock();
+  return true;
+}
+
+void RouteMapOverlay::RenderModernPreview(SettingsDialog& settings, piDC& dc,
+                                         PlugIn_ViewPort& vp, bool courseOnly) {
+  Lock();
+  if (m_LivePreviewFrames.empty()) { Unlock(); return; }
+  const auto drawStarted = std::chrono::steady_clock::now();
+  const auto point = [&](const auto& p) {
+    wxPoint pixel;
+    WR_GetCanvasPixLL(&vp, &pixel, p.latitude, p.longitude);
+    return pixel;
+  };
+  const auto polyline = [&](const auto& source, bool closed = false) {
+    std::array<wxPoint, 258> pixels;
+    int count = 0;
+    const auto flush = [&] { if (count > 1) dc.DrawLines(count, pixels.data()); };
+    for (const auto& p : source) {
+      const auto pixel = point(p);
+      if (count && std::abs(pixel.x - pixels[count-1].x) >= vp.pix_width / 2) {
+        flush(); count = 0;
+      }
+      pixels[count++] = pixel;
+    }
+    if (closed && count > 2 && std::abs(pixels[0].x - pixels[count-1].x) < vp.pix_width / 2)
+      pixels[count++] = pixels[0];
+    flush();
+  };
+  dc.SetBrush(*wxTRANSPARENT_BRUSH);
+  if (!courseOnly && settings.m_sIsoChronThickness->GetValue() > 0) {
+    dc.SetPen(wxPen(wxColour(0, 140, 160, 170), 1, wxPENSTYLE_SHORT_DASH));
+    for (const auto& frame : m_LivePreviewFrames) {
+      for (const auto& contour : frame->contours)
+        polyline(contour.points, contour.closed);
+      // Beam/sector searches supply unordered points, never join them into
+      // fabricated contours. Only the current sparse frontier needs drawing.
+      if (frame == m_LivePreviewFrames.back()) {
+        const auto stride = std::max<std::size_t>(1, (frame->frontier.size() + 63) / 64);
+        for (std::size_t i = 0; i < frame->frontier.size(); i += stride) {
+          const auto pixel = point(frame->frontier[i]);
+          dc.DrawCircle(pixel.x, pixel.y, 1);
+        }
+      }
+    }
+  }
+  const auto& path = m_LivePreviewFrames.back()->path;
+  if (courseOnly && settings.m_sRouteThickness->GetValue() > 0 && !path.empty()) {
+    dc.SetPen(wxPen(wxColour(0, 120, 145, 220), 2, wxPENSTYLE_SHORT_DASH));
+    polyline(path);
+    const auto pixel = point(path.back());
+    dc.SetTextForeground(wxColour(0, 90, 110));
+    dc.DrawText(_("Search preview (not validated)"), pixel.x + 8, pixel.y + 8);
+    ++m_LivePreviewRendered;
+  }
+  const auto drawUs = std::chrono::duration_cast<std::chrono::microseconds>(
+      std::chrono::steady_clock::now() - drawStarted).count();
+  ++m_LivePreviewDrawCalls;
+  m_LivePreviewDrawUs.fetch_add(drawUs);
+  m_LivePreviewMaxDrawUs.store(std::max<std::uint64_t>(m_LivePreviewMaxDrawUs.load(), drawUs));
+  Unlock();
+}
+
+bool RouteMapOverlay::UsesEstimatedPolarPerformance() {
+  if (!Finished() || !ReachedDestination()) return false;
+  if (UsesModernNativeResult()) return m_ModernNativeEstimatedPolar;
+  for (const PlotData& point : GetPlotData(false))
+    if (point.data_mask & Position::POLAR_WIND_ESTIMATED) return true;
+  return false;
+}
+
 void RouteMapOverlay::InstallModernNativeResult(
     const supercpn::weather_routing::RoutingResult& result) {
   namespace wr = supercpn::weather_routing;
+  RequestModernPreview(false);
+  wxLogMessage("WR_LIVE_PREVIEW published=%u rendered=%u draw_calls=%u draw_us_total=%llu draw_us_max=%llu",
+               m_LivePreviewPublished.load(), m_LivePreviewRendered.load(),
+               m_LivePreviewDrawCalls.load(),
+               static_cast<unsigned long long>(m_LivePreviewDrawUs.load()),
+               static_cast<unsigned long long>(m_LivePreviewMaxDrawUs.load()));
+  m_LivePreview.Begin();
   const bool resultComplete =
       result.status == wr::RoutingStatus::Complete ||
       result.status == wr::RoutingStatus::CompleteUsingReverseRecovery ||
       result.status == wr::RoutingStatus::CompleteUsingFrontierRecovery ||
       result.status == wr::RoutingStatus::CompleteUsingGraphFallback;
+  InstallResultDiagnostics(weather_routing::DescribeRoutingResult(
+      result, GetConfiguration().MaxSwellMeters > 0.0));
   const bool resourceExhausted = ResourceExhausted();
   const bool complete = resultComplete && !resourceExhausted;
+  m_ModernNativeEstimatedPolar = complete &&
+      (result.validation.estimatedPolarWind ||
+       std::any_of(result.warnings.begin(), result.warnings.end(),
+          [](const wr::RoutingWarning& warning) {
+            return warning.code == wr::RoutingWarningCode::EstimatedPolar;
+          }));
   const bool coastalEndpointLeeway = complete &&
       std::any_of(result.warnings.begin(), result.warnings.end(),
                   [](const wr::RoutingWarning& warning) {
                     return warning.code ==
                            wr::RoutingWarningCode::CoastalEndpointLeeway;
                   });
+  m_ModernNativeMissingWaves = complete && result.validation.environment.missingWaveDuration.count() > 0;
+  m_ModernNativeEstimatedWaves = complete && result.validation.environment.estimatedWaveDuration.count() > 0;
+  m_ModernNativeAnchoringWaits = complete && result.metrics.waitingTime.count() > 0;
+  m_ModernNativeCoverageNotes.clear();
+  if (m_ModernNativeMissingWaves) {
+    m_ModernNativeCoverageNotes = result.validation.environment.gribWaveDuration.count() == 0
+        ? _("No usable wave-height data along this route. Wave heights are unknown and the wave ceiling could not be checked.")
+        : _("Wave coverage is incomplete along this route. The wave ceiling was checked where height data or local estimates were available; other sections remain unchecked.");
+  }
+  if (m_ModernNativeEstimatedWaves) {
+    if (!m_ModernNativeCoverageNotes.empty()) m_ModernNativeCoverageNotes += "\n";
+    m_ModernNativeCoverageNotes += _("Some wave heights are estimated using the maximum of nearby connected-water cells within 15 NM. These estimates are not a guaranteed upper bound.");
+  }
+  if (m_ModernNativeAnchoringWaits) {
+    if (!m_ModernNativeCoverageNotes.empty()) m_ModernNativeCoverageNotes += "\n";
+    m_ModernNativeCoverageNotes += wxString::Format(_("Anchoring assumed: %lld minutes of stationary waiting, included in total passage time. Verify anchoring suitability at each position."),
+        static_cast<long long>(result.metrics.waitingTime.count() / 60));
+    for (std::size_t i = 0; i < result.legs.size(); ++i) {
+      const auto& leg = result.legs[i];
+      if (!leg.stationaryWait) continue;
+      auto endTime = leg.endTime;
+      while (i + 1 < result.legs.size() && result.legs[i + 1].stationaryWait &&
+          result.legs[i + 1].start == leg.start && result.legs[i + 1].startTime == endTime)
+        endTime = result.legs[++i].endTime;
+      auto start = wxDateTime(static_cast<time_t>(leg.startTime.time_since_epoch().count()));
+      auto end = wxDateTime(static_cast<time_t>(endTime.time_since_epoch().count()));
+      m_ModernNativeCoverageNotes += wxString::Format("\n%.5f, %.5f: %s to %s UTC",
+          leg.start.latitude, leg.start.longitude,
+          start.Format("%Y-%m-%d %H:%M", wxDateTime::UTC),
+          end.Format("%Y-%m-%d %H:%M", wxDateTime::UTC));
+    }
+  }
   if (complete && result.validation.passed && !result.legs.empty() &&
       m_RetainedCandidates.empty())
     m_RetainedCandidates.push_back(weather_routing::RetainRouteCandidate(
@@ -400,30 +587,8 @@ void RouteMapOverlay::InstallModernNativeResult(
         break;
       }
   }
-  if (!resourceExhausted) {
-    wxString reason = complete ? wxString()
-                              : wxString::FromUTF8(result.message.c_str());
-#ifdef __OCPN__ANDROID__
-    if (!complete) {
-      switch (result.status) {
-        case wr::RoutingStatus::WindForecastRequired:
-          reason = _("Wind forecast does not cover this route and time. Load suitable weather in xGRIB or enable climatology wind fallback.");
-          break;
-        case wr::RoutingStatus::CurrentDataRequired:
-          reason = _("Current data are required. Load a forecast with currents or turn off currents in Weather settings.");
-          break;
-        case wr::RoutingStatus::WaveDataRequired:
-          reason = _("Wave data are required. Load a wave forecast or remove the wave limit in Weather settings.");
-          break;
-        case wr::RoutingStatus::InvalidPolar:
-          reason = _("Select a valid sailing polar in Boat settings before computing this route.");
-          break;
-        default: break;
-      }
-    }
-#endif
-    SetFailureReason(reason);
-  }
+  if (!resourceExhausted)
+    SetFailureReason(complete ? wxString() : GetDiagnostics().Summary());
 
   RouteMapConfiguration configuration = GetConfiguration();
   configuration.ReverseRecoveryUsed =
@@ -450,6 +615,7 @@ void RouteMapOverlay::InstallModernNativeResult(
   m_ModernCursorLayer = std::numeric_limits<std::size_t>::max();
   m_ModernCursorTrace = std::numeric_limits<std::size_t>::max();
   m_ModernIsochrones.clear();
+  m_LivePreviewFrames.clear();
   destination_position = nullptr;
   last_destination_position = nullptr;
   last_cursor_position = nullptr;
@@ -511,6 +677,7 @@ void RouteMapOverlay::InstallModernNativeResult(
           wr::normalizeHeading(wr::vectorDirectionToDegrees(leg.wind) + 180.0);
       data.twsOverGround = data.twsOverWater;
       data.twdOverGround = data.twdOverWater;
+      data.VW_GUST = weather_routing::native::RouteGustKnots(leg);
       data.currentSpeed = wr::vectorMagnitudeKnots(leg.current);
       data.currentDir = wr::vectorDirectionToDegrees(leg.current);
       data.WVHT = leg.waves.available
@@ -633,6 +800,77 @@ bool RouteMapOverlay::SelectRetainedCandidate(const std::string& id) {
     return true;
   }
   return false;
+}
+
+void RouteMapOverlay::SetPartialCandidates(
+    std::vector<weather_routing::RetainedRouteCandidate> candidates) {
+  Lock();
+  m_PartialCandidates = std::move(candidates);
+  m_SelectedPartialCandidateId.clear();
+  Unlock();
+}
+
+std::vector<weather_routing::RetainedRouteCandidate> RouteMapOverlay::PartialCandidates() {
+  if (Running() || !Valid() || !Finished() || ReachedDestination() || CancellationFlag()->load()) return {};
+  Lock();
+  auto candidates = m_PartialCandidates;
+  Unlock();
+  return candidates;
+}
+
+bool RouteMapOverlay::HasSelectedPartial() {
+  const auto candidates = PartialCandidates();
+  Lock();
+  const bool selected = !m_SelectedPartialCandidateId.empty() && !candidates.empty();
+  Unlock();
+  return selected;
+}
+
+bool RouteMapOverlay::SelectPartialCandidate(const std::string& id) {
+  const auto candidates = PartialCandidates();
+  for (const auto& candidate : candidates) {
+    if (candidate.id != id || !candidate.result->validation.passed || candidate.result->legs.empty()) continue;
+    Lock();
+    m_SelectedPartialCandidateId = id;
+    // Discard all exploratory display tracks. Partial geometry has its own
+    // renderer and never becomes destination_position or export plotdata.
+    m_LivePreviewFrames.clear();
+    m_ModernIsochrones.clear();
+    m_UpdateOverlay = true;
+    Unlock();
+    wxLogMessage("WR_PARTIAL_SELECTED id=%s engine=%s remaining_nm=%.6f elapsed_s=%lld complete=0",
+        wxString::FromUTF8(id.c_str()), wxString::FromUTF8(candidate.result->engineIdentity.c_str()),
+        candidate.remainingNm, static_cast<long long>(candidate.result->metrics.elapsed.count()));
+    return true;
+  }
+  return false;
+}
+
+void RouteMapOverlay::RenderPartialRoute(piDC& dc, PlugIn_ViewPort& vp) {
+  const auto candidates = PartialCandidates();
+  Lock();
+  const auto id = m_SelectedPartialCandidateId;
+  Unlock();
+  for (const auto& candidate : candidates) {
+    if (candidate.id != id) continue;
+    dc.SetPen(wxPen(wxColour(0, 120, 145, 220), 2, wxPENSTYLE_SHORT_DASH));
+    dc.SetBrush(*wxTRANSPARENT_BRUSH);
+    wxPoint end;
+    for (const auto& leg : candidate.result->legs) {
+      wxPoint a, b;
+      WR_GetCanvasPixLL(&vp, &a, leg.start.latitude, leg.start.longitude);
+      WR_GetCanvasPixLL(&vp, &b, leg.end.latitude, leg.end.longitude);
+      if (std::abs(a.x - b.x) < vp.pix_width / 2) dc.DrawLine(a.x, a.y, b.x, b.y);
+      end = b;
+    }
+    dc.DrawCircle(end.x, end.y, 5);
+    dc.SetTextForeground(wxColour(0, 90, 110));
+    const auto label = wxString::Format(_("Incomplete - %.2f NM remaining"), candidate.remainingNm);
+    wxCoord width, height; dc.GetTextExtent(label, &width, &height);
+    dc.DrawText(label, std::clamp(end.x + 8, 4, std::max(4, vp.pix_width - width - 4)),
+                std::clamp(end.y + 8, 4, std::max(4, vp.pix_height - height - 4)));
+    break;
+  }
 }
 
 void RouteMapOverlay::DeleteThread() {
@@ -886,6 +1124,15 @@ static double GetPlatformScaleFactor() {
 void RouteMapOverlay::Render(wxDateTime time, SettingsDialog& settingsdialog,
                              piDC& dc, PlugIn_ViewPort& vp, bool justendroute,
                              RoutePoint* positionOnRoute) {
+  if (!m_bEndRouteVisible) return;
+  if (justendroute && !Running() && HasSelectedPartial()) {
+    RenderPartialRoute(dc, vp);
+    return;
+  }
+  if (Running() && justendroute) {
+    RenderModernPreview(settingsdialog, dc, vp, true);
+    return;
+  }
   dc.SetPen(*wxBLACK);                // reset pen
   dc.SetBrush(*wxTRANSPARENT_BRUSH);  // reset brush
   if (!justendroute) {
@@ -911,6 +1158,14 @@ void RouteMapOverlay::Render(wxDateTime time, SettingsDialog& settingsdialog,
       dc.DrawLine(r.x - 10, r.y + 10, r.x + 10, r.y - 10);
     }
 
+    if (!Running() && HasSelectedPartial()) {
+      RenderPartialRoute(dc, vp);
+      return;
+    }
+    if (Running()) {
+      RenderModernPreview(settingsdialog, dc, vp, false);
+      return;
+    }
     static const double NORM_FACTOR = 16;
 
     // Do not use displaylist processing to avoid incorrect vp calculations in
@@ -1495,6 +1750,7 @@ void RouteMapOverlay::RenderWindBarbsOnRoute(piDC& dc, PlugIn_ViewPort& vp,
 }
 
 void RouteMapOverlay::RenderWindBarbs(piDC& dc, PlugIn_ViewPort& vp) {
+  if (!m_bEndRouteVisible) return;
   if (origin.size() < 2)  // no map to work with
     return;
 
@@ -1687,6 +1943,7 @@ void RouteMapOverlay::RenderWindBarbs(piDC& dc, PlugIn_ViewPort& vp) {
 }
 
 void RouteMapOverlay::RenderCurrent(piDC& dc, PlugIn_ViewPort& vp) {
+  if (!m_bEndRouteVisible) return;
   if (origin.size() < 2)  // no map to work with
     return;
 
@@ -2151,6 +2408,7 @@ double RouteMapOverlay::RouteInfo(enum RouteInfoType type, bool cursor_route) {
   std::list<PlotData>& plotdata = GetPlotData(cursor_route);
 
   double total = 0, count = 0, lat0 = 0, lon0 = 0;
+  bool haveGust = false;
   int comfort = 0, current_comfort = 0;
   for (std::list<PlotData>::iterator it = plotdata.begin();
        it != plotdata.end(); it++) {
@@ -2181,7 +2439,10 @@ double RouteMapOverlay::RouteInfo(enum RouteInfoType type, bool cursor_route) {
         if (total < it->twsOverWater) total = it->twsOverWater;
         break;
       case MAXWINDGUST:
-        if (total < it->VW_GUST) total = it->VW_GUST;
+        if (std::isfinite(it->VW_GUST) && it->VW_GUST >= 0.0) {
+          haveGust = true;
+          if (total < it->VW_GUST) total = it->VW_GUST;
+        }
         break;
       case AVGCURRENT:
         total += it->currentSpeed;
@@ -2214,6 +2475,7 @@ double RouteMapOverlay::RouteInfo(enum RouteInfoType type, bool cursor_route) {
   }
 
   /* fixup data */
+  if (type == MAXWINDGUST && !haveGust) return NAN;
   switch (type) {
     case TACKS:
       return plotdata.size() ? plotdata.back().tacks : 0;
@@ -2292,27 +2554,49 @@ int RouteMapOverlay::Cyclones(int* months) {
   return cyclones;
 }
 
+bool RouteMapOverlay::HasComputedResults() {
+  return Finished() || !GetDiagnosticError().IsEmpty() || !origin.empty() ||
+         m_UsesModernNativeResult || !m_RetainedCandidates.empty();
+}
+
 void RouteMapOverlay::Clear() {
-  m_RetainedCandidates.clear();
+  RequestModernPreview(false);
+  m_LivePreview.Begin();
+  m_LivePreviewFrames.clear();
+  m_LivePreviewSequence = 0;
+  decltype(m_RetainedCandidates)().swap(m_RetainedCandidates);
   m_SelectedRetainedCandidateId.clear();
+  decltype(m_PartialCandidates)().swap(m_PartialCandidates);
+  m_SelectedPartialCandidateId.clear();
   if (m_UsesModernNativeResult) {
     for (Position* position : m_ModernRoutePositions) delete position;
     for (Position* position : m_ModernCursorRoutePositions) delete position;
-    m_ModernRoutePositions.clear();
-    m_ModernCursorRoutePositions.clear();
-    m_ModernIsochrones.clear();
+    decltype(m_ModernRoutePositions)().swap(m_ModernRoutePositions);
+    decltype(m_ModernCursorRoutePositions)().swap(m_ModernCursorRoutePositions);
+    decltype(m_ModernIsochrones)().swap(m_ModernIsochrones);
     m_ModernCursorLayer = std::numeric_limits<std::size_t>::max();
     m_ModernCursorTrace = std::numeric_limits<std::size_t>::max();
     destination_position = nullptr;
     m_UsesModernNativeResult = false;
+    m_ModernNativeCoverageNotes.clear();
+    m_ModernNativeMissingWaves = m_ModernNativeEstimatedWaves = m_ModernNativeAnchoringWaits = false;
+  } else {
+    delete destination_position;
   }
   RouteMap::Clear();
+  destination_position = nullptr;
+  m_EndTime = wxInvalidDateTime;
   last_cursor_position = nullptr;
   last_destination_position = nullptr;
   clear_destination_plotdata = false;
   // clear_cursor_plotdata = false;
   last_cursor_plotdata.clear();
   last_destination_plotdata.clear();
+  wind_barb_cache.Clear();
+  wind_barb_route_cache.Clear();
+  climatology_wind_barb_route_cache.Clear();
+  current_cache.Clear();
+  wind_barb_cache_origin_size = current_cache_origin_size = 0;
   m_ModernProgress.Begin();
   m_UpdateOverlay = true;
 }
@@ -2403,6 +2687,8 @@ void RouteMapOverlay::UpdateCursorPosition() {
 }
 
 bool RouteMapOverlay::SetCursorLatLon(double lat, double lon) {
+  if (!std::isfinite(lat) || !std::isfinite(lon) || fabs(lat) > 90)
+    return false;
   Position* p = last_cursor_position;
   last_cursor_lat = lat;
   last_cursor_lon = lon;
@@ -2518,11 +2804,14 @@ bool RouteMapOverlay::ValidatePlottedDestinationRouteLand(
       }
       wxString failure_reason;
       RouteMapConfiguration segment_configuration = validationConfiguration;
-      if (m_UsesModernNativeResult && previous_leg_coastal_egress)
-        segment_configuration.SafetyMarginLand = 0.0;
       if (!ConstraintChecker::CheckFinalRouteLandConstraint(
               segment_configuration, prev_lat, prev_lon, it->lat, it->lon,
-              bearing, &failure_reason)) {
+              bearing, &failure_reason,
+              m_UsesModernNativeResult && previous_leg_coastal_egress,
+              m_UsesModernNativeResult &&
+                  std::abs(it->lat - configuration.EndLat) < 1e-8 &&
+                  std::abs(std::remainder(it->lon - configuration.EndLon,
+                                          360.0)) < 1e-8)) {
         configuration.land_crossing = true;
         if (failure_reason.IsEmpty())
           failure_reason = _("Chart land crossing in final route");
@@ -2575,11 +2864,11 @@ bool RouteMapOverlay::ValidatePlottedDestinationRouteLand(
     }
     wxString failure_reason;
     RouteMapConfiguration segment_configuration = validationConfiguration;
-    if (m_UsesModernNativeResult && previous_leg_coastal_egress)
-      segment_configuration.SafetyMarginLand = 0.0;
     if (!ConstraintChecker::CheckFinalRouteLandConstraint(
             segment_configuration, prev_lat, prev_lon, configuration.EndLat,
-            configuration.EndLon, bearing, &failure_reason)) {
+            configuration.EndLon, bearing, &failure_reason,
+            m_UsesModernNativeResult && previous_leg_coastal_egress,
+            m_UsesModernNativeResult)) {
       configuration.land_crossing = true;
       if (failure_reason.IsEmpty())
         failure_reason = _("Chart land crossing in final route");

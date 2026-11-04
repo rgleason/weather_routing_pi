@@ -1,0 +1,171 @@
+[
+  {
+    "case": "offset_narrow",
+    "pool": "research/sixth/atlas-screen",
+    "engine": "atlas",
+    "arrival_seconds": 12572,
+    "accepted": true,
+    "audit": {
+      "arrival_seconds": 12572,
+      "reason": "",
+      "samples": 100,
+      "valid": true
+    }
+  },
+  {
+    "case": "long_ocean",
+    "pool": "research/sixth/atlas-screen",
+    "engine": "atlas",
+    "arrival_seconds": 1080011,
+    "accepted": true,
+    "audit": {
+      "arrival_seconds": 1080011,
+      "reason": "",
+      "samples": 7222,
+      "valid": true
+    }
+  },
+  {
+    "case": "generated_0015",
+    "pool": "research/sixth/atlas-screen",
+    "engine": "atlas",
+    "arrival_seconds": 11822,
+    "accepted": true,
+    "audit": {
+      "arrival_seconds": 11822,
+      "reason": "",
+      "samples": 88,
+      "valid": true
+    }
+  },
+  {
+    "case": "generated_0018",
+    "pool": "research/sixth/atlas-screen",
+    "engine": "atlas",
+    "arrival_seconds": 22211,
+    "accepted": true,
+    "audit": {
+      "arrival_seconds": 22211,
+      "reason": "",
+      "samples": 154,
+      "valid": true
+    }
+  },
+  {
+    "case": "generated_0023",
+    "pool": "research/sixth/atlas-screen",
+    "engine": "atlas",
+    "arrival_seconds": 12339,
+    "accepted": true,
+    "audit": {
+      "arrival_seconds": 12339,
+      "reason": "",
+      "samples": 86,
+      "valid": true
+    }
+  },
+  {
+    "case": "generated_0004",
+    "pool": "research/sixth/comparison-v1",
+    "engine": "atlas",
+    "arrival_seconds": 31225,
+    "accepted": true,
+    "audit": {
+      "arrival_seconds": 31225,
+      "reason": "",
+      "samples": 210,
+      "valid": true
+    }
+  },
+  {
+    "case": "generated_0050",
+    "pool": "research/sixth/comparison-v1",
+    "engine": "atlas",
+    "arrival_seconds": 14715,
+    "accepted": true,
+    "audit": {
+      "arrival_seconds": 14715,
+      "reason": "",
+      "samples": 102,
+      "valid": true
+    }
+  },
+  {
+    "case": "generated_0082",
+    "pool": "research/sixth/comparison-v1",
+    "engine": "atlas",
+    "arrival_seconds": 14261,
+    "accepted": true,
+    "audit": {
+      "arrival_seconds": 14261,
+      "reason": "",
+      "samples": 102,
+      "valid": true
+    }
+  },
+  {
+    "case": "generated_0071",
+    "pool": "research/sixth/lane-investigation",
+    "engine": "atlas",
+    "arrival_seconds": 12978,
+    "accepted": true,
+    "audit": {
+      "arrival_seconds": 12978,
+      "reason": "",
+      "samples": 90,
+      "valid": true
+    }
+  },
+  {
+    "case": "generated_0095",
+    "pool": "research/sixth/lane-investigation",
+    "engine": "atlas",
+    "arrival_seconds": 12859,
+    "accepted": true,
+    "audit": {
+      "arrival_seconds": 12859,
+      "reason": "",
+      "samples": 90,
+      "valid": true
+    }
+  },
+  {
+    "case": "generated_0071",
+    "pool": "research/sixth/lane-refined",
+    "engine": "atlas",
+    "arrival_seconds": 12917,
+    "accepted": true,
+    "audit": {
+      "arrival_seconds": 12917,
+      "reason": "",
+      "samples": 90,
+      "valid": true
+    }
+  },
+  {
+    "case": "island_chain",
+    "pool": "research/sixth/pilot-newton",
+    "engine": "atlas",
+    "arrival_seconds": 30367,
+    "accepted": true,
+    "audit": {
+      "arrival_seconds": 30367,
+      "reason": "",
+      "samples": 210,
+      "valid": true
+    }
+  },
+  {
+    "case": "u_trap",
+    "pool": "research/sixth/pilot-newton",
+    "engine": "atlas",
+    "arrival_seconds": 17457,
+    "accepted": true,
+    "audit": {
+      "arrival_seconds": 17457,
+      "reason": "",
+      "samples": 136,
+      "valid": true
+    }
+  }
+]

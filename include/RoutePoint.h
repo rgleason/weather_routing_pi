@@ -353,7 +353,10 @@ public:
     NIGHT_TIME = 64,
 
     /** Indicates that this segment was travelled using the motor. */
-    MOTOR_USED = 128
+    MOTOR_USED = 128,
+
+    /** Sailing performance was estimated outside supplied polar wind data. */
+    POLAR_WIND_ESTIMATED = 256
   };
   int data_mask;
 };

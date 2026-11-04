@@ -1,0 +1,17 @@
+{
+  "name": "generated_0094",
+  "start": [
+    30,
+    -140
+  ],
+  "east_nm": 26.453717309721725,
+  "north_nm": 0,
+  "wind_from": 0,
+  "max_hours": 72,
+  "cache": true,
+  "seed": 94,
+  "family": 6,
+  "gate": true,
+  "gate_east_nm": 3,
+  "gate_opens_hours": 3.1322387073441353
+}

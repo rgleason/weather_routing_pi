@@ -86,7 +86,8 @@ else
 fi
 SET_IDENTITY="-DWEATHER_ROUTING_XWEATHER_IDENTITY=OFF"
 if [ "${WEATHER_ROUTING_CI_XWEATHER:-false}" = "true" ] ||
-   [ "${CIRCLE_PROJECT_REPONAME:-}" = "xweather_routing_pi" ]; then
+   { [ -z "${WEATHER_ROUTING_CI_XWEATHER:-}" ] &&
+     [ "${CIRCLE_PROJECT_REPONAME:-}" = "xweather_routing_pi" ]; }; then
     SET_IDENTITY="-DWEATHER_ROUTING_XWEATHER_IDENTITY=ON"
 fi
 
@@ -100,3 +101,5 @@ make flatpak-build
 make flatpak-pkg
 ../ci/embed-built-metadata.sh .
 python3 ../ci/verify-shoreline-package.py .
+sudo apt-get install -y xvfb
+python3 ../ci/test-flatpak-host.py ./*weather_routing_pi-*.tar.gz ../artifacts/flatpak-${BUILD_ARCH}/runtime

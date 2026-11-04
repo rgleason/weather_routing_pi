@@ -68,7 +68,8 @@ TEST(RoutingScenarioJson, LoadsSelfContainedGuiRegressionSettings) {
 }
 
 TEST(RoutingScenarioJson, ClimatologyFallbackIsExplicitAndDefaultsOff) {
-  const wxString enabledPath = "/tmp/weather-routing-climatology-on.json";
+  const wxString enabledPath = wxFileName::CreateTempFileName("wr-climatology-on-");
+  ASSERT_FALSE(enabledPath.empty());
   {
     std::ofstream output(enabledPath.mb_str());
     output << R"({
@@ -88,7 +89,8 @@ TEST(RoutingScenarioJson, ClimatologyFallbackIsExplicitAndDefaultsOff) {
   EXPECT_TRUE(enabled.environment.allowClimatologyFallback);
   std::remove(enabledPath.mb_str());
 
-  const wxString absentPath = "/tmp/weather-routing-climatology-absent.json";
+  const wxString absentPath = wxFileName::CreateTempFileName("wr-climatology-off-");
+  ASSERT_FALSE(absentPath.empty());
   {
     std::ofstream output(absentPath.mb_str());
     output << R"({
@@ -172,7 +174,8 @@ TEST(RoutingScenarioJson, LoadsPracticalDepthAwareDepartureAcceptance) {
 }
 
 TEST(RoutingScenarioJson, PreservesExplicitUtcAcrossLocalTimezone) {
-  const wxString scenarioPath = "/tmp/weather-routing-utc-scenario.json";
+  const wxString scenarioPath = wxFileName::CreateTempFileName("wr-utc-");
+  ASSERT_FALSE(scenarioPath.empty());
   {
     std::ofstream output(scenarioPath.mb_str());
     output << R"({
@@ -205,6 +208,12 @@ TEST(RoutingScenarioJson, WritesStabilitySummaryAsValidJson) {
   departure.MakeFromTimezone(wxDateTime::UTC);
   candidate.departure = departure;
   candidate.state = "complete";
+  candidate.diagnostics.hasResult = true;
+  candidate.diagnostics.complete = true;
+  candidate.diagnostics.status = supercpn::weather_routing::RoutingStatus::Complete;
+  candidate.diagnostics.Add({"usage.test", weather_routing::DiagnosticSeverity::Warning,
+      "Coverage warning", "An unknown wave section\nwith a quoted \"source\"", "Review coverage"});
+
   candidate.engine = "quick";
   candidate.route.emplace_back(53.31, -4.63, departure);
   candidate.route.emplace_back(55.12, -6.95);
@@ -244,6 +253,16 @@ TEST(RoutingScenarioJson, WritesStabilitySummaryAsValidJson) {
                                ["latitudeDegrees"].asDouble());
   EXPECT_EQ("2026-08-01T10:00:00Z",
             root["candidates"][0]["route"][0]["timeUtc"].asString());
+
+  const auto& diagnostic = root["candidates"][0]["diagnostics"];
+  EXPECT_TRUE(diagnostic["complete"].asBool());
+  EXPECT_FALSE(diagnostic["cancelled"].asBool());
+  EXPECT_EQ(diagnostic["outcome"].asString(), "complete");
+  EXPECT_NE(diagnostic["summary"].asString().find("warning"), std::string::npos);
+  ASSERT_EQ(diagnostic["items"].size(), 1U);
+  EXPECT_EQ(diagnostic["items"][0]["severity"].asString(), "warning");
+  EXPECT_EQ(diagnostic["items"][0]["detail"].asString(),
+            "An unknown wave section\nwith a quoted \"source\"");
   EXPECT_EQ(7, root["stabilityCorridor"]["validRoutes"].asInt());
   EXPECT_EQ(2, root["stabilityCorridor"]["routeFamilies"].asInt());
   EXPECT_EQ("candidate-0",
@@ -279,12 +298,20 @@ TEST(RoutingScenarioJson, EngineIdAndIndependentQuickSamplingAreValidated) {
       {R"("routingEngine":"quick","quickOffshoreStepMinutes":240,"quickHeadingStepDegrees":15,"quickMaximumSearchAngle":95)", true},
       {R"("routingEngine":"main","quickRoute":true)", true},
       {R"("routingEngine":"auto")", true},
+      {R"("routingEngine":"quick2")", true},
+      {R"("routingEngine":"auto","autoEngines":["quick2","quick"])", true},
       {R"("routingEngine":"all")", true},
-      {R"("routingEngine":"alternative")", false},
+      {R"("routingEngine":"alternative")", true},
+      {R"("routingEngine":"atlas")", true},
+      {R"("routingEngine":"auto","autoEngines":["atlas","main"])", true},
+      {R"("routingEngine":"all","allEngines":["original","atlas"])", true},
       {R"("routingEngine":"professional2")", true},
       {R"("routingEngine":"original","quickOffshoreStepMinutes":180,"maxSwellMeters":0)", true},
       {R"("routingEngine":"original","maxSwellMeters":-1)", false},
       {R"("routingEngine":"original","maxSwellMeters":"bad")", false},
+      {R"("routingEngine":"auto","autoEngines":[])", false},
+      {R"("routingEngine":"all","allEngines":["future"])", false},
+      {R"("routingEngine":"all","allEngines":["alternative","quick2"])", true},
       {R"("routingEngine":"future")", false},
       {R"("routingEngine":true)", false},
       {R"("quickOffshoreStepMinutes":9)", false},
@@ -351,4 +378,43 @@ TEST(RoutingScenarioJson, GribTimelineCacheLimitIsExplicitAndValidated) {
     }
   }
   wxRemoveFile(path);
+}
+
+TEST(RoutingScenarioJson, ComfortAlternativeBudgetsAreExplicitAndBounded) {
+  const wxString path = "/tmp/weather-routing-comfort-budgets.json";
+  const auto load = [&](const std::string& extra,
+                        weather_routing_engine::RoutingScenario& scenario) {
+    std::ofstream output(path.mb_str());
+    output
+        << R"({"schemaVersion":1,"start":{"name":"A","lat":53,"lon":-5},"end":{"name":"B","lat":54,"lon":-5},"route":{)"
+        << extra << "}}";
+    output.close();
+    wxString error;
+    return weather_routing_headless::LoadRoutingScenarioJson(path, scenario, error);
+  };
+  weather_routing_engine::RoutingScenario scenario;
+  ASSERT_TRUE(load("", scenario));
+  EXPECT_FALSE(scenario.route.hasComfortAlternatives);
+  EXPECT_FALSE(scenario.route.comfortAlternativesEnabled);
+  ASSERT_TRUE(load(
+      R"("comfortAlternatives":{"enabled":true,"additionalPercent":400,"maximumSeconds":3600})",
+      scenario));
+  EXPECT_TRUE(scenario.route.hasComfortAlternatives);
+  EXPECT_TRUE(scenario.route.comfortAlternativesEnabled);
+  EXPECT_EQ(400, scenario.route.comfortAdditionalPercent);
+  EXPECT_EQ(3600, scenario.route.comfortMaximumSeconds);
+  ASSERT_TRUE(
+      load(R"("comfortAlternatives":{"enabled":true,"additionalPercent":0,"maximumSeconds":0})",
+           scenario));
+  EXPECT_EQ(0, scenario.route.comfortAdditionalPercent);
+  EXPECT_EQ(0, scenario.route.comfortMaximumSeconds);
+  for (const auto* invalid :
+       {R"("comfortAlternatives":{"enabled":true,"additionalPercent":401})",
+        R"("comfortAlternatives":{"enabled":true,"additionalPercent":-1})",
+        R"("comfortAlternatives":{"enabled":true,"maximumSeconds":3601})",
+        R"("comfortAlternatives":{"enabled":"true"})",
+        R"("comfortAlternatives":{"enabled":true,"additionalPercent":2.5})"}) {
+    EXPECT_FALSE(load(invalid, scenario)) << invalid;
+  }
+  std::remove(path.mb_str());
 }

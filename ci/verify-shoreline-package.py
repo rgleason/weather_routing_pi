@@ -5,6 +5,7 @@ import hashlib
 import json
 import sys
 import tarfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 EXPECTED = json.loads((Path(__file__).resolve().parents[1] / 'data/shoreline/manifest.json').read_text())
@@ -21,6 +22,10 @@ def digest(stream):
 def verify(path):
     with tarfile.open(path, 'r:*') as package:
         members = package.getmembers()
+        metadata = ET.fromstring(package.extractfile('metadata.xml').read())
+        flatpak = (metadata.findtext('target') or '').strip().startswith('flatpak-')
+        identity = ('xweather_routing_pi' if (metadata.findtext('name') or '').strip() == 'xWeatherRouting'
+                    else 'weather_routing_pi')
         assert [s['quality'] for s in EXPECTED['datasets']] == list('clihf')
         directory = None
         for spec in EXPECTED['datasets']:
@@ -31,6 +36,10 @@ def verify(path):
             assert len(payloads) == 1, f"Shoreline payload missing or duplicated: {spec['file']}"
             payload = payloads[0]
             assert payload.isfile() and '/data/shoreline/' in payload.name
+            if flatpak:
+                expected_path = f'/share/opencpn/plugins/{identity}/data/shoreline/{spec["file"]}'
+                assert payload.name.endswith(expected_path), (
+                    f"Flatpak shoreline is outside stock OpenCPN's data lookup path: {payload.name}")
             assert digest(package.extractfile(payload)) == (spec['archive_bytes'], spec['archive_sha256'])
             with gzip.GzipFile(fileobj=package.extractfile(payload)) as data:
                 assert digest(data) == (spec['uncompressed_bytes'], spec['sha256'])

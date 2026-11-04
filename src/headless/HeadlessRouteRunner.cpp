@@ -60,6 +60,7 @@ weather_routing_engine::RoutingCandidateResult CandidateFromRoute(
   candidate.departure = configuration.StartTime;
   candidate.offsetMinutes = configuration.DepartureTimeOptimizationOffsetMinutes;
   candidate.failureReason = route->GetDiagnosticError();
+  candidate.diagnostics = route->GetDiagnostics();
   const auto outcome = weather_routing::ClassifyRouteOutcome(
       route->Running(), route->Valid(), route->Finished(),
       route->ReachedDestination(), !candidate.failureReason.IsEmpty());
@@ -106,6 +107,7 @@ weather_routing_engine::RoutingCandidateResult CandidateFromRoute(
   for (const auto& point : route->GetPlotData(false))
     append_point(point.lat, point.lon, point.time);
   append_point(configuration.EndLat, configuration.EndLon, candidate.eta);
+  candidate.coverageNotes = route->ModernNativeCoverageNotes();
   for (const auto& retained : route->RetainedCandidates()) {
     weather_routing_engine::RetainedRouteReport report;
     report.id = wxString::FromUTF8(retained.id.c_str());

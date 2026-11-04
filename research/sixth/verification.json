@@ -1,0 +1,101 @@
+{
+  "baseline": {
+    "baseline": "1fa62c7",
+    "files_checked": 48,
+    "changed": [],
+    "source_sha256": {
+      "vendor/original-routing-engine/CMakeLists.txt": "f2a785ac09ec3b17d2593be7f66908ef6d16a8e8e10c9803e6baf39a99486c43",
+      "vendor/original-routing-engine/LICENSE": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+      "vendor/original-routing-engine/README.md": "2699dfbe480cede17bd5819f37d925a3909256d147f90050bbd1f76a9439e185",
+      "vendor/original-routing-engine/include/original_routing/Engine.h": "e6cd0d96a07edb376c265e7a5049b6e45181da5313c6c70ed116a948bcbc7e1c",
+      "vendor/original-routing-engine/include/original_routing/GshhgProvider.h": "477df0329ee4bc574b118c4e61525f4f5216341e2f1740c925eaac160f9637d1",
+      "vendor/original-routing-engine/include/original_routing/VisualizationSampler.h": "2d60814870d74868b8b067fa00cab987620ad2d12ed67e8dc1155bdc94864834",
+      "vendor/original-routing-engine/src/Contour.cpp": "51796e549ba49a1b02c086c16377e4c6e25a651c7a2a48d3240febc46690552f",
+      "vendor/original-routing-engine/src/Contour.h": "21572f0ce4f9052dd421dc36b79d19dbcfce900d832c4a06d6c8a5e25fd82790",
+      "vendor/original-routing-engine/src/Engine.cpp": "a1e83aa8a7fd40007f194a25fe29f4fa8ca91a29771b49dc40978dd305b3fa04",
+      "vendor/original-routing-engine/src/GshhgProvider.cpp": "86f2e884dd958ca5c98a7fbd61c6f96a63bb3636549291150ef62631fd2eea3f",
+      "vendor/original-routing-engine/src/shoreline/Dataset.cpp": "ca464467e077a9c04c7418e31d723fd75d0fdf91ef924fe15f758c419bc30c11",
+      "vendor/original-routing-engine/src/shoreline/Dataset.h": "00c369ba578919fba88a612d44924b9eeb328fcc9defc5f3e5ff9c278f5f1ec3",
+      "vendor/original-routing-engine/tests/contracts.cpp": "51c5b62316ce640e1bdeabf153432b739a20681dac024b575925bebc56f57492",
+      "vendor/quick2-routing-engine/README.md": "1b0b39c7a15f4d338c2fc282ea834060828ab1b05b267061973044d8f397ceb7",
+      "vendor/quick2-routing-engine/include/quick2_routing/Engine.h": "9a585f49ad23c861860b36e827b2e633d66d513f6b2ce92f5b4fe80dfb74420f",
+      "vendor/quick2-routing-engine/src/Engine.cpp": "ff73754b2ac239855df534b7ba749afbcaf6ba1761e4b00395fc67c1beb167bc",
+      "vendor/weather-routing-engine/.gitignore": "e98146f43151d647db81d14697527921d3772e20648379c2dffcc8f7dcf46bc8",
+      "vendor/weather-routing-engine/CMakeLists.txt": "6d87ed72b83c196c5cb5732faf28b50d5fe939a575c15a9e401595ce25fb2799",
+      "vendor/weather-routing-engine/LICENSE": "4bdb9a1e11a580e74c05c1afd033ba0fef530832a87b0759dee0535d071a22bd",
+      "vendor/weather-routing-engine/LOCAL_PATCHES.md": "28eb6345721c88553ae5eaad915d83671e7bea98f7efaa4bcf6c3209aa9ef9f3",
+      "vendor/weather-routing-engine/README.md": "7b9ba351ef813a7094656f47d509c451b30229dbb5f501638e6c5d4a93cff09a",
+      "vendor/weather-routing-engine/VERSION": "6cf4e084b47f33c9b02ef79279d157833868f8f70514169a768be353ee328fea",
+      "vendor/weather-routing-engine/cmake/weather_routing_engineConfig.cmake.in": "104e804e8834f212005ac1e1ccc19b96f7ad26a813b8a4d6166bc83ca8ec61f0",
+      "vendor/weather-routing-engine/include/supercpn/weather_routing/AlternativeEngine.h": "a02912e2a136ab12e073e35a6ce3d661eb75ff6a23542f065b009b90950150d6",
+      "vendor/weather-routing-engine/include/supercpn/weather_routing/ArrivalPlanner.h": "dc3f5894f3b9f91cd79252ed9ae78454c7792611955d6b3a4d4cd9627c7d5134",
+      "vendor/weather-routing-engine/include/supercpn/weather_routing/CoastalEndpointPolicy.h": "a6aa5ff01d777cefd164c3974d29a0535790e7a45836f2c6c85147e6c6566bb6",
+      "vendor/weather-routing-engine/include/supercpn/weather_routing/Comfort.h": "efba89728874b572c676557d80257a0bb192dced7126280515e7e0ee65bbc2aa",
+      "vendor/weather-routing-engine/include/supercpn/weather_routing/Engine.h": "73d0fb66ff27eb6bc1fd1fea93ecbb819383fa84b6093bfd2d15d98f65f8db39",
+      "vendor/weather-routing-engine/include/supercpn/weather_routing/Preview.h": "5a92d757c54dc2897ee02c970b803ec1e329f3da96cb1145056c55fc3b1a670f",
+      "vendor/weather-routing-engine/include/supercpn/weather_routing/Providers.h": "ce68099a8e9ed9c9e7d5ff2896f036971caefbc6b390cc3a8f9a7653a510e926",
+      "vendor/weather-routing-engine/include/supercpn/weather_routing/QuickEngine.h": "b9283a8366d086f2b02f8d304b353e8057b7d952992187b023d8acbbe8392efb",
+      "vendor/weather-routing-engine/include/supercpn/weather_routing/ResourcePolicy.h": "5baeb40b4a3d822b607230ad471c01dbc31a7c53e6540b5dfa840229d3d04b2f",
+      "vendor/weather-routing-engine/include/supercpn/weather_routing/Types.h": "462c26bf45677c72fee68b24e869c162e61de571a55193fa1f792ecc2784a259",
+      "vendor/weather-routing-engine/src/AlternativeEngine.cpp": "be51dbed7ea7d3e2e8bff8b6996c886d0066c4c950ac5ef8f600ea7e72c30844",
+      "vendor/weather-routing-engine/src/ArrivalPlanner.cpp": "c147fa8c1ba3d509791f62fd40ea6fdeebf1bd5cc7935f856b3dbd1364798ca7",
+      "vendor/weather-routing-engine/src/Engine.cpp": "6f667830f3d9981a2a1f8b00e1d405dc696db90714152f6ae762a675451d8df5",
+      "vendor/weather-routing-engine/src/Ensemble.cpp": "16fd390bc843ac8db66404539b9f16ef4f994de19543eb9848ec996e9a45cf45",
+      "vendor/weather-routing-engine/src/EnvironmentResolver.cpp": "14472a94427e8eed8f2aa3172c124bd46144451443b85e9b675eb3407d1cbe50",
+      "vendor/weather-routing-engine/src/Geometry.cpp": "4a336d5e6c0b5d3419f6b604f74347422740903a80adca886e647442da8a9282",
+      "vendor/weather-routing-engine/src/MotionKernel.h": "2889945586ccd6d811f5eb9d18533e765e036548d769c6f81da95189eb0df7a3",
+      "vendor/weather-routing-engine/src/Polar.cpp": "eb1cae729bd7ec9705c37c7115f9238b097b1a5392c763b0112816384ea1a64b",
+      "vendor/weather-routing-engine/src/Providers.cpp": "8131994b427e0e5069d9c8fe03c4394d14fab7cb63c77f1bd4ba90dec5278d60",
+      "vendor/weather-routing-engine/src/QuickEngine.cpp": "51fc00bf3b49b22c44bfc3111c2c2551262a8a8c189e235804e07643002a04c2",
+      "vendor/weather-routing-engine/src/RoutingInternal.h": "f2ab1950457a499699a8f2fbd21c3aaa6dfbbda427d63430d154a2d7c4c3da0d",
+      "vendor/weather-routing-engine/src/Validator.cpp": "11989fd5f3f7b002dfbf6de433be31d06c7ed7862c8ea29f028b12e9286b3cea",
+      "vendor/weather-routing-engine/tests/CMakeLists.txt": "a4b64e460bc7b507e2f9d47d6e04883f704f74223973f0b88a927f5c2d217c3a",
+      "vendor/weather-routing-engine/tests/ContractTests.cpp": "0fbf25116c78d3876e001f920f2c058166c3bb11341d0c8eecc45cf01a04bbcc",
+      "vendor/weather-routing-engine/tests/QuickHeadToHead.cpp": "a60d10cccc6763c6b75276ea58b470e13a03c4c89c410405356996a763a8258f"
+    }
+  },
+  "tests": {
+    "standalone": [
+      "100% tests passed out of 11"
+    ],
+    "plugin": [
+      "100% tests passed out of 509"
+    ],
+    "asan_ubsan": [
+      "100% tests passed out of 11"
+    ]
+  },
+  "oracle": {
+    "count": 1000,
+    "passed": 1000,
+    "binary_sha256": "37da0fd3284c3345581ade88e093ad101baea7449073810d777fb1eb4f685309",
+    "geodesic": {
+      "count": 250,
+      "passed": 250,
+      "max_ratio": 1.0001188373049614
+    },
+    "timed_gate": {
+      "count": 250,
+      "passed": 250,
+      "max_ratio": 1.0003996545185136
+    },
+    "upwind_envelope": {
+      "count": 250,
+      "passed": 250,
+      "max_ratio": 1.0003764453422423
+    },
+    "visibility": {
+      "count": 250,
+      "passed": 250,
+      "max_ratio": 1.0124934643814807
+    }
+  },
+  "records": 2136,
+  "missing_records": [],
+  "zero_negative_acceptances": true,
+  "zero_process_errors": true,
+  "frozen_source_and_binaries_match": true,
+  "experimental_default_unchanged": true,
+  "references": "best-known-final/summary.json",
+  "profiles": "profiles-final/results.json"
+}

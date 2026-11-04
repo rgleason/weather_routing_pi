@@ -8,7 +8,8 @@ if [[ -z "${CLOUDSMITH_API_KEY:-}" ]]; then
 fi
 
 python3 ci/prepare-alpha-artifacts.py artifacts alpha-publication \
-  "$(git rev-parse HEAD)" "${CIRCLE_BUILD_NUM:?CircleCI build number required}"
+  "$(git rev-parse HEAD)" "${CIRCLE_BUILD_NUM:?CircleCI build number required}" \
+  --compatibility-root compatibility
 
 python3 - <<'PY'
 import json
@@ -17,7 +18,7 @@ from pathlib import Path
 
 for item in json.loads(Path("alpha-publication/uploads.json").read_text()):
     subprocess.run([
-        "cloudsmith", "push", "raw", "--republish", "--no-wait-for-sync",
+        "cloudsmith", "push", "raw", "--no-republish", "--no-wait-for-sync",
         "--name", item["name"], "--version", item["version"],
         "--summary", "xWeatherRouting OpenCPN Alpha preview",
         "pob220/xweather-routing-alpha-oss", item["file"],

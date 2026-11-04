@@ -1,0 +1,80 @@
+[
+  {
+    "engine": "original",
+    "cases": 168,
+    "valid": 135,
+    "process_errors": 0,
+    "negative_cases": 8,
+    "unsafe_negative_acceptances": 0,
+    "median_seconds": 0.5284304765000001,
+    "total_seconds": 232.337118563,
+    "median_ratio_to_best": 1.0173679498657118,
+    "worst_ratio_to_best": 3.52875,
+    "median_rss_kib": 278136.0
+  },
+  {
+    "engine": "quick2",
+    "cases": 168,
+    "valid": 157,
+    "process_errors": 0,
+    "negative_cases": 8,
+    "unsafe_negative_acceptances": 0,
+    "median_seconds": 0.113529383,
+    "total_seconds": 29.974844843,
+    "median_ratio_to_best": 1.0065677179962895,
+    "worst_ratio_to_best": 2.52858261550509,
+    "median_rss_kib": 278136.0
+  },
+  {
+    "engine": "quick",
+    "cases": 168,
+    "valid": 158,
+    "process_errors": 0,
+    "negative_cases": 8,
+    "unsafe_negative_acceptances": 0,
+    "median_seconds": 0.43117429549999997,
+    "total_seconds": 112.464125276,
+    "median_ratio_to_best": 1.0119305053042602,
+    "worst_ratio_to_best": 4.704591836734694,
+    "median_rss_kib": 278136.0
+  },
+  {
+    "engine": "alternative",
+    "cases": 168,
+    "valid": 157,
+    "process_errors": 0,
+    "negative_cases": 8,
+    "unsafe_negative_acceptances": 0,
+    "median_seconds": 0.7755472055,
+    "total_seconds": 175.271671289,
+    "median_ratio_to_best": 1.0267299939250014,
+    "worst_ratio_to_best": 6.15505090054816,
+    "median_rss_kib": 278136.0
+  },
+  {
+    "engine": "main",
+    "cases": 168,
+    "valid": 151,
+    "process_errors": 0,
+    "negative_cases": 8,
+    "unsafe_negative_acceptances": 0,
+    "median_seconds": 2.0564724520000004,
+    "total_seconds": 509.76470141,
+    "median_ratio_to_best": 1.0012596441505275,
+    "worst_ratio_to_best": 1.148872925439683,
+    "median_rss_kib": 278136.0
+  },
+  {
+    "engine": "atlas",
+    "cases": 168,
+    "valid": 160,
+    "process_errors": 0,
+    "negative_cases": 8,
+    "unsafe_negative_acceptances": 0,
+    "median_seconds": 0.548010692,
+    "total_seconds": 109.634774238,
+    "median_ratio_to_best": 1.0,
+    "worst_ratio_to_best": 1.0923833679194528,
+    "median_rss_kib": 278136.0
+  }
+]

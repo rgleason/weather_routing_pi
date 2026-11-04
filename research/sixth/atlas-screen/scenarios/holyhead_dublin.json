@@ -1,0 +1,21 @@
+{
+  "name": "holyhead_dublin",
+  "start": [
+    53.334,
+    -4.618
+  ],
+  "east_nm": 20,
+  "north_nm": 0,
+  "wind_from": 0,
+  "max_hours": 72,
+  "cache": true,
+  "end": [
+    53.338,
+    -6.065
+  ],
+  "shoreline": "data/shoreline/poly-f-2.3.7.dat.gz",
+  "currents": true,
+  "current_speed": 3,
+  "current_to": 90,
+  "tidal": true
+}

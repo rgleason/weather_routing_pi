@@ -34,6 +34,7 @@ export WX_VER=32
 # matching the guard proven by xGRIB's native macOS job.
 msgfmt_smoke="${TMPDIR:-/tmp}/weather-routing-msgfmt-smoke.mo"
 if ! msgfmt --check -o "$msgfmt_smoke" po/el_GR.po; then
+  python3 ci/fetch-macos-gettext-source.py
   brew reinstall --build-from-source gettext </dev/null
   msgfmt --check -o "$msgfmt_smoke" po/el_GR.po
 fi
@@ -65,7 +66,8 @@ common_args=(
   -DWEATHER_ROUTING_STANDALONE_API=ON
 )
 if [[ "${WEATHER_ROUTING_CI_XWEATHER:-false}" == "true" ||
-      "${CIRCLE_PROJECT_REPONAME:-}" == "xweather_routing_pi" ]]; then
+      ( -z "${WEATHER_ROUTING_CI_XWEATHER:-}" &&
+        "${CIRCLE_PROJECT_REPONAME:-}" == "xweather_routing_pi" ) ]]; then
   common_args+=(-DWEATHER_ROUTING_XWEATHER_IDENTITY=ON)
 else
   common_args+=(-DWEATHER_ROUTING_XWEATHER_IDENTITY=OFF)
@@ -135,6 +137,8 @@ if [[ ! "$package_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "Invalid or missing package version in $metadata" >&2
   exit 1
 fi
+
+python3 ci/test-macos-installed-host.py 2>&1 | tee "$log_dir/normal-installed-host.log"
 
 jq -n \
   --arg commit "$(git rev-parse HEAD)" \

@@ -329,27 +329,36 @@ bool ChartHazardEvaluator::CheckSegment(
     return false;
 
   UnwrapChartSegment(lon1, lon2);
-  const long y0 = std::lround(lat1 / kExpectedResolutionDegrees);
-  const long x0 = std::lround(lon1 / kExpectedResolutionDegrees);
-  const long y1 = std::lround(lat2 / kExpectedResolutionDegrees);
-  const long x1 = std::lround(lon2 / kExpectedResolutionDegrees);
-  const long dx = std::labs(x1 - x0);
-  const long dy = std::labs(y1 - y0);
-  const long sx = x0 < x1 ? 1 : -1;
-  const long sy = y0 < y1 ? 1 : -1;
-  long error = dx - dy;
-  const long steps = std::max(dx, dy) + 1;
-  const int cells_per_tile =
-      static_cast<int>(std::lround(kTileDegrees /
-                                   kExpectedResolutionDegrees));
+  // Traverse every cell touched by the continuous chord. Rounding only its
+  // endpoints and drawing a Bresenham line can skip a coastal hazard cell;
+  // splitting the same chord into shorter checks then gives a different answer.
+  const double gx0 = lon1 / kExpectedResolutionDegrees;
+  const double gy0 = lat1 / kExpectedResolutionDegrees;
+  const double gx1 = lon2 / kExpectedResolutionDegrees;
+  const double gy1 = lat2 / kExpectedResolutionDegrees;
+  long x = static_cast<long>(std::floor(gx0 + 0.5));
+  long y = static_cast<long>(std::floor(gy0 + 0.5));
+  const long end_x = static_cast<long>(std::floor(gx1 + 0.5));
+  const long end_y = static_cast<long>(std::floor(gy1 + 0.5));
+  const double vx = gx1 - gx0, vy = gy1 - gy0;
+  const long sx = vx > 0 ? 1 : -1, sy = vy > 0 ? 1 : -1;
+  const double infinity = std::numeric_limits<double>::infinity();
+  const double dt_x = vx == 0 ? infinity : 1.0 / std::abs(vx);
+  const double dt_y = vy == 0 ? infinity : 1.0 / std::abs(vy);
+  double tx = vx == 0 ? infinity : (x + sx * 0.5 - gx0) / vx;
+  double ty = vy == 0 ? infinity : (y + sy * 0.5 - gy0) / vy;
+  constexpr double epsilon = 1e-10;
+  const bool x_boundary = std::abs(gx0 - (x - 0.5)) < epsilon;
+  const bool y_boundary = std::abs(gy0 - (y - 0.5)) < epsilon;
+  const int cells_per_tile = static_cast<int>(
+      std::lround(kTileDegrees / kExpectedResolutionDegrees));
   int first_source = PI_SEGMENT_SAFETY_SOURCE_NONE;
-
-  long x = x0;
-  long y = y0;
+  int visited = 0;
   long current_lat_tile = std::numeric_limits<long>::min();
   long current_lon_tile = std::numeric_limits<long>::min();
   std::shared_ptr<const DerivedMask> current_mask;
-  for (long sample = 0; sample < steps; ++sample) {
+  const auto cell = [&](long x, long y) -> int {
+    ++visited;
     const long lat_tile = FloorTileIndex(y, cells_per_tile);
     const long lon_tile = FloorTileIndex(x, cells_per_tile);
     if (!current_mask || lat_tile != current_lat_tile ||
@@ -359,17 +368,16 @@ bool ChartHazardEvaluator::CheckSegment(
       current_lon_tile = lon_tile;
     }
     const auto& mask = current_mask;
-    if (!mask) return false;
+    if (!mask) return -1;
     const int row = static_cast<int>(y - lat_tile * cells_per_tile);
     const int col = static_cast<int>(x - lon_tile * cells_per_tile);
     if (row < 0 || row >= mask->rows || col < 0 || col >= mask->cols)
-      return false;
+      return -1;
     if (first_source == PI_SEGMENT_SAFETY_SOURCE_NONE)
       first_source = mask->source;
     const std::uint16_t flags = mask->flags[row * mask->cols + col];
     if (flags != 0) {
-      SetHitResult(result, flags, *mask, y, x, static_cast<int>(sample),
-                   static_cast<int>(steps));
+      SetHitResult(result, flags, *mask, y, x, visited - 1, visited);
       result->required_depth_m = options.minimum_depth_m;
       // A zero-margin endpoint query reads this exact raw chart cell.  Retain
       // its measured depth so a shallow-start error can identify the value
@@ -390,25 +398,56 @@ bool ChartHazardEvaluator::CheckSegment(
           }
         }
       }
-      return true;
+      return 1;
     }
-    if (x == x1 && y == y1) break;
-    const long twice_error = 2 * error;
-    if (twice_error > -dy) {
-      error -= dy;
-      x += sx;
+    return 0;
+  };
+  // A chord lying on a cell boundary touches both adjacent rows/columns.
+  const auto visit = [&](long x, long y) -> int {
+    int answer = cell(x, y);
+    if (answer) return answer;
+    if (vx == 0 && x_boundary && (answer = cell(x - 1, y))) return answer;
+    if (vy == 0 && y_boundary && (answer = cell(x, y - 1))) return answer;
+    if (vx == 0 && vy == 0 && x_boundary && y_boundary)
+      return cell(x - 1, y - 1);
+    return 0;
+  };
+  // Include all cells touching a departure exactly on a boundary.
+  for (int ox = 0; ox >= (x_boundary ? -1 : 0); --ox)
+    for (int oy = 0; oy >= (y_boundary ? -1 : 0); --oy) {
+      const int answer = cell(x + ox, y + oy);
+      if (answer) return answer > 0;
     }
-    if (twice_error < dx) {
-      error += dx;
-      y += sy;
+  const long limit = std::labs(end_x - x) + std::labs(end_y - y) + 4;
+  bool complete = false;
+  for (long step = 0; step < limit; ++step) {
+    if (step != 0) {
+      const int answer = visit(x, y);
+      if (answer) return answer > 0;
+    }
+    const double next = std::min(tx, ty);
+    if (next > 1.0 + epsilon) { complete = true; break; }
+    if (std::isfinite(tx) && std::isfinite(ty) &&
+        std::abs(tx - ty) <= epsilon) {
+      // At a corner, all four touched cells must be clear.
+      for (const auto offset : {std::pair{sx, 0L}, std::pair{0L, sy}}) {
+        const int corner = visit(x + offset.first, y + offset.second);
+        if (corner) return corner > 0;
+      }
+      x += sx; y += sy; tx += dt_x; ty += dt_y;
+    } else if (tx < ty) {
+      x += sx; tx += dt_x;
+    } else {
+      y += sy; ty += dt_y;
     }
   }
+  if (!complete) return false;  // Never certify an incomplete traversal.
 
   result->status = PI_SEGMENT_SAFETY_SAFE;
   result->source = first_source;
   result->diagnostic_reason = PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_CLEAR;
-  result->segment_sample_count = static_cast<int>(steps);
-  result->grid_lookups = static_cast<int>(steps);
+  result->segment_sample_count = visited;
+  result->grid_lookups = visited;
   result->water_tile_shortcuts = 1;
   SetMessage(result, "plugin-owned chart-hazard masks certify segment clear");
   return true;

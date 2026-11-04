@@ -40,6 +40,8 @@ option(WEATHER_ROUTING_XWEATHER_IDENTITY
        "Build the separately installable xWeatherRouting variant"
        ${_xweather_identity_default})
 unset(_xweather_identity_default)
+set(WEATHER_ROUTING_EXPECTED_WX_VERSION "" CACHE STRING
+    "Require this exact wxWidgets version when building a pinned host package")
 
 # define minimum cmake version
 cmake_minimum_required(VERSION 3.10)
@@ -85,12 +87,12 @@ else()
 endif()
 set(PACKAGE_CONTACT "Sean d'Epagnier; Weather Routing Plugin Team")
 set(SHORT_DESCRIPTION
-    "Advanced weather routing with departure and arrival planning.")
+    "Weather routing with six engines, diagnostics and coverage warnings.")
 set(LONG_DESCRIPTION
-    "WeatherRouting offers Auto, Quick, Standard, Professional and All (slow), with independent saved engine settings and explicit search presets. Auto falls back through Quick and Standard to Professional up to 400% effort. All compares four engines, including the internal Alternative engine, and can add bounded comfort alternatives for each departure. A retained-route comparison table and slider balance passage time against discomfort exposure while preserving the worst known leg. Wind-only ranking is enabled by default and remembered. Extra comfort limits never reduce the ordinary engines' budgets; All initially selects the earliest validated arrival. Quick uses hardened contour routing with independent chronological validation. Standard provides bounded adaptive search; Professional keeps a validated Quick candidate and searches for a faster route with broader recovery methods. All support plugin-managed GSHHG shorelines; optional chart-backed safety requires a compatible host.")
+    "Route details retain setup errors, coverage warnings, actual fallback use and every engine attempt. Copy a diagnostic report for support without finding logs. Successful routes identify climatology, assumed zero current, missing or estimated waves, endpoint clearance and anchoring assumptions. The boat editor keeps the polar list and its add, edit, remove and reorder controls visible. A separate Wind range page applies low- and high-wind handling to the selected polar, preserving multiple-polars boats, crossover selection and saved XML settings. Desktop tabs and the Android touch page selector provide the same settings. Failed All searches can retain bounded independently replayed prefixes for inspection. Partial results show their actual endpoint and remaining straight-line distance; they do not imply destination arrival or enable completed-passage exports. Live chart progress shows bounded search fronts and a provisional explored path while visible routes are calculating. Previews are labelled as unvalidated and do not change route acceptance. Motoring follows the configured STW threshold: when the best usable sailing performance is below it, motor-only routing can use headings outside sailing-angle limits, including directly into wind. Sailing, motor-sailing and stronger-wind motoring retain those limits; other safety checks still apply. Consistent route visibility: the eye hides all route overlays even when selected, and hidden computations stay hidden at completion. Clear computed results releases courses, contours and result data while preserving route settings for recomputation. Departure optimisation can show only the selected departure, all departures or a manually chosen subset, with matching chart and eye state and no recomputation. Improved optional chart-awareness performance with a compatible enhanced host; stock OpenCPN retains ordinary weather routing and GSHHG land avoidance. Check existing OpenCPN routes for charted land, drying areas, hazards, clearance and optional minimum depth without altering their waypoints. A per-leg report and chart markers distinguish hazards from unavailable coverage or depth; cancellation produces a partial report and route or chart changes invalidate results. Chart checks require a compatible host. Basic routing offers Auto and All (slow), with individual engines and independent Auto/All membership in Advanced. The Atlas engine adds continuous physical connection solving, adaptive spatial decisions and time-dependent weather guidance with independent route validation. The available order is Quick, Quick2, Atlas, Standard, Alternative and Professional, skipping unchecked engines. Existing Auto/All memberships are preserved; Atlas is opt-in. Alternative is unchecked in Auto by default. Auto stops on Quick success; Quick2 success is retained while later selected engines start independently with fresh normal allowances. Later successful engines are compared against the retained Quick2 candidate. All compares every selected engine. Quick2 is an independent bounded CPU frontier search using the shared motion kernel, original safety providers and authoritative replay; no GPU is required. A bounded extra-search allowance is shared across retained candidates. Optional fastest/comfort alternatives also work with individual engines and Auto, with saved percentage and seconds limits. A retained-route comparison table and slider balance passage time against discomfort exposure while preserving the worst known leg. Wind-only ranking is enabled by default and remembered. Extra comfort limits never reduce the ordinary engines' budgets; All initially selects the earliest validated arrival. Quick uses hardened contour routing with independent chronological validation. Standard provides bounded adaptive search; Professional preserves validated incumbents, uses unrestricted and focused native recovery as appropriate, and enforces the requested arrival horizon. All support plugin-managed GSHHG shorelines; optional chart-backed safety requires a compatible host.")
 
 set(VERSION_MAJOR "1")
-set(VERSION_MINOR "23")
+set(VERSION_MINOR "36")
 set(VERSION_PATCH "0")
 set(VERSION_TWEAK "0")
 # Keep all five approved source archives for verification and regression tests.
@@ -113,7 +115,7 @@ foreach(_archive IN LISTS _shoreline_archives)
   endif()
 endforeach()
 unset(_shoreline_archives)
-set(VERSION_DATE  "02/10/2026") # DD/MM/YYYY format
+set(VERSION_DATE  "02/11/2026") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov511")
 
 set(OCPN_API_VERSION_MAJOR "1")
@@ -253,9 +255,13 @@ SET(SRCS
             src/ShorelineManager.cpp
             src/AppendOnlyCache.cpp
             src/ChartSafetyCache.cpp
+            src/ClimatologyCompatibility.cpp
+            src/PluginWaypointLists.cpp
             src/ChartSafetyAtlas.cpp
             src/ChartHazardEvaluator.cpp
             src/ChartSafetyHost.cpp
+            src/RouteSafetyCheck.cpp
+            src/RouteSafetyDialog.cpp
             src/OceanPrewarmPolicy.cpp
             src/ReachabilityPrewarmPolicy.cpp
             src/ExternalPlanningProvider.cpp
@@ -272,6 +278,7 @@ SET(SRCS
             src/BoatDialog.cpp
             src/StatisticsDialog.cpp
             src/ReportDialog.cpp
+            src/RouteDiagnostics.cpp
             src/FilterRoutesDialog.cpp
             src/ConfigurationBatchDialog.cpp
             src/EditPolarDialog.cpp
@@ -304,6 +311,8 @@ SET(SRCS
             src/Position.cpp
             src/IsoRoute.cpp
             src/headless/HeadlessRouteRunner.cpp
+            src/headless/RouteLifecycleContract.cpp
+            src/DepartureChartDisplay.cpp
             src/headless/RoutingScenarioJson.cpp
             src/engine/StabilityCorridorCalculator.cpp
             vendor/weather-routing-engine/src/ArrivalPlanner.cpp
@@ -314,6 +323,8 @@ SET(SRCS
             vendor/weather-routing-engine/src/Engine.cpp
             vendor/weather-routing-engine/src/QuickEngine.cpp
             vendor/weather-routing-engine/src/AlternativeEngine.cpp
+            vendor/quick2-routing-engine/src/Engine.cpp
+            vendor/atlas-routing-engine/src/Engine.cpp
             vendor/original-routing-engine/src/Engine.cpp
             vendor/original-routing-engine/src/Contour.cpp
             vendor/weather-routing-engine/src/Validator.cpp
@@ -330,6 +341,8 @@ SET (HDRS
             include/ChartSafetyCache.h
             include/ChartHazardEvaluator.h
             include/ChartSafetyHost.h
+            include/RouteSafetyCheck.h
+            include/RouteSafetyDialog.h
             include/headless/HeadlessRouteMonitor.h
             include/OptionalChartSafetyApi.h
             include/OceanPrewarmPolicy.h
@@ -429,6 +442,8 @@ set(SRC ${SRCS} ${HDRS} )
 ##=============================================================
 
 include_directories(BEFORE
+  vendor/quick2-routing-engine/include
+  vendor/atlas-routing-engine/include
   vendor/original-routing-engine/include
   vendor/weather-routing-engine/src
   ${PROJECT_SOURCE_DIR}/vendor/weather-routing-engine/include
@@ -561,6 +576,8 @@ add_definitions(-DTIXML_USE_STL)
 # Needed for android builds
 if (QT_ANDROID)
   include_directories(BEFORE ${qt_android_include})
+  target_link_options(${PACKAGE_NAME} PRIVATE
+    "-Wl,-z,max-page-size=16384" "-Wl,-z,common-page-size=16384")
 endif (QT_ANDROID)
 
 ## Needed for all builds Do not change - needed to build app -------------##
@@ -588,5 +605,15 @@ endforeach ()
 if(OCPN_BUILD_TEST)
     message(STATUS "Building with tests enabled")
     enable_testing()
+    if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+      # Fail early on DLL/STL boundary problems before the full plugin build.
+      add_library(wr_wx_sdk_link_probe SHARED
+        test/WindowsWxSdkLinkProbe.cpp
+        src/TimeZoneDisplay.cpp src/PluginWaypointLists.cpp src/cutil.cpp)
+      target_include_directories(wr_wx_sdk_link_probe PRIVATE include)
+      target_compile_features(wr_wx_sdk_link_probe PRIVATE cxx_std_20)
+      target_link_libraries(wr_wx_sdk_link_probe PRIVATE
+        ocpn::api wx::base wx::core wx::net wx::xml wx::html wx::adv wx::aui)
+    endif()
     add_subdirectory(test)
 endif()

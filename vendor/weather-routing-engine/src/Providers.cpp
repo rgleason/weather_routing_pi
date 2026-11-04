@@ -96,6 +96,27 @@ void forLongitudeBandRange(double westUnwrapped, double eastUnwrapped,
 UniformWeatherProvider::UniformWeatherProvider(Configuration configuration)
     : configuration_(std::move(configuration)) {}
 
+bool sailingAngleAllowed(
+    const RoutingRequest& request, const VesselPerformanceModel& performance,
+    GeoPoint position, TimePoint time, double tws, double twa,
+    const WaveSample& waves, PropulsionMode mode, ProfileRole role) {
+  const auto& limits = request.constraints;
+  if (!std::isfinite(twa) || twa < 0 || twa > 180) return false;
+  if (twa + 1e-9 >= limits.minimumTrueWindAngleDegrees &&
+      twa - 1e-9 <= limits.maximumTrueWindAngleDegrees)
+    return true;
+  const auto& propulsion = request.vessel.propulsion;
+  if (mode != PropulsionMode::Motor || role != ProfileRole::MotorOnly ||
+      !propulsion.allowMotor || !std::isfinite(tws) || tws < 0 ||
+      !std::isfinite(propulsion.motorBelowSailingSpeedKnots) ||
+      propulsion.motorBelowSailingSpeedKnots <= 0)
+    return false;
+  const auto best = performance.bestSailingSpeedAt(position, time, tws, waves,
+      limits.minimumTrueWindAngleDegrees, limits.maximumTrueWindAngleDegrees);
+  return best && std::isfinite(*best) && *best >= 0 &&
+         *best < propulsion.motorBelowSailingSpeedKnots;
+}
+
 ParameterCoverage UniformWeatherProvider::windCoverage() const {
   return {configuration_.windTowardKnots.has_value(), configuration_.begins,
           configuration_.ends, configuration_.area, configuration_.identity};

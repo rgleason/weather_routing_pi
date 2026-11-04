@@ -9,6 +9,7 @@
 
 #include <cmath>
 #include "RoutingScenarioJson.h"
+#include "supercpn/weather_routing/Engine.h"
 
 #include <algorithm>
 #include <fstream>
@@ -20,6 +21,7 @@
 
 #include "DepartureScheduler.h"
 #include "RoutingResourcePolicy.h"
+#include "RoutingEngineSettings.h"
 
 namespace {
 
@@ -160,6 +162,47 @@ bool LoadRoutingScenarioJson(const wxString& path,
 
   const Json::Value& route = root["route"];
   if (route.isObject()) {
+    if (route.isMember("comfortAlternatives")) {
+      const auto& extra = route["comfortAlternatives"];
+      if (!extra.isObject() || !extra["enabled"].isBool() ||
+          (extra.isMember("additionalPercent") &&
+           (!extra["additionalPercent"].isInt() || extra["additionalPercent"].asInt() < 0 ||
+            extra["additionalPercent"].asInt() > 400)) ||
+          (extra.isMember("maximumSeconds") &&
+           (!extra["maximumSeconds"].isInt() || extra["maximumSeconds"].asInt() < 0 ||
+            extra["maximumSeconds"].asInt() > 3600))) {
+        error =
+            "comfortAlternatives requires enabled:boolean, additionalPercent:0..400 and "
+            "maximumSeconds:0..3600";
+        return false;
+      }
+      scenario.route.hasComfortAlternatives = true;
+      scenario.route.comfortAlternativesEnabled = extra["enabled"].asBool();
+      if (extra.isMember("additionalPercent"))
+        scenario.route.comfortAdditionalPercent = extra["additionalPercent"].asInt();
+      if (extra.isMember("maximumSeconds"))
+        scenario.route.comfortMaximumSeconds = extra["maximumSeconds"].asInt();
+    }
+
+    for (bool all : {false, true}) {
+      const char* key = all ? "allEngines" : "autoEngines";
+      if (!route.isMember(key)) continue;
+      const auto& engines = route[key];
+      if (!engines.isArray() || engines.empty()) {
+        error = wxString::FromUTF8(key) + " must be a nonempty array of engine IDs";
+        return false;
+      }
+      unsigned mask = 0;
+      for (const auto& id : engines) {
+        weather_routing::RoutingEngineSettings parsed;
+        if (id.isString()) parsed.SetEngineId(id.asString());
+        const auto bit = id.isString() ? weather_routing::EngineBit(parsed.engine) : 0;
+        if (!bit) { error = "Unknown engine in " + wxString::FromUTF8(key); return false; }
+        mask |= bit;
+      }
+      if (all) { scenario.route.allEngineMask = mask; scenario.route.hasAllEngineMask = true; }
+      else { scenario.route.autoEngineMask = mask; scenario.route.hasAutoEngineMask = true; }
+    }
     if (route.isMember("routingEngine")) {
       scenario.route.routingEngine = JsonString(route, "routingEngine");
       scenario.route.hasRoutingEngine = true;
@@ -167,8 +210,9 @@ bool LoadRoutingScenarioJson(const wxString& path,
           scenario.route.routingEngine != "professional2" &&
           scenario.route.routingEngine != "quick" &&
           scenario.route.routingEngine != "original" && scenario.route.routingEngine != "auto" &&
-          scenario.route.routingEngine != "all") {
-        error = "routingEngine must be auto, original (Quick), quick (Standard), main (Professional), or all";
+          scenario.route.routingEngine != "all" && scenario.route.routingEngine != "quick2" &&
+          scenario.route.routingEngine != "alternative" && scenario.route.routingEngine != "atlas") {
+        error = "routingEngine must be auto, original (Quick), quick2, quick (Standard), alternative, main (Professional), atlas (experimental), or all";
         return false;
       }
     }
@@ -273,6 +317,14 @@ bool LoadRoutingScenarioJson(const wxString& path,
       }
       scenario.route.maxSwellMeters = double_value;
       scenario.route.hasMaxSwellMeters = true;
+    }
+    if (JsonBool(route, "requireWaveCoverage", bool_value)) {
+      scenario.route.requireWaveCoverage = bool_value;
+      scenario.route.hasRequireWaveCoverage = true;
+    }
+    if (JsonBool(route, "anchoring", bool_value)) {
+      scenario.route.anchoring = bool_value;
+      scenario.route.hasAnchoring = true;
     }
     if (JsonBool(route, "optimizeTacking", bool_value)) {
       scenario.route.optimizeTacking = bool_value;
@@ -418,6 +470,30 @@ bool SaveRoutingResultJson(const wxString& path,
     AddOptionalLong(value, "elapsed", candidate.elapsedSeconds);
     AddOptionalDouble(value, "distanceNm", candidate.distanceNm);
     value["finalSafety"] = candidate.finalSafety.ToUTF8().data();
+    value["diagnostics"]["hasResult"] = candidate.diagnostics.hasResult;
+    value["diagnostics"]["complete"] = candidate.diagnostics.complete;
+    value["diagnostics"]["cancelled"] = candidate.diagnostics.cancelled;
+    value["diagnostics"]["outcome"] = candidate.diagnostics.hasResult
+        ? supercpn::weather_routing::toString(candidate.diagnostics.status)
+        : candidate.diagnostics.HasErrors() ? "setup_failed" : "not_computed";
+    value["diagnostics"]["summary"] = candidate.diagnostics.Summary().ToUTF8().data();
+    value["diagnostics"]["context"] = candidate.diagnostics.context.ToUTF8().data();
+    value["diagnostics"]["technical"] = candidate.diagnostics.technical.ToUTF8().data();
+    value["diagnostics"]["items"] = Json::Value(Json::arrayValue);
+    for (const auto& diagnostic : candidate.diagnostics.items) {
+      Json::Value item;
+      item["code"] = diagnostic.code;
+      item["severity"] = diagnostic.severity == weather_routing::DiagnosticSeverity::Error
+          ? "error" : diagnostic.severity == weather_routing::DiagnosticSeverity::Warning ? "warning" : "notice";
+      item["title"] = diagnostic.title.ToUTF8().data();
+      item["detail"] = diagnostic.detail.ToUTF8().data();
+      item["action"] = diagnostic.action.ToUTF8().data();
+      item["engine"] = diagnostic.engine.ToUTF8().data();
+      item["occurrences"] = static_cast<Json::UInt64>(diagnostic.occurrences);
+      value["diagnostics"]["items"].append(item);
+    }
+    if (!candidate.coverageNotes.IsEmpty())
+      value["coverageNotes"] = candidate.coverageNotes.ToUTF8().data();
     if (!candidate.failureReason.IsEmpty())
       value["failureReason"] = candidate.failureReason.ToUTF8().data();
     value["offsetMinutes"] = candidate.offsetMinutes;

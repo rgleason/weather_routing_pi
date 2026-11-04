@@ -35,6 +35,7 @@ public:
   wxString SaveXML(wxString filename);
 
   std::vector<Polar> Polars;
+  wxString loadWarnings;
 
   /**
    * Determines if a specific polar represents the fastest sail configuration

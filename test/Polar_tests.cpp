@@ -248,8 +248,11 @@ TEST_F(PolarTest, GetVMGTrueWindBasic) {
 
 TEST_F(PolarTest, GetVMGApparentWindBasic) {
   SailingVMG vmg = m_polar.GetVMGApparentWind(10);
-  EXPECT_NEAR(vmg.values[SailingVMG::STARBOARD_UPWIND], 45.873, 1e-3);
-  EXPECT_NEAR(vmg.values[SailingVMG::PORT_UPWIND], 314.127, 1e-3);
+  // This table's low-wind upwind VMG peak is at the 45-degree row. The old
+  // whole-degree lookup extrapolated its preceding interval up to 46 degrees
+  // and moved the apparent-wind result to an artificial 45.873-degree peak.
+  EXPECT_NEAR(vmg.values[SailingVMG::STARBOARD_UPWIND], 45, 2e-3);
+  EXPECT_NEAR(vmg.values[SailingVMG::PORT_UPWIND], 315, 2e-3);
   EXPECT_NEAR(vmg.values[SailingVMG::STARBOARD_DOWNWIND], 169.359, 1e-3);
   EXPECT_NEAR(vmg.values[SailingVMG::PORT_DOWNWIND], 190.640, 1e-3);
 }

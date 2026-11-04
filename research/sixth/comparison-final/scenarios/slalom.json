@@ -1,0 +1,26 @@
+{
+  "name": "slalom",
+  "start": [
+    30,
+    -140
+  ],
+  "east_nm": 20,
+  "north_nm": 0,
+  "wind_from": 0,
+  "max_hours": 48,
+  "cache": true,
+  "rectangles_nm": [
+    [
+      6,
+      -12,
+      7,
+      4
+    ],
+    [
+      13,
+      -4,
+      14,
+      12
+    ]
+  ]
+}

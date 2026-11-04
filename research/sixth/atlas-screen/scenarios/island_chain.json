@@ -1,0 +1,32 @@
+{
+  "name": "island_chain",
+  "start": [
+    30,
+    -140
+  ],
+  "east_nm": 45,
+  "north_nm": 0,
+  "wind_from": 0,
+  "max_hours": 48,
+  "cache": true,
+  "rectangles_nm": [
+    [
+      7,
+      -8,
+      10,
+      3
+    ],
+    [
+      18,
+      -3,
+      21,
+      8
+    ],
+    [
+      31,
+      -7,
+      33,
+      2
+    ]
+  ]
+}

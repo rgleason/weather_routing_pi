@@ -16,7 +16,8 @@ mkdir -p "$test_build" "$package_build" "$stage_dir" \
 
 identity_argument=-DWEATHER_ROUTING_XWEATHER_IDENTITY=OFF
 if [[ "${WEATHER_ROUTING_CI_XWEATHER:-false}" == "true" ||
-      "${CIRCLE_PROJECT_REPONAME:-}" == "xweather_routing_pi" ]]; then
+      ( -z "${WEATHER_ROUTING_CI_XWEATHER:-}" &&
+        "${CIRCLE_PROJECT_REPONAME:-}" == "xweather_routing_pi" ) ]]; then
   identity_argument=-DWEATHER_ROUTING_XWEATHER_IDENTITY=ON
 fi
 
@@ -57,3 +58,9 @@ find "$package_build" -maxdepth 1 -type f \
   \( -name '*.tar.gz' -o -name '*.xml' \) \
   -exec cp -f '{}' "$package_dir/" \;
 sha256sum "$package_dir"/* >"$package_dir/SHA256SUMS"
+
+archives=("$package_dir"/*weather_routing_pi-*.tar.gz)
+test "${#archives[@]}" -eq 1
+bash "$source_dir/ci/test-linux-installed-host.sh" \
+  "$source_dir" "$work_dir" "${archives[0]}" "$artifact_dir/normal-runtime" \
+  2>&1 | tee "$log_dir/normal-installed-host.log"

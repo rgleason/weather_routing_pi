@@ -1,0 +1,18 @@
+{
+  "binary_sha256": "37da0fd3284c3345581ade88e093ad101baea7449073810d777fb1eb4f685309",
+  "command": [
+    "research/sixth/profile_cases.py",
+    "--binary",
+    "build-atlas/tests/atlas_benchmark",
+    "--cases",
+    "research/sixth/comparison-final/scenarios",
+    "--output",
+    "research/sixth/profiles-final",
+    "--cpu",
+    "4"
+  ],
+  "cpu": 4,
+  "provider_timers_add_overhead": true,
+  "note": "Field time is included in preprocessing time; provider timers overlap phases",
+  "metadata_correction": "Timer label corrected after source audit; measured values unchanged"
+}

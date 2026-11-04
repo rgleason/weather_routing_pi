@@ -1,0 +1,12 @@
+[
+  {
+    "engine": "atlas",
+    "cases": 58,
+    "valid": 52,
+    "median_seconds": 0.2056982625,
+    "total_seconds": 22.81321265,
+    "median_ratio_to_best": 1.0,
+    "worst_ratio_to_best": 1.0,
+    "median_rss_kib": 26064.0
+  }
+]

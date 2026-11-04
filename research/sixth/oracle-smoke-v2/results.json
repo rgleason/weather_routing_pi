@@ -1,0 +1,3791 @@
+[
+  {
+    "index": 0,
+    "kind": "geodesic",
+    "scenario": {
+      "name": "oracle_0000",
+      "start": [
+        0,
+        -107.99490090732763
+      ],
+      "east_nm": 23.210202418938827,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 0,
+      "cache": false,
+      "isotropic": true
+    },
+    "reference_seconds": 13926.121451363297,
+    "ratio": 0.9999912788809346,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 13926,
+      "cache_state": "cold",
+      "case": "oracle_0000",
+      "complete": true,
+      "cpu_seconds": 0.000308,
+      "distance_nm": 23.210000000010453,
+      "engine": "atlas",
+      "generated": 1,
+      "incumbents": [
+        13926
+      ],
+      "independent_failure": "",
+      "land_queries": 148,
+      "land_queries_including_audit": 198,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 309,
+      "preparation_seconds": 8.5615e-05,
+      "profile": {
+        "arcs": 0,
+        "edge_attempts": 1,
+        "first_valid_ms": 0.295759,
+        "geometry_queries": 148,
+        "integrations": 1,
+        "managed_bytes": 768,
+        "pilot_legs": 0,
+        "polar_queries": 309,
+        "preprocessing_ms": 0.0,
+        "queue_peak": 0,
+        "reconstruction_ms": 0.087667,
+        "search_ms": 0.126243,
+        "validation_failures": 0,
+        "validation_ms": 0.083422,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 0,
+        "weather_queries": 286
+      },
+      "repeat": 0,
+      "retained": 2,
+      "seconds": 0.000308832,
+      "solver_weather_samples": 191,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 90.0,
+          "lat": 2.367074220898292e-17,
+          "lon": -107.6083282575378,
+          "seconds": 13926,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 96,
+      "validation_samples": 94,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 286,
+      "weather_queries_including_audit": 380
+    }
+  },
+  {
+    "index": 1,
+    "kind": "upwind_envelope",
+    "scenario": {
+      "name": "oracle_0001",
+      "start": [
+        0,
+        -112.94148898489918
+      ],
+      "east_nm": 0,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 0,
+      "cache": false,
+      "north_nm": 44.981905382103484
+    },
+    "reference_seconds": 50490.9662224861,
+    "ratio": 1.0002779463053264,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 50505,
+      "cache_state": "cold",
+      "case": "oracle_0001",
+      "complete": true,
+      "cpu_seconds": 0.001513,
+      "distance_nm": 69.97895644453754,
+      "engine": "atlas",
+      "generated": 63,
+      "incumbents": [
+        50505
+      ],
+      "independent_failure": "",
+      "land_queries": 711,
+      "land_queries_including_audit": 884,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 1636,
+      "preparation_seconds": 8.0733e-05,
+      "profile": {
+        "arcs": 0,
+        "edge_attempts": 63,
+        "first_valid_ms": 1.504881,
+        "geometry_queries": 711,
+        "integrations": 4,
+        "managed_bytes": 5232,
+        "pilot_legs": 0,
+        "polar_queries": 1636,
+        "preprocessing_ms": 0.0,
+        "queue_peak": 0,
+        "reconstruction_ms": 0.330283,
+        "search_ms": 0.8645230000000002,
+        "validation_failures": 0,
+        "validation_ms": 0.311944,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 0,
+        "weather_queries": 1416
+      },
+      "repeat": 0,
+      "retained": 27,
+      "seconds": 0.001514806,
+      "solver_weather_samples": 1077,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 49.99999999999859,
+          "lat": 0.37460260454114214,
+          "lon": -112.49505166767533,
+          "seconds": 25193,
+          "wait": false
+        },
+        {
+          "heading": 310.00030039913196,
+          "lat": 0.7491902944154982,
+          "lon": -112.94148581450234,
+          "seconds": 50505,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 340,
+      "validation_samples": 336,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 1416,
+      "weather_queries_including_audit": 1752
+    }
+  },
+  {
+    "index": 2,
+    "kind": "timed_gate",
+    "scenario": {
+      "name": "oracle_0002",
+      "start": [
+        0,
+        21.695902129191637
+      ],
+      "east_nm": 48.04949792810235,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 200,
+      "cache": false,
+      "gate": true,
+      "gate_east_nm": 24.024748964051174,
+      "gate_opens_hours": 7.207424689215353
+    },
+    "reference_seconds": 40361.57825960598,
+    "ratio": 1.0001838813226351,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 40369,
+      "cache_state": "cold",
+      "case": "oracle_0002",
+      "complete": true,
+      "cpu_seconds": 0.188047,
+      "distance_nm": 48.05000000003356,
+      "engine": "atlas",
+      "generated": 530,
+      "incumbents": [
+        40522,
+        40409,
+        40381,
+        40374,
+        40370,
+        40369
+      ],
+      "independent_failure": "",
+      "land_queries": 22949,
+      "land_queries_including_audit": 23052,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 166654,
+      "preparation_seconds": 7.5778e-05,
+      "profile": {
+        "arcs": 104416,
+        "edge_attempts": 530,
+        "first_valid_ms": 7.899777,
+        "geometry_queries": 22949,
+        "integrations": 483,
+        "managed_bytes": 6581760,
+        "pilot_legs": 0,
+        "polar_queries": 166654,
+        "preprocessing_ms": 147.65664,
+        "queue_peak": 2705,
+        "reconstruction_ms": 1.276596,
+        "search_ms": 37.920931,
+        "validation_failures": 0,
+        "validation_ms": 1.34964,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 2048,
+        "weather_queries": 41095
+      },
+      "repeat": 0,
+      "retained": 55,
+      "seconds": 0.188217,
+      "solver_weather_samples": 37061,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 90.0,
+          "lat": 2.4490022266059003e-17,
+          "lon": 22.095854645217287,
+          "seconds": 14408,
+          "wait": false
+        },
+        {
+          "heading": 90.0,
+          "lat": 2.4490022266059003e-17,
+          "lon": 22.095854645217287,
+          "seconds": 25947,
+          "wait": true
+        },
+        {
+          "heading": 90.0,
+          "lat": 4.900382864236225e-17,
+          "lon": 22.496195788063062,
+          "seconds": 40369,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 700,
+      "validation_samples": 235,
+      "waiting_seconds": 11539,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 41095,
+      "weather_queries_including_audit": 41330
+    }
+  },
+  {
+    "index": 3,
+    "kind": "visibility",
+    "scenario": {
+      "name": "oracle_0003",
+      "start": [
+        0,
+        11.722657822147767
+      ],
+      "east_nm": 37.68111745610999,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 200,
+      "cache": false,
+      "rectangles_nm": [
+        [
+          15.072446982443996,
+          -0.6908438930312073,
+          22.608670473665992,
+          0.6908438930312073
+        ]
+      ],
+      "isotropic": true
+    },
+    "reference_seconds": 22627.659412719666,
+    "ratio": 1.0016060250252796,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 22664,
+      "cache_state": "cold",
+      "case": "oracle_0003",
+      "complete": true,
+      "cpu_seconds": 0.321302,
+      "distance_nm": 37.77333333333347,
+      "engine": "atlas",
+      "generated": 425,
+      "incumbents": [
+        22664
+      ],
+      "independent_failure": "",
+      "land_queries": 92994,
+      "land_queries_including_audit": 93075,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 216552,
+      "preparation_seconds": 8.4664e-05,
+      "profile": {
+        "arcs": 178040,
+        "edge_attempts": 425,
+        "first_valid_ms": 1.974472,
+        "geometry_queries": 92994,
+        "integrations": 425,
+        "managed_bytes": 7872512,
+        "pilot_legs": 0,
+        "polar_queries": 216552,
+        "preprocessing_ms": 314.96025699999996,
+        "queue_peak": 2245,
+        "reconstruction_ms": 0.29933,
+        "search_ms": 6.021920000000052,
+        "validation_failures": 0,
+        "validation_ms": 0.283939,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 2396,
+        "weather_queries": 9780
+      },
+      "repeat": 0,
+      "retained": 17,
+      "seconds": 0.32157727,
+      "solver_weather_samples": 5124,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 85.99999999999987,
+          "lat": 0.021942986354769062,
+          "lon": 12.036457215832229,
+          "seconds": 11332,
+          "wait": false
+        },
+        {
+          "heading": 94.00000209600823,
+          "lat": -2.0151481772800046e-08,
+          "lon": 12.350256608107657,
+          "seconds": 22664,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 234,
+      "validation_samples": 152,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 9780,
+      "weather_queries_including_audit": 9932
+    }
+  },
+  {
+    "index": 4,
+    "kind": "geodesic",
+    "scenario": {
+      "name": "oracle_0004",
+      "start": [
+        0,
+        113.09697499538277
+      ],
+      "east_nm": 13.781691619448239,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 0,
+      "cache": false,
+      "isotropic": true
+    },
+    "reference_seconds": 8269.014971668943,
+    "ratio": 0.9999981894253434,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 8269,
+      "cache_state": "cold",
+      "case": "oracle_0004",
+      "complete": true,
+      "cpu_seconds": 0.000367,
+      "distance_nm": 13.781666666677355,
+      "engine": "atlas",
+      "generated": 1,
+      "incumbents": [
+        8269
+      ],
+      "independent_failure": "",
+      "land_queries": 91,
+      "land_queries_including_audit": 122,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 195,
+      "preparation_seconds": 0.000105707,
+      "profile": {
+        "arcs": 0,
+        "edge_attempts": 1,
+        "first_valid_ms": 0.352085,
+        "geometry_queries": 91,
+        "integrations": 1,
+        "managed_bytes": 768,
+        "pilot_legs": 0,
+        "polar_queries": 195,
+        "preprocessing_ms": 0.0,
+        "queue_peak": 0,
+        "reconstruction_ms": 0.103834,
+        "search_ms": 0.15163400000000005,
+        "validation_failures": 0,
+        "validation_ms": 0.098896,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 0,
+        "weather_queries": 172
+      },
+      "repeat": 0,
+      "retained": 2,
+      "seconds": 0.000368043,
+      "solver_weather_samples": 115,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 90.0,
+          "lat": 1.405524822768652e-17,
+          "lon": 113.32651465078368,
+          "seconds": 8269,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 58,
+      "validation_samples": 56,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 172,
+      "weather_queries_including_audit": 228
+    }
+  },
+  {
+    "index": 5,
+    "kind": "upwind_envelope",
+    "scenario": {
+      "name": "oracle_0005",
+      "start": [
+        0,
+        -47.62433980712959
+      ],
+      "east_nm": 0,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 0,
+      "cache": false,
+      "north_nm": 49.81874676758715
+    },
+    "reference_seconds": 55907.28578436607,
+    "ratio": 1.0002810763465524,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 55923,
+      "cache_state": "cold",
+      "case": "oracle_0005",
+      "complete": true,
+      "cpu_seconds": 0.003085,
+      "distance_nm": 77.5037722672406,
+      "engine": "atlas",
+      "generated": 63,
+      "incumbents": [
+        55923
+      ],
+      "independent_failure": "",
+      "land_queries": 789,
+      "land_queries_including_audit": 982,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 1792,
+      "preparation_seconds": 0.000113041,
+      "profile": {
+        "arcs": 0,
+        "edge_attempts": 63,
+        "first_valid_ms": 3.077714,
+        "geometry_queries": 789,
+        "integrations": 4,
+        "managed_bytes": 5232,
+        "pilot_legs": 0,
+        "polar_queries": 1792,
+        "preprocessing_ms": 0.0,
+        "queue_peak": 0,
+        "reconstruction_ms": 0.6848,
+        "search_ms": 1.7624810000000002,
+        "validation_failures": 0,
+        "validation_ms": 0.633168,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 0,
+        "weather_queries": 1572
+      },
+      "repeat": 0,
+      "retained": 27,
+      "seconds": 0.003094003,
+      "solver_weather_samples": 1193,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 49.999999999999886,
+          "lat": 0.41488356559554285,
+          "lon": -47.12989633838663,
+          "seconds": 27902,
+          "wait": false
+        },
+        {
+          "heading": 310.0005088638222,
+          "lat": 0.8297522646219322,
+          "lon": -47.62433943389124,
+          "seconds": 55923,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 380,
+      "validation_samples": 376,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 1572,
+      "weather_queries_including_audit": 1948
+    }
+  },
+  {
+    "index": 6,
+    "kind": "timed_gate",
+    "scenario": {
+      "name": "oracle_0006",
+      "start": [
+        0,
+        -164.61186396622745
+      ],
+      "east_nm": 8.6362251292196,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 200,
+      "cache": false,
+      "gate": true,
+      "gate_east_nm": 4.3181125646098,
+      "gate_opens_hours": 1.29543376938294
+    },
+    "reference_seconds": 7254.429108544465,
+    "ratio": 1.0002165423952776,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 7256,
+      "cache_state": "cold",
+      "case": "oracle_0006",
+      "complete": true,
+      "cpu_seconds": 0.117543,
+      "distance_nm": 8.63666666667126,
+      "engine": "atlas",
+      "generated": 488,
+      "incumbents": [
+        10582,
+        7992,
+        7542,
+        7317,
+        7260,
+        7256
+      ],
+      "independent_failure": "",
+      "land_queries": 11840,
+      "land_queries_including_audit": 11863,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 112532,
+      "preparation_seconds": 0.000125355,
+      "profile": {
+        "arcs": 82663,
+        "edge_attempts": 488,
+        "first_valid_ms": 0.738442,
+        "geometry_queries": 11840,
+        "integrations": 463,
+        "managed_bytes": 5160704,
+        "pilot_legs": 0,
+        "polar_queries": 112532,
+        "preprocessing_ms": 105.950563,
+        "queue_peak": 2230,
+        "reconstruction_ms": 0.86391,
+        "search_ms": 9.921335999999997,
+        "validation_failures": 0,
+        "validation_ms": 0.908998,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 1614,
+        "weather_queries": 9669
+      },
+      "repeat": 0,
+      "retained": 36,
+      "seconds": 0.117660773,
+      "solver_weather_samples": 6938,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 90.0,
+          "lat": 4.4023577868706484e-18,
+          "lon": -164.53996800450435,
+          "seconds": 2590,
+          "wait": false
+        },
+        {
+          "heading": 90.0,
+          "lat": 4.4023577868706484e-18,
+          "lon": -164.53996800450435,
+          "seconds": 4664,
+          "wait": true
+        },
+        {
+          "heading": 90.0,
+          "lat": 8.808114686530156e-18,
+          "lon": -164.4680165246641,
+          "seconds": 7256,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 234,
+      "validation_samples": 43,
+      "waiting_seconds": 2074,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 9669,
+      "weather_queries_including_audit": 9712
+    }
+  },
+  {
+    "index": 7,
+    "kind": "visibility",
+    "scenario": {
+      "name": "oracle_0007",
+      "start": [
+        0,
+        -2.040464756322592
+      ],
+      "east_nm": 38.291168804962986,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 200,
+      "cache": false,
+      "rectangles_nm": [
+        [
+          15.316467521985196,
+          -1.8402130778007681,
+          22.97470128297779,
+          1.8402130778007681
+        ]
+      ],
+      "isotropic": true
+    },
+    "reference_seconds": 23106.882731960774,
+    "ratio": 1.0200423948747814,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 23570,
+      "cache_state": "cold",
+      "case": "oracle_0007",
+      "complete": true,
+      "cpu_seconds": 0.372164,
+      "distance_nm": 39.283333333304725,
+      "engine": "atlas",
+      "generated": 425,
+      "incumbents": [
+        23595,
+        23570
+      ],
+      "independent_failure": "",
+      "land_queries": 99520,
+      "land_queries_including_audit": 99604,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 237066,
+      "preparation_seconds": 8.4833e-05,
+      "profile": {
+        "arcs": 195548,
+        "edge_attempts": 425,
+        "first_valid_ms": 189.728073,
+        "geometry_queries": 99520,
+        "integrations": 425,
+        "managed_bytes": 7803264,
+        "pilot_legs": 0,
+        "polar_queries": 237066,
+        "preprocessing_ms": 366.089353,
+        "queue_peak": 4798,
+        "reconstruction_ms": 0.32102699999999995,
+        "search_ms": 5.778358999999957,
+        "validation_failures": 0,
+        "validation_ms": 0.30947,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 2395,
+        "weather_queries": 9619
+      },
+      "repeat": 0,
+      "retained": 84,
+      "seconds": 0.372510305,
+      "solver_weather_samples": 4504,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 82.40535663140868,
+          "lat": 0.06377736491742968,
+          "lon": -1.5621342753692602,
+          "seconds": 17384,
+          "wait": false
+        },
+        {
+          "heading": 111.80356207583675,
+          "lat": -2.9230591227977256e-06,
+          "lon": -1.402700911033918,
+          "seconds": 23570,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 244,
+      "validation_samples": 158,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 9619,
+      "weather_queries_including_audit": 9777
+    }
+  },
+  {
+    "index": 8,
+    "kind": "geodesic",
+    "scenario": {
+      "name": "oracle_0008",
+      "start": [
+        0,
+        -67.83555932489277
+      ],
+      "east_nm": 46.362400756578225,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 0,
+      "cache": false,
+      "isotropic": true
+    },
+    "reference_seconds": 27817.440453946936,
+    "ratio": 0.9999841662662076,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 27817,
+      "cache_state": "cold",
+      "case": "oracle_0008",
+      "complete": true,
+      "cpu_seconds": 0.000542,
+      "distance_nm": 46.36166666670192,
+      "engine": "atlas",
+      "generated": 1,
+      "incumbents": [
+        27817
+      ],
+      "independent_failure": "",
+      "land_queries": 286,
+      "land_queries_including_audit": 382,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 585,
+      "preparation_seconds": 7.8812e-05,
+      "profile": {
+        "arcs": 0,
+        "edge_attempts": 1,
+        "first_valid_ms": 0.532991,
+        "geometry_queries": 286,
+        "integrations": 1,
+        "managed_bytes": 768,
+        "pilot_legs": 0,
+        "polar_queries": 585,
+        "preprocessing_ms": 0.0,
+        "queue_peak": 0,
+        "reconstruction_ms": 0.168966,
+        "search_ms": 0.205022,
+        "validation_failures": 0,
+        "validation_ms": 0.160413,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 0,
+        "weather_queries": 562
+      },
+      "repeat": 0,
+      "retained": 2,
+      "seconds": 0.000543562,
+      "solver_weather_samples": 375,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 90.0,
+          "lat": 4.728198152455841e-17,
+          "lon": -67.06338559236319,
+          "seconds": 27817,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 188,
+      "validation_samples": 186,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 562,
+      "weather_queries_including_audit": 748
+    }
+  },
+  {
+    "index": 9,
+    "kind": "upwind_envelope",
+    "scenario": {
+      "name": "oracle_0009",
+      "start": [
+        0,
+        -79.69550709537428
+      ],
+      "east_nm": 0,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 0,
+      "cache": false,
+      "north_nm": 10.813471226564067
+    },
+    "reference_seconds": 12228.980028173562,
+    "ratio": 1.0003287250299842,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 12233,
+      "cache_state": "cold",
+      "case": "oracle_0009",
+      "complete": true,
+      "cpu_seconds": 0.000545,
+      "distance_nm": 16.82328690225165,
+      "engine": "atlas",
+      "generated": 63,
+      "incumbents": [
+        12233
+      ],
+      "independent_failure": "",
+      "land_queries": 205,
+      "land_queries_including_audit": 252,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 624,
+      "preparation_seconds": 7.5966e-05,
+      "profile": {
+        "arcs": 0,
+        "edge_attempts": 63,
+        "first_valid_ms": 0.536033,
+        "geometry_queries": 205,
+        "integrations": 4,
+        "managed_bytes": 5232,
+        "pilot_legs": 0,
+        "polar_queries": 624,
+        "preprocessing_ms": 0.0,
+        "queue_peak": 0,
+        "reconstruction_ms": 0.084028,
+        "search_ms": 0.37364300000000006,
+        "validation_failures": 0,
+        "validation_ms": 0.080125,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 0,
+        "weather_queries": 404
+      },
+      "repeat": 0,
+      "retained": 27,
+      "seconds": 0.000545855,
+      "solver_weather_samples": 317,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 50.00000000000193,
+          "lat": 0.09004857245283365,
+          "lon": -79.58819133376967,
+          "seconds": 6056,
+          "wait": false
+        },
+        {
+          "heading": 310.00192694715685,
+          "lat": 0.18011214510832071,
+          "lon": -79.69551792215962,
+          "seconds": 12233,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 88,
+      "validation_samples": 84,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 404,
+      "weather_queries_including_audit": 488
+    }
+  },
+  {
+    "index": 10,
+    "kind": "timed_gate",
+    "scenario": {
+      "name": "oracle_0010",
+      "start": [
+        0,
+        144.2674949906381
+      ],
+      "east_nm": 26.35790519132765,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 200,
+      "cache": false,
+      "gate": true,
+      "gate_east_nm": 13.178952595663825,
+      "gate_opens_hours": 3.953685778699148
+    },
+    "reference_seconds": 22140.640360715228,
+    "ratio": 1.0000614092123181,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 22142,
+      "cache_state": "cold",
+      "case": "oracle_0010",
+      "complete": true,
+      "cpu_seconds": 0.173019,
+      "distance_nm": 26.35833333335892,
+      "engine": "atlas",
+      "generated": 521,
+      "incumbents": [
+        30215,
+        22308,
+        22195,
+        22167,
+        22153,
+        22146,
+        22142
+      ],
+      "independent_failure": "",
+      "land_queries": 18807,
+      "land_queries_including_audit": 18866,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 147757,
+      "preparation_seconds": 0.000110649,
+      "profile": {
+        "arcs": 100664,
+        "edge_attempts": 521,
+        "first_valid_ms": 4.071079,
+        "geometry_queries": 18807,
+        "integrations": 479,
+        "managed_bytes": 6421760,
+        "pilot_legs": 0,
+        "polar_queries": 147757,
+        "preprocessing_ms": 141.964578,
+        "queue_peak": 2669,
+        "reconstruction_ms": 2.6432420000000003,
+        "search_ms": 25.695772000000012,
+        "validation_failures": 0,
+        "validation_ms": 2.9441789999999997,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 2016,
+        "weather_queries": 26420
+      },
+      "repeat": 0,
+      "retained": 57,
+      "seconds": 0.17326387,
+      "solver_weather_samples": 21602,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 90.0,
+          "lat": 1.3439938133595661e-17,
+          "lon": 144.4869858668331,
+          "seconds": 7907,
+          "wait": false
+        },
+        {
+          "heading": 90.0,
+          "lat": 1.3439938133595661e-17,
+          "lon": 144.4869858668331,
+          "seconds": 14234,
+          "wait": true
+        },
+        {
+          "heading": 90.0,
+          "lat": 2.6881572309540568e-17,
+          "lon": 144.70650450208643,
+          "seconds": 22142,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 878,
+      "validation_samples": 130,
+      "waiting_seconds": 6327,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 26420,
+      "weather_queries_including_audit": 26550
+    }
+  },
+  {
+    "index": 11,
+    "kind": "visibility",
+    "scenario": {
+      "name": "oracle_0011",
+      "start": [
+        0,
+        -87.87034880802727
+      ],
+      "east_nm": 7.92467616775244,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 200,
+      "cache": false,
+      "rectangles_nm": [
+        [
+          3.169870467100976,
+          -0.6384451728324143,
+          4.754805700651464,
+          0.6384451728324143
+        ]
+      ],
+      "isotropic": true
+    },
+    "reference_seconds": 4831.192716519209,
+    "ratio": 1.0047208391010374,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 4854,
+      "cache_state": "cold",
+      "case": "oracle_0011",
+      "complete": true,
+      "cpu_seconds": 0.196662,
+      "distance_nm": 8.089999999996241,
+      "engine": "atlas",
+      "generated": 430,
+      "incumbents": [
+        4854
+      ],
+      "independent_failure": "",
+      "land_queries": 62055,
+      "land_queries_including_audit": 62090,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 150006,
+      "preparation_seconds": 8.3618e-05,
+      "profile": {
+        "arcs": 121940,
+        "edge_attempts": 430,
+        "first_valid_ms": 52.20955,
+        "geometry_queries": 62055,
+        "integrations": 430,
+        "managed_bytes": 6494080,
+        "pilot_legs": 0,
+        "polar_queries": 150006,
+        "preprocessing_ms": 192.985656,
+        "queue_peak": 3120,
+        "reconstruction_ms": 0.059918,
+        "search_ms": 3.7321789999999804,
+        "validation_failures": 0,
+        "validation_ms": 0.049882,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 2035,
+        "weather_queries": 5395
+      },
+      "repeat": 0,
+      "retained": 81,
+      "seconds": 0.196838422,
+      "solver_weather_samples": 2321,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 102.99461679191876,
+          "lat": -0.01320159314423841,
+          "lon": -87.81314190189467,
+          "seconds": 2115,
+          "wait": false
+        },
+        {
+          "heading": 81.81873836755942,
+          "lat": -0.012510297767273644,
+          "lon": -87.80833350557185,
+          "seconds": 2290,
+          "wait": false
+        },
+        {
+          "heading": 81.8699803641153,
+          "lat": -0.011823303017161968,
+          "lon": -87.80352449293017,
+          "seconds": 2465,
+          "wait": false
+        },
+        {
+          "heading": 81.86989523005465,
+          "lat": -0.011136301123905087,
+          "lon": -87.79871548132084,
+          "seconds": 2640,
+          "wait": false
+        },
+        {
+          "heading": 90.00363589555491,
+          "lat": -0.011136563564946795,
+          "lon": -87.79457938152258,
+          "seconds": 2789,
+          "wait": false
+        },
+        {
+          "heading": 81.84769007401525,
+          "lat": -0.010447697978510825,
+          "lon": -87.78977063653498,
+          "seconds": 2964,
+          "wait": false
+        },
+        {
+          "heading": 78.5127804941911,
+          "lat": 5.972642890810296e-07,
+          "lon": -87.73835692646875,
+          "seconds": 4854,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 54,
+      "validation_samples": 40,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 5395,
+      "weather_queries_including_audit": 5435
+    }
+  },
+  {
+    "index": 12,
+    "kind": "geodesic",
+    "scenario": {
+      "name": "oracle_0012",
+      "start": [
+        0,
+        79.6772244967849
+      ],
+      "east_nm": 16.764456792349023,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 0,
+      "cache": false,
+      "isotropic": true
+    },
+    "reference_seconds": 10058.674075409413,
+    "ratio": 1.000032402341317,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 10059,
+      "cache_state": "cold",
+      "case": "oracle_0012",
+      "complete": true,
+      "cpu_seconds": 0.00023,
+      "distance_nm": 16.765000000011604,
+      "engine": "atlas",
+      "generated": 1,
+      "incumbents": [
+        10059
+      ],
+      "independent_failure": "",
+      "land_queries": 109,
+      "land_queries_including_audit": 146,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 231,
+      "preparation_seconds": 7.9612e-05,
+      "profile": {
+        "arcs": 0,
+        "edge_attempts": 1,
+        "first_valid_ms": 0.220109,
+        "geometry_queries": 109,
+        "integrations": 1,
+        "managed_bytes": 768,
+        "pilot_legs": 0,
+        "polar_queries": 231,
+        "preprocessing_ms": 0.0,
+        "queue_peak": 0,
+        "reconstruction_ms": 0.06439,
+        "search_ms": 0.09672599999999999,
+        "validation_failures": 0,
+        "validation_ms": 0.061074,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 0,
+        "weather_queries": 208
+      },
+      "repeat": 0,
+      "retained": 2,
+      "seconds": 0.000230837,
+      "solver_weather_samples": 139,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 90.0,
+          "lat": 1.7097803540108242e-17,
+          "lon": 79.95645286704462,
+          "seconds": 10059,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 70,
+      "validation_samples": 68,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 208,
+      "weather_queries_including_audit": 276
+    }
+  },
+  {
+    "index": 13,
+    "kind": "upwind_envelope",
+    "scenario": {
+      "name": "oracle_0013",
+      "start": [
+        0,
+        -28.158059995481807
+      ],
+      "east_nm": 0,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 0,
+      "cache": false,
+      "north_nm": 19.88280918051995
+    },
+    "reference_seconds": 22384.870754865144,
+    "ratio": 1.0002738119510262,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 22391,
+      "cache_state": "cold",
+      "case": "oracle_0013",
+      "complete": true,
+      "cpu_seconds": 0.001489,
+      "distance_nm": 30.932091259794653,
+      "engine": "atlas",
+      "generated": 63,
+      "incumbents": [
+        22391
+      ],
+      "independent_failure": "",
+      "land_queries": 341,
+      "land_queries_including_audit": 422,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 896,
+      "preparation_seconds": 0.000134982,
+      "profile": {
+        "arcs": 0,
+        "edge_attempts": 63,
+        "first_valid_ms": 1.474394,
+        "geometry_queries": 341,
+        "integrations": 4,
+        "managed_bytes": 5232,
+        "pilot_legs": 0,
+        "polar_queries": 896,
+        "preprocessing_ms": 0.0,
+        "queue_peak": 0,
+        "reconstruction_ms": 0.282501,
+        "search_ms": 0.9349040000000001,
+        "validation_failures": 0,
+        "validation_ms": 0.2593,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 0,
+        "weather_queries": 676
+      },
+      "repeat": 0,
+      "retained": 27,
+      "seconds": 0.001489952,
+      "solver_weather_samples": 521,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 49.999999999998856,
+          "lat": 0.16558468726808576,
+          "lon": -27.960723548383356,
+          "seconds": 11136,
+          "wait": false
+        },
+        {
+          "heading": 309.99810135309326,
+          "lat": 0.33114951180922786,
+          "lon": -28.158051304706248,
+          "seconds": 22391,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 156,
+      "validation_samples": 152,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 676,
+      "weather_queries_including_audit": 828
+    }
+  },
+  {
+    "index": 14,
+    "kind": "timed_gate",
+    "scenario": {
+      "name": "oracle_0014",
+      "start": [
+        0,
+        64.97501951605574
+      ],
+      "east_nm": 24.419362903991793,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 200,
+      "cache": false,
+      "gate": true,
+      "gate_east_nm": 12.209681451995896,
+      "gate_opens_hours": 3.6629044355987688
+    },
+    "reference_seconds": 20512.264839353105,
+    "ratio": 1.0002308453349242,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 20517,
+      "cache_state": "cold",
+      "case": "oracle_0014",
+      "complete": true,
+      "cpu_seconds": 0.17463,
+      "distance_nm": 24.420000000018568,
+      "engine": "atlas",
+      "generated": 519,
+      "incumbents": [
+        28152,
+        20830,
+        20605,
+        20548,
+        20520,
+        20518,
+        20517
+      ],
+      "independent_failure": "",
+      "land_queries": 18981,
+      "land_queries_including_audit": 19036,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 150381,
+      "preparation_seconds": 0.000119834,
+      "profile": {
+        "arcs": 103813,
+        "edge_attempts": 519,
+        "first_valid_ms": 3.568485,
+        "geometry_queries": 18981,
+        "integrations": 478,
+        "managed_bytes": 6915456,
+        "pilot_legs": 0,
+        "polar_queries": 150381,
+        "preprocessing_ms": 145.97260799999998,
+        "queue_peak": 2806,
+        "reconstruction_ms": 2.4702979999999997,
+        "search_ms": 23.577658000000007,
+        "validation_failures": 0,
+        "validation_ms": 2.790996,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 2101,
+        "weather_queries": 25088
+      },
+      "repeat": 0,
+      "retained": 59,
+      "seconds": 0.174826931,
+      "solver_weather_samples": 20173,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 90.0,
+          "lat": 1.2445583412054226e-17,
+          "lon": 65.17827134298108,
+          "seconds": 7322,
+          "wait": false
+        },
+        {
+          "heading": 90.0,
+          "lat": 1.2445583412054226e-17,
+          "lon": 65.17827134298108,
+          "seconds": 13187,
+          "wait": true
+        },
+        {
+          "heading": 90.0,
+          "lat": 2.490476165836981e-17,
+          "lon": 65.38174524237502,
+          "seconds": 20517,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 864,
+      "validation_samples": 120,
+      "waiting_seconds": 5865,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 25088,
+      "weather_queries_including_audit": 25208
+    }
+  },
+  {
+    "index": 15,
+    "kind": "visibility",
+    "scenario": {
+      "name": "oracle_0015",
+      "start": [
+        0,
+        75.16953680928361
+      ],
+      "east_nm": 45.559092066303336,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 200,
+      "cache": false,
+      "rectangles_nm": [
+        [
+          18.223636826521336,
+          -2.5666455312483443,
+          27.335455239782,
+          2.5666455312483443
+        ]
+      ],
+      "isotropic": true
+    },
+    "reference_seconds": 27551.284583240456,
+    "ratio": 1.0146895298306975,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 27956,
+      "cache_state": "cold",
+      "case": "oracle_0015",
+      "complete": true,
+      "cpu_seconds": 0.366218,
+      "distance_nm": 46.59333333327975,
+      "engine": "atlas",
+      "generated": 425,
+      "incumbents": [
+        27956
+      ],
+      "independent_failure": "",
+      "land_queries": 100222,
+      "land_queries_including_audit": 100321,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 236530,
+      "preparation_seconds": 0.00012627,
+      "profile": {
+        "arcs": 194747,
+        "edge_attempts": 425,
+        "first_valid_ms": 183.419154,
+        "geometry_queries": 100222,
+        "integrations": 425,
+        "managed_bytes": 7813248,
+        "pilot_legs": 0,
+        "polar_queries": 236530,
+        "preprocessing_ms": 359.360429,
+        "queue_peak": 3501,
+        "reconstruction_ms": 0.18666,
+        "search_ms": 6.798243999999968,
+        "validation_failures": 0,
+        "validation_ms": 0.18534,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 2395,
+        "weather_queries": 9882
+      },
+      "repeat": 0,
+      "retained": 85,
+      "seconds": 0.366550947,
+      "solver_weather_samples": 4914,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 98.32565033042692,
+          "lat": -0.07587988738755239,
+          "lon": 75.68804969571147,
+          "seconds": 18878,
+          "wait": false
+        },
+        {
+          "heading": 72.47503318880821,
+          "lat": 1.7219515246245467e-06,
+          "lon": 75.92835027616186,
+          "seconds": 27956,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 192,
+      "validation_samples": 188,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 9882,
+      "weather_queries_including_audit": 10070
+    }
+  },
+  {
+    "index": 16,
+    "kind": "geodesic",
+    "scenario": {
+      "name": "oracle_0016",
+      "start": [
+        0,
+        -65.37850022282787
+      ],
+      "east_nm": 48.456121039679374,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 0,
+      "cache": false,
+      "isotropic": true
+    },
+    "reference_seconds": 29073.672623807623,
+    "ratio": 1.0000112602283384,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 29074,
+      "cache_state": "cold",
+      "case": "oracle_0016",
+      "complete": true,
+      "cpu_seconds": 0.001071,
+      "distance_nm": 48.45666666670204,
+      "engine": "atlas",
+      "generated": 1,
+      "incumbents": [
+        29074
+      ],
+      "independent_failure": "",
+      "land_queries": 298,
+      "land_queries_including_audit": 398,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 609,
+      "preparation_seconds": 0.000117464,
+      "profile": {
+        "arcs": 0,
+        "edge_attempts": 1,
+        "first_valid_ms": 1.066832,
+        "geometry_queries": 298,
+        "integrations": 1,
+        "managed_bytes": 768,
+        "pilot_legs": 0,
+        "polar_queries": 609,
+        "preprocessing_ms": 0.0,
+        "queue_peak": 0,
+        "reconstruction_ms": 0.337509,
+        "search_ms": 0.420737,
+        "validation_failures": 0,
+        "validation_ms": 0.310701,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 0,
+        "weather_queries": 586
+      },
+      "repeat": 0,
+      "retained": 2,
+      "seconds": 0.001082704,
+      "solver_weather_samples": 391,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 90.0,
+          "lat": 4.941856773482173e-17,
+          "lon": -64.57143335366283,
+          "seconds": 29074,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 196,
+      "validation_samples": 194,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 586,
+      "weather_queries_including_audit": 780
+    }
+  },
+  {
+    "index": 17,
+    "kind": "upwind_envelope",
+    "scenario": {
+      "name": "oracle_0017",
+      "start": [
+        0,
+        149.2256087711608
+      ],
+      "east_nm": 0,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 0,
+      "cache": false,
+      "north_nm": 36.15702578781223
+    },
+    "reference_seconds": 40608.82120916242,
+    "ratio": 1.0002752798654262,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 40620,
+      "cache_state": "cold",
+      "case": "oracle_0017",
+      "complete": true,
+      "cpu_seconds": 0.002337,
+      "distance_nm": 56.249361464630695,
+      "engine": "atlas",
+      "generated": 63,
+      "incumbents": [
+        40620
+      ],
+      "independent_failure": "",
+      "land_queries": 583,
+      "land_queries_including_audit": 724,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 1380,
+      "preparation_seconds": 0.000112209,
+      "profile": {
+        "arcs": 0,
+        "edge_attempts": 63,
+        "first_valid_ms": 2.322243,
+        "geometry_queries": 583,
+        "integrations": 4,
+        "managed_bytes": 5232,
+        "pilot_legs": 0,
+        "polar_queries": 1380,
+        "preprocessing_ms": 0.0,
+        "queue_peak": 0,
+        "reconstruction_ms": 0.499098,
+        "search_ms": 1.367848,
+        "validation_failures": 0,
+        "validation_ms": 0.457792,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 0,
+        "weather_queries": 1160
+      },
+      "repeat": 0,
+      "retained": 27,
+      "seconds": 0.002337795,
+      "solver_weather_samples": 885,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 50.00000000000103,
+          "lat": 0.30110360093405986,
+          "lon": 149.58445180879914,
+          "seconds": 20250,
+          "wait": false
+        },
+        {
+          "heading": 310.00113516834597,
+          "lat": 0.6022073879432546,
+          "lon": 149.22561290021065,
+          "seconds": 40620,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 276,
+      "validation_samples": 272,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 1160,
+      "weather_queries_including_audit": 1432
+    }
+  },
+  {
+    "index": 18,
+    "kind": "timed_gate",
+    "scenario": {
+      "name": "oracle_0018",
+      "start": [
+        0,
+        -126.62612514135932
+      ],
+      "east_nm": 37.14717339443263,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 200,
+      "cache": false,
+      "gate": true,
+      "gate_east_nm": 18.573586697216314,
+      "gate_opens_hours": 5.572076009164894
+    },
+    "reference_seconds": 31203.625651323404,
+    "ratio": 1.000011996960891,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 31204,
+      "cache_state": "cold",
+      "case": "oracle_0018",
+      "complete": true,
+      "cpu_seconds": 0.190223,
+      "distance_nm": 37.14666666667908,
+      "engine": "atlas",
+      "generated": 526,
+      "incumbents": [
+        42988,
+        31844,
+        31394,
+        31281,
+        31225,
+        31211,
+        31204
+      ],
+      "independent_failure": "",
+      "land_queries": 21199,
+      "land_queries_including_audit": 21280,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 159146,
+      "preparation_seconds": 0.000144764,
+      "profile": {
+        "arcs": 104616,
+        "edge_attempts": 526,
+        "first_valid_ms": 7.708237,
+        "geometry_queries": 21199,
+        "integrations": 481,
+        "managed_bytes": 6913920,
+        "pilot_legs": 0,
+        "polar_queries": 159146,
+        "preprocessing_ms": 149.825439,
+        "queue_peak": 2768,
+        "reconstruction_ms": 2.333733,
+        "search_ms": 35.79484700000001,
+        "validation_failures": 0,
+        "validation_ms": 2.439735,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 2101,
+        "weather_queries": 33452
+      },
+      "repeat": 0,
+      "retained": 52,
+      "seconds": 0.190410062,
+      "solver_weather_samples": 29287,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 90.0,
+          "lat": 1.8942033876930123e-17,
+          "lon": -126.31677819254003,
+          "seconds": 11144,
+          "wait": false
+        },
+        {
+          "heading": 90.0,
+          "lat": 1.8942033876930123e-17,
+          "lon": -126.31677819254003,
+          "seconds": 20060,
+          "wait": true
+        },
+        {
+          "heading": 90.0,
+          "lat": 3.7884060346603765e-17,
+          "lon": -126.00743124372075,
+          "seconds": 31204,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 698,
+      "validation_samples": 182,
+      "waiting_seconds": 8916,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 33452,
+      "weather_queries_including_audit": 33634
+    }
+  },
+  {
+    "index": 19,
+    "kind": "visibility",
+    "scenario": {
+      "name": "oracle_0019",
+      "start": [
+        0,
+        -25.42780099030287
+      ],
+      "east_nm": 44.60000223081281,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 200,
+      "cache": false,
+      "rectangles_nm": [
+        [
+          17.840000892325126,
+          -2.9449819872491902,
+          26.760001338487687,
+          2.9449819872491902
+        ]
+      ],
+      "isotropic": true
+    },
+    "reference_seconds": 27049.73107641053,
+    "ratio": 1.0096588362690717,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 27311,
+      "cache_state": "cold",
+      "case": "oracle_0019",
+      "complete": true,
+      "cpu_seconds": 0.351891,
+      "distance_nm": 45.51833333329202,
+      "engine": "atlas",
+      "generated": 425,
+      "incumbents": [
+        27311
+      ],
+      "independent_failure": "",
+      "land_queries": 99026,
+      "land_queries_including_audit": 99123,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 227412,
+      "preparation_seconds": 0.000133816,
+      "profile": {
+        "arcs": 187887,
+        "edge_attempts": 425,
+        "first_valid_ms": 166.341465,
+        "geometry_queries": 99026,
+        "integrations": 425,
+        "managed_bytes": 7831680,
+        "pilot_legs": 0,
+        "polar_queries": 227412,
+        "preprocessing_ms": 344.68017,
+        "queue_peak": 2407,
+        "reconstruction_ms": 0.184878,
+        "search_ms": 7.1321950000000225,
+        "validation_failures": 0,
+        "validation_ms": 0.174903,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 2395,
+        "weather_queries": 9741
+      },
+      "repeat": 0,
+      "retained": 34,
+      "seconds": 0.352189443,
+      "solver_weather_samples": 4968,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 99.46232220802575,
+          "lat": -0.07428106389853929,
+          "lon": -24.982114356027267,
+          "seconds": 16277,
+          "wait": false
+        },
+        {
+          "heading": 75.96485910670832,
+          "lat": 3.0551478100634805e-07,
+          "lon": -24.684964551053895,
+          "seconds": 27311,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 188,
+      "validation_samples": 184,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 9741,
+      "weather_queries_including_audit": 9925
+    }
+  },
+  {
+    "index": 20,
+    "kind": "geodesic",
+    "scenario": {
+      "name": "oracle_0020",
+      "start": [
+        0,
+        70.94118180100526
+      ],
+      "east_nm": 41.80687103754977,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 0,
+      "cache": false,
+      "isotropic": true
+    },
+    "reference_seconds": 25084.12262252986,
+    "ratio": 0.9999951115479818,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 25084,
+      "cache_state": "cold",
+      "case": "oracle_0020",
+      "complete": true,
+      "cpu_seconds": 0.00092,
+      "distance_nm": 41.80666666669618,
+      "engine": "atlas",
+      "generated": 1,
+      "incumbents": [
+        25084
+      ],
+      "independent_failure": "",
+      "land_queries": 259,
+      "land_queries_including_audit": 346,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 531,
+      "preparation_seconds": 0.000117905,
+      "profile": {
+        "arcs": 0,
+        "edge_attempts": 1,
+        "first_valid_ms": 0.904549,
+        "geometry_queries": 259,
+        "integrations": 1,
+        "managed_bytes": 768,
+        "pilot_legs": 0,
+        "polar_queries": 531,
+        "preprocessing_ms": 0.0,
+        "queue_peak": 0,
+        "reconstruction_ms": 0.293353,
+        "search_ms": 0.34362400000000004,
+        "validation_failures": 0,
+        "validation_ms": 0.269393,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 0,
+        "weather_queries": 508
+      },
+      "repeat": 0,
+      "retained": 2,
+      "seconds": 0.000921322,
+      "solver_weather_samples": 339,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 90.0,
+          "lat": 4.2636563327693086e-17,
+          "lon": 71.6374900264347,
+          "seconds": 25084,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 170,
+      "validation_samples": 168,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 508,
+      "weather_queries_including_audit": 676
+    }
+  },
+  {
+    "index": 21,
+    "kind": "upwind_envelope",
+    "scenario": {
+      "name": "oracle_0021",
+      "start": [
+        0,
+        55.135326657050626
+      ],
+      "east_nm": 0,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 0,
+      "cache": false,
+      "north_nm": 23.395593207180493
+    },
+    "reference_seconds": 26318.504158135904,
+    "ratio": 1.0002848126101338,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 26326,
+      "cache_state": "cold",
+      "case": "oracle_0021",
+      "complete": true,
+      "cpu_seconds": 0.000888,
+      "distance_nm": 36.397180256821855,
+      "engine": "atlas",
+      "generated": 63,
+      "incumbents": [
+        26326
+      ],
+      "independent_failure": "",
+      "land_queries": 391,
+      "land_queries_including_audit": 484,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 996,
+      "preparation_seconds": 7.677e-05,
+      "profile": {
+        "arcs": 0,
+        "edge_attempts": 63,
+        "first_valid_ms": 0.877618,
+        "geometry_queries": 391,
+        "integrations": 4,
+        "managed_bytes": 5232,
+        "pilot_legs": 0,
+        "polar_queries": 996,
+        "preprocessing_ms": 0.0,
+        "queue_peak": 0,
+        "reconstruction_ms": 0.174307,
+        "search_ms": 0.5364930000000001,
+        "validation_failures": 0,
+        "validation_ms": 0.169024,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 0,
+        "weather_queries": 776
+      },
+      "repeat": 0,
+      "retained": 27,
+      "seconds": 0.000888307,
+      "solver_weather_samples": 597,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 49.999999999999424,
+          "lat": 0.19483262640904095,
+          "lon": 55.36751962355453,
+          "seconds": 13103,
+          "wait": false
+        },
+        {
+          "heading": 310.0001152973632,
+          "lat": 0.38966523434183137,
+          "lon": 55.135324869041426,
+          "seconds": 26326,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 180,
+      "validation_samples": 176,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 776,
+      "weather_queries_including_audit": 952
+    }
+  },
+  {
+    "index": 22,
+    "kind": "timed_gate",
+    "scenario": {
+      "name": "oracle_0022",
+      "start": [
+        0,
+        25.046091161076646
+      ],
+      "east_nm": 37.799573722571004,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 200,
+      "cache": false,
+      "gate": true,
+      "gate_east_nm": 18.899786861285502,
+      "gate_opens_hours": 5.669936058385651
+    },
+    "reference_seconds": 31751.641926959644,
+    "ratio": 1.0002002439135267,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 31758,
+      "cache_state": "cold",
+      "case": "oracle_0022",
+      "complete": true,
+      "cpu_seconds": 0.179994,
+      "distance_nm": 37.800000000027815,
+      "engine": "atlas",
+      "generated": 525,
+      "incumbents": [
+        43380,
+        32046,
+        31821,
+        31764,
+        31760,
+        31758
+      ],
+      "independent_failure": "",
+      "land_queries": 20412,
+      "land_queries_including_audit": 20493,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 154820,
+      "preparation_seconds": 0.00011496,
+      "profile": {
+        "arcs": 101072,
+        "edge_attempts": 525,
+        "first_valid_ms": 7.808082,
+        "geometry_queries": 20412,
+        "integrations": 481,
+        "managed_bytes": 6413312,
+        "pilot_legs": 0,
+        "polar_queries": 154820,
+        "preprocessing_ms": 142.292488,
+        "queue_peak": 2713,
+        "reconstruction_ms": 1.376802,
+        "search_ms": 35.02139200000001,
+        "validation_failures": 0,
+        "validation_ms": 1.4931009999999998,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 2016,
+        "weather_queries": 33092
+      },
+      "repeat": 0,
+      "retained": 53,
+      "seconds": 0.180199866,
+      "solver_weather_samples": 29187,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 90.0,
+          "lat": 1.9264986660381328e-17,
+          "lon": 25.36071233102632,
+          "seconds": 11334,
+          "wait": false
+        },
+        {
+          "heading": 90.0,
+          "lat": 1.9264986660381328e-17,
+          "lon": 25.36071233102632,
+          "seconds": 20412,
+          "wait": true
+        },
+        {
+          "heading": 90.0,
+          "lat": 3.855036266721608e-17,
+          "lon": 25.675666609678956,
+          "seconds": 31758,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 622,
+      "validation_samples": 183,
+      "waiting_seconds": 9078,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 33092,
+      "weather_queries_including_audit": 33275
+    }
+  },
+  {
+    "index": 23,
+    "kind": "visibility",
+    "scenario": {
+      "name": "oracle_0023",
+      "start": [
+        0,
+        -87.39501818241767
+      ],
+      "east_nm": 45.72616434635842,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 200,
+      "cache": false,
+      "rectangles_nm": [
+        [
+          18.29046573854337,
+          -2.104558854280725,
+          27.435698607815052,
+          2.104558854280725
+        ]
+      ],
+      "isotropic": true
+    },
+    "reference_seconds": 27580.515323095562,
+    "ratio": 1.0205030497175267,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 28146,
+      "cache_state": "cold",
+      "case": "oracle_0023",
+      "complete": true,
+      "cpu_seconds": 0.349477,
+      "distance_nm": 46.90999999993215,
+      "engine": "atlas",
+      "generated": 425,
+      "incumbents": [
+        28177,
+        28146
+      ],
+      "independent_failure": "",
+      "land_queries": 96953,
+      "land_queries_including_audit": 97053,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 229650,
+      "preparation_seconds": 0.000131309,
+      "profile": {
+        "arcs": 189542,
+        "edge_attempts": 425,
+        "first_valid_ms": 169.693145,
+        "geometry_queries": 96953,
+        "integrations": 425,
+        "managed_bytes": 7854080,
+        "pilot_legs": 0,
+        "polar_queries": 229650,
+        "preprocessing_ms": 340.52159600000005,
+        "queue_peak": 4618,
+        "reconstruction_ms": 0.38916300000000004,
+        "search_ms": 8.458100999999955,
+        "validation_failures": 0,
+        "validation_ms": 0.361012,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 2396,
+        "weather_queries": 10052
+      },
+      "repeat": 0,
+      "retained": 84,
+      "seconds": 0.349747293,
+      "solver_weather_samples": 5042,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 82.40535663140861,
+          "lat": 0.07615935587372867,
+          "lon": -86.8238226383706,
+          "seconds": 20759,
+          "wait": false
+        },
+        {
+          "heading": 111.80182581127895,
+          "lat": 2.015725037559085e-06,
+          "lon": -86.63343326893128,
+          "seconds": 28146,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 291,
+      "validation_samples": 190,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 10052,
+      "weather_queries_including_audit": 10242
+    }
+  },
+  {
+    "index": 24,
+    "kind": "geodesic",
+    "scenario": {
+      "name": "oracle_0024",
+      "start": [
+        0,
+        15.341713152317368
+      ],
+      "east_nm": 12.32324075633527,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 0,
+      "cache": false,
+      "isotropic": true
+    },
+    "reference_seconds": 7393.944453801162,
+    "ratio": 1.0000075123906036,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 7394,
+      "cache_state": "cold",
+      "case": "oracle_0024",
+      "complete": true,
+      "cpu_seconds": 0.000344,
+      "distance_nm": 12.323333333342678,
+      "engine": "atlas",
+      "generated": 1,
+      "incumbents": [
+        7394
+      ],
+      "independent_failure": "",
+      "land_queries": 82,
+      "land_queries_including_audit": 110,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 177,
+      "preparation_seconds": 0.000137791,
+      "profile": {
+        "arcs": 0,
+        "edge_attempts": 1,
+        "first_valid_ms": 0.337576,
+        "geometry_queries": 82,
+        "integrations": 1,
+        "managed_bytes": 768,
+        "pilot_legs": 0,
+        "polar_queries": 177,
+        "preprocessing_ms": 0.0,
+        "queue_peak": 0,
+        "reconstruction_ms": 0.093576,
+        "search_ms": 0.16180900000000004,
+        "validation_failures": 0,
+        "validation_ms": 0.084306,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 0,
+        "weather_queries": 154
+      },
+      "repeat": 0,
+      "retained": 2,
+      "seconds": 0.000355339,
+      "solver_weather_samples": 103,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 90.0,
+          "lat": 1.2567965531066102e-17,
+          "lon": 15.546963631460471,
+          "seconds": 7394,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 52,
+      "validation_samples": 50,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 154,
+      "weather_queries_including_audit": 204
+    }
+  },
+  {
+    "index": 25,
+    "kind": "upwind_envelope",
+    "scenario": {
+      "name": "oracle_0025",
+      "start": [
+        0,
+        128.4130412494191
+      ],
+      "east_nm": 0,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 0,
+      "cache": false,
+      "north_nm": 18.09048957712129
+    },
+    "reference_seconds": 20377.822155305093,
+    "ratio": 1.00025409215251,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 20383,
+      "cache_state": "cold",
+      "case": "oracle_0025",
+      "complete": true,
+      "cpu_seconds": 0.001445,
+      "distance_nm": 28.143131533987876,
+      "engine": "atlas",
+      "generated": 63,
+      "incumbents": [
+        20383
+      ],
+      "independent_failure": "",
+      "land_queries": 311,
+      "land_queries_including_audit": 384,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 836,
+      "preparation_seconds": 0.000126217,
+      "profile": {
+        "arcs": 0,
+        "edge_attempts": 63,
+        "first_valid_ms": 1.429863,
+        "geometry_queries": 311,
+        "integrations": 4,
+        "managed_bytes": 5232,
+        "pilot_legs": 0,
+        "polar_queries": 836,
+        "preprocessing_ms": 0.0,
+        "queue_peak": 0,
+        "reconstruction_ms": 0.257165,
+        "search_ms": 0.9389879999999999,
+        "validation_failures": 0,
+        "validation_ms": 0.236397,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 0,
+        "weather_queries": 616
+      },
+      "repeat": 0,
+      "retained": 27,
+      "seconds": 0.001446666,
+      "solver_weather_samples": 477,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 49.999999999999986,
+          "lat": 0.15065589654878905,
+          "lon": 128.59258618406545,
+          "seconds": 10132,
+          "wait": false
+        },
+        {
+          "heading": 309.9989200565315,
+          "lat": 0.3012943315457655,
+          "lon": 128.41305390181174,
+          "seconds": 20383,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 140,
+      "validation_samples": 136,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 616,
+      "weather_queries_including_audit": 752
+    }
+  },
+  {
+    "index": 26,
+    "kind": "timed_gate",
+    "scenario": {
+      "name": "oracle_0026",
+      "start": [
+        0,
+        32.041553724337035
+      ],
+      "east_nm": 43.71724170299458,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 200,
+      "cache": false,
+      "gate": true,
+      "gate_east_nm": 21.85862085149729,
+      "gate_opens_hours": 6.557586255449187
+    },
+    "reference_seconds": 36722.48303051544,
+    "ratio": 1.0000140777377209,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 36723,
+      "cache_state": "cold",
+      "case": "oracle_0026",
+      "complete": true,
+      "cpu_seconds": 0.178452,
+      "distance_nm": 43.71666666669764,
+      "engine": "atlas",
+      "generated": 532,
+      "incumbents": [
+        37415,
+        36965,
+        36740,
+        36725,
+        36723
+      ],
+      "independent_failure": "",
+      "land_queries": 21258,
+      "land_queries_including_audit": 21351,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 159102,
+      "preparation_seconds": 0.000107423,
+      "profile": {
+        "arcs": 101028,
+        "edge_attempts": 532,
+        "first_valid_ms": 11.392091,
+        "geometry_queries": 21258,
+        "integrations": 485,
+        "managed_bytes": 6422528,
+        "pilot_legs": 0,
+        "polar_queries": 159102,
+        "preprocessing_ms": 137.661875,
+        "queue_peak": 2644,
+        "reconstruction_ms": 0.961588,
+        "search_ms": 38.918033,
+        "validation_failures": 0,
+        "validation_ms": 1.032775,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 2016,
+        "weather_queries": 37238
+      },
+      "repeat": 0,
+      "retained": 53,
+      "seconds": 0.178591017,
+      "solver_weather_samples": 33634,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 90.0,
+          "lat": 2.2292243886830704e-17,
+          "lon": 32.4056137776183,
+          "seconds": 13115,
+          "wait": false
+        },
+        {
+          "heading": 90.0,
+          "lat": 2.2292243886830704e-17,
+          "lon": 32.4056137776183,
+          "seconds": 23608,
+          "wait": true
+        },
+        {
+          "heading": 90.0,
+          "lat": 4.458447752763369e-17,
+          "lon": 32.76967383089956,
+          "seconds": 36723,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 540,
+      "validation_samples": 211,
+      "waiting_seconds": 10493,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 37238,
+      "weather_queries_including_audit": 37449
+    }
+  },
+  {
+    "index": 27,
+    "kind": "visibility",
+    "scenario": {
+      "name": "oracle_0027",
+      "start": [
+        0,
+        42.12572700916479
+      ],
+      "east_nm": 9.034143022997274,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 200,
+      "cache": false,
+      "rectangles_nm": [
+        [
+          3.6136572091989096,
+          -0.6764737440645583,
+          5.420485813798364,
+          0.6764737440645583
+        ]
+      ],
+      "isotropic": true
+    },
+    "reference_seconds": 5495.813013527582,
+    "ratio": 1.0038551141423966,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 5517,
+      "cache_state": "cold",
+      "case": "oracle_0027",
+      "complete": true,
+      "cpu_seconds": 0.228953,
+      "distance_nm": 9.19500000000226,
+      "engine": "atlas",
+      "generated": 425,
+      "incumbents": [
+        5528,
+        5517
+      ],
+      "independent_failure": "",
+      "land_queries": 67243,
+      "land_queries_including_audit": 67269,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 166205,
+      "preparation_seconds": 8.5396e-05,
+      "profile": {
+        "arcs": 135371,
+        "edge_attempts": 425,
+        "first_valid_ms": 48.878113,
+        "geometry_queries": 67243,
+        "integrations": 425,
+        "managed_bytes": 7795840,
+        "pilot_legs": 0,
+        "polar_queries": 166205,
+        "preprocessing_ms": 224.971989,
+        "queue_peak": 3340,
+        "reconstruction_ms": 0.091377,
+        "search_ms": 3.979994999999985,
+        "validation_failures": 0,
+        "validation_ms": 0.087946,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 2397,
+        "weather_queries": 5874
+      },
+      "repeat": 0,
+      "retained": 80,
+      "seconds": 0.229142925,
+      "solver_weather_samples": 2429,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 79.0881434577073,
+          "lat": 0.012112203096591818,
+          "lon": 42.188554769547665,
+          "seconds": 2305,
+          "wait": false
+        },
+        {
+          "heading": 81.86838094529996,
+          "lat": 0.014197148442914833,
+          "lon": 42.20314662981576,
+          "seconds": 2836,
+          "wait": false
+        },
+        {
+          "heading": 100.99853000107142,
+          "lat": -1.3718399838492738e-06,
+          "lon": 42.27620168837706,
+          "seconds": 5517,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 65,
+      "validation_samples": 38,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 5874,
+      "weather_queries_including_audit": 5912
+    }
+  },
+  {
+    "index": 28,
+    "kind": "geodesic",
+    "scenario": {
+      "name": "oracle_0028",
+      "start": [
+        0,
+        -10.436844438579328
+      ],
+      "east_nm": 34.956406891112294,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 0,
+      "cache": false,
+      "isotropic": true
+    },
+    "reference_seconds": 20973.844134667375,
+    "ratio": 1.0000074314146525,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 20974,
+      "cache_state": "cold",
+      "case": "oracle_0028",
+      "complete": true,
+      "cpu_seconds": 0.000432,
+      "distance_nm": 34.956666666692236,
+      "engine": "atlas",
+      "generated": 1,
+      "incumbents": [
+        20974
+      ],
+      "independent_failure": "",
+      "land_queries": 217,
+      "land_queries_including_audit": 290,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 447,
+      "preparation_seconds": 7.574e-05,
+      "profile": {
+        "arcs": 0,
+        "edge_attempts": 1,
+        "first_valid_ms": 0.421084,
+        "geometry_queries": 217,
+        "integrations": 1,
+        "managed_bytes": 768,
+        "pilot_legs": 0,
+        "polar_queries": 447,
+        "preprocessing_ms": 0.0,
+        "queue_peak": 0,
+        "reconstruction_ms": 0.135774,
+        "search_ms": 0.16387899999999997,
+        "validation_failures": 0,
+        "validation_ms": 0.123055,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 0,
+        "weather_queries": 424
+      },
+      "repeat": 0,
+      "retained": 2,
+      "seconds": 0.000432659,
+      "solver_weather_samples": 283,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 90.0,
+          "lat": 3.5650587723395606e-17,
+          "lon": -9.854625943915096,
+          "seconds": 20974,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 142,
+      "validation_samples": 140,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 424,
+      "weather_queries_including_audit": 564
+    }
+  },
+  {
+    "index": 29,
+    "kind": "upwind_envelope",
+    "scenario": {
+      "name": "oracle_0029",
+      "start": [
+        0,
+        -15.669834787064929
+      ],
+      "east_nm": 0,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 0,
+      "cache": false,
+      "north_nm": 47.3228038866474
+    },
+    "reference_seconds": 53112.31626315296,
+    "ratio": 1.0002952937840128,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 53128,
+      "cache_state": "cold",
+      "case": "oracle_0029",
+      "complete": true,
+      "cpu_seconds": 0.001535,
+      "distance_nm": 73.62180248663606,
+      "engine": "atlas",
+      "generated": 63,
+      "incumbents": [
+        53128
+      ],
+      "independent_failure": "",
+      "land_queries": 749,
+      "land_queries_including_audit": 932,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 1712,
+      "preparation_seconds": 7.5709e-05,
+      "profile": {
+        "arcs": 0,
+        "edge_attempts": 63,
+        "first_valid_ms": 1.526016,
+        "geometry_queries": 749,
+        "integrations": 4,
+        "managed_bytes": 5232,
+        "pilot_legs": 0,
+        "polar_queries": 1712,
+        "preprocessing_ms": 0.0,
+        "queue_peak": 0,
+        "reconstruction_ms": 0.339285,
+        "search_ms": 0.86711,
+        "validation_failures": 0,
+        "validation_ms": 0.321332,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 0,
+        "weather_queries": 1492
+      },
+      "repeat": 0,
+      "retained": 27,
+      "seconds": 0.001535697,
+      "solver_weather_samples": 1133,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 50.00000000000088,
+          "lat": 0.39409627063260855,
+          "lon": -15.200165286464255,
+          "seconds": 26504,
+          "wait": false
+        },
+        {
+          "heading": 310.0005701041427,
+          "lat": 0.7881925714533545,
+          "lon": -15.669847857050144,
+          "seconds": 53128,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 360,
+      "validation_samples": 356,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 1492,
+      "weather_queries_including_audit": 1848
+    }
+  },
+  {
+    "index": 30,
+    "kind": "timed_gate",
+    "scenario": {
+      "name": "oracle_0030",
+      "start": [
+        0,
+        -109.62665752171432
+      ],
+      "east_nm": 32.08560039596172,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 200,
+      "cache": false,
+      "gate": true,
+      "gate_east_nm": 16.04280019798086,
+      "gate_opens_hours": 4.812840059394258
+    },
+    "reference_seconds": 26951.904332607846,
+    "ratio": 1.0001890652077594,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 26957,
+      "cache_state": "cold",
+      "case": "oracle_0030",
+      "complete": true,
+      "cpu_seconds": 0.177098,
+      "distance_nm": 32.08500000001605,
+      "engine": "atlas",
+      "generated": 525,
+      "incumbents": [
+        37251,
+        27630,
+        27180,
+        27067,
+        27011,
+        26983,
+        26969,
+        26962,
+        26958,
+        26957
+      ],
+      "independent_failure": "",
+      "land_queries": 20375,
+      "land_queries_including_audit": 20446,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 152351,
+      "preparation_seconds": 0.000113294,
+      "profile": {
+        "arcs": 100736,
+        "edge_attempts": 525,
+        "first_valid_ms": 5.951426,
+        "geometry_queries": 20375,
+        "integrations": 481,
+        "managed_bytes": 6433280,
+        "pilot_legs": 0,
+        "polar_queries": 152351,
+        "preprocessing_ms": 141.982097,
+        "queue_peak": 2681,
+        "reconstruction_ms": 2.543359,
+        "search_ms": 30.060579999999984,
+        "validation_failures": 0,
+        "validation_ms": 2.7020480000000004,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 2016,
+        "weather_queries": 30901
+      },
+      "repeat": 0,
+      "retained": 60,
+      "seconds": 0.177303574,
+      "solver_weather_samples": 25951,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 90.0,
+          "lat": 1.635331233860657e-17,
+          "lon": -109.35958761911286,
+          "seconds": 9621,
+          "wait": false
+        },
+        {
+          "heading": 90.0,
+          "lat": 1.635331233860657e-17,
+          "lon": -109.35958761911286,
+          "seconds": 17327,
+          "wait": true
+        },
+        {
+          "heading": 90.0,
+          "lat": 3.2721916916066717e-17,
+          "lon": -109.09226788498417,
+          "seconds": 26957,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 1010,
+      "validation_samples": 158,
+      "waiting_seconds": 7706,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 30901,
+      "weather_queries_including_audit": 31059
+    }
+  },
+  {
+    "index": 31,
+    "kind": "visibility",
+    "scenario": {
+      "name": "oracle_0031",
+      "start": [
+        0,
+        -108.60956378184747
+      ],
+      "east_nm": 29.005825468460657,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 200,
+      "cache": false,
+      "rectangles_nm": [
+        [
+          11.602330187384263,
+          -0.5164116071190779,
+          17.403495281076392,
+          0.5164116071190779
+        ]
+      ],
+      "isotropic": true
+    },
+    "reference_seconds": 17417.279583892396,
+    "ratio": 1.0016489610773753,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 17446,
+      "cache_state": "cold",
+      "case": "oracle_0031",
+      "complete": true,
+      "cpu_seconds": 0.326331,
+      "distance_nm": 29.07666666666394,
+      "engine": "atlas",
+      "generated": 425,
+      "incumbents": [
+        17446
+      ],
+      "independent_failure": "",
+      "land_queries": 90825,
+      "land_queries_including_audit": 90890,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 219148,
+      "preparation_seconds": 8.2884e-05,
+      "profile": {
+        "arcs": 180458,
+        "edge_attempts": 425,
+        "first_valid_ms": 1.640063,
+        "geometry_queries": 90825,
+        "integrations": 425,
+        "managed_bytes": 7780352,
+        "pilot_legs": 0,
+        "polar_queries": 219148,
+        "preprocessing_ms": 320.876754,
+        "queue_peak": 2289,
+        "reconstruction_ms": 0.240066,
+        "search_ms": 5.2644980000000166,
+        "validation_failures": 0,
+        "validation_ms": 0.22872399999999998,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 2396,
+        "weather_queries": 8757
+      },
+      "repeat": 0,
+      "retained": 17,
+      "seconds": 0.326623044,
+      "solver_weather_samples": 4088,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 85.9999999999998,
+          "lat": 0.01689098822064866,
+          "lon": -108.36801135656972,
+          "seconds": 8723,
+          "wait": false
+        },
+        {
+          "heading": 93.99997905358109,
+          "lat": 8.315777734349041e-08,
+          "lon": -108.12645892547694,
+          "seconds": 17446,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 186,
+      "validation_samples": 120,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 8757,
+      "weather_queries_including_audit": 8877
+    }
+  },
+  {
+    "index": 32,
+    "kind": "geodesic",
+    "scenario": {
+      "name": "oracle_0032",
+      "start": [
+        0,
+        111.65119625984926
+      ],
+      "east_nm": 18.471719667351184,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 0,
+      "cache": false,
+      "isotropic": true
+    },
+    "reference_seconds": 11083.03180041071,
+    "ratio": 0.9999971307119493,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 11083,
+      "cache_state": "cold",
+      "case": "oracle_0032",
+      "complete": true,
+      "cpu_seconds": 0.00045,
+      "distance_nm": 18.471666666677965,
+      "engine": "atlas",
+      "generated": 1,
+      "incumbents": [
+        11083
+      ],
+      "independent_failure": "",
+      "land_queries": 118,
+      "land_queries_including_audit": 158,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 249,
+      "preparation_seconds": 0.000129759,
+      "profile": {
+        "arcs": 0,
+        "edge_attempts": 1,
+        "first_valid_ms": 0.435166,
+        "geometry_queries": 118,
+        "integrations": 1,
+        "managed_bytes": 768,
+        "pilot_legs": 0,
+        "polar_queries": 249,
+        "preprocessing_ms": 0.0,
+        "queue_peak": 0,
+        "reconstruction_ms": 0.130977,
+        "search_ms": 0.18497999999999998,
+        "validation_failures": 0,
+        "validation_ms": 0.121469,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 0,
+        "weather_queries": 226
+      },
+      "repeat": 0,
+      "retained": 2,
+      "seconds": 0.000451177,
+      "solver_weather_samples": 151,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 90.0,
+          "lat": 1.8838349024038963e-17,
+          "lon": 111.95884990609522,
+          "seconds": 11083,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 76,
+      "validation_samples": 74,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 226,
+      "weather_queries_including_audit": 300
+    }
+  },
+  {
+    "index": 33,
+    "kind": "upwind_envelope",
+    "scenario": {
+      "name": "oracle_0033",
+      "start": [
+        0,
+        78.78709293861911
+      ],
+      "east_nm": 0,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 0,
+      "cache": false,
+      "north_nm": 35.667689204324994
+    },
+    "reference_seconds": 40060.859616408976,
+    "ratio": 1.0002780864838572,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 40072,
+      "cache_state": "cold",
+      "case": "oracle_0033",
+      "complete": true,
+      "cpu_seconds": 0.002359,
+      "distance_nm": 55.488359108133565,
+      "engine": "atlas",
+      "generated": 63,
+      "incumbents": [
+        40072
+      ],
+      "independent_failure": "",
+      "land_queries": 575,
+      "land_queries_including_audit": 714,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 1364,
+      "preparation_seconds": 0.000116552,
+      "profile": {
+        "arcs": 0,
+        "edge_attempts": 63,
+        "first_valid_ms": 2.348257,
+        "geometry_queries": 575,
+        "integrations": 4,
+        "managed_bytes": 5232,
+        "pilot_legs": 0,
+        "polar_queries": 1364,
+        "preprocessing_ms": 0.0,
+        "queue_peak": 0,
+        "reconstruction_ms": 0.500167,
+        "search_ms": 1.394329,
+        "validation_failures": 0,
+        "validation_ms": 0.456428,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 0,
+        "weather_queries": 1144
+      },
+      "repeat": 0,
+      "retained": 27,
+      "seconds": 0.002364748,
+      "solver_weather_samples": 873,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 50.00000000000026,
+          "lat": 0.29702940957448865,
+          "lon": 79.1410804755692,
+          "seconds": 19976,
+          "wait": false
+        },
+        {
+          "heading": 310.0009547457266,
+          "lat": 0.5940589610525906,
+          "lon": 78.78709506282172,
+          "seconds": 40072,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 272,
+      "validation_samples": 268,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 1144,
+      "weather_queries_including_audit": 1412
+    }
+  },
+  {
+    "index": 34,
+    "kind": "timed_gate",
+    "scenario": {
+      "name": "oracle_0034",
+      "start": [
+        0,
+        22.268755309557207
+      ],
+      "east_nm": 49.39792676335317,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 200,
+      "cache": false,
+      "gate": true,
+      "gate_east_nm": 24.698963381676585,
+      "gate_opens_hours": 7.409689014502975
+    },
+    "reference_seconds": 41494.25848121666,
+    "ratio": 1.0000178703948566,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 41495,
+      "cache_state": "cold",
+      "case": "oracle_0034",
+      "complete": true,
+      "cpu_seconds": 0.190683,
+      "distance_nm": 49.39833333336843,
+      "engine": "atlas",
+      "generated": 534,
+      "incumbents": [
+        41820,
+        41595,
+        41538,
+        41510,
+        41496,
+        41495
+      ],
+      "independent_failure": "",
+      "land_queries": 22666,
+      "land_queries_including_audit": 22771,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 168737,
+      "preparation_seconds": 7.9648e-05,
+      "profile": {
+        "arcs": 105275,
+        "edge_attempts": 534,
+        "first_valid_ms": 8.397175,
+        "geometry_queries": 22666,
+        "integrations": 486,
+        "managed_bytes": 6819072,
+        "pilot_legs": 0,
+        "polar_queries": 168737,
+        "preprocessing_ms": 148.933651,
+        "queue_peak": 2729,
+        "reconstruction_ms": 1.320953,
+        "search_ms": 39.21186700000001,
+        "validation_failures": 0,
+        "validation_ms": 1.377544,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 2068,
+        "weather_queries": 42231
+      },
+      "repeat": 0,
+      "retained": 56,
+      "seconds": 0.190857884,
+      "solver_weather_samples": 38146,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 90.0,
+          "lat": 2.5188620082255822e-17,
+          "lon": 22.680116798659384,
+          "seconds": 14819,
+          "wait": false
+        },
+        {
+          "heading": 90.0,
+          "lat": 2.5188620082255822e-17,
+          "lon": 22.680116798659384,
+          "seconds": 26675,
+          "wait": true
+        },
+        {
+          "heading": 90.0,
+          "lat": 5.0378926836368274e-17,
+          "lon": 23.091506046820143,
+          "seconds": 41495,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 714,
+      "validation_samples": 240,
+      "waiting_seconds": 11856,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 42231,
+      "weather_queries_including_audit": 42471
+    }
+  },
+  {
+    "index": 35,
+    "kind": "visibility",
+    "scenario": {
+      "name": "oracle_0035",
+      "start": [
+        0,
+        -127.84831943745212
+      ],
+      "east_nm": 5.665793894055515,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 200,
+      "cache": false,
+      "rectangles_nm": [
+        [
+          2.266317557622206,
+          -2.537690231320068,
+          3.3994763364333087,
+          2.537690231320068
+        ]
+      ],
+      "isotropic": true
+    },
+    "reference_seconds": 4762.730928272646,
+    "ratio": 1.0090849288735793,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 4806,
+      "cache_state": "cold",
+      "case": "oracle_0035",
+      "complete": true,
+      "cpu_seconds": 0.263152,
+      "distance_nm": 8.009999999996815,
+      "engine": "atlas",
+      "generated": 433,
+      "incumbents": [
+        4811,
+        4806
+      ],
+      "independent_failure": "",
+      "land_queries": 124052,
+      "land_queries_including_audit": 124098,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 179454,
+      "preparation_seconds": 8.902e-05,
+      "profile": {
+        "arcs": 152572,
+        "edge_attempts": 433,
+        "first_valid_ms": 73.97739,
+        "geometry_queries": 124052,
+        "integrations": 433,
+        "managed_bytes": 7635840,
+        "pilot_legs": 0,
+        "polar_queries": 179454,
+        "preprocessing_ms": 259.36989900000003,
+        "queue_peak": 3276,
+        "reconstruction_ms": 0.14703100000000002,
+        "search_ms": 3.7212109999999785,
+        "validation_failures": 0,
+        "validation_ms": 0.138048,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 2395,
+        "weather_queries": 5970
+      },
+      "repeat": 0,
+      "retained": 82,
+      "seconds": 0.263387906,
+      "solver_weather_samples": 2234,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 44.06515578175877,
+          "lat": 0.03384879325913431,
+          "lon": -127.81555756477064,
+          "seconds": 1697,
+          "wait": false
+        },
+        {
+          "heading": 26.579559347523833,
+          "lat": 0.04219009818835143,
+          "lon": -127.81138427067104,
+          "seconds": 2033,
+          "wait": false
+        },
+        {
+          "heading": 83.84187281817981,
+          "lat": 0.04244321042757147,
+          "lon": -127.80903836535984,
+          "seconds": 2118,
+          "wait": false
+        },
+        {
+          "heading": 81.86155550932051,
+          "lat": 0.042702572236888614,
+          "lon": -127.80722471824431,
+          "seconds": 2184,
+          "wait": false
+        },
+        {
+          "heading": 82.87491396913006,
+          "lat": 0.0432224833892944,
+          "lon": -127.80306546803735,
+          "seconds": 2335,
+          "wait": false
+        },
+        {
+          "heading": 89.9830782648144,
+          "lat": 0.04322309823776596,
+          "lon": -127.8009835381422,
+          "seconds": 2410,
+          "wait": false
+        },
+        {
+          "heading": 81.88073451181653,
+          "lat": 0.04374452811945728,
+          "lon": -127.79732858961275,
+          "seconds": 2543,
+          "wait": false
+        },
+        {
+          "heading": 108.53968236837721,
+          "lat": 0.04322377590118104,
+          "lon": -127.7957757997232,
+          "seconds": 2602,
+          "wait": false
+        },
+        {
+          "heading": 90.03722262691225,
+          "lat": 0.04322309060655107,
+          "lon": -127.79472095541959,
+          "seconds": 2640,
+          "wait": false
+        },
+        {
+          "heading": 104.07465706969057,
+          "lat": 0.04218349588843244,
+          "lon": -127.7905743930099,
+          "seconds": 2794,
+          "wait": false
+        },
+        {
+          "heading": 139.03740892200452,
+          "lat": 8.1252864703402e-06,
+          "lon": -127.75396021833228,
+          "seconds": 4806,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 98,
+      "validation_samples": 46,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 5970,
+      "weather_queries_including_audit": 6016
+    }
+  },
+  {
+    "index": 36,
+    "kind": "geodesic",
+    "scenario": {
+      "name": "oracle_0036",
+      "start": [
+        0,
+        -105.38097059264294
+      ],
+      "east_nm": 41.378437564643086,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 0,
+      "cache": false,
+      "isotropic": true
+    },
+    "reference_seconds": 24827.062538785853,
+    "ratio": 0.9999974810235502,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 24827,
+      "cache_state": "cold",
+      "case": "oracle_0036",
+      "complete": true,
+      "cpu_seconds": 0.000489,
+      "distance_nm": 41.37833333335086,
+      "engine": "atlas",
+      "generated": 1,
+      "incumbents": [
+        24827
+      ],
+      "independent_failure": "",
+      "land_queries": 256,
+      "land_queries_including_audit": 342,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 525,
+      "preparation_seconds": 7.5561e-05,
+      "profile": {
+        "arcs": 0,
+        "edge_attempts": 1,
+        "first_valid_ms": 0.479285,
+        "geometry_queries": 256,
+        "integrations": 1,
+        "managed_bytes": 768,
+        "pilot_legs": 0,
+        "polar_queries": 525,
+        "preprocessing_ms": 0.0,
+        "queue_peak": 0,
+        "reconstruction_ms": 0.150973,
+        "search_ms": 0.18620999999999996,
+        "validation_failures": 0,
+        "validation_ms": 0.143686,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 0,
+        "weather_queries": 502
+      },
+      "repeat": 0,
+      "retained": 2,
+      "seconds": 0.000489802,
+      "solver_weather_samples": 335,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 90.0,
+          "lat": 4.219972739333627e-17,
+          "lon": -104.69179644526882,
+          "seconds": 24827,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 168,
+      "validation_samples": 166,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 502,
+      "weather_queries_including_audit": 668
+    }
+  },
+  {
+    "index": 37,
+    "kind": "upwind_envelope",
+    "scenario": {
+      "name": "oracle_0037",
+      "start": [
+        0,
+        6.8101009917238855
+      ],
+      "east_nm": 0,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 0,
+      "cache": false,
+      "north_nm": 19.85694291006626
+    },
+    "reference_seconds": 22355.90557377162,
+    "ratio": 1.0002726092310719,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 22362,
+      "cache_state": "cold",
+      "case": "oracle_0037",
+      "complete": true,
+      "cpu_seconds": 0.000798,
+      "distance_nm": 30.891449700995402,
+      "engine": "atlas",
+      "generated": 63,
+      "incumbents": [
+        22362
+      ],
+      "independent_failure": "",
+      "land_queries": 341,
+      "land_queries_including_audit": 422,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 896,
+      "preparation_seconds": 7.7521e-05,
+      "profile": {
+        "arcs": 0,
+        "edge_attempts": 63,
+        "first_valid_ms": 0.787929,
+        "geometry_queries": 341,
+        "integrations": 4,
+        "managed_bytes": 5232,
+        "pilot_legs": 0,
+        "polar_queries": 896,
+        "preprocessing_ms": 0.0,
+        "queue_peak": 0,
+        "reconstruction_ms": 0.151763,
+        "search_ms": 0.497587,
+        "validation_failures": 0,
+        "validation_ms": 0.140468,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 0,
+        "weather_queries": 676
+      },
+      "repeat": 0,
+      "retained": 27,
+      "seconds": 0.000798167,
+      "solver_weather_samples": 521,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 50.000000000000085,
+          "lat": 0.16536164753844348,
+          "lon": 7.007171629301013,
+          "seconds": 11121,
+          "wait": false
+        },
+        {
+          "heading": 310.0007023431916,
+          "lat": 0.33072336160745835,
+          "lon": 6.8101041233765045,
+          "seconds": 22362,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 156,
+      "validation_samples": 152,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 676,
+      "weather_queries_including_audit": 828
+    }
+  },
+  {
+    "index": 38,
+    "kind": "timed_gate",
+    "scenario": {
+      "name": "oracle_0038",
+      "start": [
+        0,
+        -24.79526364305292
+      ],
+      "east_nm": 5.6269837308484245,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 200,
+      "cache": false,
+      "gate": true,
+      "gate_east_nm": 2.8134918654242123,
+      "gate_opens_hours": 0.8440475596272637
+    },
+    "reference_seconds": 4726.666333912677,
+    "ratio": 1.0000705922660393,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 4727,
+      "cache_state": "cold",
+      "case": "oracle_0038",
+      "complete": true,
+      "cpu_seconds": 0.067225,
+      "distance_nm": 5.626666666670029,
+      "engine": "atlas",
+      "generated": 478,
+      "incumbents": [
+        6976,
+        5288,
+        4838,
+        4781,
+        4753,
+        4739,
+        4732,
+        4728,
+        4727
+      ],
+      "independent_failure": "",
+      "land_queries": 8247,
+      "land_queries_including_audit": 8264,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 81673,
+      "preparation_seconds": 0.000112485,
+      "profile": {
+        "arcs": 58997,
+        "edge_attempts": 478,
+        "first_valid_ms": 0.422524,
+        "geometry_queries": 8247,
+        "integrations": 458,
+        "managed_bytes": 2837248,
+        "pilot_legs": 0,
+        "polar_queries": 81673,
+        "preprocessing_ms": 59.879296999999994,
+        "queue_peak": 1766,
+        "reconstruction_ms": 0.463157,
+        "search_ms": 6.524299000000008,
+        "validation_failures": 0,
+        "validation_ms": 0.46728700000000006,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 924,
+        "weather_queries": 6899
+      },
+      "repeat": 0,
+      "retained": 35,
+      "seconds": 0.067348023,
+      "solver_weather_samples": 4960,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 90.0,
+          "lat": 2.869181491008375e-18,
+          "lon": -24.748406352169297,
+          "seconds": 1688,
+          "wait": false
+        },
+        {
+          "heading": 90.0,
+          "lat": 2.869181491008375e-18,
+          "lon": -24.748406352169297,
+          "seconds": 3039,
+          "wait": true
+        },
+        {
+          "heading": 90.0,
+          "lat": 5.7383628185829496e-18,
+          "lon": -24.701549061285675,
+          "seconds": 4727,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 178,
+      "validation_samples": 29,
+      "waiting_seconds": 1351,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 6899,
+      "weather_queries_including_audit": 6928
+    }
+  },
+  {
+    "index": 39,
+    "kind": "visibility",
+    "scenario": {
+      "name": "oracle_0039",
+      "start": [
+        0,
+        75.30590581894788
+      ],
+      "east_nm": 47.10218099746131,
+      "wind_from": 0,
+      "max_hours": 96,
+      "atlas_improvement": 200,
+      "cache": false,
+      "rectangles_nm": [
+        [
+          18.840872398984526,
+          -2.7421128579986656,
+          28.261308598476784,
+          2.7421128579986656
+        ]
+      ],
+      "isotropic": true
+    },
+    "reference_seconds": 28499.507344701058,
+    "ratio": 1.0131052319881027,
+    "passed": true,
+    "result": {
+      "arrival_seconds": 28873,
+      "cache_state": "cold",
+      "case": "oracle_0039",
+      "complete": true,
+      "cpu_seconds": 0.368208,
+      "distance_nm": 48.12166666660812,
+      "engine": "atlas",
+      "generated": 425,
+      "incumbents": [
+        28903,
+        28873
+      ],
+      "independent_failure": "",
+      "land_queries": 121601,
+      "land_queries_including_audit": 121703,
+      "message": "Complete (Atlas experimental)",
+      "peak_rss_kib": 73572,
+      "polar_queries": 237920,
+      "preparation_seconds": 0.000208997,
+      "profile": {
+        "arcs": 199252,
+        "edge_attempts": 425,
+        "first_valid_ms": 185.67078,
+        "geometry_queries": 121601,
+        "integrations": 425,
+        "managed_bytes": 7828608,
+        "pilot_legs": 0,
+        "polar_queries": 237920,
+        "preprocessing_ms": 361.335023,
+        "queue_peak": 4783,
+        "reconstruction_ms": 0.389795,
+        "search_ms": 6.388090999999998,
+        "validation_failures": 0,
+        "validation_ms": 0.37300599999999995,
+        "value_field_cells": 0,
+        "value_field_ms": 0.0,
+        "waypoints": 2396,
+        "weather_queries": 10426
+      },
+      "repeat": 0,
+      "retained": 85,
+      "seconds": 0.368501252,
+      "solver_weather_samples": 5238,
+      "status": "complete",
+      "track": [
+        {
+          "heading": 81.25383773744501,
+          "lat": 0.07845081730089211,
+          "lon": 75.81583645645247,
+          "seconds": 18586,
+          "wait": false
+        },
+        {
+          "heading": 105.94534019357157,
+          "lat": 2.4102058903963866e-06,
+          "lon": 76.09040692750438,
+          "seconds": 28873,
+          "wait": false
+        }
+      ],
+      "valid": true,
+      "validation_queries": 298,
+      "validation_samples": 194,
+      "waiting_seconds": 0,
+      "weather_cache_hits_including_audit": 0,
+      "weather_queries": 10426,
+      "weather_queries_including_audit": 10620
+    }
+  }
+]

@@ -6,6 +6,9 @@
 #include <wx/button.h>
 #include <wx/fileconf.h>
 #include <wx/sizer.h>
+#include <wx/dcmemory.h>
+#include <fstream>
+#include <iomanip>
 #include <numeric>
 #include <tuple>
 #include <cstdlib>
@@ -32,6 +35,7 @@ wxString UtcText(const wxDateTime& time) {
 }
 wxString EngineTitle(const std::string& engine) {
   if (engine == "original") return _("Quick");
+  if (engine == "quick2") return _("Quick2");
   if (engine == "quick") return _("Standard");
   if (engine == "main") return _("Professional");
   if (engine == "alternative") return _("Alternative");
@@ -43,14 +47,15 @@ wxString WorstKnownText(const weather_routing::RouteComfort& comfort) {
       : _("Unknown");
 }
 #ifdef __OCPN__ANDROID__
-constexpr int kAndroidSortColumns[] = {4, 6, 7, 8, 9, 10, 11, 12, 2, 3, 1, 0};
+constexpr int kAndroidSortColumns[] = {4, 6, 7, 8, 9, 10, 11, 12, 2, 3, 1, 0, 14};
 #endif
 }
 
-RouteComparisonDialog::RouteComparisonDialog(WeatherRouting& routing)
-    : wxDialog(&routing, wxID_ANY, _("Fastest / Comfort"),
+RouteComparisonDialog::RouteComparisonDialog(WeatherRouting& routing, bool partials)
+    : wxDialog(&routing, wxID_ANY, partials ? _("Best partial route - Incomplete") : _("Fastest / Comfort"),
                wxDefaultPosition, wxSize(1750, 800),
-               wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER), m_Routing(routing) {
+               wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER), m_Routing(routing), m_Partials(partials) {
+  if (m_Partials) m_SortColumn = 14;
   auto* layout = new wxBoxSizer(wxVERTICAL);
 #ifdef __OCPN__ANDROID__
   auto* root = new wxBoxSizer(wxVERTICAL);
@@ -81,11 +86,13 @@ RouteComparisonDialog::RouteComparisonDialog(WeatherRouting& routing)
 #ifdef __OCPN__ANDROID__
   for (const auto& label : {_("Average discomfort"), _("Difficult duration"),
        _("Worst known leg"), _("Longest difficult spell"), _("Wave coverage"),
-       _("Missing waves"), _("Departure UTC"), _("ETA UTC"), _("Engine"), _("ID")})
+       _("Missing waves"), _("Departure UTC"), m_Partials ? _("Endpoint time UTC") : _("ETA UTC"), _("Engine"), _("ID")})
     m_Order->Append(label);
+  if (m_Partials) m_Order->Append(_("Remaining distance first"));
 #endif
   m_Order->SetSelection(0);
 #ifdef __OCPN__ANDROID__
+  if (m_Partials) m_Order->SetSelection(12);
   layout->Add(m_Order, 0, wxEXPAND | wxALL, 12);
 #else
   controls->Add(m_Order, 0, wxALIGN_CENTER_VERTICAL | wxALL, 6);
@@ -97,16 +104,16 @@ RouteComparisonDialog::RouteComparisonDialog(WeatherRouting& routing)
       "/PlugIns/WeatherRouting/ComfortComparisonWindOnly", true));
   m_WindOnly->SetToolTip(_("Exclude waves from comfort ranking. The worst known leg still includes available waves. Route validation is unchanged."));
   layout->Add(m_WindOnly, 0, wxALL, 6);
-  m_ExploreComfort = new wxCheckBox(content, wxID_ANY,
+  auto* explorationHelp = new wxStaticText(content, wxID_ANY,
+      _("Enable additional fastest / comfort alternatives in the routing configuration before computing. Applies to every individual engine, Auto and All."));
+  explorationHelp->Wrap(1100);
 #ifdef __OCPN__ANDROID__
-      _("Search extra comfort routes on next All run"));
-#else
-      _("Search additional comfort alternatives on next All run (slower)"));
+  explorationHelp->SetLabel(_("Enable alternatives in Plan > Engine before computing. Applies to every individual engine, Auto and All."));
+  m_AndroidExplorationHelp = explorationHelp;
 #endif
-  m_ExploreComfort->SetValue(!config || config->ReadBool(
-      "/PlugIns/WeatherRouting/ComfortExplorationEnabled", true));
-  m_ExploreComfort->SetToolTip(_("For each departure, All adds a bounded search retaining faster and gentler partial paths. Uses the ranking mode selected when computation starts. Toggle off and recompute to measure the overhead. Auto is unchanged."));
-  layout->Add(m_ExploreComfort, 0, wxLEFT | wxRIGHT | wxBOTTOM, 6);
+  if (m_Partials) explorationHelp->SetLabel(_("All failed to reach the destination. These retained prefixes passed independent replay and the enabled safety checks against the calculation's inputs. No final connection or destination ETA is implied. Recompute after changing inputs."));
+  if (m_Partials) explorationHelp->Wrap(1100);
+  layout->Add(explorationHelp, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 6);
 #ifdef __OCPN__ANDROID__
   m_AndroidCandidate = new wxChoice(content, wxID_ANY);
   layout->Add(m_AndroidCandidate, 0, wxEXPAND | wxALL, 12);
@@ -128,6 +135,12 @@ RouteComparisonDialog::RouteComparisonDialog(WeatherRouting& routing)
   for (unsigned i = 0; i < std::size(columns); ++i)
     m_List->InsertColumn(i, columns[i], wxLIST_FORMAT_LEFT,
                          i == 2 || i == 3 ? 180 : i == 10 ? 140 : i == 0 ? 75 : 110);
+  if (m_Partials) {
+    wxListItem heading; heading.SetText(_("Endpoint time UTC")); m_List->SetColumn(3, heading);
+    m_List->InsertColumn(14, _("Remaining NM (straight line)"));
+    m_List->InsertColumn(15, _("Actual endpoint"));
+    m_List->InsertColumn(16, _("Search stage"));
+  }
 #ifdef __OCPN__ANDROID__
   // Keep the shared row model and selection handlers; present its values as
   // touch-readable details instead of a fourteen-column desktop table.
@@ -140,7 +153,7 @@ RouteComparisonDialog::RouteComparisonDialog(WeatherRouting& routing)
   auto* note = new wxStaticText(content, wxID_ANY,
 #ifdef __OCPN__ANDROID__
       _("Choose a candidate to select its validated route. The slider allows extra passage time for comfort. "
-        "All can search up to four additional comfort routes per departure. "
+        "With alternatives enabled, any engine can search for up to four useful extra routes per departure. "
         "Wind + wave ranking requires complete wind and wave-height coverage; gaps remain unknown. "
         "Wind-only ranking excludes waves, while the worst known leg still includes available waves."));
   m_AndroidNote = note;
@@ -154,6 +167,8 @@ RouteComparisonDialog::RouteComparisonDialog(WeatherRouting& routing)
   note->Wrap(1050);
 #endif
   layout->Add(note, 0, wxEXPAND | wxALL, 6);
+  if (m_Partials) note->SetLabel(_("Incomplete - destination not reached. The dashed trace ends at its actual endpoint and obeys the route's eye visibility control. Fastest / Comfort selects among endpoints within the independent replay's 0.15 NM positional tolerance of the closest retained prefix. Other retained endpoints remain available for inspection. Unknown waves remain unknown. This is failed-search output, not a completed passage."));
+  if (m_Partials) note->Wrap(1050);
 #ifdef __OCPN__ANDROID__
   layout->AddSpacer(32);
   // wxQt's native scrollbar overlays the reported client area. Reserve its
@@ -183,7 +198,7 @@ RouteComparisonDialog::RouteComparisonDialog(WeatherRouting& routing)
       "QSlider::groove:horizontal { height: 8px; background: #9fb9c6; border-radius: 4px; } "
       "QSlider::handle:horizontal { width: 34px; margin: -13px 0; background: #176d86; border-radius: 17px; }");
   WR_EnableAndroidSlider(m_Slider, [this]() { if (!m_Updating) Choose(); });
-  WR_AddAndroidDoneHeader(this, _("Fastest / Comfort"), [this]() { Destroy(); });
+  WR_AddAndroidDoneHeader(this, m_Partials ? _("Best partial route - Incomplete") : _("Fastest / Comfort"), [this]() { Destroy(); });
   const wxWeakRef<RouteComparisonDialog> weakDialog(this);
   Bind(wxEVT_SIZE, [weakDialog](wxSizeEvent& event) {
     if (weakDialog) weakDialog->CallAfter([weakDialog]() {
@@ -214,12 +229,6 @@ RouteComparisonDialog::RouteComparisonDialog(WeatherRouting& routing)
 #endif
     m_Ascending = true; Populate(); Choose();
   });
-  m_ExploreComfort->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent&) {
-    if (auto* config = GetOCPNConfigObject()) {
-      config->Write("/PlugIns/WeatherRouting/ComfortExplorationEnabled", m_ExploreComfort->GetValue());
-      config->Flush();
-    }
-  });
   m_List->Bind(wxEVT_LIST_COL_CLICK, [this](wxListEvent& event) {
     if (event.GetColumn() == m_SortColumn) m_Ascending = !m_Ascending;
     else { m_SortColumn = event.GetColumn(); m_Ascending = true; }
@@ -229,10 +238,92 @@ RouteComparisonDialog::RouteComparisonDialog(WeatherRouting& routing)
     if (!m_Updating) Preview(m_List->GetItemData(event.GetIndex()));
   });
   Collect(); Populate(); Choose();
+  wxString partialContract;
+  if (m_Partials && wxGetEnv("WR_HEADLESS_PARTIAL_CONTRACT", &partialContract) &&
+      partialContract == "1" && wxGetEnv("WR_HEADLESS_ROUTE_TEST", &partialContract))
+    RunPartialHostContract();
   wxString contract, scenario;
   if (wxGetEnv("WR_HEADLESS_COMFORT_CONTRACT", &contract) &&
       !contract.empty() && wxGetEnv("WR_HEADLESS_SCENARIO", &scenario) && !scenario.empty())
     CallAfter([this, lifecycle = contract == "lifecycle"] { RunHostContract(lifecycle); });
+}
+
+void RouteComparisonDialog::RunPartialHostContract() {
+  bool passed = m_Partials && !m_Entries.empty();
+  wxString output;
+  wxGetEnv("WR_HEADLESS_PARTIAL_ARTIFACT_DIR", &output);
+  for (long row = 0; row < m_List->GetItemCount(); ++row) {
+    wxListEvent event(wxEVT_LIST_ITEM_SELECTED, m_List->GetId());
+    event.m_itemIndex = row; m_List->GetEventHandler()->ProcessEvent(event);
+    const auto& entry = m_Entries[m_List->GetItemData(row)];
+    auto* owner = entry.segments.front().owner;
+    passed = passed && owner->HasSelectedPartial() && !owner->ReachedDestination() &&
+        owner->Finished() && !owner->EndTime().IsValid() && owner->GetPlotData().empty() &&
+        owner->RetainedCandidates().empty() && m_Summary->GetLabel().Contains("Incomplete") &&
+        m_List->GetItemText(row, 13).Contains("Incomplete");
+  }
+  for (bool windOnly : {false, true}) {
+    m_WindOnly->SetValue(windOnly); Populate();
+    for (int value : {0, 25, 50, 75, 100}) {
+      m_Slider->SetValue(value); Choose();
+      passed = passed && m_PreviewId == m_Entries[Selection().selected].metric.id;
+    }
+  }
+  if (!m_Entries.empty()) {
+    auto* owner = m_Entries.front().segments.front().owner;
+    const auto failure = owner->GetDiagnosticError();
+    const auto configuration = owner->GetConfiguration();
+    owner->CancellationFlag()->store(true);
+    passed = passed && owner->PartialCandidates().empty();
+    owner->CancellationFlag()->store(false);
+    m_Slider->SetValue(0); Choose();
+    const auto& chosen = m_Entries[Selection().selected].segments.front().candidate;
+    if (!output.empty()) {
+      std::ofstream legs((output + "/selected-partial.csv").ToStdString());
+      legs << "start_lat,start_lon,end_lat,end_lon,start_epoch,end_epoch\n" << std::setprecision(15);
+      for (const auto& leg : chosen.result->legs)
+        legs << leg.start.latitude << ',' << leg.start.longitude << ',' << leg.end.latitude << ',' <<
+          leg.end.longitude << ',' << leg.startTime.time_since_epoch().count() << ',' <<
+          leg.endTime.time_since_epoch().count() << '\n';
+    }
+    PlugIn_ViewPort vp{};
+    const auto end = chosen.result->legs.back().end;
+    vp.clat = (configuration.StartLat + end.latitude) / 2;
+    vp.clon = configuration.StartLon + weather_routing::wr::normalizeLongitude(end.longitude - configuration.StartLon) / 2;
+    vp.pix_width = 1000; vp.pix_height = 700; vp.bValid = true;
+    vp.rv_rect = wxRect(0, 0, 1000, 700); vp.m_projection_type = PI_PROJECTION_MERCATOR;
+    vp.view_scale_ppm = 500. / std::max(1000., 1852. * weather_routing::wr::distanceNm(
+        {configuration.StartLat, configuration.StartLon}, end));
+    const auto render = [&](bool visible, const wxString& name) {
+      m_Routing.SetRouteVisibility(owner, visible);
+      wxBitmap bitmap(1000, 700);
+      wxMemoryDC memory(bitmap); memory.SetBackground(*wxWHITE_BRUSH); memory.Clear();
+      piDC dc(memory);
+      m_Routing.Render(dc, vp);
+      memory.SelectObject(wxNullBitmap);
+      const auto image = bitmap.ConvertToImage();
+      unsigned nonWhite = 0;
+      for (int y = 0; y < 700; ++y) for (int x = 0; x < 1000; ++x)
+        if (image.GetGreen(x,y) > image.GetRed(x,y) + 40 &&
+            image.GetBlue(x,y) > image.GetRed(x,y) + 40) ++nonWhite;
+      if (!output.empty()) image.SaveFile(output + "/" + name + ".png", wxBITMAP_TYPE_PNG);
+      return nonWhite;
+    };
+    const auto shown = render(true, "partial-visible"), hidden = render(false, "partial-hidden");
+    passed = passed && shown > 10 && hidden == 0 && owner->HasSelectedPartial() &&
+        owner->GetDiagnosticError() == failure;
+    m_Routing.SetRouteVisibility(owner, true);
+    // Configuration edits invalidate the result, including open comparisons.
+    owner->SetConfiguration(configuration); Preview(0);
+    passed = passed && owner->PartialCandidates().empty() &&
+        m_Summary->GetLabel().Contains("Results changed");
+    owner->Clear();
+    passed = passed && !owner->HasSelectedPartial() && owner->PartialCandidates().empty();
+  }
+  wxLogMessage("WR_PARTIAL_UI_CONTRACT passed=%d rows=%lu completed_output=0", passed ? 1 : 0,
+      static_cast<unsigned long>(m_Entries.size()));
+  wxLog::FlushActive();
+  if (!passed) std::_Exit(4);
 }
 
 void RouteComparisonDialog::RunHostContract(bool lifecycle) {
@@ -291,15 +382,6 @@ void RouteComparisonDialog::RunHostContract(bool lifecycle) {
     wxListEvent sort(wxEVT_LIST_COL_CLICK, m_List->GetId());
     sort.m_col = column; m_List->GetEventHandler()->ProcessEvent(sort);
   }
-  const bool explorationPreference = m_ExploreComfort->GetValue();
-  for (const bool enabled : {!explorationPreference, explorationPreference}) {
-    m_ExploreComfort->SetValue(enabled);
-    wxCommandEvent event(wxEVT_CHECKBOX, m_ExploreComfort->GetId());
-    m_ExploreComfort->GetEventHandler()->ProcessEvent(event);
-    if (auto* config = GetOCPNConfigObject())
-      passed = passed && config->ReadBool(
-          "/PlugIns/WeatherRouting/ComfortExplorationEnabled", !enabled) == enabled;
-  }
   if (lifecycle && !m_Entries.empty()) {
     // Dedicated headless fixture only: prove that a dialog holding immutable
     // snapshots never dereferences its removed owner.
@@ -320,6 +402,21 @@ void RouteComparisonDialog::Collect() {
   auto selected = m_Routing.CurrentRouteMaps();
   if (selected.empty()) return;
   const auto anchor = selected.front()->GetConfiguration();
+  if (m_Partials) {
+    if (selected.size() != 1) return;
+    auto* owner = selected.front();
+    for (const auto& candidate : owner->PartialCandidates()) {
+      Entry entry;
+      entry.segments.push_back({owner, owner->ModernProgressGeneration(), candidate});
+      entry.metric = {candidate.id, candidate.result->metrics.elapsed.count(), candidate.comfort};
+      entry.fullComfort = candidate.comfort; entry.windComfort = candidate.windOnlyComfort;
+      entry.engine = EngineTitle(candidate.result->engineIdentity);
+      entry.departure = WxTime(candidate.result->legs.front().startTime);
+      entry.eta = WxTime(candidate.result->legs.back().endTime);
+      m_Entries.push_back(std::move(entry));
+    }
+    return;
+  }
   const auto addItinerary = [&](const std::vector<RouteMapOverlay*>& routes) {
     Entry entry;
     std::vector<weather_routing::wr::RouteLeg> legs;
@@ -424,6 +521,7 @@ void RouteComparisonDialog::Populate() {
       case 11: return e.fullComfort.durationSeconds > 0 ?
           double(e.fullComfort.waveCoveredSeconds) / e.fullComfort.durationSeconds : 0;
       case 12: return e.fullComfort.durationSeconds - e.fullComfort.waveCoveredSeconds;
+      case 14: return e.segments.front().candidate.remainingNm;
       default: return e.metric.elapsedSeconds;
     }
   };
@@ -458,7 +556,15 @@ void RouteComparisonDialog::Populate() {
         c.comparable() ? TableDuration(c.longestDifficultSeconds) : _("Incomplete"),
         wxString::Format("%.0f%%", e.fullComfort.durationSeconds > 0 ?
             100.0 * e.fullComfort.waveCoveredSeconds / e.fullComfort.durationSeconds : 0.0),
-        TableDuration(e.fullComfort.durationSeconds - e.fullComfort.waveCoveredSeconds), _("Pass")});
+        TableDuration(e.fullComfort.durationSeconds - e.fullComfort.waveCoveredSeconds),
+        m_Partials ? _("Prefix pass - Incomplete") : _("Pass")});
+    if (m_Partials) {
+      const auto& candidate = e.segments.front().candidate;
+      const auto end = candidate.result->legs.back().end;
+      m_RowValues.back().push_back(wxString::Format("%.3f", candidate.remainingNm));
+      m_RowValues.back().push_back(wxString::Format("%.5f, %.5f", end.latitude, end.longitude));
+      m_RowValues.back().push_back(wxString::FromUTF8(candidate.partialStage.c_str()));
+    }
     const auto& values = m_RowValues.back();
     const long row = m_List->InsertItem(m_List->GetItemCount(), values.front());
     m_List->SetItemData(row, index);
@@ -481,7 +587,7 @@ void RouteComparisonDialog::Populate() {
 
 void RouteComparisonDialog::Choose() {
   if (m_Entries.empty()) {
-    m_Summary->SetLabel(_("No completed validated candidates. Compute All, or select completed departure results."));
+    m_Summary->SetLabel(m_Partials ? _("No validated partial candidates. Complete an unsuccessful departure-time All run first.") : _("No completed validated candidates. Compute All, or select completed departure results."));
     m_Slider->Disable();
 #ifdef __OCPN__ANDROID__
     RefreshAndroidComparison();
@@ -490,9 +596,21 @@ void RouteComparisonDialog::Choose() {
   }
   std::vector<weather_routing::RouteComparisonMetric> metrics;
   for (const auto& entry : m_Entries) metrics.push_back(entry.metric);
-  const auto selection = weather_routing::SelectComfortCandidate(metrics, m_Slider->GetValue());
+  const auto selection = Selection();
   m_Slider->Enable(selection.tradeOffAvailable);
   Preview(selection.selected);
+}
+
+weather_routing::RouteComparisonSelection RouteComparisonDialog::Selection() const {
+  std::vector<weather_routing::RouteComparisonMetric> metrics;
+  std::vector<double> remaining;
+  for (std::size_t i = 0; i < m_Entries.size(); ++i) {
+    metrics.push_back(m_Entries[i].metric);
+    if (m_Partials) remaining.push_back(m_Entries[i].segments.front().candidate.remainingNm);
+  }
+  return m_Partials ? weather_routing::SelectPartialComfortCandidate(metrics, remaining,
+      m_Slider->GetValue(), weather_routing::wr::kReplayEndpointToleranceNm) :
+      weather_routing::SelectComfortCandidate(metrics, m_Slider->GetValue());
 }
 
 bool RouteComparisonDialog::Current(const Segment& segment) const {
@@ -502,7 +620,7 @@ bool RouteComparisonDialog::Current(const Segment& segment) const {
   if (!alive) return false;
   if (segment.owner->Running() || segment.owner->ModernProgressGeneration() != segment.generation)
     return false;
-  for (const auto& c : segment.owner->RetainedCandidates())
+  for (const auto& c : (m_Partials ? segment.owner->PartialCandidates() : segment.owner->RetainedCandidates()))
     if (c.id == segment.candidate.id) return true;
   return false;
 }
@@ -523,7 +641,8 @@ void RouteComparisonDialog::Preview(std::size_t index) {
   if (m_PreviewId != entry.metric.id) {
     m_Routing.m_positionOnRoute = nullptr;
     for (const auto& segment : entry.segments) {
-      if (!segment.owner->SelectRetainedCandidate(segment.candidate.id)) return;
+      if (!(m_Partials ? segment.owner->SelectPartialCandidate(segment.candidate.id) :
+                         segment.owner->SelectRetainedCandidate(segment.candidate.id))) return;
       m_Routing.UpdateRouteMap(segment.owner);
     }
     m_PreviewId = entry.metric.id;
@@ -545,10 +664,17 @@ void RouteComparisonDialog::Preview(std::size_t index) {
   const auto& c = entry.metric.comfort;
   std::vector<weather_routing::RouteComparisonMetric> metrics;
   for (const auto& e : m_Entries) metrics.push_back(e.metric);
-  const auto selection = weather_routing::SelectComfortCandidate(metrics, m_Slider->GetValue());
+  const auto selection = Selection();
   wxString text = wxString::Format(_("%lu validated candidates. Allow up to %s extra. Selected %s (%s): passage %s.\n"),
       static_cast<unsigned long>(m_Entries.size()), DurationText(selection.allowanceSeconds),
       wxString::FromUTF8(entry.metric.id.c_str()), entry.engine, DurationText(entry.metric.elapsedSeconds));
+  if (m_Partials) {
+    const auto& candidate = entry.segments.front().candidate;
+    const auto end = candidate.result->legs.back().end;
+    text = wxString::Format(_("Incomplete - destination not reached. %s: endpoint %.5f, %.5f at %s UTC; elapsed %s; %.3f NM remaining (straight line).\n"),
+        entry.engine, end.latitude, end.longitude, UtcText(entry.eta),
+        DurationText(entry.metric.elapsedSeconds), candidate.remainingNm);
+  }
   const auto& full = entry.fullComfort;
   text += wxString::Format(_("Wave coverage: %.0f%%. Missing waves: %s.\n"),
       full.durationSeconds > 0 ? 100.0 * full.waveCoveredSeconds / full.durationSeconds : 0.0,
@@ -573,7 +699,7 @@ void RouteComparisonDialog::Preview(std::size_t index) {
     text += _("No fastest / comfort trade-off available among comparable candidates.");
   if (m_WindOnly->GetValue()) text += _(" Wind-only ranking: waves excluded from ranking; worst known leg still includes available waves.");
   if (!text.EndsWith("\n")) text += "\n";
-  text += _("Extra search: up to 4 routes, 50% extra passage time (maximum 12 h), and a 20 s search allowance per departure. Limits apply only to extras; the original valid route is kept.");
+  if (!m_Partials) text += _("Extra search retains up to 4 useful alternatives per departure, within 50% extra passage time (maximum 12 h). Computation limits are set in routing configuration. The original valid route is kept.");
   m_Summary->SetLabel(text);
 #ifndef __OCPN__ANDROID__
   m_Summary->Wrap(std::max(300, GetClientSize().x - 24));
@@ -618,13 +744,15 @@ void RouteComparisonDialog::RefreshAndroidComparison() {
   WR_WrapAndroidText(m_Summary, m_Summary->GetLabel(), width);
   WR_WrapAndroidText(m_AndroidDetails, details, width);
   WR_WrapAndroidText(m_AndroidNote, m_AndroidNote->GetLabel(), width);
+  WR_WrapAndroidText(m_AndroidExplorationHelp,
+      m_AndroidExplorationHelp->GetLabel(), width);
   m_AndroidScroll->Layout();
   m_AndroidScroll->FitInside();
   m_Updating = false;
 }
 #endif
 
-void WeatherRouting::ShowRouteComparison() {
-  auto* dialog = new RouteComparisonDialog(*this);
+void WeatherRouting::ShowRouteComparison(bool partials) {
+  auto* dialog = new RouteComparisonDialog(*this, partials);
   dialog->Show();
 }

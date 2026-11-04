@@ -16,9 +16,10 @@ struct Options {
   wr::Duration replaySlice{std::chrono::minutes{5}};
   // Optional, bounded diagnostic display data; never accepted sailing legs.
   bool captureVisualization{false};
-  // Professional may admit a waterborne departure or destination inside the
-  // configured shore buffer. Search legs must move out of the departure
-  // buffer or into the destination, and final replay checks them again.
+  // The host may admit a waterborne departure or destination inside the
+  // configured shore buffer. Access is confined to the shared endpoint reach;
+  // search and independent replay still check hazards and full clearance
+  // outside those areas. This does not enable Professional interim bridges.
   bool allowCoastalEndpointLeeway{false};
   // Professional may repair a short Quick contour gap with a bounded
   // Professional subroute. Every joined prefix and completed route is replayed

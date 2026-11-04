@@ -12,7 +12,9 @@ artifacts="$source_dir/artifacts/android-arm64"
 package_name=weather_routing_pi
 identity_arg=OFF
 if [[ "${WEATHER_ROUTING_CI_XWEATHER:-false}" == "true" ||
-      "${WEATHER_ROUTING_XWEATHER_IDENTITY:-false}" == "true" ]]; then
+      ( -z "${WEATHER_ROUTING_CI_XWEATHER:-}" &&
+        ( "${WEATHER_ROUTING_XWEATHER_IDENTITY:-false}" == "true" ||
+          "${CIRCLE_PROJECT_REPONAME:-}" == "xweather_routing_pi" ) ) ]]; then
   package_name=xweather_routing_pi
   identity_arg=ON
 fi
@@ -92,6 +94,18 @@ if old in source:
 elif new not in source:
     raise SystemExit(f'Unexpected OpenCPN Android archiver in {path}')
 path.write_text(source)
+
+# The core overrides CMAKE_SHARED_LINKER_FLAGS, so set both native page
+# layout flags at that assignment instead of relying on caller cache flags.
+path = Path(sys.argv[1]).parent.parent / 'CMakeLists.txt'
+source = path.read_text()
+old = 'set(CMAKE_SHARED_LINKER_FLAGS "-Wl,-soname,libgorp.so -Wl,--build-id")'
+new = 'set(CMAKE_SHARED_LINKER_FLAGS "-Wl,-soname,libgorp.so -Wl,--build-id -Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384")'
+if old in source:
+    source = source.replace(old, new, 1)
+elif new not in source:
+    raise SystemExit('Unexpected Android core linker flags')
+path.write_text(source)
 PY
 
 cmake -S "$core_source" -B "$core_build" \
@@ -142,7 +156,6 @@ test "${#packages[@]}" -eq 1
 test "${#metadata[@]}" -eq 1
 python3 "$source_dir/ci/package-android-import.py" \
   "${packages[0]}" "${metadata[0]}" "$artifacts/import"
-python3 "$source_dir/ci/verify-shoreline-package.py" "${packages[0]}"
 "$tool_base/bin/llvm-readelf" -h "$plugin_build/lib${package_name}.so" \
   | grep -E 'Machine:.*AArch64'
 "$tool_base/bin/llvm-readelf" -d "$plugin_build/lib${package_name}.so" \
@@ -152,4 +165,8 @@ python3 "$source_dir/ci/embed-package-metadata.py" \
   "$artifacts/package/$(basename "${packages[0]}")" \
   "$artifacts/package/$(basename "${metadata[0]}")" \
   "$artifacts/package/$(basename "${packages[0]}")"
+python3 "$source_dir/ci/verify-shoreline-package.py" \
+  "$artifacts/package/$(basename "${packages[0]}")"
 (cd "$artifacts/package" && sha256sum ./*.tar.gz ./*.xml > SHA256SUMS)
+
+python3 "$source_dir/ci/verify-android-pages.py" "$artifacts/package/"*.tar.gz --report "$artifacts/android-pages.json"

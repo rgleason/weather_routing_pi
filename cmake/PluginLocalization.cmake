@@ -51,7 +51,7 @@ if (GETTEXT_XGETTEXT_EXECUTABLE)
     COMMAND
       ${GETTEXT_XGETTEXT_EXECUTABLE} --force-po -F --from-code=UTF-8
       --package-name=${PACKAGE_NAME} --package-version="${PACKAGE_VERSION}"
-      --output=po/${PACKAGE_NAME}.pot --keyword=_ --width=80
+      --output=po/${PACKAGE_NAME}.pot --keyword=_ --keyword=wxTRANSLATE --width=80
       --files-from=${CMAKE_CURRENT_SOURCE_DIR}/po/POTFILES.in
     DEPENDS po/POTFILES.in po/${PACKAGE_NAME}.pot
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}

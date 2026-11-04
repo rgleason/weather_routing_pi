@@ -1,0 +1,212 @@
+[
+  {
+    "case": "still",
+    "pmp": {
+      "arrival_hours": 3.3333333332313546,
+      "seconds": 0.9416561489924788,
+      "rhs_calls": 100880,
+      "converged_shootings": 24
+    },
+    "hj": {
+      "64": {
+        "arrival_hours": 3.5230769230769163,
+        "seconds": 0.02191514684818685,
+        "steps": 229,
+        "cells": 4096,
+        "seed_radius_nm": 0.75,
+        "working_array_lower_bound_bytes": 327680
+      },
+      "128": {
+        "arrival_hours": 3.3579648697759006,
+        "seconds": 0.11746677290648222,
+        "steps": 440,
+        "cells": 16384,
+        "seed_radius_nm": 0.75,
+        "working_array_lower_bound_bytes": 1310720
+      },
+      "256": {
+        "arrival_hours": 3.283981900452521,
+        "seconds": 1.4584129229187965,
+        "steps": 864,
+        "cells": 65536,
+        "seed_radius_nm": 0.75,
+        "working_array_lower_bound_bytes": 5242880
+      }
+    }
+  },
+  {
+    "case": "jet",
+    "pmp": {
+      "arrival_hours": 2.846316801362737,
+      "seconds": 1.3490638241637498,
+      "rhs_calls": 135058,
+      "converged_shootings": 24
+    },
+    "hj": {
+      "64": {
+        "arrival_hours": 2.984130404606505,
+        "seconds": 0.038076319033280015,
+        "steps": 313,
+        "cells": 4096,
+        "seed_radius_nm": 0.75,
+        "working_array_lower_bound_bytes": 327680
+      },
+      "128": {
+        "arrival_hours": 2.811761270784872,
+        "seconds": 0.21732818009331822,
+        "steps": 595,
+        "cells": 16384,
+        "seed_radius_nm": 0.75,
+        "working_array_lower_bound_bytes": 1310720
+      },
+      "256": {
+        "arrival_hours": 2.7625327529618975,
+        "seconds": 2.362020537024364,
+        "steps": 1174,
+        "cells": 65536,
+        "seed_radius_nm": 0.75,
+        "working_array_lower_bound_bytes": 5242880
+      }
+    }
+  },
+  {
+    "case": "tide",
+    "pmp": {
+      "arrival_hours": 4.670221963609954,
+      "seconds": 1.7658288509119302,
+      "rhs_calls": 173042,
+      "converged_shootings": 16
+    },
+    "hj": {
+      "64": {
+        "arrival_hours": 5.158392222880833,
+        "seconds": 0.03899949695914984,
+        "steps": 438,
+        "cells": 4096,
+        "seed_radius_nm": 0.75,
+        "working_array_lower_bound_bytes": 327680
+      },
+      "128": {
+        "arrival_hours": 4.818717209075999,
+        "seconds": 0.20979504217393696,
+        "steps": 818,
+        "cells": 16384,
+        "seed_radius_nm": 0.75,
+        "working_array_lower_bound_bytes": 1310720
+      },
+      "256": {
+        "arrival_hours": 4.708257924446688,
+        "seconds": 2.3521723768208176,
+        "steps": 1601,
+        "cells": 65536,
+        "seed_radius_nm": 0.75,
+        "working_array_lower_bound_bytes": 5242880
+      }
+    }
+  },
+  {
+    "case": "eddy",
+    "pmp": {
+      "arrival_hours": 3.2356624085267636,
+      "seconds": 0.9238851859699935,
+      "rhs_calls": 93648,
+      "converged_shootings": 24
+    },
+    "hj": {
+      "64": {
+        "arrival_hours": 3.455072463768146,
+        "seconds": 0.03014376014471054,
+        "steps": 298,
+        "cells": 4096,
+        "seed_radius_nm": 0.75,
+        "working_array_lower_bound_bytes": 327680
+      },
+      "128": {
+        "arrival_hours": 3.284080794248578,
+        "seconds": 0.1684874079655856,
+        "steps": 571,
+        "cells": 16384,
+        "seed_radius_nm": 0.75,
+        "working_array_lower_bound_bytes": 1310720
+      },
+      "256": {
+        "arrival_hours": 3.199590792838923,
+        "seconds": 1.730753666954115,
+        "steps": 1117,
+        "cells": 65536,
+        "seed_radius_nm": 0.75,
+        "working_array_lower_bound_bytes": 5242880
+      }
+    }
+  },
+  {
+    "case": "still_island",
+    "pmp": {
+      "arrival_hours": null,
+      "seconds": 1.020182085921988,
+      "rhs_calls": 100880,
+      "converged_shootings": 24
+    },
+    "hj": {
+      "64": {
+        "arrival_hours": 3.9538461538461456,
+        "seconds": 0.023314451100304723,
+        "steps": 257,
+        "cells": 4096,
+        "seed_radius_nm": 0.75,
+        "working_array_lower_bound_bytes": 327680
+      },
+      "128": {
+        "arrival_hours": 3.709024833434295,
+        "seconds": 0.12725400202907622,
+        "steps": 486,
+        "cells": 16384,
+        "seed_radius_nm": 0.75,
+        "working_array_lower_bound_bytes": 1310720
+      },
+      "256": {
+        "arrival_hours": 3.6260633484163365,
+        "seconds": 1.4723026361316442,
+        "steps": 954,
+        "cells": 65536,
+        "seed_radius_nm": 0.75,
+        "working_array_lower_bound_bytes": 5242880
+      }
+    }
+  },
+  {
+    "case": "still_narrow",
+    "pmp": {
+      "arrival_hours": null,
+      "seconds": 1.062426257878542,
+      "rhs_calls": 100880,
+      "converged_shootings": 24
+    },
+    "hj": {
+      "64": {
+        "arrival_hours": null,
+        "seconds": 0.06695805513300002,
+        "steps": 781,
+        "cells": 4096,
+        "seed_radius_nm": 0.75,
+        "working_array_lower_bound_bytes": 327680
+      },
+      "128": {
+        "arrival_hours": null,
+        "seconds": 0.38865305902436376,
+        "steps": 1573,
+        "cells": 16384,
+        "seed_radius_nm": 0.75,
+        "working_array_lower_bound_bytes": 1310720
+      },
+      "256": {
+        "arrival_hours": null,
+        "seconds": 4.520785939879715,
+        "steps": 3158,
+        "cells": 65536,
+        "seed_radius_nm": 0.75,
+        "working_array_lower_bound_bytes": 5242880
+      }
+    }
+  }
+]

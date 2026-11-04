@@ -74,6 +74,7 @@ struct WaveSample {
   double directionFromDegrees{};
   double periodSeconds{};
   EnvironmentalSourceMetadata metadata;
+  bool nearbyHeightEstimate{};
 };
 
 struct EnvironmentalSnapshot {
@@ -110,6 +111,7 @@ struct EnvironmentalSourceUsage {
   Duration currentAssumedZeroDuration{};
   Duration gribWaveDuration{};
   Duration missingWaveDuration{};
+  Duration estimatedWaveDuration{};
 };
 
 enum class PropulsionMode { Sail, MotorSail, Motor };
@@ -310,11 +312,28 @@ public:
       : flag_(std::move(flag)) {}
   void cancel() const { flag_->store(true, std::memory_order_relaxed); }
   [[nodiscard]] bool cancelled() const {
-    return flag_->load(std::memory_order_relaxed);
+    return flag_->load(std::memory_order_relaxed) ||
+        extraStopped() ||
+        (deadline_ && std::chrono::steady_clock::now() >= *deadline_);
+  }
+  // A bounded child never cancels its parent when its allowance expires.
+  [[nodiscard]] CancellationToken bounded(
+      std::chrono::steady_clock::time_point deadline,
+      std::shared_ptr<std::atomic_bool> stop) const {
+    auto child = *this;
+    if (!child.deadline_ || deadline < *child.deadline_) child.deadline_ = deadline;
+    if (stop) child.extraStops_.push_back(std::move(stop));
+    return child;
   }
 
 private:
   std::shared_ptr<std::atomic_bool> flag_;
+  bool extraStopped() const {
+    for (const auto& flag : extraStops_) if (flag->load(std::memory_order_relaxed)) return true;
+    return false;
+  }
+  std::vector<std::shared_ptr<std::atomic_bool>> extraStops_;
+  std::optional<std::chrono::steady_clock::time_point> deadline_;
 };
 
 enum class RoutingProgressStage {
@@ -342,6 +361,11 @@ struct RoutingProgressUpdate {
 using RoutingProgressCallback =
     std::function<void(const RoutingProgressUpdate&)>;
 
+struct RoutingPreview;
+class PartialRouteArchive;
+using RoutingPreviewCallback =
+    std::function<void(std::shared_ptr<const RoutingPreview>)>;
+
 struct RoutingRequest {
   GeoPoint start;
   GeoPoint destination;
@@ -355,6 +379,14 @@ struct RoutingRequest {
   CancellationToken cancellation;
   // Runtime observer only; configuration serialization intentionally omits it.
   RoutingProgressCallback progress;
+  // Optional display observer. Never participates in route acceptance.
+  RoutingPreviewCallback preview;
+  std::uint64_t previewPhase{};
+  std::function<bool()> previewWanted;
+  // Optional failed-search capture. Never used as a search incumbent, seed,
+  // constraint or acceptance criterion. The caller owns the archive.
+  std::shared_ptr<PartialRouteArchive> partials;
+
 };
 
 enum class RequiredUserAction {
@@ -376,6 +408,7 @@ enum class RoutingWarningCode {
   CurrentAssumedZero,
   CurrentCoverageIncomplete,
   WaveDataMissing,
+  WaveHeightEstimated,
   WaveCoverageIncomplete,
   EstimatedPolar,
   SearchPruned,
@@ -502,6 +535,9 @@ struct RouteLeg {
   double estimatedFuelLitres{};
   ConstraintMargins margins;
   std::vector<RoutingWarning> warnings;
+  // Optional output sampled at the leg's start position/time. Retain it with
+  // delivered routes so inspection never depends on a later loaded forecast.
+  std::optional<double> windGustKnots;
 };
 
 // Bounded, deterministic solver geometry intended only for inspection.  Route
@@ -533,6 +569,16 @@ struct IsochroneLayer {
   std::vector<IsochroneTrace> traces;
 };
 
+// A bounded, provisional view of search activity, never an exportable route.
+struct RoutingPreview {
+  std::uint64_t phase{};
+  RoutingProgressStage stage{RoutingProgressStage::ForwardIsochrone};
+  TimePoint time{};
+  std::vector<IsochroneContour> contours;
+  std::vector<GeoPoint> frontier;
+  std::vector<GeoPoint> path;
+};
+
 struct RoutingVisualization {
   std::vector<IsochroneLayer> isochrones;
 };
@@ -556,9 +602,13 @@ struct RouteValidationResult {
   bool passed{};
   std::string failureReason;
   std::size_t acceptedPrefixLegs{};
+  // Leading legs whose chronological replay starts inside the departure
+  // buffer. Delivery must retain this independently validated allowance.
+  std::size_t coastalDepartureEgressLegs{};
   std::uint64_t samples{};
   EnvironmentalSourceUsage environment;
   std::vector<EnvironmentalSourceTransition> sourceTransitions;
+  bool estimatedPolarWind{};
 };
 
 struct PruningDiagnostics {
@@ -637,6 +687,14 @@ struct EnsembleMetrics {
   std::vector<EnsembleMemberResult> members;
 };
 
+struct RoutingAttempt {
+  std::string engine;
+  RoutingStatus status{RoutingStatus::InternalError};
+  std::string detail;
+};
+
+using RoutingAttemptFailure = RoutingAttempt;
+
 struct RoutingResult {
   RoutingStatus status{RoutingStatus::InternalError};
   std::vector<RouteLeg> legs;
@@ -654,6 +712,8 @@ struct RoutingResult {
   // Optional client-side solver provenance, retained by arrival planning.
   std::string engineIdentity;
   std::string searchVariant;
+  std::vector<RoutingAttemptFailure> attemptFailures;
+  std::vector<RoutingAttempt> engineAttempts;
 };
 
 }  // namespace supercpn::weather_routing

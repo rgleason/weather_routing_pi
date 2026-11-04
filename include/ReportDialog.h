@@ -50,6 +50,9 @@ private:
   QTextBrowser* m_androidConfigurationReport = nullptr;
   QTextBrowser* m_androidRoutesReport = nullptr;
 #endif
+  wxString m_DiagnosticText;
+  wxButton* m_CopyDiagnostics = nullptr;
+  void CopyDiagnostics();
   wxString FormatTime(wxDateTime t);
   WeatherRouting& m_WeatherRouting;
 };

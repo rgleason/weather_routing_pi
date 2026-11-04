@@ -122,7 +122,7 @@ TEST(RouteComfort, RetentionObserverSeesOnlyValidatedRoutesAndAutoStops) {
     observed.push_back(engine);
   };
   RunRoutingEngineSequence(weather_routing::RoutingEngine::All, wr::CancellationToken{}, solve, observer);
-  EXPECT_EQ(observed, (std::vector{SequenceEngine::Original, SequenceEngine::Alternative, SequenceEngine::Main}));
+  EXPECT_EQ(observed, (std::vector{SequenceEngine::Original, SequenceEngine::Quick2, SequenceEngine::Alternative, SequenceEngine::Main}));
   observed.clear();
   RunRoutingEngineSequence(weather_routing::RoutingEngine::Auto, wr::CancellationToken{}, solve, observer);
   EXPECT_EQ(observed, (std::vector{SequenceEngine::Original}));

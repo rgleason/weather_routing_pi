@@ -36,14 +36,17 @@ double deg2rad(double degrees) { return M_PI * degrees / 180.0; }
 double rad2deg(double radians) { return 180.0 * radians / M_PI; }
 
 double heading_resolve(double degrees) {
-  while (degrees < -180) degrees += 360;
-  while (degrees >= 180) degrees -= 360;
+  if (!std::isfinite(degrees)) return NAN;
+  degrees = fmod(degrees, 360.0);
+  if (degrees < -180) degrees += 360;
+  if (degrees >= 180) degrees -= 360;
   return degrees;
 }
 
 double positive_degrees(double degrees) {
-  while (degrees < 0) degrees += 360;
-  while (degrees >= 360) degrees -= 360;
+  if (!std::isfinite(degrees)) return NAN;
+  degrees = fmod(degrees, 360.0);
+  if (degrees < 0) degrees += 360;
   return degrees;
 }
 

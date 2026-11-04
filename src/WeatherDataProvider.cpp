@@ -576,7 +576,7 @@ double WeatherDataProvider::GetSwell(RouteMapConfiguration& configuration,
                                      double lat, double lon) {
   return GetWeatherParameter(
       configuration, lat, lon, "SWELL", Idx_HTSIGW, NAN,
-      [](double height) { return height < 0 ? 0 : height; });
+      [](double height) { return height < 0 ? NAN : height; });
 }
 
 double WeatherDataProvider::GetWaveDirection(

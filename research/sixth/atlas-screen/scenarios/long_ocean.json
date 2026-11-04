@@ -1,0 +1,13 @@
+{
+  "name": "long_ocean",
+  "start": [
+    25,
+    -140
+  ],
+  "east_nm": 1800,
+  "north_nm": 0,
+  "wind_from": 0,
+  "max_hours": 500,
+  "cache": true,
+  "step_seconds": 21600
+}

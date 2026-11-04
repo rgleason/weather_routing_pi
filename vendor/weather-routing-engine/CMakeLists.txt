@@ -19,6 +19,7 @@ add_library(weather_routing_engine STATIC
   include/supercpn/weather_routing/Providers.h
   include/supercpn/weather_routing/ResourcePolicy.h
   include/supercpn/weather_routing/Types.h
+  include/supercpn/weather_routing/PartialRoutes.h
   src/ArrivalPlanner.cpp
   src/Engine.cpp
   src/Ensemble.cpp

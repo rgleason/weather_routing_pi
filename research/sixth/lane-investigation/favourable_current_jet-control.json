@@ -1,0 +1,16 @@
+{
+  "name": "favourable_current_jet",
+  "start": [
+    30,
+    -140
+  ],
+  "east_nm": 40,
+  "north_nm": 0,
+  "wind_from": 0,
+  "max_hours": 48,
+  "cache": true,
+  "currents": true,
+  "jet": true,
+  "current_to": 90,
+  "atlas_weather_lanes": false
+}

@@ -10,8 +10,7 @@
 #ifndef WEATHER_ROUTING_TIME_ZONE_DISPLAY_H
 #define WEATHER_ROUTING_TIME_ZONE_DISPLAY_H
 
-#include <vector>
-
+#include <wx/arrstr.h>
 #include <wx/datetime.h>
 #include <wx/string.h>
 
@@ -30,7 +29,7 @@ struct WallClockConversion {
 };
 
 /** Return the IANA zones supported by the active C++ runtime. */
-std::vector<wxString> AvailableTimeZones();
+wxArrayString AvailableTimeZones();
 
 /** Return the operating system's IANA zone, or UTC when unavailable. */
 wxString SystemTimeZone();

@@ -29,6 +29,7 @@
 #ifndef _CUTIL_H__
 #define _CUTIL_H__
 
+#include <time.h>  // timespec used by the Windows monotonic-clock interface
 #include <vector>
 
 #ifdef __MSVC__

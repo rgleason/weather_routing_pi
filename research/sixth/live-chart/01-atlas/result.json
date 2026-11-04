@@ -1,0 +1,154 @@
+{
+   "candidates" : [
+      {
+         "coverageNotes" : "No usable wave-height data along this route. Wave heights are unknown and the wave ceiling could not be checked.",
+         "departure" : "2026-07-03T03:00:00Z",
+         "distanceNm" : 27.877123111935049,
+         "elapsed" : 15041,
+         "engine" : "atlas",
+         "eta" : "2026-07-03T07:10:41Z",
+         "finalSafety" : "pass",
+         "offsetMinutes" : 0,
+         "retainedRoutes" : [
+            {
+               "comfort" : {
+                  "bumpySeconds" : 0,
+                  "comparable" : false,
+                  "difficultSeconds" : 0,
+                  "durationSeconds" : 15041,
+                  "goodSeconds" : 0,
+                  "longestDifficultSeconds" : 0,
+                  "modelRevision" : 1,
+                  "unknownSeconds" : 15041,
+                  "waveCoveredSeconds" : 0,
+                  "windOnly" : false
+               },
+               "distanceNm" : 27.894900880330511,
+               "elapsedSeconds" : 15041,
+               "engine" : "atlas",
+               "finalSafety" : "pass",
+               "id" : "route-1",
+               "processingMilliseconds" : 0.022953000000000001,
+               "route" : [
+                  {
+                     "latitudeDegrees" : 53.600000000000001,
+                     "longitudeDegrees" : -5,
+                     "timeUtc" : "2026-07-03T03:00:00Z"
+                  },
+                  {
+                     "latitudeDegrees" : 53.705323938403247,
+                     "longitudeDegrees" : -5.2090449822723031,
+                     "timeUtc" : "2026-07-03T04:37:47Z"
+                  },
+                  {
+                     "latitudeDegrees" : 53.735371949283468,
+                     "longitudeDegrees" : -5.2689573947874919,
+                     "timeUtc" : "2026-07-03T05:02:14Z"
+                  },
+                  {
+                     "latitudeDegrees" : 53.765350951322326,
+                     "longitudeDegrees" : -5.328920705944995,
+                     "timeUtc" : "2026-07-03T05:26:28Z"
+                  },
+                  {
+                     "latitudeDegrees" : 53.795327668151643,
+                     "longitudeDegrees" : -5.3890041477613693,
+                     "timeUtc" : "2026-07-03T05:50:22Z"
+                  },
+                  {
+                     "latitudeDegrees" : 53.899990083082216,
+                     "longitudeDegrees" : -5.5999770050091513,
+                     "timeUtc" : "2026-07-03T07:10:41Z"
+                  }
+               ],
+               "searchVariant" : "adaptive-spatial-boundary-value",
+               "shoreline" : {
+                  "dataset" : "GSHHG 2.3.7 / Crude / SHA256 786c578f3c21db696ab43e89381cfb16fc43823101b31f8097abea4d89744d14 / /tmp/atlas-headless-shoreline/2.3.7/poly-c-1792160865435344704.dat",
+                  "resolution" : 0
+               },
+               "windOnlyComfort" : {
+                  "averageDiscomfort" : 0.049612341448660315,
+                  "bumpySeconds" : 0,
+                  "comparable" : true,
+                  "difficultSeconds" : 0,
+                  "durationSeconds" : 15041,
+                  "exposureHours" : 0.20728311881369438,
+                  "goodSeconds" : 15041,
+                  "longestDifficultSeconds" : 0,
+                  "modelRevision" : 1,
+                  "unknownSeconds" : 0,
+                  "waveCoveredSeconds" : 0,
+                  "windOnly" : true,
+                  "worstLeg" : {
+                     "category" : 1,
+                     "endLat" : 53.899990083082216,
+                     "endLon" : -5.5999770050091513,
+                     "endTimeEpoch" : 1783062641,
+                     "index" : 4,
+                     "severity" : 0.08282650456833629,
+                     "startLat" : 53.795327668151643,
+                     "startLon" : -5.3890041477613693,
+                     "startTimeEpoch" : 1783057822
+                  }
+               }
+            }
+         ],
+         "reverseConnectionFound" : false,
+         "reverseFinalValidationPass" : true,
+         "reverseLayersBuilt" : 0,
+         "reverseNodesFeasible" : 0,
+         "reverseNodesGenerated" : 0,
+         "reverseRecoveryUsed" : false,
+         "route" : [
+            {
+               "latitudeDegrees" : 53.600000000000001,
+               "longitudeDegrees" : -5,
+               "timeUtc" : "2026-07-03T03:00:00Z"
+            },
+            {
+               "latitudeDegrees" : 53.705323938403247,
+               "longitudeDegrees" : -5.2090449822723031,
+               "timeUtc" : "2026-07-03T04:37:47Z"
+            },
+            {
+               "latitudeDegrees" : 53.735371949283468,
+               "longitudeDegrees" : -5.2689573947874919,
+               "timeUtc" : "2026-07-03T05:02:14Z"
+            },
+            {
+               "latitudeDegrees" : 53.765350951322326,
+               "longitudeDegrees" : -5.328920705944995,
+               "timeUtc" : "2026-07-03T05:26:28Z"
+            },
+            {
+               "latitudeDegrees" : 53.795327668151643,
+               "longitudeDegrees" : -5.3890041477613693,
+               "timeUtc" : "2026-07-03T05:50:22Z"
+            },
+            {
+               "latitudeDegrees" : 53.899999999999999,
+               "longitudeDegrees" : -5.5999999999999996,
+               "timeUtc" : "2026-07-03T07:10:41Z"
+            }
+         ],
+         "searchSettings" : {
+            "headingStepDegrees" : 10,
+            "maximumSearchAngleDegrees" : 180,
+            "preset" : "custom",
+            "presetRevision" : 0,
+            "timeStepSeconds" : 3600
+         },
+         "selectedEngine" : "atlas",
+         "shoreline" : {
+            "dataset" : "GSHHG 2.3.7 / Crude / SHA256 786c578f3c21db696ab43e89381cfb16fc43823101b31f8097abea4d89744d14 / /tmp/atlas-headless-shoreline/2.3.7/poly-c-1792160865435344704.dat",
+            "enabled" : true,
+            "resolution" : 0
+         },
+         "state" : "complete"
+      }
+   ],
+   "diagnostics" : {},
+   "scenario" : "Atlas authoritative chart and depth replay",
+   "schemaVersion" : 1,
+   "status" : "complete"
+}

@@ -1,0 +1,962 @@
+[
+  {
+    "seed": 0,
+    "family": 0,
+    "method": "bellman_mesh",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 757,
+    "seconds": 0.03849963005632162
+  },
+  {
+    "seed": 0,
+    "family": 0,
+    "method": "visibility",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 1,
+    "seconds": 1.3981014490127563e-05
+  },
+  {
+    "seed": 0,
+    "family": 0,
+    "method": "continuous_multistart",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 1196,
+    "seconds": 0.01320504187606275
+  },
+  {
+    "seed": 1,
+    "family": 1,
+    "method": "bellman_mesh",
+    "cost": 5.159797974644666,
+    "oracle": 4.872096757272366,
+    "ratio": 1.059050801268029,
+    "work": 783,
+    "seconds": 0.03879951196722686
+  },
+  {
+    "seed": 1,
+    "family": 1,
+    "method": "visibility",
+    "cost": 4.872096757272366,
+    "oracle": 4.872096757272366,
+    "ratio": 1.0,
+    "work": 11,
+    "seconds": 2.3538945242762566e-05
+  },
+  {
+    "seed": 1,
+    "family": 1,
+    "method": "continuous_multistart",
+    "cost": 5.67593020502296,
+    "oracle": 4.872096757272366,
+    "ratio": 1.1649871683173671,
+    "work": 1575,
+    "seconds": 0.02892603096552193
+  },
+  {
+    "seed": 2,
+    "family": 2,
+    "method": "bellman_mesh",
+    "cost": 6.008326112068523,
+    "oracle": 5.272422031657391,
+    "ratio": 1.1395760953869998,
+    "work": 828,
+    "seconds": 0.04461363912560046
+  },
+  {
+    "seed": 2,
+    "family": 2,
+    "method": "visibility",
+    "cost": 5.272422031657391,
+    "oracle": 5.272422031657391,
+    "ratio": 1.0,
+    "work": 33,
+    "seconds": 7.816287688910961e-05
+  },
+  {
+    "seed": 2,
+    "family": 2,
+    "method": "continuous_multistart",
+    "cost": 5.7872697873402625,
+    "oracle": 5.272422031657391,
+    "ratio": 1.0976491928361487,
+    "work": 1860,
+    "seconds": 0.04371969890780747
+  },
+  {
+    "seed": 3,
+    "family": 3,
+    "method": "bellman_mesh",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 707,
+    "seconds": 0.03816999006085098
+  },
+  {
+    "seed": 3,
+    "family": 3,
+    "method": "visibility",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 18,
+    "seconds": 5.3505878895521164e-05
+  },
+  {
+    "seed": 3,
+    "family": 3,
+    "method": "continuous_multistart",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 1619,
+    "seconds": 0.03738489584065974
+  },
+  {
+    "seed": 4,
+    "family": 0,
+    "method": "bellman_mesh",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 757,
+    "seconds": 0.04048379301093519
+  },
+  {
+    "seed": 4,
+    "family": 0,
+    "method": "visibility",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 1,
+    "seconds": 7.833121344447136e-06
+  },
+  {
+    "seed": 4,
+    "family": 0,
+    "method": "continuous_multistart",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 1196,
+    "seconds": 0.013226900016888976
+  },
+  {
+    "seed": 5,
+    "family": 1,
+    "method": "bellman_mesh",
+    "cost": 4.662741699796951,
+    "oracle": 4.304833493170415,
+    "ratio": 1.0831410104930548,
+    "work": 777,
+    "seconds": 0.04233995801769197
+  },
+  {
+    "seed": 5,
+    "family": 1,
+    "method": "visibility",
+    "cost": 4.304833493170415,
+    "oracle": 4.304833493170415,
+    "ratio": 1.0,
+    "work": 11,
+    "seconds": 2.7243047952651978e-05
+  },
+  {
+    "seed": 5,
+    "family": 1,
+    "method": "continuous_multistart",
+    "cost": 5.720874885250715,
+    "oracle": 4.304833493170415,
+    "ratio": 1.3289421981888123,
+    "work": 1304,
+    "seconds": 0.02438352699391544
+  },
+  {
+    "seed": 6,
+    "family": 2,
+    "method": "bellman_mesh",
+    "cost": 6.008326112068523,
+    "oracle": 5.272422031657391,
+    "ratio": 1.1395760953869998,
+    "work": 828,
+    "seconds": 0.05262413714081049
+  },
+  {
+    "seed": 6,
+    "family": 2,
+    "method": "visibility",
+    "cost": 5.272422031657391,
+    "oracle": 5.272422031657391,
+    "ratio": 1.0,
+    "work": 33,
+    "seconds": 7.509789429605007e-05
+  },
+  {
+    "seed": 6,
+    "family": 2,
+    "method": "continuous_multistart",
+    "cost": 5.7872697873402625,
+    "oracle": 5.272422031657391,
+    "ratio": 1.0976491928361487,
+    "work": 1860,
+    "seconds": 0.04356425395235419
+  },
+  {
+    "seed": 7,
+    "family": 3,
+    "method": "bellman_mesh",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 707,
+    "seconds": 0.03698092815466225
+  },
+  {
+    "seed": 7,
+    "family": 3,
+    "method": "visibility",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 18,
+    "seconds": 5.482812412083149e-05
+  },
+  {
+    "seed": 7,
+    "family": 3,
+    "method": "continuous_multistart",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 1619,
+    "seconds": 0.036369475070387125
+  },
+  {
+    "seed": 8,
+    "family": 0,
+    "method": "bellman_mesh",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 757,
+    "seconds": 0.038649833062663674
+  },
+  {
+    "seed": 8,
+    "family": 0,
+    "method": "visibility",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 1,
+    "seconds": 7.074093446135521e-06
+  },
+  {
+    "seed": 8,
+    "family": 0,
+    "method": "continuous_multistart",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 1196,
+    "seconds": 0.012833743821829557
+  },
+  {
+    "seed": 9,
+    "family": 1,
+    "method": "bellman_mesh",
+    "cost": 4.662741699796951,
+    "oracle": 4.2925250130145765,
+    "ratio": 1.0862468327289667,
+    "work": 778,
+    "seconds": 0.03941760817542672
+  },
+  {
+    "seed": 9,
+    "family": 1,
+    "method": "visibility",
+    "cost": 4.2925250130145765,
+    "oracle": 4.2925250130145765,
+    "ratio": 1.0,
+    "work": 11,
+    "seconds": 2.1690037101507187e-05
+  },
+  {
+    "seed": 9,
+    "family": 1,
+    "method": "continuous_multistart",
+    "cost": 5.718213449169945,
+    "oracle": 4.2925250130145765,
+    "ratio": 1.3321328196883655,
+    "work": 1550,
+    "seconds": 0.02742232894524932
+  },
+  {
+    "seed": 10,
+    "family": 2,
+    "method": "bellman_mesh",
+    "cost": 6.008326112068523,
+    "oracle": 5.272422031657391,
+    "ratio": 1.1395760953869998,
+    "work": 828,
+    "seconds": 0.04315194394439459
+  },
+  {
+    "seed": 10,
+    "family": 2,
+    "method": "visibility",
+    "cost": 5.272422031657391,
+    "oracle": 5.272422031657391,
+    "ratio": 1.0,
+    "work": 33,
+    "seconds": 6.91520981490612e-05
+  },
+  {
+    "seed": 10,
+    "family": 2,
+    "method": "continuous_multistart",
+    "cost": 5.7872697873402625,
+    "oracle": 5.272422031657391,
+    "ratio": 1.0976491928361487,
+    "work": 1860,
+    "seconds": 0.042288014898076653
+  },
+  {
+    "seed": 11,
+    "family": 3,
+    "method": "bellman_mesh",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 707,
+    "seconds": 0.03668025298975408
+  },
+  {
+    "seed": 11,
+    "family": 3,
+    "method": "visibility",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 18,
+    "seconds": 4.918593913316727e-05
+  },
+  {
+    "seed": 11,
+    "family": 3,
+    "method": "continuous_multistart",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 1619,
+    "seconds": 0.036059773061424494
+  },
+  {
+    "seed": 12,
+    "family": 0,
+    "method": "bellman_mesh",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 757,
+    "seconds": 0.03907459997572005
+  },
+  {
+    "seed": 12,
+    "family": 0,
+    "method": "visibility",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 1,
+    "seconds": 3.871973603963852e-06
+  },
+  {
+    "seed": 12,
+    "family": 0,
+    "method": "continuous_multistart",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 1196,
+    "seconds": 0.012805731035768986
+  },
+  {
+    "seed": 13,
+    "family": 1,
+    "method": "bellman_mesh",
+    "cost": 4.497056274847712,
+    "oracle": 4.136350721391649,
+    "ratio": 1.0872038126725159,
+    "work": 733,
+    "seconds": 0.03695251210592687
+  },
+  {
+    "seed": 13,
+    "family": 1,
+    "method": "visibility",
+    "cost": 4.136350721391649,
+    "oracle": 4.136350721391649,
+    "ratio": 1.0,
+    "work": 11,
+    "seconds": 2.1212967112660408e-05
+  },
+  {
+    "seed": 13,
+    "family": 1,
+    "method": "continuous_multistart",
+    "cost": 4.196748529773823,
+    "oracle": 4.136350721391649,
+    "ratio": 1.0146017135514693,
+    "work": 1643,
+    "seconds": 0.02777508390136063
+  },
+  {
+    "seed": 14,
+    "family": 2,
+    "method": "bellman_mesh",
+    "cost": 6.008326112068523,
+    "oracle": 5.272422031657391,
+    "ratio": 1.1395760953869998,
+    "work": 828,
+    "seconds": 0.04288835288025439
+  },
+  {
+    "seed": 14,
+    "family": 2,
+    "method": "visibility",
+    "cost": 5.272422031657391,
+    "oracle": 5.272422031657391,
+    "ratio": 1.0,
+    "work": 33,
+    "seconds": 7.472699508070946e-05
+  },
+  {
+    "seed": 14,
+    "family": 2,
+    "method": "continuous_multistart",
+    "cost": 5.7872697873402625,
+    "oracle": 5.272422031657391,
+    "ratio": 1.0976491928361487,
+    "work": 1860,
+    "seconds": 0.0423630231525749
+  },
+  {
+    "seed": 15,
+    "family": 3,
+    "method": "bellman_mesh",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 707,
+    "seconds": 0.03650787798687816
+  },
+  {
+    "seed": 15,
+    "family": 3,
+    "method": "visibility",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 18,
+    "seconds": 4.849303513765335e-05
+  },
+  {
+    "seed": 15,
+    "family": 3,
+    "method": "continuous_multistart",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 1619,
+    "seconds": 0.035828671883791685
+  },
+  {
+    "seed": 16,
+    "family": 0,
+    "method": "bellman_mesh",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 757,
+    "seconds": 0.03886422701179981
+  },
+  {
+    "seed": 16,
+    "family": 0,
+    "method": "visibility",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 1,
+    "seconds": 4.559056833386421e-06
+  },
+  {
+    "seed": 16,
+    "family": 0,
+    "method": "continuous_multistart",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 1196,
+    "seconds": 0.012888100929558277
+  },
+  {
+    "seed": 17,
+    "family": 1,
+    "method": "bellman_mesh",
+    "cost": 5.608326112068525,
+    "oracle": 5.4320559330912666,
+    "ratio": 1.0324499933631845,
+    "work": 804,
+    "seconds": 0.03882900485768914
+  },
+  {
+    "seed": 17,
+    "family": 1,
+    "method": "visibility",
+    "cost": 5.4320559330912666,
+    "oracle": 5.4320559330912666,
+    "ratio": 1.0,
+    "work": 11,
+    "seconds": 2.1717045456171036e-05
+  },
+  {
+    "seed": 17,
+    "family": 1,
+    "method": "continuous_multistart",
+    "cost": 6.13028345437577,
+    "oracle": 5.4320559330912666,
+    "ratio": 1.1285383526761952,
+    "work": 1075,
+    "seconds": 0.01790061895735562
+  },
+  {
+    "seed": 18,
+    "family": 2,
+    "method": "bellman_mesh",
+    "cost": 6.008326112068523,
+    "oracle": 5.272422031657391,
+    "ratio": 1.1395760953869998,
+    "work": 828,
+    "seconds": 0.04315945110283792
+  },
+  {
+    "seed": 18,
+    "family": 2,
+    "method": "visibility",
+    "cost": 5.272422031657391,
+    "oracle": 5.272422031657391,
+    "ratio": 1.0,
+    "work": 33,
+    "seconds": 7.101800292730331e-05
+  },
+  {
+    "seed": 18,
+    "family": 2,
+    "method": "continuous_multistart",
+    "cost": 5.7872697873402625,
+    "oracle": 5.272422031657391,
+    "ratio": 1.0976491928361487,
+    "work": 1860,
+    "seconds": 0.043910137843340635
+  },
+  {
+    "seed": 19,
+    "family": 3,
+    "method": "bellman_mesh",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 707,
+    "seconds": 0.038045145105570555
+  },
+  {
+    "seed": 19,
+    "family": 3,
+    "method": "visibility",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 18,
+    "seconds": 5.061691626906395e-05
+  },
+  {
+    "seed": 19,
+    "family": 3,
+    "method": "continuous_multistart",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 1619,
+    "seconds": 0.05199332907795906
+  },
+  {
+    "seed": 20,
+    "family": 0,
+    "method": "bellman_mesh",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 757,
+    "seconds": 0.03908263402990997
+  },
+  {
+    "seed": 20,
+    "family": 0,
+    "method": "visibility",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 1,
+    "seconds": 4.814937710762024e-06
+  },
+  {
+    "seed": 20,
+    "family": 0,
+    "method": "continuous_multistart",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 1196,
+    "seconds": 0.012788997031748295
+  },
+  {
+    "seed": 21,
+    "family": 1,
+    "method": "bellman_mesh",
+    "cost": 6.008326112068524,
+    "oracle": 5.7003591224121255,
+    "ratio": 1.0540258925872867,
+    "work": 806,
+    "seconds": 0.05470737302675843
+  },
+  {
+    "seed": 21,
+    "family": 1,
+    "method": "visibility",
+    "cost": 5.7003591224121255,
+    "oracle": 5.7003591224121255,
+    "ratio": 1.0,
+    "work": 11,
+    "seconds": 3.869389183819294e-05
+  },
+  {
+    "seed": 21,
+    "family": 1,
+    "method": "continuous_multistart",
+    "cost": 6.194185869546109,
+    "oracle": 5.7003591224121255,
+    "ratio": 1.0866308133451457,
+    "work": 1105,
+    "seconds": 0.04290869412943721
+  },
+  {
+    "seed": 22,
+    "family": 2,
+    "method": "bellman_mesh",
+    "cost": 6.008326112068523,
+    "oracle": 5.272422031657391,
+    "ratio": 1.1395760953869998,
+    "work": 828,
+    "seconds": 0.06478741392493248
+  },
+  {
+    "seed": 22,
+    "family": 2,
+    "method": "visibility",
+    "cost": 5.272422031657391,
+    "oracle": 5.272422031657391,
+    "ratio": 1.0,
+    "work": 33,
+    "seconds": 0.00010440894402563572
+  },
+  {
+    "seed": 22,
+    "family": 2,
+    "method": "continuous_multistart",
+    "cost": 5.7872697873402625,
+    "oracle": 5.272422031657391,
+    "ratio": 1.0976491928361487,
+    "work": 1860,
+    "seconds": 0.09119960316456854
+  },
+  {
+    "seed": 23,
+    "family": 3,
+    "method": "bellman_mesh",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 707,
+    "seconds": 0.037509460002183914
+  },
+  {
+    "seed": 23,
+    "family": 3,
+    "method": "visibility",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 18,
+    "seconds": 5.1579903811216354e-05
+  },
+  {
+    "seed": 23,
+    "family": 3,
+    "method": "continuous_multistart",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 1619,
+    "seconds": 0.036972032859921455
+  },
+  {
+    "seed": 24,
+    "family": 0,
+    "method": "bellman_mesh",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 757,
+    "seconds": 0.040147396037355065
+  },
+  {
+    "seed": 24,
+    "family": 0,
+    "method": "visibility",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 1,
+    "seconds": 6.61914236843586e-06
+  },
+  {
+    "seed": 24,
+    "family": 0,
+    "method": "continuous_multistart",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 1196,
+    "seconds": 0.013295849086716771
+  },
+  {
+    "seed": 25,
+    "family": 1,
+    "method": "bellman_mesh",
+    "cost": 4.994112549695427,
+    "oracle": 4.584701210493764,
+    "ratio": 1.0892994593114544,
+    "work": 783,
+    "seconds": 0.03961779782548547
+  },
+  {
+    "seed": 25,
+    "family": 1,
+    "method": "visibility",
+    "cost": 4.584701210493764,
+    "oracle": 4.584701210493764,
+    "ratio": 1.0,
+    "work": 11,
+    "seconds": 2.3341970518231392e-05
+  },
+  {
+    "seed": 25,
+    "family": 1,
+    "method": "continuous_multistart",
+    "cost": 5.060037838516215,
+    "oracle": 4.584701210493764,
+    "ratio": 1.1036788672148297,
+    "work": 1620,
+    "seconds": 0.029107111040502787
+  },
+  {
+    "seed": 26,
+    "family": 2,
+    "method": "bellman_mesh",
+    "cost": 6.008326112068523,
+    "oracle": 5.272422031657391,
+    "ratio": 1.1395760953869998,
+    "work": 828,
+    "seconds": 0.044325165916234255
+  },
+  {
+    "seed": 26,
+    "family": 2,
+    "method": "visibility",
+    "cost": 5.272422031657391,
+    "oracle": 5.272422031657391,
+    "ratio": 1.0,
+    "work": 33,
+    "seconds": 7.278705015778542e-05
+  },
+  {
+    "seed": 26,
+    "family": 2,
+    "method": "continuous_multistart",
+    "cost": 5.7872697873402625,
+    "oracle": 5.272422031657391,
+    "ratio": 1.0976491928361487,
+    "work": 1860,
+    "seconds": 0.04417608305811882
+  },
+  {
+    "seed": 27,
+    "family": 3,
+    "method": "bellman_mesh",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 707,
+    "seconds": 0.0367638380266726
+  },
+  {
+    "seed": 27,
+    "family": 3,
+    "method": "visibility",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 18,
+    "seconds": 4.8008980229496956e-05
+  },
+  {
+    "seed": 27,
+    "family": 3,
+    "method": "continuous_multistart",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 1619,
+    "seconds": 0.03609495097771287
+  },
+  {
+    "seed": 28,
+    "family": 0,
+    "method": "bellman_mesh",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 757,
+    "seconds": 0.03885941696353257
+  },
+  {
+    "seed": 28,
+    "family": 0,
+    "method": "visibility",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 1,
+    "seconds": 5.820998921990395e-06
+  },
+  {
+    "seed": 28,
+    "family": 0,
+    "method": "continuous_multistart",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 1196,
+    "seconds": 0.012886403128504753
+  },
+  {
+    "seed": 29,
+    "family": 1,
+    "method": "bellman_mesh",
+    "cost": 4.828427124746189,
+    "oracle": 4.552093521713898,
+    "ratio": 1.0607047288712665,
+    "work": 786,
+    "seconds": 0.03947612317278981
+  },
+  {
+    "seed": 29,
+    "family": 1,
+    "method": "visibility",
+    "cost": 4.552093521713898,
+    "oracle": 4.552093521713898,
+    "ratio": 1.0,
+    "work": 11,
+    "seconds": 2.2368039935827255e-05
+  },
+  {
+    "seed": 29,
+    "family": 1,
+    "method": "continuous_multistart",
+    "cost": 5.660090990945359,
+    "oracle": 4.552093521713898,
+    "ratio": 1.2434039335848908,
+    "work": 1636,
+    "seconds": 0.02870127186179161
+  },
+  {
+    "seed": 30,
+    "family": 2,
+    "method": "bellman_mesh",
+    "cost": 6.008326112068523,
+    "oracle": 5.272422031657391,
+    "ratio": 1.1395760953869998,
+    "work": 828,
+    "seconds": 0.04427974601276219
+  },
+  {
+    "seed": 30,
+    "family": 2,
+    "method": "visibility",
+    "cost": 5.272422031657391,
+    "oracle": 5.272422031657391,
+    "ratio": 1.0,
+    "work": 33,
+    "seconds": 7.347716018557549e-05
+  },
+  {
+    "seed": 30,
+    "family": 2,
+    "method": "continuous_multistart",
+    "cost": 5.7872697873402625,
+    "oracle": 5.272422031657391,
+    "ratio": 1.0976491928361487,
+    "work": 1860,
+    "seconds": 0.044142083963379264
+  },
+  {
+    "seed": 31,
+    "family": 3,
+    "method": "bellman_mesh",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 707,
+    "seconds": 0.03769951895810664
+  },
+  {
+    "seed": 31,
+    "family": 3,
+    "method": "visibility",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 18,
+    "seconds": 5.1132868975400925e-05
+  },
+  {
+    "seed": 31,
+    "family": 3,
+    "method": "continuous_multistart",
+    "cost": 4.0,
+    "oracle": 4.0,
+    "ratio": 1.0,
+    "work": 1619,
+    "seconds": 0.0367630859836936
+  }
+]

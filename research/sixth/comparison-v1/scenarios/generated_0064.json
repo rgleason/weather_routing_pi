@@ -1,0 +1,16 @@
+{
+  "name": "generated_0064",
+  "start": [
+    30,
+    -140
+  ],
+  "east_nm": 12.103028933029874,
+  "north_nm": 0,
+  "wind_from": 287.6934575750672,
+  "max_hours": 72,
+  "cache": false,
+  "seed": 64,
+  "family": 0,
+  "isotropic": true,
+  "oracle": "geodesic_6kn"
+}

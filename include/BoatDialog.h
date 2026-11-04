@@ -38,10 +38,14 @@ public:
   wxString m_boatpath;
 
 private:
+  wxChoice* m_lowWindPolicy{nullptr};
+  wxChoice* m_highWindPolicy{nullptr};
+  wxStaticText* m_windPolicyPolar{nullptr};
+  void BuildWindPolicyControls();
   void OnMouseEventsPolarPlot(wxMouseEvent& event);
 
   void OnPaintPlot(wxPaintEvent& event);
-  void OnUpdatePlot(wxSizeEvent& event) { OnUpdatePlot(); }
+  void OnUpdatePlot(wxSizeEvent& event) { OnUpdatePlot(); event.Skip(); }
   void OnPaintCrossOverChart(wxPaintEvent& event);
   void OnOverlapPercentage(wxSpinEvent& event);
   void OnSizePlot(wxSizeEvent& event) { RefreshPlots(); }

@@ -40,6 +40,7 @@ class SettingsDialog;
 namespace supercpn::weather_routing {
 struct RoutingResult;
 struct RoutingProgressUpdate;
+struct RoutingPreview;
 }  // namespace supercpn::weather_routing
 
 struct ModernIsochroneLayer {
@@ -329,6 +330,7 @@ public:
    * Resets the route map to its initial state.
    */
   virtual void Clear();
+  bool HasComputedResults();
 
   /**
    * Locks the route map for thread-safe access.
@@ -363,13 +365,34 @@ public:
   std::uint64_t ModernProgressGeneration() const {
     return m_ModernProgress.Read().generation;
   }
+  std::uint64_t NextModernPreviewPhase() { return ++m_LivePreviewPhase; }
+  std::uint64_t ModernPreviewGeneration() const { return m_LivePreview.Read().generation; }
+  void SetModernPreview(std::shared_ptr<const supercpn::weather_routing::RoutingPreview>, std::uint64_t);
+  bool WantsModernPreview() const { return m_LivePreviewWanted.load(std::memory_order_relaxed); }
+  void RequestModernPreview(bool value) { m_LivePreviewWanted.store(value, std::memory_order_relaxed); }
+  bool ConsumeModernPreview();
+  void RenderModernPreview(SettingsDialog&, piDC&, PlugIn_ViewPort&, bool);
   bool UsesModernNativeResult() const { return m_UsesModernNativeResult; }
+  bool UsesEstimatedPolarPerformance();
+  const wxString& ModernNativeCoverageNotes() const { return m_ModernNativeCoverageNotes; }
+  bool HasUnknownWaveHeights() const { return m_ModernNativeMissingWaves; }
+  bool HasEstimatedWaveHeights() const { return m_ModernNativeEstimatedWaves; }
+  bool HasAnchoringWaits() const { return m_ModernNativeAnchoringWaits; }
   bool HasModernNativeCoastalEndpointLeeway() const {
     return m_ModernNativeCoastalEndpointLeeway;
   }
+  std::shared_ptr<std::atomic_bool> ComfortStopFlag() const { return m_ComfortStop; }
+  void StopComfortExploration() { m_ComfortStop->store(true); }
+  bool ExploringComfort() const { return m_ExploringComfort.load(); }
+  void SetExploringComfort(bool active) { m_ExploringComfort.store(active); }
   void SetRetainedCandidates(std::vector<weather_routing::RetainedRouteCandidate> candidates);
   std::vector<weather_routing::RetainedRouteCandidate> RetainedCandidates();
   bool SelectRetainedCandidate(const std::string& id);
+  void SetPartialCandidates(std::vector<weather_routing::RetainedRouteCandidate> candidates);
+  std::vector<weather_routing::RetainedRouteCandidate> PartialCandidates();
+  bool SelectPartialCandidate(const std::string& id);
+  bool HasSelectedPartial();
+  void RenderPartialRoute(piDC&, PlugIn_ViewPort&);
   std::string SelectedRetainedCandidateId() {
     if (Running()) return {};
     Lock();
@@ -411,6 +434,7 @@ public:
   bool m_UpdateOverlay;
 
   /** Flag indicating if the end route should be visible. */
+  // Master visibility for all chart output, including selection previews.
   bool m_bEndRouteVisible;
 
   /**
@@ -502,13 +526,31 @@ private:
 
   bool m_UsesModernNativeResult{false};
   bool m_ModernNativeCoastalEndpointLeeway{false};
+  bool m_ModernNativeEstimatedPolar{false};
+  bool m_ModernNativeMissingWaves{false};
+  bool m_ModernNativeEstimatedWaves{false};
+  bool m_ModernNativeAnchoringWaits{false};
+  wxString m_ModernNativeCoverageNotes;
+  std::shared_ptr<std::atomic_bool> m_ComfortStop{std::make_shared<std::atomic_bool>(false)};
+  std::atomic_bool m_ExploringComfort{false};
   std::vector<weather_routing::RetainedRouteCandidate> m_RetainedCandidates;
   std::string m_SelectedRetainedCandidateId;
+  std::vector<weather_routing::RetainedRouteCandidate> m_PartialCandidates;
+  std::string m_SelectedPartialCandidateId;
   std::vector<Position*> m_ModernRoutePositions;
   std::vector<Position*> m_ModernCursorRoutePositions;
   std::vector<ModernIsochroneLayer> m_ModernIsochrones;
   std::size_t m_ModernCursorLayer{std::numeric_limits<std::size_t>::max()};
   std::size_t m_ModernCursorTrace{std::numeric_limits<std::size_t>::max()};
+  using LivePreview = std::shared_ptr<const supercpn::weather_routing::RoutingPreview>;
+  weather_routing::RoutingProgressState<LivePreview> m_LivePreview;
+  std::atomic<bool> m_LivePreviewWanted{false};
+  std::atomic<std::uint64_t> m_LivePreviewPhase{0};
+  std::atomic<unsigned> m_LivePreviewPublished{0}, m_LivePreviewRendered{0};
+  std::atomic<unsigned> m_LivePreviewDrawCalls{0};
+  std::atomic<std::uint64_t> m_LivePreviewDrawUs{0}, m_LivePreviewMaxDrawUs{0};
+  std::uint64_t m_LivePreviewSequence{};
+  std::vector<LivePreview> m_LivePreviewFrames;
   struct ProgressText { wxString stage, detail; };
   weather_routing::RoutingProgressState<ProgressText> m_ModernProgress;
 

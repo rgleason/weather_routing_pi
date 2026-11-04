@@ -15,6 +15,16 @@ wxDateTime Utc(int year, wxDateTime::Month month, int day, int hour,
 
 }  // namespace
 
+TEST(TimeZoneDisplay, AvailableZonesKeepUtcFirstAndOtherNamesUniqueAndSorted) {
+  const auto zones = marine_time::AvailableTimeZones();
+  ASSERT_GT(zones.GetCount(), 0u);
+  EXPECT_EQ(zones[0], "UTC");
+  for (size_t i = 1; i < zones.GetCount(); ++i) {
+    EXPECT_NE(zones[i], "UTC");
+    if (i > 1) EXPECT_LT(zones[i - 1].Cmp(zones[i]), 0);
+  }
+}
+
 TEST(RoutingTimePersistence, DepartureAndArrivalRetainInstantsAfterXmlRoundTrip) {
   TiXmlElement route("Configuration");
   const auto departure = Utc(2026, wxDateTime::Sep, 26, 11, 25);
