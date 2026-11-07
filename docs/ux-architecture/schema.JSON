@@ -1,0 +1,210 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "org.opencpn.weatherrouting.schema",
+  "title": "WeatherRouting Configuration",
+  "description": "Draft v0.9 WeatherRouting configuration schema",
+
+  "type": "object",
+
+  "required": [
+    "schemaVersion",
+    "route",
+    "boat",
+    "weather",
+    "constraints",
+    "optimization"
+  ],
+
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+
+    "route": {
+      "$ref": "#/$defs/Route"
+    },
+
+    "boat": {
+      "$ref": "#/$defs/Boat"
+    },
+
+    "weather": {
+      "$ref": "#/$defs/Weather"
+    },
+
+    "constraints": {
+      "$ref": "#/$defs/Constraints"
+    },
+
+    "optimization": {
+      "$ref": "#/$defs/Optimization"
+    },
+
+    "analysis": {
+      "$ref": "#/$defs/Analysis"
+    },
+
+    "diagnostics": {
+      "$ref": "#/$defs/Diagnostics"
+    }
+  },
+
+  "$defs": {
+    "Coordinate": {
+      "type": "object",
+      "required": [
+        "latitude",
+        "longitude"
+      ],
+      "properties": {
+        "latitude": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        },
+        "longitude": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        }
+      }
+    },
+
+    "Route": {
+      "type": "object",
+      "required": [
+        "startPosition",
+        "destinationPosition",
+        "departureTime"
+      ],
+      "properties": {
+        "startPosition": {
+          "$ref": "#/$defs/Coordinate"
+        },
+
+        "destinationPosition": {
+          "$ref": "#/$defs/Coordinate"
+        },
+
+        "departureTime": {
+          "type": "string",
+          "format": "date-time"
+        },
+
+        "routeName": {
+          "type": "string"
+        },
+
+        "reverseRouting": {
+          "type": "boolean"
+        }
+      }
+    },
+
+    "Boat": {
+      "type": "object",
+      "properties": {
+        "selectedBoat": {
+          "type": "string"
+        },
+
+        "polarFile": {
+          "type": "string"
+        },
+
+        "performanceFactor": {
+          "type": "number",
+          "minimum": 10,
+          "maximum": 150
+        },
+
+        "draft": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+
+    "Weather": {
+      "type": "object",
+      "properties": {
+        "climatologyEnabled": {
+          "type": "boolean"
+        },
+
+        "gribEnabled": {
+          "type": "boolean"
+        },
+
+        "currentEnabled": {
+          "type": "boolean"
+        },
+
+        "waveEnabled": {
+          "type": "boolean"
+        },
+
+        "windSource": {
+          "type": "string"
+        }
+      }
+    },
+
+    "Constraints": {
+      "type": "object",
+      "properties": {
+        "avoidLand": {
+          "type": "boolean"
+        },
+
+        "avoidShallows": {
+          "type": "boolean"
+        },
+
+        "maximumWind": {
+          "type": "number",
+          "minimum": 0
+        },
+
+        "maximumWaveHeight": {
+          "type": "number",
+          "minimum": 0
+        },
+
+        "minimumDepth": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+
+    "Optimization": {
+      "type": "object",
+      "properties": {
+        "resolution": {
+          "enum": [
+            "Low",
+            "Medium",
+            "High",
+            "VeryHigh"
+          ]
+        },
+
+        "timeStep": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 240
+        }
+      }
+    },
+
+    "Analysis": {
+      "type": "object"
+    },
+
+    "Diagnostics": {
+      "type": "object"
+    }
+  }
+}

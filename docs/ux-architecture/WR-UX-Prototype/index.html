@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Weather Routing Prototype</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<header>
+    <h1>Weather Routing Prototype</h1>
+</header>
+
+<div class="tabs">
+    <button class="tab active" onclick="showTab('learn', this)">
+        Learn
+    </button>
+
+    <button class="tab" onclick="showTab('cruise', this)">
+        Cruise
+    </button>
+
+    <button class="tab" onclick="showTab('advanced', this)">
+        Advanced
+    </button>
+</div>
+
+<!-- LEARN -->
+
+<div id="learn" class="tab-content active">
+
+    <div class="layout">
+
+        <main>
+
+            <div class="card">
+
+                <h2>Beginner Route Lesson</h2>
+
+					<label for="departure">
+						Departure
+					</label>
+
+					<select id="departure"
+						onchange="clearLearnResults();updateStatus()">
+						
+					    <option value="" selected>
+							None
+						</option>	
+						
+					<option>Mystic Harbor</option>
+					<option>Shelter Harbor</option>
+					<option>Fishers Island</option>
+					<option>Stonington</option>
+					<option>New London</option>
+					<option>Newport</option>
+					<option>Block Island</option>
+
+				</select>
+
+					<label for="destination">
+						Destination
+					</label>
+
+					<select id="destination"
+						onchange="clearLearnResults();updateStatus()">
+						
+					    <option value="" selected>
+							None
+						</option>	
+						
+					<option>Block Island</option>
+					<option>Mystic Harbor</option>
+					<option>Shelter Harbor</option>
+					<option>Fishers Island</option>
+					<option>Stonington</option>
+					<option>New London</option>
+					<option>Newport</option>
+
+				</select>
+				
+					<label for="boat">
+						Boat
+					</label>
+
+					<select id="boat"
+						onchange="clearLearnResults();updateStatus()">
+						
+					    <option value="" selected>
+							None
+						</option>	
+						
+					<option>Sunfish</option>
+					<option>Ideal 18</option>
+					<option>Bristol 41.1</option>
+				</select>
+				
+					<label for="weather">
+						Weather Source
+					</label>
+
+					<select id="weather"
+						onchange="clearLearnResults();updateStatus()">
+						
+					    <option value="" selected>
+							None
+						</option>	
+						
+					<option>Climatology</option>
+					<option>GRIB</option>
+				</select>
+				
+				<div id="routeStatusBox"
+					 class="status-panel">
+
+					<div class="status-row">
+
+						<span id="routeStatusDot"
+							  class="status-dot red">
+						</span>
+
+						<div id="routeStatusText">
+							Route Setup Required
+						</div>
+
+					</div>
+
+					<div id="routeStatusHelp"
+						 class="status-help"
+						 aria-live="polite">
+
+						Choose the harbor where your voyage begins.
+
+					</div>
+
+				</div>
+
+			<div class="button-row">
+
+				<button id="computeButton"
+						onclick="computeRoute()">
+
+					Compute Route
+
+				</button>
+
+				<button id="resetButton"
+						onclick="resetLearnTab()">
+
+					Reset
+
+				</button>
+
+			</div>
+
+            </div>
+
+            <div class="card">
+
+                <h3>Chart Preview</h3>
+
+                <svg viewBox="0 0 800 400" class="chart">
+
+                    <rect width="800"
+                          height="400"
+                          fill="#cfe8ff"/>
+
+                    <path
+                        d="M60 100 C180 70 320 140 460 100 C560 80 680 130 760 90"
+                        stroke="#3f6212"
+                        stroke-width="12"
+                        fill="none" />
+
+                    <rect class="wind-light"
+                          x="50"
+                          y="220"
+                          width="120"
+                          height="90"/>
+
+                    <rect class="wind-fresh"
+                          x="260"
+                          y="150"
+                          width="120"
+                          height="90"/>
+
+                    <rect class="wind-strong"
+                          x="500"
+                          y="120"
+                          width="150"
+                          height="90"/>
+
+                    <path id="routePath"
+                          class="route"
+                          d="" />
+
+                    <circle cx="120"
+                            cy="300"
+                            r="8"
+                            fill="#2563eb"/>
+
+                    <text x="135"
+                          y="305">
+                        Mystic
+                    </text>
+
+                    <circle cx="650"
+                            cy="180"
+                            r="8"
+                            fill="#dc2626"/>
+
+                    <text x="665"
+                          y="185">
+                        Block Island
+                    </text>
+					
+					<circle cx="240" cy="260" r="6" fill="#2563eb"/>
+					<text x="250" y="265">Fishers Island</text>
+
+					<circle cx="300" cy="240" r="6" fill="#2563eb"/>
+					<text x="310" y="245">Shelter Harbor</text>
+
+					<circle cx="180" cy="280" r="6" fill="#2563eb"/>
+					<text x="190" y="285">Stonington</text>
+
+					<circle cx="90" cy="260" r="6" fill="#2563eb"/>
+					<text x="100" y="265">New London</text>
+
+					<circle cx="520" cy="170" r="6" fill="#2563eb"/>
+					<text x="530" y="175">Newport</text>
+
+                </svg>
+            </div>
+
+			<div id="resultCard"
+				 class="card result">
+
+				<h3 id="routeTitle">
+					Route Summary
+				</h3>
+
+				<div class="route-overview">
+
+					<div class="overview-item">
+						<span class="label">Departure</span>
+						<span id="departureResult">Mystic Harbor</span>
+					</div>
+
+					<div class="overview-item">
+						<span class="label">Destination</span>
+						<span id="destinationResult">Block Island</span>
+					</div>
+
+					<div class="overview-item">
+						<span class="label">Boat</span>
+						<span id="boatResult">Ideal 18</span>
+					</div>
+
+					<div class="overview-item">
+						<span class="label">Weather</span>
+						<span id="weatherResult">Climatology</span>
+					</div>
+
+				</div>
+
+				<hr>
+
+			<div class="metrics">
+
+				<div class="metric">
+					<div id="distanceValue" class="value">
+						31 nm
+					</div>
+					<div class="metric-label">
+						Distance
+					</div>
+				</div>
+
+				<div class="metric">
+					<div id="etaValue" class="value">
+						8h 32m
+					</div>
+					<div class="metric-label">
+						ETA
+					</div>
+				</div>
+
+				<div class="metric">
+					<div id="windValue" class="value">
+						14 kt
+					</div>
+					<div class="metric-label">
+						Avg Wind
+					</div>
+				</div>
+
+				<div class="metric">
+					<div id="courseValue" class="value">
+						218°
+					</div>
+					<div class="metric-label">
+						Avg Course
+					</div>
+				</div>
+
+			</div>
+
+
+				<hr>
+
+				<div class="route-notes">
+
+					<strong>Routing Notes</strong>
+
+					<p id="routeExplanation">
+						Route optimized using climatology data and
+						selected boat performance model.
+					</p>
+
+				</div>
+
+			</div>
+		</div>
+	</div>
+</div>
+
+
+<!-- CRUISE -->
+
+<div id="cruise" class="tab-content">
+
+    <div class="layout">
+
+        <main>
+
+			<div class="card">
+
+				<h2>Cruise Planner</h2>
+
+				<!-- Route -->
+
+				<div class="cruise-section">
+
+					<h3>Route</h3>
+
+					<div class="cruise-grid">
+
+						<div>
+							<label for="cruiseDeparture">
+								Departure
+							</label>
+
+							<select id="cruiseDeparture"
+								onchange="clearCruiseResults();updateCruiseStatus()">
+								<option value="">None</option>
+								<option>Mystic Harbor</option>
+								<option>Shelter Harbor</option>
+								<option>Fishers Island</option>
+								<option>Stonington</option>
+								<option>New London</option>
+								<option>Newport</option>
+								<option>Block Island</option>
+							</select>
+						</div>
+
+						<div>
+							<label for="cruiseDestination">
+								Destination
+							</label>
+
+							<select id="cruiseDestination"
+									onchange="clearCruiseResults();updateCruiseStatus()">
+								<option value="">None</option>
+								<option>Block Island</option>
+								<option>Mystic Harbor</option>
+								<option>Shelter Harbor</option>
+								<option>Fishers Island</option>
+								<option>Stonington</option>
+								<option>New London</option>
+								<option>Newport</option>
+							</select>
+						</div>
+
+					</div>
+
+				</div>
+
+				<!-- Vessel -->
+
+				<div class="cruise-section">
+
+					<h3>Vessel</h3>
+
+					<div class="cruise-grid">
+
+						<div>
+							<label for="cruiseBoat">
+								Boat
+							</label>
+
+							<select id="cruiseBoat"
+									onchange="clearCruiseResults();saveCruisePreferences();updateCruiseStatus()">
+								<option value="">None</option>
+								<option>Sunfish</option>
+								<option>Ideal 18</option>
+								<option>Bristol 41.1</option>
+							</select>
+						</div>
+
+					</div>
+
+				</div>
+
+				<!-- Weather -->
+
+				<div class="cruise-section">
+
+					<h3>Weather</h3>
+
+					<div class="cruise-grid">
+
+						<div>
+							<label for="departureTime">
+								Departure Time
+							</label>
+
+							<input type="datetime-local"
+								   id="departureTime"
+								   oninput="clearCruiseResults();updateCruiseStatus()"
+								   onchange="clearCruiseResults();updateCruiseStatus()">
+						</div>
+						<div>
+							<label for="cruiseWeather">
+								Weather Source
+							</label>
+
+							<select id="cruiseWeather"
+									onchange="clearCruiseResults();saveCruisePreferences();updateCruiseStatus()">
+								<option value="">None</option>
+								<option>Climatology</option>
+								<option>GRIB</option>
+								<option>Climatology + GRIB</option>
+							</select>
+						</div>
+
+					</div>
+
+				</div>
+
+				<!-- Preferences -->
+
+				<div class="cruise-section">
+
+					<h3>Routing Preferences</h3>
+
+					<div class="cruise-grid">
+
+						<div>
+							<label for="routingObjective">
+								Routing Objective
+							</label>
+
+							<select id="routingObjective"
+								onchange="clearCruiseResults();saveCruisePreferences();updateCruiseStatus()">
+								<option value="">None</option>
+								<option>Fastest Arrival</option>
+								<option>Comfortable Passage</option>
+								<option>Avoid Heavy Weather</option>
+								<option>Day Sailing</option>
+							</select>
+						</div>
+
+						<div>
+							<label for="safetyMargin">
+								Safety Margin
+							</label>
+
+							<select id="safetyMargin"
+								onchange="clearCruiseResults();saveCruisePreferences();updateCruiseStatus()">
+								<option value="">None</option>
+								<option>Normal</option>
+								<option>Conservative</option>
+								<option>Very Conservative</option>
+							</select>
+						</div>
+
+					</div>
+
+				</div>
+
+				<!-- Guidance -->
+
+			<div id="cruiseStatusBox"
+				 class="status-panel">
+
+				<div class="status-row">
+
+					<span id="cruiseStatusDot"
+						  class="status-dot red">
+					</span>
+
+					<div id="cruiseStatusText">
+						Cruise Plan Incomplete
+					</div>
+
+				</div>
+
+				<div id="cruiseStatusHelp"
+					 class="status-help"
+					 aria-live="polite">
+					 
+					Select departure, destination,
+					vessel, forecast source and
+					routing preferences.
+
+				</div>
+
+			</div>
+
+			<div class="button-row">
+
+				<button id="cruiseComputeButton"
+						onclick="computeCruiseRoute()">
+
+					Compute Cruise Route
+
+				</button>
+
+				<button id="cruiseResetButton"
+						onclick="resetCruiseTab()">
+
+					Reset Voyage
+
+				</button>
+
+				<button id="cruiseDefaultsButton"
+						onclick="restoreCruiseDefaults()">
+
+					Restore Defaults
+
+				</button>
+
+			</div>
+
+			</div>
+			
+			<div class="card">
+
+				<h3>Voyage Preview</h3>
+
+				<svg viewBox="0 0 800 400"
+					 class="chart">
+
+					<!-- Water -->
+
+					<rect width="800"
+						  height="400"
+						  fill="#cfe8ff"/>
+
+					<!-- Coastline -->
+
+					<path
+						d="M60 100
+						   C180 70 320 140 460 100
+						   C560 80 680 130 760 90"
+						stroke="#3f6212"
+						stroke-width="12"
+						fill="none"/>
+
+					<!-- Route -->
+
+					<path id="cruiseRoutePath"
+						  class="route"
+						  d=""/>
+
+					<!-- Mystic Harbor -->
+					
+					<circle id="cruiseMysticHarbor"
+							cx="120"
+							cy="300"
+							r="8"
+							fill="#2563eb"/>
+
+					<text x="135"
+						  y="305">
+						Mystic Harbor
+					</text>
+
+					<!-- Fishers Island -->
+
+					<circle id="cruiseFishersIsland"
+							cx="240"
+							cy="260"
+							r="6"
+							fill="#2563eb"/>
+
+					<text x="250"
+						  y="265">
+						Fishers Island
+					</text>
+
+					<!-- Shelter Harbor -->
+
+					<circle id="cruiseShelterHarbor"
+							cx="300"
+							cy="240"
+							r="6"
+							fill="#2563eb"/>
+
+					<text x="310"
+						  y="245">
+						Shelter Harbor
+					</text>
+
+					<!-- Stonington -->
+
+					<circle id="cruiseStonington"
+							cx="180"
+							cy="280"
+							r="6"
+							fill="#2563eb"/>
+
+					<text x="190"
+						  y="285">
+						Stonington
+					</text>
+
+					<!-- New London -->
+
+					<circle id="cruiseNewLondon"
+							cx="90"
+							cy="260"
+							r="6"
+							fill="#2563eb"/>
+
+					<text x="100"
+						  y="265">
+						New London
+					</text>
+
+					<!-- Newport -->
+
+					<circle id="cruiseNewport"
+							cx="520"
+							cy="170"
+							r="6"
+							fill="#2563eb"/>
+
+					<text x="530"
+						  y="175">
+						Newport
+					</text>
+
+					<!-- Block Island -->
+
+					<circle id="cruiseBlockIsland"
+							cx="650"
+							cy="180"
+							r="8"
+							fill="#2563eb"/>
+
+					<text x="665"
+						  y="185">
+						Block Island
+					</text>
+
+				</svg>
+
+			</div>
+
+            <div id="cruiseResultCard"
+                 class="card result">
+
+                <h3>
+                    Cruise Summary
+                </h3>
+				
+				<div class="route-overview">
+
+					<div class="overview-item">
+						<span class="label">Departure</span>
+						<span id="cruiseDepartureResult"></span>
+					</div>
+
+					<div class="overview-item">
+						<span class="label">Destination</span>
+						<span id="cruiseDestinationResult"></span>
+					</div>
+
+					<div class="overview-item">
+						<span class="label">Boat</span>
+						<span id="cruiseBoatResult"></span>
+					</div>
+
+					<div class="overview-item">
+						<span class="label">Weather</span>
+						<span id="cruiseWeatherResult"></span>
+					</div>
+
+				</div>
+				
+				<hr>
+
+                <div class="metrics">
+
+                    <div class="metric">
+						<div id="cruiseDistance"
+							 class="value">
+							31 nm
+						</div>
+                        <div class="metric-label">
+                            Distance
+                        </div>
+                    </div>
+
+                    <div class="metric">
+						<div id="cruiseEta"
+							 class="value">
+							7h 10m
+						</div>
+                        <div class="metric-label">
+                            ETA
+                        </div>
+                    </div>
+
+                    <div class="metric">
+						<div id="cruiseAvgWind"
+							 class="value">
+							14 kt
+						</div>
+                        <div class="metric-label">
+                            Avg Wind
+                        </div>
+                    </div>
+
+                    <div class="metric">
+						<div id="cruiseMaxWind"
+							 class="value">
+							22 kt
+						</div>
+                        <div class="metric-label">
+                            Max Wind
+                        </div>
+                    </div>
+					<div class="metric">
+						<div id="cruiseBoatSpeed"
+							 class="value">
+							6.0 kt
+						</div>
+
+						<div class="metric-label">
+							Avg Boat Speed
+						</div>
+					</div>
+					<div class="metric">
+
+						<div id="cruiseCourse"
+							 class="value">
+							065°
+						</div>
+
+						<div class="metric-label">
+							Avg Course
+						</div>
+
+					</div>					
+					
+
+                </div>
+				
+				<hr>
+
+				<div class="route-overview">
+
+					<div class="overview-item">
+						<span class="label">Departure Time</span>
+						<span id="cruiseDepartureTimeResult"></span>
+					</div>
+
+					<div class="overview-item">
+						<span class="label">Objective</span>
+						<span id="cruiseObjectiveResult"></span>
+					</div>
+
+					<div class="overview-item">
+						<span class="label">Safety Margin</span>
+						<span id="cruiseMarginResult"></span>
+					</div>
+
+				</div>
+
+				<hr>
+
+				<div class="route-notes">
+
+					<strong>Voyage Notes</strong>
+
+					<p id="cruiseExplanation">
+						Voyage planning notes appear here.
+					</p>
+
+				</div>
+
+            </div>
+
+        </main>
+
+    </div>
+
+</div>
+
+<!-- ADVANCED -->
+
+<div id="advanced" class="tab-content">
+
+    <div class="card">
+
+        <h2>Advanced Routing</h2>
+
+        <p>
+            Engine and polar settings go here.
+        </p>
+
+    </div>
+
+</div>
+
+<script src="js/app.js"></script>
+
+</body>
+</html>

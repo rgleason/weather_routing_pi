@@ -1,0 +1,513 @@
+body {
+    margin: 0;
+    font-family: Segoe UI, sans-serif;
+    background: #f4f6f8;
+}
+
+header {
+    background: #0c4a6e;
+    color: white;
+    padding: 20px;
+}
+
+.tabs {
+    display: flex;
+    gap: 8px;
+    padding: 10px;
+    background: white;
+}
+
+.tab
+{
+    flex: 1;
+    padding: 12px;
+    cursor: pointer;
+    border: 2px solid transparent;
+}
+
+.tab.active
+{
+    background: #0c4a6e;
+    color: white;
+    border-color: #082f49;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.layout {
+    display: block;
+    padding: 20px;
+}
+
+.sidebar,
+.card {
+    background: white;
+    border-radius: 10px;
+    padding: 20px;
+}
+
+.step {
+    padding: 10px;
+    background: #eef2f5;
+    margin-bottom: 10px;
+}
+
+label {
+    display: block;
+    margin-top: 10px;
+}
+
+input,
+select {
+    width: 100%;
+    padding: 8px;
+    margin-top: 5px;
+    box-sizing: border-box;
+}
+
+/* =========================
+   Status Panel
+   ========================= */
+
+.status-item {
+    padding: 10px;
+    margin-bottom: 10px;
+    border-radius: 6px;
+    font-weight: bold;
+}
+
+.status-green {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.status-red {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.status-yellow {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.status-panel {
+    margin-top: 15px;
+    margin-bottom: 15px;
+    padding: 8px 12px;
+    background: #f8fafc;
+    border: 1px solid #dbe3ea;
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+.status-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.status-dot {
+    width: 10px;
+    height: 10px;
+    min-width: 10px;
+    min-height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.green {
+    background: #22c55e;
+}
+
+.red {
+    background: #ef4444;
+}
+
+.status-help
+{
+    margin-top: 6px;
+    font-size: 12px;
+    color: #4b5563;
+    line-height: 1.4;
+}
+
+
+/* =========================
+   Buttons
+   ========================= */
+
+/* Accessibility Focus Indicators */
+
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+.tab:focus-visible
+{
+    outline: 3px solid #2563eb;
+    outline-offset: 2px;
+}
+
+/* Minimum Touch Targets */
+
+button,
+select,
+input
+{
+    min-height: 44px;
+}
+
+
+button {
+    margin-top: 15px;
+    padding: 10px 16px;
+}
+
+.button-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.button-row button {
+    flex: 1;
+}
+
+#resetButton {
+    background: #f3f4f6;
+    color: #374151;
+    border: 1px solid #d1d5db;
+}
+
+#resetButton:hover {
+    background: #e5e7eb;
+}
+
+
+
+
+
+/* =========================
+   Chart
+   ========================= */
+
+.chart
+{
+    width: 100%;
+    height: 400px;
+}
+
+.chart text
+{
+    font-size: 12px;
+    fill: #1f2937;
+    font-weight: 500;
+}
+
+.wind-light
+{
+    fill: #60a5fa55;
+}
+
+.wind-fresh
+{
+    fill: #facc1555;
+}
+
+.wind-strong
+{
+    fill: #f9731655;
+}
+
+.route
+{
+    fill: none;
+    stroke: #ef4444;
+    stroke-width: 4;
+    stroke-dasharray: 10 6;
+    animation: routeFlow 2s linear infinite;
+}
+
+@keyframes routeFlow
+{
+    to
+    {
+        stroke-dashoffset: -32;
+    }
+}
+
+/* Reduced motion support */
+
+@media (prefers-reduced-motion: reduce)
+{
+    .route,
+    #cruiseRoutePath
+    {
+        animation: none;
+    }
+}
+
+
+/* Small screen chart */
+
+@media (max-width: 800px)
+{
+    .chart
+    {
+        height: 300px;
+    }
+
+    .chart text
+    {
+        font-size: 10px;
+    }
+}
+
+
+/* =========================
+   Summary Cards
+   ========================= */
+
+
+
+.label
+{
+    font-weight: 600;
+    color: #555;
+}
+
+
+/* Cruise / Learn Summary Layout */
+
+.route-overview {
+    display: grid;
+    grid-template-columns:
+        repeat(auto-fit, minmax(250px, 1fr));
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.overview-item
+{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:8px 12px;
+    background:#f4f7fa;
+    border:1px solid #dbe3ea;
+    border-radius:6px;
+}
+
+
+/* =========================
+   Metrics
+   ========================= */
+
+.metrics
+{
+    display:grid;
+
+    grid-template-columns:
+        repeat(auto-fit, minmax(160px, 1fr));
+
+    gap:20px;
+
+    margin-top:15px;
+
+    margin-bottom:15px;
+}
+
+.metric
+{
+    text-align:center;
+    padding:4px;
+    background:#eef2f5;
+    border:1px solid #dbe3ea;
+    border-radius:6px;
+    min-height:20px;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+}
+
+.value
+{
+    font-size:24px;
+
+    font-weight:bold;
+
+    color:#0c4a6e;
+
+    line-height:1.2;
+}
+
+.metric-label
+{
+    margin-top:4px;
+
+    font-size:13px;
+
+    color:#4b5563;
+}
+
+.route-notes
+{
+    margin-top:15px;
+
+    padding:12px;
+
+    background:#f8fafc;
+
+    border:1px solid #dbe3ea;
+
+    border-radius:8px;
+
+    line-height:1.5;
+}
+
+.route-notes strong
+{
+    display:block;
+
+    margin-bottom:8px;
+
+    color:#0c4a6e;
+}
+
+
+@media (max-width: 600px)
+{
+    .overview-item
+    {
+        flex-direction:column;
+
+        align-items:flex-start;
+
+        gap:4px;
+    }
+
+    .metrics
+    {
+        grid-template-columns:1fr;
+    }
+}
+
+/* =========================
+   Mobile
+   ========================= */
+
+@media (max-width: 800px) {
+
+    .layout {
+        grid-template-columns: 1fr;
+    }
+
+    .button-row {
+        flex-direction: column;
+    }
+}
+
+/* =====================================
+   Cruise Planner
+   ===================================== */
+
+#cruise .card {
+    margin-bottom: 20px;
+}
+
+#cruise .status-panel {
+    margin-top: 15px;
+    margin-bottom: 15px;
+    padding: 10px;
+    border: 1px solid #dbe3ea;
+    border-radius: 6px;
+    background: #f8fafc;
+}
+
+#cruise .status-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+#cruise .status-dot {
+    width: 12px;
+    height: 12px;
+    min-width: 12px;
+    border-radius: 50%;
+    margin-top: 2px;
+}
+
+#cruiseResultCard {
+    display: none;
+}
+
+#cruiseRoutePath {
+    fill: none;
+    stroke: #ef4444;
+    stroke-width: 4;
+    stroke-dasharray: 10 6;
+    animation: cruiseRouteFlow 2s linear infinite;
+}
+
+@keyframes cruiseRouteFlow {
+    to {
+        stroke-dashoffset: -32;
+    }
+}
+
+.cruise-section {
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.cruise-section:last-of-type {
+    border-bottom: none;
+}
+
+.cruise-section h3 {
+    margin-top: 0;
+    margin-bottom: 12px;
+    color: #0c4a6e;
+    font-size: 16px;
+}
+
+.cruise-grid {
+    display: grid;
+    grid-template-columns:
+        repeat(2, minmax(250px, 1fr));
+    gap: 16px 24px;
+}
+
+.cruise-grid > div {
+    display: flex;
+    flex-direction: column;
+}
+
+@media (max-width: 900px) {
+
+    .cruise-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.sr-only
+{
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0,0,0,0);
+    white-space: nowrap;
+    border: 0;
+}
+
