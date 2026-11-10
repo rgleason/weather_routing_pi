@@ -60,6 +60,7 @@
 #include "ModernNativeRoute.h"
 #include "MultiLegRouteOutput.h"
 #include "RouteWaypointExtractor.h"
+#include "RouteWaypointValidation.h"
 #include "weather_routing_pi.h"
 #include "WeatherRouting.h"
 #include "BundledDataUpgradePolicy.h"
@@ -2280,6 +2281,14 @@ bool WeatherRouting::CreateMultiLegConfigurationsFromRoute(
     return false;
   }
 
+  if (auto issue = weather_routing::CheckConsecutiveRouteWaypoints(waypoints)) {
+    const wxString message = issue->title + "\n\n" + issue->detail;
+    wxLogMessage("WR_ROUTE_PREFLIGHT code=setup.coincident_waypoints route=%s detail=%s",
+                 routeGuid, message);
+    WR_MessageBox(message, _("Weather Routing"), wxOK | wxICON_WARNING, this);
+    return false;  // Validate the entire sequence before adding any legs.
+  }
+
   RouteMapConfiguration base;
   if (FirstCurrentRouteMap())
     base = FirstCurrentRouteMap()->GetConfiguration();
@@ -3341,6 +3350,30 @@ bool WeatherRouting::ComputeMultiLegSequence(RouteMapOverlay* selectedRoute) {
   return true;
 }
 
+bool WeatherRouting::ValidateMultiLegPositions(
+    const std::vector<RouteMapOverlay*>& routes) {
+  for (auto* route : routes) {
+    auto c = route->GetConfiguration();
+    c.Update();  // Resolve current waypoint positions, including saved groups.
+    if (auto issue = weather_routing::CheckRouteLegPositions(
+            {c.StartGUID, c.Start, c.StartLat, c.StartLon, c.MultiLegLegIndex},
+            {c.EndGUID, c.End, c.EndLat, c.EndLon, c.MultiLegLegIndex + 1},
+            c.MultiLegLegIndex)) {
+      weather_routing::RouteDiagnosticReport report;
+      report.Add(*issue);
+      route->BeginDiagnosticRun(std::move(report));
+      route->SetError(issue->title);
+      UpdateRouteMap(route);
+      wxLogMessage("WR_ROUTE_PREFLIGHT code=setup.coincident_waypoints group=%s detail=%s",
+                   c.MultiLegGroupId, issue->title + " " + issue->detail);
+      FinishRoutingProgress(_("Multi-leg route needs attention"),
+                            issue->title + "\n" + issue->detail);
+      return false;
+    }
+  }
+  return true;
+}
+
 bool WeatherRouting::ComputeMultiLegSequenceNow(const wxString& groupId) {
   std::vector<RouteMapOverlay*> routes = GetMultiLegGroupRoutes(groupId);
   if (routes.empty()) {
@@ -3356,6 +3389,8 @@ bool WeatherRouting::ComputeMultiLegSequenceNow(const wxString& groupId) {
         _("The selected multi-leg group is incomplete or unavailable."));
     return false;
   }
+
+  if (!ValidateMultiLegPositions(routes)) return false;
 
   CancelMultiLegSequence();
 
@@ -4184,6 +4219,8 @@ bool WeatherRouting::ComputeMultiLegDepartureOptimizationNow(
                           _("The selected multi-leg group is unavailable."));
     return false;
   }
+
+  if (!ValidateMultiLegPositions(baseRoutes)) return false;
 
   RouteMapConfiguration first = baseRoutes.front()->GetConfiguration();
   int rangeMinutes = first.DepartureTimeOptimizationRangeMinutes;
@@ -12693,6 +12730,29 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
             configuration.DownwindEfficiency * 100.0, configuration.NightCumulativeEfficiency * 100.0),
         _("Review these effective assumptions in Configuration."), {}, true});
   routemapoverlay->BeginDiagnosticRun(std::move(setupDiagnostics));
+  // Route analysis follows the supplied waypoint sequence, including valid
+  // return passages. Only a routing leg is a single start/destination pair.
+  std::optional<weather_routing::RouteDiagnostic> positionIssue;
+  if (!configuration.RouteGUID.empty()) {
+    std::vector<RouteWaypointInfo> points;
+    wxString error;
+    if (ExtractOpenCPNRouteWaypoints(configuration.RouteGUID, points, error))
+      positionIssue = weather_routing::CheckConsecutiveRouteWaypoints(points);
+  } else {
+    positionIssue = weather_routing::CheckRouteLegPositions(
+          {configuration.StartGUID, configuration.Start, configuration.StartLat,
+           configuration.StartLon, configuration.IsMultiLegGenerated ? configuration.MultiLegLegIndex : 1},
+          {configuration.EndGUID, configuration.End, configuration.EndLat,
+           configuration.EndLon, configuration.IsMultiLegGenerated ? configuration.MultiLegLegIndex + 1 : 2},
+          configuration.IsMultiLegGenerated ? configuration.MultiLegLegIndex : 1);
+  }
+  if (positionIssue) {
+    routemapoverlay->AddDiagnostic(*positionIssue);
+    routemapoverlay->SetError(positionIssue->title);
+    wxLogMessage("WR_ROUTE_PREFLIGHT code=setup.coincident_waypoints detail=%s",
+                 positionIssue->title + " " + positionIssue->detail);
+    return;
+  }
   // Ensure we have valid start coordinates
   if (std::isnan(configuration.StartLat) ||
       std::isnan(configuration.StartLon)) {

@@ -43,6 +43,8 @@ REQUIRED)
 include(${wxWidgets_USE_FILE})
 
 set(TEST_SRC
+    RouteWaypointValidation_tests.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/src/RouteWaypointValidation.cpp
     RouteDiagnostics_tests.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/RouteDiagnostics.cpp
     ShorelineDataset_tests.cpp

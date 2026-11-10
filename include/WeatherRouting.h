@@ -724,6 +724,7 @@ private:
                                  RouteMapConfiguration& configuration) const;
   void ShowRoutingStatus(RouteMapOverlay* selectedRoute);
   bool ComputeMultiLegDepartureOptimization(RouteMapOverlay* selectedRoute);
+  bool ValidateMultiLegPositions(const std::vector<RouteMapOverlay*>& routes);
   bool ComputeMultiLegSequenceNow(const wxString& groupId);
   bool ComputeMultiLegDepartureOptimizationNow(const wxString& groupId);
   bool ShouldShowComputeProgress(
