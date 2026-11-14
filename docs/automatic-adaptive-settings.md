@@ -101,8 +101,10 @@ inputs.
 
 In version 2, advisory samples can read already decoded forecast grids directly.
 The classic branch only peeks resident host frames and prepared Climatology.
-Missing samples remain unknown, so the classic preflight may select a more
-conservative plan. Neither branch triggers extra host-frame requests to improve
-the advisory sketch. The policy cannot guarantee that every manual success will
+An explicitly permitted, prepared Climatology fallback can supply advisory
+estimates where forecast data are absent or not resident. A busy callback stays
+unknown: preflight never waits for the callback lock. This does not mark the
+forecast missing/ready or populate the authoritative provider cache. Neither
+branch triggers extra host-frame requests to improve the advisory sketch. The policy cannot guarantee that every manual success will
 be found, that a first accepted route is fastest, or that every difficult route
 will fit the retained-history and work guards.

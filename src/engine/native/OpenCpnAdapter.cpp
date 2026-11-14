@@ -33,6 +33,7 @@
 #include "engine/native/CoordinateNormalization.h"
 #include "engine/native/RoutingEngineSequence.h"
 #include "engine/adaptive/Controller.h"
+#include "engine/adaptive/AdvisoryWeather.h"
 #include "engine/adaptive/NativeFeedback.h"
 #include "engine/adaptive/Quick2.h"
 #include "engine/adaptive/StandardRecovery.h"
@@ -925,9 +926,38 @@ public:
   wr::WindSample wind(wr::GeoPoint p, wr::TimePoint t) const override { return sample(p,t).wind; }
   wr::CurrentSample current(wr::GeoPoint p, wr::TimePoint t) const override { return sample(p,t).current; }
   wr::WaveSample waves(wr::GeoPoint p, wr::TimePoint t) const override { return sample(p,t).waves; }
-  std::string identity() const override { return "resident adaptive preflight"; }
+  std::string identity() const override { return "resident data / permitted prepared Climatology estimates"; }
 private:
   struct Samples { wr::WindSample wind; wr::CurrentSample current; wr::WaveSample waves; };
+  Samples read(RouteMapConfiguration c, wr::GeoPoint p) const {
+    Samples out;
+    // Prepared callbacks may share scratch storage. Advisory work never waits
+    // for them; a busy service remains unknown while resident GRIB stays usable.
+    std::unique_lock<std::recursive_mutex> guard(
+        ClimatologyThreadGuard::InvocationMutex(), std::defer_lock);
+    if (c.ClimatologyType != RouteMapConfiguration::DISABLED && !guard.try_lock())
+      c.ClimatologyType = RouteMapConfiguration::DISABLED;
+    RoutePoint point(p.latitude, p.longitude);
+    double groundDir{}, groundSpeed{}, waterDir{}, waterSpeed{}, currentDir{}, currentSpeed{};
+    int mask = 0; climatology_wind_atlas atlas{};
+    if (WeatherDataProvider::ReadWindAndCurrents(c, &point, groundDir, groundSpeed,
+          waterDir, waterSpeed, currentDir, currentSpeed, atlas, mask)) {
+      out.wind.available = true;
+      out.wind.velocity = wr::speedDirectionToVector(waterSpeed, waterDir + 180.);
+    }
+    if (c.Currents && (mask & (Position::GRIB_CURRENT | Position::CLIMATOLOGY_CURRENT))) {
+      out.current.available = true;
+      out.current.velocity = wr::speedDirectionToVector(currentSpeed, currentDir);
+    }
+    return out;
+  }
+  Samples prepared(RouteMapConfiguration c, wr::GeoPoint p) const {
+    if (c.ClimatologyType == RouteMapConfiguration::DISABLED) return {};
+    // This is only an advisory estimate using an already permitted fallback.
+    // It neither marks a forecast missing/ready nor inserts a provider reply.
+    c.UseGrib = false; c.grib = nullptr; c.output_grib_point_queries = false;
+    return read(c, p);
+  }
   Samples sample(wr::GeoPoint p, wr::TimePoint t) const {
     if (valid_ && p.latitude == position_.latitude && p.longitude == position_.longitude && t == time_)
       return samples_;
@@ -938,21 +968,13 @@ private:
     c.time = ToWx(t); c.grib = nullptr; c.output_grib_point_queries = false;
     {
       Shared_GribRecordSet frame;
-      // An absent/busy resident frame remains unknown. Do not enqueue a host
-      // request or populate the authoritative provider's point-result cache.
-      if (c.UseGrib && !overlay_.TryResidentGribTimelineFrame(c.time, frame)) return out;
-      c.grib = frame.GetGribRecordSet();
-      RoutePoint point(p.latitude, p.longitude);
-      double groundDir{}, groundSpeed{}, waterDir{}, waterSpeed{}, currentDir{}, currentSpeed{};
-      int mask = 0; climatology_wind_atlas atlas{};
-      if (WeatherDataProvider::ReadWindAndCurrents(c, &point, groundDir, groundSpeed,
-            waterDir, waterSpeed, currentDir, currentSpeed, atlas, mask)) {
-        out.wind.available = true;
-        out.wind.velocity = wr::speedDirectionToVector(waterSpeed, waterDir + 180.);
-        if (c.Currents && (mask & (Position::GRIB_CURRENT | Position::CLIMATOLOGY_CURRENT))) {
-          out.current.available = true;
-          out.current.velocity = wr::speedDirectionToVector(currentSpeed, currentDir);
-        }
+      // An absent/busy frame stays unknown to the authoritative provider. An
+      // explicitly permitted prepared fallback can still estimate search cost.
+      if (c.UseGrib && !overlay_.TryResidentGribTimelineFrame(c.time, frame))
+        out = prepared(c, p);
+      else {
+        c.grib = frame.GetGribRecordSet();
+        out = read(c, p);
       }
     }
     position_ = p; time_ = t; samples_ = out; valid_ = true;

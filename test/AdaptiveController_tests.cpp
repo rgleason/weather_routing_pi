@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 #include "Quick2Fixtures.h"
 #include "engine/adaptive/Controller.h"
+#include "engine/adaptive/AdvisoryWeather.h"
 #include "engine/adaptive/MemoryPolicy.h"
 #include "engine/adaptive/NativeFeedback.h"
 #include "engine/adaptive/Quick2.h"
@@ -177,6 +178,26 @@ TEST(AdaptiveController,
              });
   EXPECT_EQ(calls, 1U);
   EXPECT_TRUE(weather_routing::native::AcceptedRoute(r.route));
+}
+TEST(AdaptiveController, PreparedWindFallbackPreservesForecastCurrentAndReferenceFrame) {
+  a::AdvisoryWindCurrent forecast, prepared;
+  forecast.current = {true, {1, -.5}, {}};
+  prepared.current = {true, {2, 0}, {}};
+  prepared.wind = {true, {8, 4}, {}}; // Water-relative with its own 2-knot current.
+  auto selected = a::SelectAdvisoryWindCurrent(forecast, prepared);
+  EXPECT_DOUBLE_EQ(selected.current.velocity.eastKnots, 1);
+  EXPECT_DOUBLE_EQ(selected.wind.velocity.eastKnots, 9);
+  EXPECT_DOUBLE_EQ(selected.wind.velocity.northKnots, 4.5);
+  forecast.wind = {true, {20, 0}, {}};
+  selected = a::SelectAdvisoryWindCurrent(forecast, prepared);
+  EXPECT_DOUBLE_EQ(selected.wind.velocity.eastKnots, 19);
+  EXPECT_DOUBLE_EQ(selected.wind.velocity.northKnots, .5);
+  selected = a::SelectAdvisoryWindCurrent({}, prepared);
+  EXPECT_DOUBLE_EQ(selected.wind.velocity.eastKnots, 8);
+  EXPECT_DOUBLE_EQ(selected.wind.velocity.northKnots, 4);
+  selected = a::SelectAdvisoryWindCurrent({}, {});
+  EXPECT_FALSE(selected.wind.available);
+  EXPECT_FALSE(selected.current.available);
 }
 TEST(AdaptiveController, NativeStopTranslationIsNarrowAndExcludesCancellation) {
   wr::RoutingResult r;

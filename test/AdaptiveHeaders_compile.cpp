@@ -7,6 +7,7 @@
 #ifndef far
 #define far
 #endif
+#include "engine/adaptive/AdvisoryWeather.h"
 #include "engine/adaptive/StandardRecovery.h"
 #include "engine/adaptive/Controller.h"
 
