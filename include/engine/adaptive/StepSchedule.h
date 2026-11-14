@@ -15,9 +15,15 @@ class StepSchedule {
     return x;
   }
   static std::int64_t key(int y, int x) {
-    return (std::int64_t(y + 360) << 12) + longitudeCell(x);
+    return std::int64_t(y + 360) * 4096 + longitudeCell(x);
   }
   void mark(wr::GeoPoint point, double radiusNm) {
+    if (!std::isfinite(point.latitude) || !std::isfinite(point.longitude) ||
+        std::abs(point.latitude) > 90) {
+      hourly_.clear();
+      allHourly_ = true;
+      return;
+    }
     const int y = static_cast<int>(std::floor(point.latitude * 4));
     const int x = static_cast<int>(
         std::floor(wr::normalizeLongitude(point.longitude) * 4));

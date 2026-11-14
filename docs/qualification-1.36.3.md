@@ -4,7 +4,7 @@ Date: 14 November 2026. Linux, wxWidgets 3.2.12 plugin with the existing private
 OpenCPN 5.15 test host. Production candidate: 1.36.3; development candidate: 2.2.4.
 Windows/platform qualification remains pending. No stable release is claimed here.
 
-* Full suites: 714 enabled development tests and 631 production tests passed.
+* Full suites: 715 enabled development tests and 632 production tests passed.
   The existing disabled ocean timing comparison remains disabled.
 * Private-host contracts passed on both branches, including startup preference,
   restart, applicable disabled controls, unchanged resource ceiling, cross-route
@@ -76,3 +76,9 @@ an identifier colliding with Windows' near macro. Both were corrected, with a
 compile contract that includes the public adaptive headers after near/far macros.
 The Windows trial packager now derives its version from CMake and links to the
 qualified source, avoiding a stale hard-coded version check.
+
+Geography boundary checks cover the dateline, buffered polar cells and unknown
+coordinates. Cell-key arithmetic is defined even for buffered cells beyond the
+South Pole; unknown geometry uses the conservative hourly cap. The Windows
+checkout preserves the added adaptive headers byte-for-byte for the same source
+integrity check used on Linux.

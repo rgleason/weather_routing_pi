@@ -199,6 +199,17 @@ TEST(AdaptiveController, PreparedWindFallbackPreservesForecastCurrentAndReferenc
   EXPECT_FALSE(selected.wind.available);
   EXPECT_FALSE(selected.current.available);
 }
+TEST(AdaptiveController, RegionalStepMapHandlesPolesDatelineAndUnknownGeometry) {
+  auto fixture = quick2_fixtures::make("short");
+  a::Features features;
+  features.hourlyCenters = {{-89.99, 179.99}};
+  a::StepSchedule schedule(features, fixture.request);
+  EXPECT_EQ(schedule.cap({-89.99, -179.99}), wr::Duration{3600});
+  EXPECT_EQ(schedule.cap({0, 0}), wr::Duration{21600});
+  features.hourlyCenters = {{std::numeric_limits<double>::quiet_NaN(), 0}};
+  a::StepSchedule unknown(features, fixture.request);
+  EXPECT_EQ(unknown.cap({0, 0}), wr::Duration{3600});
+}
 TEST(AdaptiveController, NativeStopTranslationIsNarrowAndExcludesCancellation) {
   wr::RoutingResult r;
   r.status = wr::RoutingStatus::ResourceLimitReached;
