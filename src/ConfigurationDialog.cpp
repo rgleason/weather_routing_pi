@@ -1401,6 +1401,10 @@ bool ConfigurationDialog::HandleEngineEdit(wxObject* control) {
       control != m_cShorelineResolution)
     return false;
   if (m_bBlockUpdate) return true;
+  // A text/spin event queued before a mode change must not overwrite saved
+  // manual inputs after the control has become policy-managed or disabled.
+  if (auto* window = wxDynamicCast(control, wxWindow);
+      window && !window->IsEnabled()) return true;
   // Engine edits must not round-trip unrelated controls: some old controls
   // display rounded percentages or mixed values. Keep their exact saved data.
   for (auto* route : m_WeatherRouting.CurrentRouteMaps(false)) {
@@ -1621,15 +1625,15 @@ void ConfigurationDialog::UpdateEngineControls() {
   m_cRoutingEffortPercent->Enable(!running && engine != weather_routing::RoutingEngine::Auto &&
                                  engine != weather_routing::RoutingEngine::Quick2 && !atlas);
   m_sByDegrees->Enable(!running && engine != weather_routing::RoutingEngine::Quick2 && !atlas &&
-      !(automatic && nativeSettings && engine == weather_routing::RoutingEngine::Original));
+      !managedStep);
   m_cbUseReverseReachabilityRecovery->Enable(!running && engine != weather_routing::RoutingEngine::Quick2 && !atlas);
   if (engine == weather_routing::RoutingEngine::Auto)
     m_cRoutingEffortPercent->SetSelection(RoutingEffortSelection(400));
   m_pQuickEngine->Enable(!running);
   m_sQuickOffshoreStepMinutes->Enable(!running &&
-      !(automatic && nativeSettings && engine == weather_routing::RoutingEngine::Original));
+      !managedStep);
   m_sQuickHeadingStepDegrees->Enable(!running &&
-      !(automatic && nativeSettings && engine == weather_routing::RoutingEngine::Original));
+      !managedStep);
   if (running) m_bResetAdvanced->Enable(false);
   m_tRoutingEngineDescription->SetLabel(engine == weather_routing::RoutingEngine::Auto
       ? _("Auto: finds a validated route using the engines selected in Advanced. Enable alternatives to compare passage time and comfort.")
@@ -2320,6 +2324,56 @@ bool ConfigurationDialog::RunAdaptiveHostContract() {
   passed &= !disabled.AutomaticAdaptiveSettings && m_sTimeStepHours->IsEnabled() &&
       m_sQuickHeadingStepDegrees->IsEnabled() && disabled.DeltaTime == manual.DeltaTime &&
       disabled.EngineSettings.original.headingStepDegrees == manual.EngineSettings.original.headingStepDegrees;
+  // Exercise the real mouse handlers, not just the state immediately after
+  // ticking the checkbox. Legacy handlers used to re-enable these spinners.
+  for (const auto engine : {weather_routing::RoutingEngine::Original,
+                           weather_routing::RoutingEngine::Quick2,
+                           weather_routing::RoutingEngine::Auto,
+                           weather_routing::RoutingEngine::All}) {
+    auto mode = manual;
+    mode.EngineSettings.engine = engine;
+    mode.EngineSettings.autoEngines = weather_routing::kSelectableEnginesMask;
+    mode.EngineSettings.allEngines = weather_routing::kSelectableEnginesMask;
+    routes.front()->SetConfiguration(mode);
+    SetConfigurations({mode});
+    tick(true);
+    for (const auto mouseType : {wxEVT_MOTION, wxEVT_LEFT_DOWN, wxEVT_LEFT_UP}) {
+      wxMouseEvent mouse(mouseType);
+      mouse.SetEventObject(m_sTimeStepHours);
+      EnableSpin(mouse);
+      mouse.SetEventObject(m_sTimeStepMinutes);
+      EnableSpin(mouse);
+      mouse.SetEventObject(m_sByDegrees);
+      EnableSpinDouble(mouse);
+    }
+    // Repeat the refresh/tab sequence used when reopening Advanced.
+    m_notebook7->SetSelection(0);
+    m_notebook7->SetSelection(1);
+    UpdateEngineControls();
+    passed &= !m_sTimeStepHours->IsEnabled() &&
+        !m_sTimeStepMinutes->IsEnabled() && !m_sByDegrees->IsEnabled() &&
+        m_sMaxSearchAngle->IsEnabled() && m_sQuickMemoryBudgetMiB->IsEnabled();
+    // Stale numeric events are ignored while the values are managed.
+    m_sTimeStepHours->SetValue(9);
+    wxSpinEvent spin(wxEVT_SPINCTRL, m_sTimeStepHours->GetId());
+    spin.SetEventObject(m_sTimeStepHours);
+    OnUpdateSpin(spin);
+    m_sByDegrees->SetValue(3.5);
+    wxCommandEvent text(wxEVT_TEXT, m_sByDegrees->GetId());
+    text.SetEventObject(m_sByDegrees);
+    OnUpdate(text);
+    const auto unchanged = routes.front()->GetConfiguration();
+    passed &= unchanged.DeltaTime == manual.DeltaTime &&
+        unchanged.ByDegrees == manual.ByDegrees &&
+        unchanged.EngineSettings.original.headingStepDegrees ==
+            manual.EngineSettings.original.headingStepDegrees;
+    tick(false);
+    SetConfigurations({routes.front()->GetConfiguration()});
+    passed &= m_sTimeStepHours->IsEnabled() && m_sTimeStepMinutes->IsEnabled() &&
+        (engine == weather_routing::RoutingEngine::Quick2 || m_sByDegrees->IsEnabled()) &&
+        routes.front()->GetConfiguration().DeltaTime == manual.DeltaTime &&
+        routes.front()->GetConfiguration().ByDegrees == manual.ByDegrees;
+  }
   RouteMapConfiguration next;
   m_WeatherRouting.ApplyNewAdaptiveSettingsChoice(next);
   passed &= !next.AutomaticAdaptiveSettings;
@@ -2329,7 +2383,7 @@ bool ConfigurationDialog::RunAdaptiveHostContract() {
   passed &= !next.AutomaticAdaptiveSettings;
   routes.front()->SetConfiguration(saved);
   SetConfigurations({saved});
-  wxLogMessage("WR_ADAPTIVE_CONFIGURATION_CONTRACT passed=%d manual_step_s=%.0f manual_heading=%.2f",
+  wxLogMessage("WR_ADAPTIVE_CONFIGURATION_CONTRACT passed=%d modes=Quick,Quick2,Auto,All mouse_policy=1 manual_step_s=%.0f manual_heading=%.2f",
                passed ? 1 : 0, disabled.DeltaTime, disabled.EngineSettings.original.headingStepDegrees);
   wxString showConfiguration;
   if (passed && wxGetEnv("WR_HEADLESS_ADAPTIVE_SHOW_CONFIGURATION", &showConfiguration) &&
