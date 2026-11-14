@@ -41,7 +41,7 @@ GribTimelineFrameCache::GribTimelineFrameCache()
              MiBToBytes(kMainGribTimelineCacheDefaultMiB),
              [](const Shared_GribRecordSet& frame) {
                return frame.EstimatedMemoryBytes();
-             }) {}
+             }, kMissingFrameCapacity) {}
 
 GribTimelineCacheAdmission GribTimelineFrameCache::Configure(
     int requested_mib, bool quick, std::uint64_t available_mib) {
@@ -75,6 +75,11 @@ bool GribTimelineFrameCache::Publish(std::int64_t key,
                                      bool valid) {
   ApplyRuntimeMemoryGuard();
   return cache_.Publish(key, value, valid);
+}
+
+void GribTimelineFrameCache::PublishUnavailable(std::int64_t key) {
+  ApplyRuntimeMemoryGuard();
+  cache_.PublishUnavailable(key);
 }
 
 void GribTimelineFrameCache::NotifyAll() { cache_.NotifyAll(); }

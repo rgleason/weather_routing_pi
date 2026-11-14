@@ -43,6 +43,9 @@ REQUIRED)
 include(${wxWidgets_USE_FILE})
 
 set(TEST_SRC
+    AdaptiveController_tests.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/src/engine/adaptive/Quick2.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/src/engine/adaptive/StandardRecovery.cpp
     RouteWaypointValidation_tests.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/RouteWaypointValidation.cpp
     RouteDiagnostics_tests.cpp
@@ -61,6 +64,8 @@ set(TEST_SRC
     ChartSafetyDefaults_tests.cpp
     HeadlessRouteMonitor_tests.cpp
     KeyedRequestCache_tests.cpp
+    GribTimelineFrameCache_tests.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/src/GribTimelineFrameCache.cpp
     GribTimelineCachePolicy_tests.cpp
     DeviceMemoryPolicy_tests.cpp
     OceanPrewarmPolicy_tests.cpp

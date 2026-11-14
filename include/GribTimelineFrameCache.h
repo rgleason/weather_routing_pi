@@ -37,8 +37,12 @@ public:
                long timeout_milliseconds,
                const std::function<void(const std::int64_t&)>& request,
                const std::function<bool()>& cancelled);
+  bool TryResident(std::int64_t key, Shared_GribRecordSet* value) const {
+    return cache_.TryResident(key, value);
+  }
   bool Publish(std::int64_t key, const Shared_GribRecordSet& value,
                bool valid);
+  void PublishUnavailable(std::int64_t key);
   void NotifyAll();
 
   /** Release every cached frame and return the estimated bytes released. */
@@ -54,6 +58,9 @@ private:
   void ApplyRuntimeMemoryGuard();
 
   static constexpr std::size_t kFrameCapacity = 512;
+  // A missing frame owns no GRIB grids. Retain its status separately across
+  // long passages and engine attempts without increasing the frame budget.
+  static constexpr std::size_t kMissingFrameCapacity = 32768;
   Cache cache_;
   int requested_mib_{kMainGribTimelineCacheDefaultMiB};
   int effective_mib_{kMainGribTimelineCacheDefaultMiB};

@@ -109,6 +109,33 @@ TEST(RoutingScenarioJson, ClimatologyFallbackIsExplicitAndDefaultsOff) {
   std::remove(absentPath.mb_str());
 }
 
+TEST(RoutingScenarioJson, AutomaticSettingsAreExplicitAndLegacyStaysManual) {
+  for (const std::string value : {"absent", "true", "false", "1", "\"true\""}) {
+    const wxString path = wxFileName::CreateTempFileName("wr-adaptive-input-");
+    ASSERT_FALSE(path.empty());
+    {
+      std::ofstream output(path.mb_str());
+      output << R"({"schemaVersion":1,"name":"Adaptive input contract",
+        "start":{"name":"A","lat":50,"lon":-5},
+        "end":{"name":"B","lat":51,"lon":-4},"route":{)";
+      if (value != "absent") output << "\"automaticAdaptiveSettings\":" << value;
+      output << "}}";
+    }
+    weather_routing_engine::RoutingScenario scenario;
+    wxString error;
+    const bool loaded = weather_routing_headless::LoadRoutingScenarioJson(path, scenario, error);
+    std::remove(path.mb_str());
+    if (value == "1" || value == "\"true\"") {
+      EXPECT_FALSE(loaded) << value;
+      EXPECT_TRUE(error.Contains("automaticAdaptiveSettings"));
+    } else {
+      ASSERT_TRUE(loaded) << value << ": " << error;
+      EXPECT_EQ(value != "absent", scenario.route.hasAutomaticAdaptiveSettings);
+      EXPECT_EQ(value == "true", scenario.route.automaticAdaptiveSettings);
+    }
+  }
+}
+
 TEST(RoutingScenarioJson, LoadsRoutingEffortForHardRouteRegression) {
   weather_routing_engine::RoutingScenario scenario;
   wxString error;
