@@ -57,6 +57,8 @@ TEST(RoutingEngineSettings, FirstInstallAutoButUpgradePreservesEveryExistingSele
   wr::RoutingEngineSettings fresh;
   wr::ApplyFirstUseEngineDefaults(fresh, false);
   EXPECT_EQ(fresh.engine, wr::RoutingEngine::Auto);
+  EXPECT_EQ(fresh.autoEngines, wr::kSelectableEnginesMask);
+  EXPECT_EQ(fresh.allEngines, wr::kSelectableEnginesMask);
   for (const char* id : {"original", "quick", "main", "auto", "all", "unknown"}) {
     TiXmlElement xml("Configuration");
     xml.SetAttribute("RoutingEngine", id);
@@ -79,7 +81,10 @@ TEST(RoutingEngineSettings, BundledFirstInstallExamplesSelectAuto) {
   int configurations = 0;
   for (auto* element = root->FirstChildElement("Configuration"); element;
        element = element->NextSiblingElement("Configuration")) {
-    EXPECT_EQ(wr::ReadRoutingEngineSettings(*element).engine, wr::RoutingEngine::Auto);
+    const auto settings = wr::ReadRoutingEngineSettings(*element);
+    EXPECT_EQ(settings.engine, wr::RoutingEngine::Auto);
+    EXPECT_EQ(settings.autoEngines, wr::kSelectableEnginesMask);
+    EXPECT_EQ(settings.allEngines, wr::kSelectableEnginesMask);
     ++configurations;
   }
   EXPECT_GT(configurations, 0);

@@ -355,6 +355,16 @@ bool RouteMap::AcquireGribTimelineFrame(const wxDateTime& time,
       [this] { return m_CancellationFlag->load(std::memory_order_relaxed); });
 }
 
+bool RouteMap::TryResidentGribTimelineFrame(const wxDateTime& time,
+                                           Shared_GribRecordSet& frame) const {
+  const auto key = GribTimelineKey(time);
+  return key >= 0 && m_GribTimelineCache->TryResident(key, &frame);
+}
+
+void RouteMap::SetGribProviderUnavailable(std::int64_t timeline_key) {
+  if (timeline_key >= 0) m_GribTimelineCache->PublishUnavailable(timeline_key);
+}
+
 bool RouteMap::PublishTimelineFrame(std::int64_t timeline_key,
                                     const Shared_GribRecordSet& frame) {
   if (timeline_key < 0) return true;

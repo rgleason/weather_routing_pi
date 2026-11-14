@@ -166,6 +166,8 @@ inline void ApplyFirstUseEngineDefaults(RoutingEngineSettings& settings,
                                         bool hasSavedDefaults) {
   if (hasSavedDefaults) return;
   settings.engine = RoutingEngine::Auto;
+  settings.autoEngines = kSelectableEnginesMask;
+  settings.allEngines = kSelectableEnginesMask;
   settings.mainPreset = {"balanced", kBalancedSearchPresetRevision};
 }
 

@@ -80,6 +80,7 @@ public:
   void Update();
   bool RunComfortHostContract();
   bool RunEngineHostContract();
+  bool RunAdaptiveHostContract();
 
   void AddSource(wxString name);
   void RemoveSource(wxString name);
@@ -134,13 +135,11 @@ protected:
   void OnUpdateIntegratorRungeKutta(wxCommandEvent& event);
 
   void EnableSpin(wxMouseEvent& event) {
-    if (auto* spin = wxDynamicCast(event.GetEventObject(), wxSpinCtrl))
-      spin->Enable();
+    // Configuration policy owns enabled state. Mouse events must not unlock
+    // automatic, engine-inapplicable or running-route controls.
     event.Skip();
   }
   void EnableSpinDouble(wxMouseEvent& event) {
-    if (auto* spin = wxDynamicCast(event.GetEventObject(), wxSpinCtrlDouble))
-      spin->Enable();
     event.Skip();
   }
   void OnStartFromBoat(wxCommandEvent& event);
@@ -169,6 +168,8 @@ private:
 #endif
   void UpdateCycloneControls();
   void UpdateEngineControls();
+  void OnAdaptiveSettings(wxCommandEvent& event);
+  wxCheckBox* m_cbAutomaticAdaptiveSettings = nullptr;
   bool HandleEngineEdit(wxObject* control);
   void RefreshEnginePresetStatus();
 

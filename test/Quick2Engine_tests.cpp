@@ -98,7 +98,7 @@ TEST(Quick2Engine, MotionLandWeatherCancellationAndReplayContracts) {
   }
 }
 
-TEST(Quick2Engine, RetainingCandidateDoesNotChangeStandardsSearchOrAllowance) {
+TEST(Quick2Engine, AllRetainsCandidateWithoutChangingStandardsSearchOrAllowance) {
   namespace native = weather_routing::native;
   auto fixture = quick2_fixtures::make("island");
   wr::QuickRoutingOptions options;
@@ -111,7 +111,7 @@ TEST(Quick2Engine, RetainingCandidateDoesNotChangeStandardsSearchOrAllowance) {
   wr::RoutingResult following;
   const auto before = fixture.request.limits.maximumGeneratedStates;
   const auto result = native::RunRoutingEngineSequence(
-      weather_routing::RoutingEngine::Auto, fixture.request.cancellation,
+      weather_routing::RoutingEngine::All, fixture.request.cancellation,
       [&](auto engine) {
         if (engine == native::SequenceEngine::Quick2)
           return quick2_routing::Engine{}

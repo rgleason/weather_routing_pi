@@ -139,10 +139,9 @@ supercpn::weather_routing::RoutingResult RunRoutingEngineSequence(
         best = std::move(last);
         haveBest = true;
       }
-      // Quick2 is a provisional fallback, held only here. The callback gets
-      // no incumbent or spent budget: selected Standard starts from scratch.
-      // A later accepted engine ends Auto with the best result found so far.
-      if (mode == RoutingEngine::Auto && engine != SequenceEngine::Quick2) {
+      // Auto returns its first accepted result, including Quick2. All alone
+      // continues the selected-engine comparison.
+      if (mode == RoutingEngine::Auto) {
         best.attemptFailures = attempts;
         best.engineAttempts = history;
         return best;

@@ -1926,7 +1926,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   }
   engineSettingsBox->Add(membership, 0, wxALL, 5);
   auto membershipHelp = new wxStaticText(engineSettingsBox->GetStaticBox(), wxID_ANY,
-      _("Unchecked engines are skipped. Auto retains Quick2 while later engines search independently with fresh allowances. Atlas is optional and runs after Quick2, before Standard when selected. All compares every selected engine. Select at least one engine per mode."));
+      _("Unchecked engines are skipped. Auto stops at the first accepted validated complete route. Engines run in the displayed order. All compares every selected engine. Select at least one engine per mode."));
   membershipHelp->Wrap(430);
   engineSettingsBox->Add(membershipHelp, 0, wxALL | wxEXPAND, 5);
   engineSettingsBox->Add(new wxStaticText(engineSettingsBox->GetStaticBox(), wxID_ANY,
