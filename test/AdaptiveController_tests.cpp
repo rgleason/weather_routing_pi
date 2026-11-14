@@ -33,7 +33,10 @@ void SameTrack(const wr::RoutingResult& x, const wr::RoutingResult& y) {
   for (std::size_t i = 0; i < x.legs.size(); ++i) {
     EXPECT_DOUBLE_EQ(x.legs[i].end.latitude, y.legs[i].end.latitude);
     EXPECT_DOUBLE_EQ(x.legs[i].end.longitude, y.legs[i].end.longitude);
-    EXPECT_EQ(x.legs[i].endTime, y.legs[i].endTime);
+    // Printing chrono time_points can instantiate macOS 13.3 std::format
+    // support in GoogleTest. Compare the same exact ticks on macOS 11 too.
+    EXPECT_EQ(x.legs[i].endTime.time_since_epoch().count(),
+              y.legs[i].endTime.time_since_epoch().count());
   }
 }
 TEST(AdaptiveController, FirstAcceptedStopsBeforeOptionalComparison) {
