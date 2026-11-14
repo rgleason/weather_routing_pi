@@ -33,7 +33,8 @@ set(CMLOC "CMakeLists: ")
 # Option to enable/disable testing
 option(OCPN_BUILD_TEST "Build plugin tests" OFF)
 set(_xweather_identity_default OFF)
-if("$ENV{CIRCLE_PROJECT_REPONAME}" STREQUAL "xweather_routing_pi")
+if("$ENV{CIRCLE_PROJECT_REPONAME}" STREQUAL "xweather_routing_pi" OR
+   "$ENV{GITHUB_REPOSITORY}" MATCHES "/xweather_routing_pi$")
   set(_xweather_identity_default ON)
 endif()
 option(WEATHER_ROUTING_XWEATHER_IDENTITY
