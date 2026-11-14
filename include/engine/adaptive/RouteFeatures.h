@@ -165,18 +165,18 @@ inline Features Characterize(
         f.path[leg], wr::initialBearingDegrees(f.path[leg], f.path[leg + 1]),
         std::max(0., d - begin)));
   }
-  unsigned near = 0, coastSamples = 0;
+  unsigned nearCoast = 0, coastSamples = 0;
   for (std::size_t i = 1; i + 1 < probes.size(); ++i)
     if (allowed()) {
       ++f.geometryQueries;
       ++coastSamples;
       if (polygons.distanceToForbiddenNm(probes[i]) < 3.) {
-        ++near;
+        ++nearCoast;
         f.hourlyCenters.push_back(probes[i]);
       }
     }
   f.coastalFraction =
-      double(near) / std::max<std::size_t>(1, probes.size() - 2);
+      double(nearCoast) / std::max<std::size_t>(1, probes.size() - 2);
   for (auto point : {r.start, r.destination})
     if (allowed()) {
       ++f.geometryQueries;

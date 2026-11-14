@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
+#include <array>
 
 #include "supercpn/weather_routing/Engine.h"
 
