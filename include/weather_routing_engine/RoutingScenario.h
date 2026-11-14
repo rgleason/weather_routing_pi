@@ -72,6 +72,8 @@ struct RoutingScenarioRouteSettings {
   bool hasShorelineResolution{false};
   wxString routingEngine;
   bool hasRoutingEngine{false};
+  bool automaticAdaptiveSettings{false};
+  bool hasAutomaticAdaptiveSettings{false};
   unsigned autoEngineMask{23}, allEngineMask{31};
   bool hasAutoEngineMask{false}, hasAllEngineMask{false};
   int quickOffshoreStepMinutes{180};

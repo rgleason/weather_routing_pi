@@ -289,6 +289,10 @@ struct RouteMapConfiguration {
   };
 
   weather_routing::RoutingEngineSettings EngineSettings;
+  // Missing attributes on existing/imported routes preserve manual behavior.
+  // New-passage policy is applied explicitly by WeatherRouting.
+  bool AutomaticAdaptiveSettings{false};
+  std::uint64_t adaptive_chart_cache_mib{}; // Main-thread runtime snapshot only.
   // Saved per-route optional search controls.
   bool ExploreComfortAlternatives{false};
   int ComfortAdditionalPercent{200};
@@ -1069,6 +1073,11 @@ public:
   bool AcquireGribTimelineFrame(const wxDateTime& time,
                                 Shared_GribRecordSet& frame,
                                 long timeoutMilliseconds = 30000);
+  bool TryResidentGribTimelineFrame(const wxDateTime& time,
+                                    Shared_GribRecordSet& frame) const;
+  int GribTimelineCacheBudgetMiB() const { return m_GribTimelineCache->EffectiveMiB(); }
+  /** Release an unanswered request without claiming this frame is missing. */
+  void SetGribProviderUnavailable(std::int64_t timeline_key);
   void SetGribTimelineFrameCache(
       const std::shared_ptr<weather_routing::GribTimelineFrameCache>& cache) {
     if (cache) m_GribTimelineCache = cache;

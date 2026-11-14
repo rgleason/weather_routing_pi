@@ -32,6 +32,11 @@
 #include "engine/native/ConstraintTime.h"
 #include "engine/native/CoordinateNormalization.h"
 #include "engine/native/RoutingEngineSequence.h"
+#include "engine/adaptive/Controller.h"
+#include "engine/adaptive/AdvisoryWeather.h"
+#include "engine/adaptive/NativeFeedback.h"
+#include "engine/adaptive/Quick2.h"
+#include "engine/adaptive/StandardRecovery.h"
 #include "engine/native/RouteGust.h"
 #include "quick2_routing/Engine.h"
 #include "atlas_routing/Engine.h"
@@ -908,6 +913,103 @@ private:
   RouteMapConfiguration configuration_;
 };
 
+// Advisory samples only. Search/validation continue to use the ordinary
+// provider. Pin the decoded source and never request/copy a forecast frame.
+class AdaptiveWeatherProbe final : public wr::WeatherProvider {
+public:
+  AdaptiveWeatherProbe(RouteMapOverlay& overlay, RouteMapConfiguration configuration)
+      : overlay_(overlay), configuration_(std::move(configuration)),
+        deadline_(std::chrono::steady_clock::now() + std::chrono::milliseconds{500}) {}
+  wr::ParameterCoverage windCoverage() const override { return {}; }
+  wr::ParameterCoverage currentCoverage() const override { return {}; }
+  wr::ParameterCoverage waveCoverage() const override { return {}; }
+  wr::WindSample wind(wr::GeoPoint p, wr::TimePoint t) const override { return sample(p,t).wind; }
+  wr::CurrentSample current(wr::GeoPoint p, wr::TimePoint t) const override { return sample(p,t).current; }
+  wr::WaveSample waves(wr::GeoPoint p, wr::TimePoint t) const override { return sample(p,t).waves; }
+  std::string identity() const override { return "resident data / permitted prepared Climatology estimates"; }
+private:
+  struct Samples { wr::WindSample wind; wr::CurrentSample current; wr::WaveSample waves; };
+  Samples read(RouteMapConfiguration c, wr::GeoPoint p) const {
+    Samples out;
+    // Prepared callbacks may share scratch storage. Advisory work never waits
+    // for them; a busy service remains unknown while resident GRIB stays usable.
+    std::unique_lock<std::recursive_mutex> guard(
+        ClimatologyThreadGuard::InvocationMutex(), std::defer_lock);
+    if (c.ClimatologyType != RouteMapConfiguration::DISABLED && !guard.try_lock())
+      c.ClimatologyType = RouteMapConfiguration::DISABLED;
+    RoutePoint point(p.latitude, p.longitude);
+    double groundDir{}, groundSpeed{}, waterDir{}, waterSpeed{}, currentDir{}, currentSpeed{};
+    int mask = 0; climatology_wind_atlas atlas{};
+    if (WeatherDataProvider::ReadWindAndCurrents(c, &point, groundDir, groundSpeed,
+          waterDir, waterSpeed, currentDir, currentSpeed, atlas, mask)) {
+      out.wind.available = true;
+      out.wind.velocity = wr::speedDirectionToVector(waterSpeed, waterDir + 180.);
+    }
+    if (c.Currents && (mask & (Position::GRIB_CURRENT | Position::CLIMATOLOGY_CURRENT))) {
+      out.current.available = true;
+      out.current.velocity = wr::speedDirectionToVector(currentSpeed, currentDir);
+    }
+    return out;
+  }
+  Samples prepared(RouteMapConfiguration c, wr::GeoPoint p) const {
+    if (c.ClimatologyType == RouteMapConfiguration::DISABLED) return {};
+    // This is only an advisory estimate using an already permitted fallback.
+    // It neither marks a forecast missing/ready nor inserts a provider reply.
+    c.UseGrib = false; c.grib = nullptr; c.output_grib_point_queries = false;
+    return read(c, p);
+  }
+  Samples sample(wr::GeoPoint p, wr::TimePoint t) const {
+    if (valid_ && p.latitude == position_.latitude && p.longitude == position_.longitude && t == time_)
+      return samples_;
+    Samples out;
+    if (std::chrono::steady_clock::now() >= deadline_ ||
+        overlay_.CancellationFlag()->load(std::memory_order_relaxed)) return out;
+    auto c = configuration_;
+    c.time = ToWx(t); c.grib = nullptr; c.output_grib_point_queries = false;
+    c.grib_is_data_deficient = false;
+    {
+      Shared_GribRecordSet frame;
+      // An absent/busy frame stays unknown to the authoritative provider. An
+      // explicitly permitted prepared fallback can still estimate search cost.
+      if (c.UseGrib && !overlay_.TryResidentGribTimelineFrame(c.time, frame))
+        out = prepared(c, p);
+      else {
+        c.grib = frame.GetGribRecordSet();
+        out = read(c, p);
+      }
+    }
+    position_ = p; time_ = t; samples_ = out; valid_ = true;
+    return out;
+  }
+  RouteMapOverlay& overlay_;
+  RouteMapConfiguration configuration_;
+  std::chrono::steady_clock::time_point deadline_;
+  mutable bool valid_{};
+  mutable wr::GeoPoint position_;
+  mutable wr::TimePoint time_;
+  mutable Samples samples_;
+};
+
+bool AcceptAdaptiveGeometry(const RouteMapConfiguration& configuration,
+                           const wr::RoutingRequest& request, wr::RoutingResult& route) {
+  if (!weather_routing::native::AcceptedRoute(route)) return false;
+  if (!configuration.DetectLand || configuration.chart_safety_scout_preview) return true;
+  for (const auto& leg : route.legs) {
+    auto segment = configuration; segment.time = ToWx(leg.startTime);
+    wxString reason;
+    if (!ConstraintChecker::CheckFinalRouteLandConstraint(segment,
+          leg.start.latitude, leg.start.longitude, leg.end.latitude, leg.end.longitude,
+          wr::initialBearingDegrees(leg.start, leg.end), &reason,
+          leg.coastalDepartureEgress, wr::distanceNm(leg.end, request.destination) <= 1e-6)) {
+      route.status = wr::RoutingStatus::ValidationFailure;
+      route.validation.passed = false;
+      route.message = reason.empty() ? "Final route geometry rejected by host validation" : reason.ToStdString();
+      return false;
+    }
+  }
+  return true;
+}
+
 wr::RoutingRequest BuildRequest(RouteMapOverlay& overlay,
                                 const RouteMapConfiguration& configuration) {
   wr::RoutingRequest request;
@@ -1415,6 +1517,146 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
         wxString::FromUTF8(wr::toString(quick.route.status).c_str()));
     return std::move(quick.route);
   };
+  auto solveAdaptive = [&](const wr::RoutingRequest& solveRequest,
+                           const wr::RoutingEnvironment& solveEnvironment,
+                           const RouteMapConfiguration& selectedConfiguration) {
+    namespace adaptive = weather_routing::adaptive;
+    using weather_routing::RoutingEngine;
+    const auto selected = selectedConfiguration.EngineSettings.engine;
+    // Off is the existing computation path, before any new analysis, variant,
+    // resource policy, cache inspection or configuration-copy adjustments.
+    if (!selectedConfiguration.AutomaticAdaptiveSettings ||
+        selectedConfiguration.chart_safety_scout_preview ||
+        (selected != RoutingEngine::Original && selected != RoutingEngine::Quick2 &&
+         selected != RoutingEngine::Quick))
+      return solveSingle(solveRequest, solveEnvironment, selectedConfiguration);
+    auto probeConfiguration = selectedConfiguration;
+    probeConfiguration.StartTime = ToWx(solveRequest.departure);
+    auto probeEnvironment = solveEnvironment;
+    probeEnvironment.grib = std::make_shared<AdaptiveWeatherProbe>(overlay, probeConfiguration);
+    adaptive::Features features;
+    if (selectedConfiguration.shoreline_dataset) {
+      AtlasShorelineHints polygons(selectedConfiguration.shoreline_dataset);
+      features = adaptive::Characterize(solveRequest, probeEnvironment, polygons);
+    } else if (!selectedConfiguration.DetectLand) {
+      wr::PolygonBoundaryProvider openWater({});
+      features = adaptive::Characterize(solveRequest, probeEnvironment, openWater);
+    } else {
+      features.directNm = wr::distanceNm(solveRequest.start, solveRequest.destination);
+      features.path = {solveRequest.start, solveRequest.destination};
+    }
+    adaptive::Options options;
+    options.engine = selected;
+    options.objective = configuration.EngineSettings.engine == RoutingEngine::All
+        ? adaptive::Objective::BestCompleted : adaptive::Objective::FirstAccepted;
+    options.nativeAllowance = selected == RoutingEngine::Quick ? 600000ULL :
+        selected == RoutingEngine::Quick2 ? 2000000ULL : solveRequest.limits.maximumGeneratedStates;
+    options.standardStep = std::chrono::minutes(selectedConfiguration.EngineSettings.quick.offshoreStepMinutes);
+    options.standardHeading = selectedConfiguration.EngineSettings.quick.headingStepDegrees;
+    const auto available = weather_routing::AvailablePhysicalMemoryMiB();
+    options.memory.known = available != 0;
+    options.memory.availableMiB = available;
+    options.memory.reserveMiB = std::clamp<std::uint64_t>(available / 10, 256, 2048);
+    options.memory.sharedCacheMiB = std::max(0, overlay.GribTimelineCacheBudgetMiB()) +
+        selectedConfiguration.adaptive_chart_cache_mib + 64;
+    options.memory.searchMiB = selected == RoutingEngine::Quick2 ? 128 :
+        std::max(1, selectedConfiguration.EngineSettings.FastSettings().memoryBudgetMiB);
+    options.availableMemoryMiB = weather_routing::AvailablePhysicalMemoryMiB;
+    options.userCancelled = [&overlay] {
+      return overlay.CancellationFlag()->load(std::memory_order_relaxed);
+    };
+    const bool arrival = selectedConfiguration.TimeMode == RouteMapConfiguration::ROUTE_BY_ARRIVAL_TIME;
+    if (arrival) {
+      const auto spent = selected == RoutingEngine::Quick ? quickGenerated :
+          selected == RoutingEngine::Quick2 ? quick2Generated : originalGenerated;
+      const std::uint64_t ceiling = selected == RoutingEngine::Quick ? 1800000ULL :
+          selected == RoutingEngine::Quick2 ? 6000000ULL : 20000000ULL;
+      options.nativeAllowance = std::min(options.nativeAllowance, ceiling - std::min(ceiling, spent));
+      // Preserve the native per-departure slice and the cross-departure ledger.
+      // Numerical adaptation is permitted; spending later departure slices is not.
+      options.hardWorkCeiling = options.nativeAllowance;
+    }
+    auto planned = adaptive::Run(options, solveRequest, features,
+        [&](const wr::RoutingRequest& input, const adaptive::Recipe& recipe,
+            std::uint64_t allowance, std::uint64_t firstPhase,
+            const adaptive::StepSchedule& schedule) {
+          auto bounded = input;
+          bounded.limits.maximumGeneratedStates = allowance;
+          adaptive::AttemptResult out;
+          if (selected == RoutingEngine::Original) {
+            original_routing::Options limits;
+            limits.captureVisualization = true;
+            limits.allowCoastalEndpointLeeway = true;
+            out.route = original_routing::Engine{}.route(bounded, solveEnvironment, limits);
+            out.quotaUsed = out.route.diagnostics.generatedStates;
+            originalGenerated += *out.quotaUsed;
+          } else if (selected == RoutingEngine::Quick2) {
+            quick2_adaptive::Options limits;
+            limits.step = std::clamp(input.options.timeStep, wr::Duration{60}, wr::Duration{21600});
+            limits.maximumLayers = 4096;
+            limits.maximumProposals = allowance;
+            if (!schedule.empty()) limits.localStepCap = [&schedule](wr::GeoPoint p) { return schedule.cap(p); };
+            auto searched = quick2_adaptive::Engine{}.route(bounded, solveEnvironment, limits);
+            out.quotaUsed = searched.frontier.proposals;
+            quick2Generated += *out.quotaUsed;
+            out.route = std::move(searched.route);
+          } else {
+            wr::QuickRoutingOptions limits;
+            limits.memoryBudgetMiB = selectedConfiguration.EngineSettings.quick.memoryBudgetMiB;
+            limits.offshoreStep = recipe.standardStep == wr::Duration{} ? options.standardStep : recipe.standardStep;
+            limits.headingStepDegrees = recipe.standardHeading ? recipe.standardHeading : options.standardHeading;
+            limits.maximumGeneratedStates = allowance;
+            if (firstPhase) {
+              wr::AdaptiveStandardOptions phases;
+              phases.memoryBudgetMiB = limits.memoryBudgetMiB;
+              phases.offshoreStep = limits.offshoreStep;
+              phases.headingStepDegrees = limits.headingStepDegrees;
+              phases.maximumGeneratedStates = limits.maximumGeneratedStates;
+              phases.initialPhaseAbsoluteStates = firstPhase;
+              out.route = wr::AdaptiveStandardEngine{}.route(bounded, solveEnvironment, phases).route;
+            } else out.route = wr::QuickRoutingEngine{}.route(bounded, solveEnvironment, limits).route;
+            out.quotaUsed = out.route.diagnostics.generatedStates;
+            quickGenerated += *out.quotaUsed;
+          }
+          out.stopCause = adaptive::NativeStopCause(out.route);
+          return out;
+        }, [&](wr::RoutingResult& candidate) {
+          return AcceptAdaptiveGeometry(selectedConfiguration, solveRequest, candidate);
+        });
+    const wxString id = wxString::FromUTF8(selectedConfiguration.EngineSettings.EngineId().c_str());
+    wxLogMessage("WR_ADAPTIVE_PLAN policy=%u engine=%s objective=%s distance_nm=%.3f estimated_hours=%.3f preflight_ms=%.3f geometry_queries=%u weather_samples=%u allowance=%llu spent=%llu sampled_current_max_mps=%.3f sampled_current_change_mps_per_hour=%.3f current_samples=%u missing_current_samples=%u",
+        adaptive::kPolicyRevision, id,
+        options.objective == adaptive::Objective::FirstAccepted ? "first_accepted" : "best_completed",
+        features.directNm, features.hours, features.milliseconds, features.geometryQueries,
+        features.weatherSamples, static_cast<unsigned long long>(planned.allowance),
+        static_cast<unsigned long long>(planned.spent), features.currentKnots / 1.9438444924406,
+        features.currentChange1h / 1.9438444924406, features.currentSamples, features.currentMissingSamples);
+    for (const auto& attempt : planned.attempts)
+      wxLogMessage("WR_ADAPTIVE_ATTEMPT engine=%s step_s=%lld request_heading_deg=%.2f standard_step_s=%lld standard_heading_deg=%.2f status=%s accepted=%d became_incumbent=%d quota=%llu elapsed_ms=%.3f",
+          id, static_cast<long long>(attempt.recipe.step.count()), attempt.recipe.heading,
+          static_cast<long long>((attempt.recipe.standardStep == wr::Duration{} ? options.standardStep : attempt.recipe.standardStep).count()),
+          attempt.recipe.standardHeading ? attempt.recipe.standardHeading : options.standardHeading,
+          wxString::FromUTF8(wr::toString(attempt.status).c_str()), attempt.accepted, attempt.selected,
+          static_cast<unsigned long long>(attempt.quota), attempt.milliseconds);
+    if (planned.selected) {
+      const auto& chosen = *planned.selected;
+      const auto step = selected == RoutingEngine::Quick ?
+          (chosen.standardStep == wr::Duration{} ? options.standardStep : chosen.standardStep) : chosen.step;
+      const auto heading = selected == RoutingEngine::Quick ?
+          (chosen.standardHeading ? chosen.standardHeading : options.standardHeading) : chosen.heading;
+      auto diagnostics = overlay.GetDiagnostics();
+      if (selected == RoutingEngine::Quick2)
+        diagnostics.context += wxString::Format("\nAutomatic settings (%s, policy %u): nominal step %lld s; heading fan managed by Quick2; %lu attempt(s)",
+            id, adaptive::kPolicyRevision, static_cast<long long>(step.count()),
+            static_cast<unsigned long>(planned.attempts.size()));
+      else
+        diagnostics.context += wxString::Format("\nAutomatic settings (%s, policy %u): nominal step %lld s, heading %.1f degrees; %lu attempt(s)",
+            id, adaptive::kPolicyRevision, static_cast<long long>(step.count()), heading,
+            static_cast<unsigned long>(planned.attempts.size()));
+      overlay.SetDiagnostics(diagnostics);
+    }
+    return std::move(planned.route);
+  };
   OpenCpnWeatherProvider::CacheDiagnostics sequenceWeatherCache;
   std::vector<weather_routing::RetainedRouteCandidate> retainedCandidates;
   std::vector<weather_routing::RetainedRouteCandidate> partialCandidates;
@@ -1436,7 +1678,7 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
   auto solve = [&](const wr::RoutingRequest& solveRequest,
                    const wr::RoutingEnvironment& solveEnvironment) {
     if (!weather_routing::IsCombinedEngine(configuration.EngineSettings.engine))
-      return solveSingle(solveRequest, solveEnvironment, configuration);
+      return solveAdaptive(solveRequest, solveEnvironment, configuration);
     using weather_routing::native::SequenceEngine;
     auto runAttempt = [&](SequenceEngine selectedEngine) {
       auto candidateConfiguration =
@@ -1504,7 +1746,7 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
                                 .route(candidateRequest, candidateEnvironment)
                                 .route;
         else
-          candidateResult = solveSingle(candidateRequest, candidateEnvironment,
+          candidateResult = solveAdaptive(candidateRequest, candidateEnvironment,
                                         candidateConfiguration);
         const auto cache = candidateWeather->cacheDiagnostics();
         sequenceWeatherCache.calls += cache.calls;

@@ -20,6 +20,7 @@
 #include "WeatherRoutingMessageDialog.h"
 #include "WeatherRoutingBrowser.h"
 #include "RoutingEngineSettingsPersistence.h"
+#include "engine/adaptive/MemoryPolicy.h"
 #include "RoutingTimePersistence.h"
 #include "ShorelineSettings.h"
 #include "WeatherRoutingWxCompat.h"
@@ -169,7 +170,10 @@ bool InitializeHeadlessGribFromEnv(wxString* error) {
   Json::Value open;
   open["grib_file"] = std::string(gribFile.ToUTF8());
   SendPluginMessage("GRIB_APPLY_JSON_CONFIG", Json::FastWriter().write(open));
-  SendPluginMessage("GRIB_TIMELINE_REQUEST", "");
+  // Headless scenarios supply their own departure time. Do not query the
+  // provider's UI timeline: some GRIB versions dereference an absent active
+  // file here after an unsupported/failed load. Routing requests dated frames
+  // through the normal broker, which handles missing data explicitly.
   wxYieldIfNeeded();
   wxLogMessage("WR_HEADLESS_GRIB initialized file=\"%s\"", gribFile);
   return true;
@@ -1849,8 +1853,8 @@ void WeatherRouting::RequestGribTimelineFrame(
   }
   if (unanswered) {
     routeMapOverlay->Lock();
-    routeMapOverlay->SetNewGrib(static_cast<GribRecordSet*>(nullptr),
-                                static_cast<std::int64_t>(time.GetTicks()));
+    routeMapOverlay->SetGribProviderUnavailable(
+        static_cast<std::int64_t>(time.GetTicks()));
     routeMapOverlay->Unlock();
     routeMapOverlay->AddDiagnostic({"provider.no_reply",
         weather_routing::DiagnosticSeverity::Warning,
@@ -2249,6 +2253,8 @@ void WeatherRouting::AddRoute(wxString& GUID) {
     configuration = FirstCurrentRouteMap()->GetConfiguration();
   else
     configuration = DefaultConfiguration();
+
+  ApplyNewAdaptiveSettingsChoice(configuration);
 
   configuration.RouteGUID = GUID;
   configuration.StartTime = wxDateTime::Now();
@@ -4589,7 +4595,8 @@ void WeatherRouting::CompleteHeadlessSingleRouteTest(bool timed_out,
   }
   if (!timed_out && complete > 0 &&
       (EnvString("WR_HEADLESS_COMFORT_CONFIGURATION_CONTRACT") == "1" ||
-       EnvString("WR_HEADLESS_ENGINE_CONFIGURATION_CONTRACT") == "1") &&
+       EnvString("WR_HEADLESS_ENGINE_CONFIGURATION_CONTRACT") == "1" ||
+       EnvString("WR_HEADLESS_ADAPTIVE_CONFIGURATION_CONTRACT") == "1") &&
       !EnvString("WR_HEADLESS_SCENARIO").empty()) {
     auto* list = m_panel->m_lWeatherRoutes;
     for (long row = 0; row < list->GetItemCount(); ++row) {
@@ -4599,6 +4606,11 @@ void WeatherRouting::CompleteHeadlessSingleRouteTest(bool timed_out,
     }
     if (EnvString("WR_HEADLESS_ENGINE_CONFIGURATION_CONTRACT") == "1")
       m_ConfigurationDialog.RunEngineHostContract();
+    if (EnvString("WR_HEADLESS_ADAPTIVE_CONFIGURATION_CONTRACT") == "1" &&
+        !m_ConfigurationDialog.RunAdaptiveHostContract()) {
+      FinishHeadlessRouteTestProcess(4);
+      return;
+    }
     if (EnvString("WR_HEADLESS_COMFORT_CONFIGURATION_CONTRACT") == "1")
       m_ConfigurationDialog.RunComfortHostContract();
   }
@@ -4862,7 +4874,7 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
                                        : EnvDouble("WR_HEADLESS_END_LON", NAN);
       if (!std::isnan(start_lat) && !std::isnan(start_lon) &&
           !std::isnan(end_lat) && !std::isnan(end_lon)) {
-        RouteMapConfiguration configuration = DefaultConfiguration();
+        RouteMapConfiguration configuration = DefaultConfiguration(false);
         if (!scenario_loaded && !m_WeatherRoutes.empty() &&
             m_WeatherRoutes.front() &&
             m_WeatherRoutes.front()->routemapoverlay) {
@@ -4974,6 +4986,8 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
             configuration.EngineSettings.SetEngineId(scenario.route.routingEngine.ToStdString());
           if (scenario.route.hasAutoEngineMask) configuration.EngineSettings.autoEngines = scenario.route.autoEngineMask;
           if (scenario.route.hasAllEngineMask) configuration.EngineSettings.allEngines = scenario.route.allEngineMask;
+          if (scenario.route.hasAutomaticAdaptiveSettings)
+            configuration.AutomaticAdaptiveSettings = scenario.route.automaticAdaptiveSettings;
           if (scenario.route.hasComfortAlternatives) {
             configuration.ExploreComfortAlternatives = scenario.route.comfortAlternativesEnabled;
             configuration.ComfortAdditionalPercent = scenario.route.comfortAdditionalPercent;
@@ -8026,6 +8040,8 @@ void WeatherRouting::OnNew(wxCommandEvent& event) {
   else
     configuration = DefaultConfiguration();
 
+  ApplyNewAdaptiveSettingsChoice(configuration);
+
 #ifdef __OCPN__ANDROID__
   // Create a standalone plan using the selected route's settings. A passage
   // leg's identity must not make the new plan another member of that passage.
@@ -9281,6 +9297,9 @@ void WeatherRouting::OnComputationTimer(wxTimerEvent&) {
         const auto config = waiting->GetConfiguration();
         if (config.IsFastEngine()) m_EstimatedWorkerMemoryMiB = std::max(
             m_EstimatedWorkerMemoryMiB, config.EngineSettings.FastSettings().memoryBudgetMiB);
+        if (config.AutomaticAdaptiveSettings)
+          m_EstimatedWorkerMemoryMiB = std::max(m_EstimatedWorkerMemoryMiB,
+              weather_routing::adaptive::EstimatedWorkerMiB(config.EngineSettings));
       }
     }
     const int requested = route_worker_limit;
@@ -9556,6 +9575,7 @@ bool WeatherRouting::OpenXML(wxString filename, bool reportfailure) {
                    AttributeInt(
                        e, "DepartureTimeOptimizationConcurrentRoutes", 0)));
         configuration.EngineSettings = weather_routing::ReadRoutingEngineSettings(*e);
+        configuration.AutomaticAdaptiveSettings = AttributeBool(e, "AutomaticAdaptiveSettings", false);
         configuration.ExploreComfortAlternatives = AttributeBool(
             e, "ExploreComfortAlternatives",
             configuration.EngineSettings.engine == weather_routing::RoutingEngine::All &&
@@ -9788,6 +9808,7 @@ void WeatherRouting::SaveXML(wxString filename) {
     c->SetAttribute("DepartureTimeOptimizationConcurrentRoutes",
                     configuration.DepartureTimeOptimizationConcurrentRoutes);
     weather_routing::WriteRoutingEngineSettings(configuration.EngineSettings, *c);
+    c->SetAttribute("AutomaticAdaptiveSettings", configuration.AutomaticAdaptiveSettings);
     c->SetAttribute("ExploreComfortAlternatives", configuration.ExploreComfortAlternatives);
     c->SetAttribute("ComfortAdditionalPercent", configuration.ComfortAdditionalPercent);
     c->SetAttribute("ComfortMaximumSeconds", configuration.ComfortMaximumSeconds);
@@ -12784,6 +12805,8 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
   bool enforce_chart_safety = false;
   ReadExperimentalChartSafetySettings(use_chart_safety, enforce_chart_safety);
   configuration.chart_safety_runtime_available = use_chart_safety;
+  configuration.adaptive_chart_cache_mib = use_chart_safety
+      ? static_cast<std::uint64_t>(m_weather_routing_pi.EffectiveChartSafetyRamCacheMiB()) : 0;
   configuration.chart_safety_runtime_enforced = enforce_chart_safety;
   configuration.UseChartSafetyForPropagation =
       weather_routing::ShouldUseAuthoritativeChartSearch(
@@ -13208,7 +13231,9 @@ void WeatherRouting::ReleaseGribTimelineCacheBatch() {
       "WR_GRIB_TIMELINE_CACHE_END requested_mib=%d effective_mib=%d "
       "frames=%lu distinct_keys=%lu hits=%llu misses=%llu publications=%llu "
       "evictions=%llu reloads_after_eviction=%llu peak_entries=%lu "
-      "peak_mib=%.1f released_mib=%.1f",
+      "peak_mib=%.1f released_mib=%.1f lookups=%llu negative_hits=%llu "
+      "positive_entries=%lu negative_entries=%lu no_reply=%llu "
+      "backoff_skips=%llu timeouts=%llu wait_ms=%.1f",
       m_GribTimelineFrameCache->RequestedMiB(),
       m_GribTimelineFrameCache->EffectiveMiB(),
       static_cast<unsigned long>(frames),
@@ -13220,7 +13245,15 @@ void WeatherRouting::ReleaseGribTimelineCacheBatch() {
       static_cast<unsigned long long>(statistics.reloads_after_eviction),
       static_cast<unsigned long>(statistics.peak_entries),
       statistics.peak_weight / (1024.0 * 1024.0),
-      released / (1024.0 * 1024.0));
+      released / (1024.0 * 1024.0),
+      static_cast<unsigned long long>(statistics.lookups),
+      static_cast<unsigned long long>(statistics.negative_hits),
+      static_cast<unsigned long>(statistics.positive_entries),
+      static_cast<unsigned long>(statistics.negative_entries),
+      static_cast<unsigned long long>(statistics.unavailable_replies),
+      static_cast<unsigned long long>(statistics.unavailable_skips),
+      static_cast<unsigned long long>(statistics.timeouts),
+      statistics.wait_microseconds / 1000.0);
   m_GribTimelineFrameCache->Clear();
   m_GribTimelineCacheBatchActive = false;
 }
@@ -13493,6 +13526,32 @@ void WeatherRouting::DeleteRouteMaps(
   if (current) UpdateDialogs();
 }
 
+void WeatherRouting::ApplyNewAdaptiveSettingsChoice(
+    RouteMapConfiguration& configuration) const {
+  auto* config = GetOCPNConfigObject();
+  configuration.AutomaticAdaptiveSettings = true;
+  if (!config) return;
+  wxConfigPathChanger path(config, "/PlugIns/WeatherRouting/AdaptiveSettingsPreference/Enabled");
+  configuration.AutomaticAdaptiveSettings = config->ReadBool("Enabled", true);
+}
+
+void WeatherRouting::RememberAdaptiveSettingsChoice(bool enabled) {
+  auto* config = GetOCPNConfigObject();
+  if (!config) return;
+  wxConfigPathChanger path(config, "/PlugIns/WeatherRouting/AdaptiveSettingsPreference/Enabled");
+  config->Write("Enabled", enabled);
+  config->Flush();
+}
+
+void WeatherRouting::SaveAdaptiveHostContractSnapshot(const wxString& path) {
+  if (EnvString("WR_HEADLESS_ROUTE_TEST").empty() || !wxFileName(path).IsAbsolute()) return;
+  const auto filename = m_FileName;
+  const auto title = GetTitle();
+  SaveXML(path);
+  m_FileName = filename;
+  SetTitle(title);
+}
+
 void WeatherRouting::SaveLastUsedConfigurationDefaults(
     const RouteMapConfiguration& configuration) {
   wxFileConfig* pConf = GetOCPNConfigObject();
@@ -13582,6 +13641,8 @@ void WeatherRouting::ApplyLastUsedConfigurationDefaults(
 
   pConf->Read(_T("DeltaTime"), &configuration.DeltaTime,
               configuration.DeltaTime);
+  // Ordinary defaults and legacy imports do not opt into changed numerics.
+  configuration.AutomaticAdaptiveSettings = false;
   long integrator = configuration.Integrator;
   pConf->Read(_T("Integrator"), &integrator, integrator);
   configuration.Integrator =
@@ -13720,7 +13781,7 @@ void WeatherRouting::ApplyLastUsedConfigurationDefaults(
           static_cast<int>(routing_effort_percent));
 }
 
-RouteMapConfiguration WeatherRouting::DefaultConfiguration() {
+RouteMapConfiguration WeatherRouting::DefaultConfiguration(bool newPassagePreferences) {
   RouteMapConfiguration configuration;
 
   if (RouteMap::Positions.size() >= 1) {
@@ -13789,6 +13850,7 @@ RouteMapConfiguration WeatherRouting::DefaultConfiguration() {
   configuration.MotorSpeed = 5.0;
 
   ApplyLastUsedConfigurationDefaults(configuration);
+  if (newPassagePreferences) ApplyNewAdaptiveSettingsChoice(configuration);
 
   return configuration;
 }

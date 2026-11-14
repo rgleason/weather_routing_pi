@@ -53,6 +53,12 @@ def main():
                         help='Plugin time limit in seconds, including preparation (default: 900)')
     parser.add_argument('--plugin-dir', action='append', type=Path,
                         help='Optional plugin-library search directory; repeat as required')
+    parser.add_argument('--automatic-settings', choices=['on', 'off', 'scenario'], default='scenario')
+    parser.add_argument('--data-dir', type=Path, help='Private plugin data directory for this test')
+    parser.add_argument('--adaptive-ui-contract', action='store_true')
+    parser.add_argument('--planned-arrival', help='Optional UTC arrival time ending in Z')
+    parser.add_argument('--arrival-horizon-minutes', type=int, default=180)
+    parser.add_argument('--expect-adaptive-preference', choices=['on', 'off'])
     parser.add_argument('--xvfb', action='store_true', help='Use a private virtual X server on Linux')
     parser.add_argument('--xvfb-binary', type=Path, help='Optional explicit Xvfb executable')
     args = parser.parse_args()
@@ -83,6 +89,8 @@ def main():
     if not scenario.get('startTime', '').endswith('Z'):
         parser.error('Use an explicit UTC startTime ending in Z')
     route = scenario.setdefault('route', {})
+    if args.automatic_settings != 'scenario':
+        route['automaticAdaptiveSettings'] = args.automatic_settings == 'on'
     boat = args.boat or route.get('boatFile')
     if not boat:
         parser.error('Provide --boat or route.boatFile; do not rely on an implicit polar')
@@ -149,6 +157,18 @@ def main():
                            WR_HEADLESS_GRIB_FILE=str(args.grib),
                            WR_HEADLESS_TIMEOUT_MS=str(args.timeout * 1000),
                            WR_HEADLESS_NO_EXIT='0')
+            if args.planned_arrival:
+                if not args.planned_arrival.endswith('Z'):
+                    parser.error('--planned-arrival requires an explicit UTC time ending in Z')
+                run_env['WR_HEADLESS_PLANNED_ARRIVAL_TIME'] = args.planned_arrival
+                run_env['WR_HEADLESS_ARRIVAL_HORIZON_MINUTES'] = str(args.arrival_horizon_minutes)
+                run_env['WR_HEADLESS_ARRIVAL_SAFETY_MARGIN_MINUTES'] = '0'
+            if args.data_dir:
+                run_env['WR_HEADLESS_DATA_DIR'] = str(args.data_dir.expanduser().resolve())
+            if args.adaptive_ui_contract:
+                run_env['WR_HEADLESS_ADAPTIVE_CONFIGURATION_CONTRACT'] = '1'
+            if args.expect_adaptive_preference:
+                run_env['WR_HEADLESS_ADAPTIVE_PREFERENCE_EXPECTED'] = '1' if args.expect_adaptive_preference == 'on' else '0'
             log_path = args.profile / 'opencpn.log'
             old_log = log_path.read_bytes() if log_path.exists() else b''
             start = time.monotonic()

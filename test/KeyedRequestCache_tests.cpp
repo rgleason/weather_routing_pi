@@ -11,6 +11,22 @@
 
 using namespace std::chrono_literals;
 
+TEST(KeyedRequestCache, ResidentProbeHasNoAcquisitionOrRecencySideEffects) {
+  weather_routing::KeyedRequestCache<int,int> cache(2);
+  int value=0;
+  EXPECT_FALSE(cache.TryResident(1,&value));
+  const auto before=cache.Stats();
+  cache.Publish(1,10,true); cache.Publish(2,20,true);
+  EXPECT_TRUE(cache.TryResident(1,&value)); EXPECT_EQ(value,10);
+  cache.Publish(3,30,true);
+  EXPECT_FALSE(cache.TryResident(1,&value)); // Inspection did not promote LRU.
+  EXPECT_TRUE(cache.TryResident(2,&value));
+  const auto after=cache.Stats();
+  EXPECT_EQ(before.lookups,after.lookups); EXPECT_EQ(before.misses,after.misses);
+  EXPECT_EQ(before.hits,after.hits);
+  cache.Publish(9,0,false); EXPECT_FALSE(cache.TryResident(9,&value));
+}
+
 TEST(KeyedRequestCache, CoalescesConcurrentCallersForOneKey) {
   weather_routing::KeyedRequestCache<int, int> cache(8);
   std::atomic<int> requests{0};
@@ -289,4 +305,194 @@ TEST(KeyedRequestCache, ReportsReloadsAndExplicitlyReleasesAllStorage) {
   EXPECT_EQ(cache.Stats().misses, 0U);
   EXPECT_EQ(cache.Stats().evictions, 0U);
   EXPECT_EQ(cache.Stats().reloads_after_eviction, 0U);
+}
+
+TEST(KeyedRequestCache, MissingMonthSurvivesFrameEvictionAndMemoryPressure) {
+  weather_routing::KeyedRequestCache<int, int> cache(
+      512, 10, [](const int& value) { return std::size_t(value); }, 32768);
+  int requests = 0;
+  constexpr int kMonth = 30 * 24 * 4;
+  const auto missing = [&](int key) {
+    int value = 99;
+    EXPECT_FALSE(cache.Acquire(
+        key, &value, 100,
+        [&](const int& requested) {
+          ++requests;
+          EXPECT_TRUE(cache.Publish(requested, 0, false));
+        }, [] { return false; }));
+    EXPECT_EQ(value, 0);
+  };
+  for (int key = 0; key < kMonth; ++key) missing(key);
+  // Real grids churn through their independent payload budget. Negative
+  // replies must survive, including when the remaining grid is oversized.
+  for (int key = kMonth; key < kMonth + 100; ++key)
+    ASSERT_TRUE(cache.Publish(key, 8, true));
+  ASSERT_TRUE(cache.Publish(kMonth + 100, 20, true));
+  cache.SetMaximumWeight(1);
+  for (int pass = 0; pass < 2; ++pass)
+    for (int key = 0; key < kMonth; ++key) missing(key);
+  EXPECT_EQ(requests, kMonth);
+  EXPECT_EQ(cache.Stats().negative_entries, std::size_t(kMonth));
+  EXPECT_EQ(cache.Stats().positive_entries, 1U);
+  EXPECT_EQ(cache.Stats().negative_hits, 2U * kMonth);
+  EXPECT_EQ(cache.Stats().misses, std::uint64_t(kMonth));
+  EXPECT_EQ(cache.Stats().reloads_after_eviction, 0U);
+}
+
+TEST(KeyedRequestCache, MissingEntriesHaveTheirOwnBoundAndCanBecomeValid) {
+  weather_routing::KeyedRequestCache<int, int> cache(2, 100, {}, 3);
+  for (int i = 0; i < 6; ++i) ASSERT_TRUE(cache.Publish(i, 0, false));
+  EXPECT_EQ(cache.Stats().negative_entries, 3U);
+  EXPECT_EQ(cache.Stats().evictions, 3U);
+  ASSERT_TRUE(cache.Publish(3, 30, true));
+  ASSERT_TRUE(cache.Publish(4, 40, true));
+  EXPECT_EQ(cache.Stats().negative_entries, 1U);
+  EXPECT_EQ(cache.Stats().positive_entries, 2U);
+  ASSERT_TRUE(cache.Publish(4, 0, false));
+  EXPECT_EQ(cache.Stats().negative_entries, 2U);
+  EXPECT_EQ(cache.Stats().positive_entries, 1U);
+  int value = 0;
+  EXPECT_TRUE(cache.Acquire(3, &value, 10, [](const int&) {},
+                            [] { return false; }));
+  EXPECT_EQ(value, 30);
+}
+
+TEST(KeyedRequestCache, UnansweredProviderDoesNotReceiveEveryNewTimestamp) {
+  using Cache = weather_routing::KeyedRequestCache<int, int>;
+  Cache::Clock::time_point now{};
+  Cache cache(512, 1024, {}, 32768, [&] { return now; });
+  int requests = 0;
+  for (int key = 0; key < 10000; ++key) {
+    int value = 99;
+    EXPECT_FALSE(cache.Acquire(
+        key, &value, 100,
+        [&](const int& requested) {
+          ++requests;
+          cache.PublishUnavailable(requested);
+        }, [] { return false; }));
+    EXPECT_EQ(value, 0);
+  }
+  EXPECT_EQ(requests, 1);
+  EXPECT_EQ(cache.Size(), 0U);  // No invented "missing frame" entries.
+  EXPECT_EQ(cache.Stats().unavailable_replies, 1U);
+  EXPECT_EQ(cache.Stats().unavailable_skips, 9999U);
+  EXPECT_EQ(cache.Stats().distinct_keys, 1U);
+
+  now += 1s;
+  int value = 0;
+  EXPECT_TRUE(cache.Acquire(
+      0, &value, 100,
+      [&](const int& requested) {
+        ++requests;
+        cache.Publish(requested, 42, true);
+      }, [] { return false; }));
+  EXPECT_EQ(value, 42);
+  EXPECT_EQ(requests, 2);
+  EXPECT_EQ(cache.Stats().reloads_after_eviction, 0U);
+}
+
+TEST(KeyedRequestCache, ProviderBackoffIsBoundedAndAnActualReplyResetsIt) {
+  using Cache = weather_routing::KeyedRequestCache<int, int>;
+  Cache::Clock::time_point now{};
+  Cache cache(8, 100, {}, 8, [&] { return now; });
+  int requests = 0;
+  int value = 0;
+  const auto unavailable = [&](const int& key) {
+    ++requests;
+    cache.PublishUnavailable(key);
+  };
+  int key = 0;
+  for (const auto delay : {1s, 2s, 4s, 8s, 16s, 30s, 30s}) {
+    EXPECT_FALSE(cache.Acquire(key++, &value, 100, unavailable,
+                               [] { return false; }));
+    const int before = requests;
+    now += delay - 1ms;
+    EXPECT_FALSE(cache.Acquire(-1, &value, 100, unavailable,
+                               [] { return false; }));
+    EXPECT_EQ(requests, before);
+    now += 1ms;
+  }
+  EXPECT_EQ(requests, 7);
+  // Confirmed no data is still a successful conversation with the provider.
+  EXPECT_FALSE(cache.Acquire(
+      100, &value, 100,
+      [&](const int& requested) {
+        ++requests;
+        cache.Publish(requested, 0, false);
+      }, [] { return false; }));
+  EXPECT_FALSE(cache.Acquire(101, &value, 100, unavailable,
+                             [] { return false; }));
+  now += 1s;
+  EXPECT_FALSE(cache.Acquire(102, &value, 100, unavailable,
+                             [] { return false; }));
+  EXPECT_EQ(requests, 10);
+}
+
+TEST(KeyedRequestCache, ClearingBatchResetsProviderBackoff) {
+  using Cache = weather_routing::KeyedRequestCache<int, int>;
+  Cache::Clock::time_point now{};
+  Cache cache(8, 100, {}, 8, [&] { return now; });
+  int value = 0;
+  EXPECT_FALSE(cache.Acquire(
+      1, &value, 100, [&](const int& key) { cache.PublishUnavailable(key); },
+      [] { return false; }));
+  cache.Clear();
+  EXPECT_TRUE(cache.Acquire(
+      1, &value, 100,
+      [&](const int& key) { cache.Publish(key, 11, true); },
+      [] { return false; }));
+  EXPECT_EQ(value, 11);
+  EXPECT_EQ(cache.Stats().unavailable_replies, 0U);
+}
+
+TEST(KeyedRequestCache, UnavailableReplyWakesConcurrentQueuedCallers) {
+  weather_routing::KeyedRequestCache<int, int> cache(8);
+  std::atomic<int> requests{0};
+  std::promise<void> started;
+  std::promise<void> release;
+  auto released = release.get_future().share();
+  auto first = std::async(std::launch::async, [&] {
+    int value = 0;
+    return cache.Acquire(
+        1, &value, 2000,
+        [&](const int& key) {
+          ++requests;
+          started.set_value();
+          released.wait();
+          cache.PublishUnavailable(key);
+        }, [] { return false; });
+  });
+  ASSERT_EQ(started.get_future().wait_for(1s), std::future_status::ready);
+  std::vector<std::future<bool>> queued;
+  for (int key = 2; key < 22; ++key)
+    queued.push_back(std::async(std::launch::async, [&, key] {
+      int value = 0;
+      return cache.Acquire(
+          key, &value, 2000,
+          [&](const int& requested) {
+            ++requests;
+            cache.PublishUnavailable(requested);
+          }, [] { return false; });
+    }));
+  release.set_value();
+  EXPECT_FALSE(first.get());
+  for (auto& caller : queued) EXPECT_FALSE(caller.get());
+  EXPECT_EQ(requests.load(), 1);
+  EXPECT_EQ(cache.Size(), 0U);
+}
+
+TEST(KeyedRequestCache, ProviderFailureDoesNotHideCachedForecastOrMissingFrame) {
+  weather_routing::KeyedRequestCache<int, int> cache(8);
+  ASSERT_TRUE(cache.Publish(1, 42, true));
+  ASSERT_TRUE(cache.Publish(2, 0, false));
+  int value = 0;
+  EXPECT_FALSE(cache.Acquire(
+      3, &value, 100, [&](const int& key) { cache.PublishUnavailable(key); },
+      [] { return false; }));
+  EXPECT_TRUE(cache.Acquire(1, &value, 100, [](const int&) {},
+                            [] { return false; }));
+  EXPECT_EQ(value, 42);
+  EXPECT_FALSE(cache.Acquire(2, &value, 100, [](const int&) {},
+                             [] { return false; }));
+  EXPECT_EQ(cache.Stats().negative_hits, 1U);
 }

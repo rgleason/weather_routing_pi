@@ -283,6 +283,18 @@ ConfigurationDialog::ConfigurationDialog(WeatherRouting& weatherrouting)
 #endif
       m_WeatherRouting(weatherrouting),
       m_bBlockUpdate(false) {
+  auto* adaptiveSizer = m_cBasicRoutingMode->GetContainingSizer();
+  m_cbAutomaticAdaptiveSettings = new wxCheckBox(
+      m_cBasicRoutingMode->GetParent(), wxID_ANY,
+      _("Automatic adaptive settings"), wxDefaultPosition, wxDefaultSize,
+      wxCHK_3STATE);
+  m_cbAutomaticAdaptiveSettings->SetToolTip(
+      _("Choose numerical routing settings automatically. Manual values are kept "
+        "when enabled and restored when switched off. Each engine keeps its own "
+        "local adaptation; Auto stops at the first validated route."));
+  adaptiveSizer->Add(m_cbAutomaticAdaptiveSettings, 0, wxEXPAND | wxALL, 4);
+  m_cbAutomaticAdaptiveSettings->Bind(wxEVT_CHECKBOX,
+      &ConfigurationDialog::OnAdaptiveSettings, this);
   m_cShorelineResolution->Bind(wxEVT_CHOICE,
       [this](wxCommandEvent& event) {
         const int selection = m_cShorelineResolution->GetSelection();
@@ -1074,6 +1086,11 @@ void ConfigurationDialog::SetConfigurations(
   m_cShorelineResolution->SetSelection(shorelineChoice == m_shorelineChoiceResolutions.end()
       ? wxNOT_FOUND : static_cast<int>(shorelineChoice - m_shorelineChoiceResolutions.begin()));
   const auto firstEngine = it->EngineSettings.engine;
+  const bool firstAdaptive = it->AutomaticAdaptiveSettings;
+  const bool sameAdaptive = std::all_of(configurations.begin(), configurations.end(),
+      [&](const auto& c) { return c.AutomaticAdaptiveSettings == firstAdaptive; });
+  m_cbAutomaticAdaptiveSettings->Set3StateValue(!sameAdaptive ? wxCHK_UNDETERMINED :
+      firstAdaptive ? wxCHK_CHECKED : wxCHK_UNCHECKED);
   bool sameEngine = true;
   for (const auto& config : configurations)
     sameEngine = sameEngine && config.EngineSettings.engine == firstEngine;
@@ -1487,6 +1504,26 @@ bool ConfigurationDialog::HandleEngineEdit(wxObject* control) {
   return true;
 }
 
+void ConfigurationDialog::OnAdaptiveSettings(wxCommandEvent&) {
+  if (m_bBlockUpdate || !m_cbAutomaticAdaptiveSettings ||
+      m_cbAutomaticAdaptiveSettings->Get3StateValue() == wxCHK_UNDETERMINED) return;
+  const bool enabled = m_cbAutomaticAdaptiveSettings->IsChecked();
+  bool changed = false;
+  for (auto* route : m_WeatherRouting.CurrentRouteMaps(false)) {
+    if (route->Running()) continue;
+    auto configuration = route->GetConfiguration();
+    configuration.AutomaticAdaptiveSettings = enabled;
+    route->SetConfiguration(configuration);
+    changed = true;
+  }
+  if (changed) {
+    m_WeatherRouting.RememberAdaptiveSettingsChoice(enabled);
+    m_WeatherRouting.UpdateCurrentConfigurations();
+    m_WeatherRouting.ScheduleAutoSave();
+  }
+  UpdateEngineControls();
+}
+
 void ConfigurationDialog::UpdateEngineControls() {
   const auto engine = weather_routing::EngineFromSelection(m_cRoutingEngine->GetSelection());
   const bool combined = weather_routing::IsCombinedEngine(engine);
@@ -1496,6 +1533,15 @@ void ConfigurationDialog::UpdateEngineControls() {
   m_cBasicRoutingMode->Show(combined);
 #endif
   const bool atlas = engine == weather_routing::RoutingEngine::Atlas;
+  bool nativeSettings = true;
+  for (auto* route : m_WeatherRouting.CurrentRouteMaps(false)) {
+    const auto c = route->GetConfiguration();
+    nativeSettings &= c.RouteGUID.IsEmpty() &&
+        c.ClimatologyType != RouteMapConfiguration::CUMULATIVE_MAP &&
+        c.ClimatologyType != RouteMapConfiguration::CUMULATIVE_MINUS_CALMS;
+  }
+  const bool automatic = m_cbAutomaticAdaptiveSettings &&
+      m_cbAutomaticAdaptiveSettings->Get3StateValue() == wxCHK_CHECKED;
   m_pMainEngine->Show(engine == weather_routing::RoutingEngine::Main || combined ||
       engine == weather_routing::RoutingEngine::Quick2 || engine == weather_routing::RoutingEngine::Alternative ||
       engine == weather_routing::RoutingEngine::Atlas);
@@ -1565,23 +1611,32 @@ void ConfigurationDialog::UpdateEngineControls() {
       ? _("Chart geometry and depth checks are authoritative. This separately saved shoreline choice controls preliminary scouting. It starts at Crude; increase it for finer coastal detail.")
       : _("Shoreline detail for the selected engine. Quick, Standard and Professional remember independent choices. High and Full require installation from Shoreline data on Advanced. Lower resolutions omit smaller coastal features."));
   m_pMainEngine->Enable(!running);
-  m_sTimeStepHours->Enable(!running && !atlas);
-  m_sTimeStepMinutes->Enable(!running && !atlas);
+  const bool managedStep = automatic && nativeSettings && (combined ||
+      engine == weather_routing::RoutingEngine::Original ||
+      engine == weather_routing::RoutingEngine::Quick2);
+  m_cbAutomaticAdaptiveSettings->Enable(!running && nativeSettings);
+  m_sTimeStepHours->Enable(!running && !atlas && !managedStep);
+  m_sTimeStepMinutes->Enable(!running && !atlas && !managedStep);
   m_sMaxSearchAngle->Enable(!running && !atlas);
   m_cRoutingEffortPercent->Enable(!running && engine != weather_routing::RoutingEngine::Auto &&
                                  engine != weather_routing::RoutingEngine::Quick2 && !atlas);
-  m_sByDegrees->Enable(!running && engine != weather_routing::RoutingEngine::Quick2 && !atlas);
+  m_sByDegrees->Enable(!running && engine != weather_routing::RoutingEngine::Quick2 && !atlas &&
+      !(automatic && nativeSettings && engine == weather_routing::RoutingEngine::Original));
   m_cbUseReverseReachabilityRecovery->Enable(!running && engine != weather_routing::RoutingEngine::Quick2 && !atlas);
   if (engine == weather_routing::RoutingEngine::Auto)
     m_cRoutingEffortPercent->SetSelection(RoutingEffortSelection(400));
   m_pQuickEngine->Enable(!running);
+  m_sQuickOffshoreStepMinutes->Enable(!running &&
+      !(automatic && nativeSettings && engine == weather_routing::RoutingEngine::Original));
+  m_sQuickHeadingStepDegrees->Enable(!running &&
+      !(automatic && nativeSettings && engine == weather_routing::RoutingEngine::Original));
   if (running) m_bResetAdvanced->Enable(false);
   m_tRoutingEngineDescription->SetLabel(engine == weather_routing::RoutingEngine::Auto
       ? _("Auto: finds a validated route using the engines selected in Advanced. Enable alternatives to compare passage time and comfort.")
       : engine == weather_routing::RoutingEngine::All
       ? _("All (slow): compares every engine selected in Advanced and keeps the earliest validated arrival. Enable alternatives to compare passage time and comfort.")
       : engine == weather_routing::RoutingEngine::Quick2
-      ? _("Advanced selection: Quick2 CPU frontier. Bounded search may miss routes or return detours. Auto retains its candidate while Standard searches independently.")
+      ? _("Advanced selection: Quick2 CPU frontier. Bounded search may miss routes or return detours. Auto stops when it supplies the first validated route.")
       : engine == weather_routing::RoutingEngine::Alternative
       ? _("Advanced selection: Alternative search. Uses the shared route, vessel, weather and safety settings.")
       : engine == weather_routing::RoutingEngine::Atlas
@@ -2218,6 +2273,67 @@ bool ConfigurationDialog::RunEngineHostContract() {
   Show();
   Raise();
   wxLogMessage("WR_ENGINE_CONFIGURATION_CONTRACT passed=%d", passed ? 1 : 0);
+  return passed;
+}
+
+bool ConfigurationDialog::RunAdaptiveHostContract() {
+  auto routes = m_WeatherRouting.CurrentRouteMaps(false);
+  if (routes.size() != 1 || routes.front()->Running()) return false;
+  const auto saved = routes.front()->GetConfiguration();
+  bool preferencePassed = true;
+  wxString expectedPreference;
+  if (wxGetEnv("WR_HEADLESS_ADAPTIVE_PREFERENCE_EXPECTED", &expectedPreference)) {
+    RouteMapConfiguration fresh;
+    m_WeatherRouting.ApplyNewAdaptiveSettingsChoice(fresh);
+    preferencePassed = fresh.AutomaticAdaptiveSettings == (expectedPreference == "1");
+  }
+  auto manual = saved;
+  manual.EngineSettings.engine = weather_routing::RoutingEngine::Original;
+  manual.DeltaTime = 5370; // Deliberately not representable by minute spinners.
+  manual.ByDegrees = 7.25;
+  manual.EngineSettings.original.headingStepDegrees = 7.25;
+  manual.AutomaticAdaptiveSettings = false;
+  routes.front()->SetConfiguration(manual);
+  SetConfigurations({manual});
+  const auto tick = [&](bool value) {
+    m_cbAutomaticAdaptiveSettings->SetValue(value);
+    wxCommandEvent event(wxEVT_CHECKBOX, m_cbAutomaticAdaptiveSettings->GetId());
+    event.SetEventObject(m_cbAutomaticAdaptiveSettings);
+    m_cbAutomaticAdaptiveSettings->GetEventHandler()->ProcessEvent(event);
+  };
+  wxString xmlPrefix;
+  wxGetEnv("WR_HEADLESS_ADAPTIVE_XML_PREFIX", &xmlPrefix);
+  tick(true);
+  if (!xmlPrefix.empty() && wxFileName(xmlPrefix).IsAbsolute())
+    m_WeatherRouting.SaveAdaptiveHostContractSnapshot(xmlPrefix + "-automatic.xml");
+  const auto enabled = routes.front()->GetConfiguration();
+  bool passed = preferencePassed && enabled.AutomaticAdaptiveSettings &&
+      !m_sTimeStepHours->IsEnabled() && !m_sQuickHeadingStepDegrees->IsEnabled() &&
+      m_sQuickMemoryBudgetMiB->IsEnabled();
+  passed &= enabled.DeltaTime == manual.DeltaTime && enabled.ByDegrees == manual.ByDegrees &&
+      enabled.EngineSettings.original.headingStepDegrees == manual.EngineSettings.original.headingStepDegrees &&
+      enabled.StartTime == manual.StartTime && enabled.MaxTrueWindKnots == manual.MaxTrueWindKnots;
+  tick(false);
+  if (!xmlPrefix.empty() && wxFileName(xmlPrefix).IsAbsolute())
+    m_WeatherRouting.SaveAdaptiveHostContractSnapshot(xmlPrefix + "-manual.xml");
+  const auto disabled = routes.front()->GetConfiguration();
+  passed &= !disabled.AutomaticAdaptiveSettings && m_sTimeStepHours->IsEnabled() &&
+      m_sQuickHeadingStepDegrees->IsEnabled() && disabled.DeltaTime == manual.DeltaTime &&
+      disabled.EngineSettings.original.headingStepDegrees == manual.EngineSettings.original.headingStepDegrees;
+  RouteMapConfiguration next;
+  m_WeatherRouting.ApplyNewAdaptiveSettingsChoice(next);
+  passed &= !next.AutomaticAdaptiveSettings;
+  // Merely opening a route with another mode cannot overwrite the preference.
+  SetConfigurations({enabled});
+  m_WeatherRouting.ApplyNewAdaptiveSettingsChoice(next);
+  passed &= !next.AutomaticAdaptiveSettings;
+  routes.front()->SetConfiguration(saved);
+  SetConfigurations({saved});
+  wxLogMessage("WR_ADAPTIVE_CONFIGURATION_CONTRACT passed=%d manual_step_s=%.0f manual_heading=%.2f",
+               passed ? 1 : 0, disabled.DeltaTime, disabled.EngineSettings.original.headingStepDegrees);
+  wxString showConfiguration;
+  if (passed && wxGetEnv("WR_HEADLESS_ADAPTIVE_SHOW_CONFIGURATION", &showConfiguration) &&
+      showConfiguration == "1") { Show(); Raise(); }
   return passed;
 }
 

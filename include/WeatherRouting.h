@@ -233,6 +233,9 @@ private:
   wxTimer m_tAutoSaveXML;
 
 public:
+  void ApplyNewAdaptiveSettingsChoice(RouteMapConfiguration& configuration) const;
+  void RememberAdaptiveSettingsChoice(bool enabled);
+  void SaveAdaptiveHostContractSnapshot(const wxString& path);
   enum {
     POSITION_NAME = 0,  //!< Position identifier/name
     POSITION_LAT,       //!< Latitude coordinate
@@ -902,7 +905,7 @@ private:
       const std::vector<RouteMapOverlay*>& selectedRoutes, wxString* status);
 
   void DeleteRouteMaps(std::list<RouteMapOverlay*> routemapoverlays);
-  RouteMapConfiguration DefaultConfiguration();
+  RouteMapConfiguration DefaultConfiguration(bool newPassagePreferences = true);
   void ApplyLastUsedConfigurationDefaults(
       RouteMapConfiguration& configuration) const;
 

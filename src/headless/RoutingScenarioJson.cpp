@@ -268,6 +268,14 @@ bool LoadRoutingScenarioJson(const wxString& path,
     int int_value = 0;
     double double_value = 0.0;
     bool bool_value = false;
+    if (route.isMember("automaticAdaptiveSettings")) {
+      if (!JsonBool(route, "automaticAdaptiveSettings", bool_value)) {
+        error = "route.automaticAdaptiveSettings must be a boolean";
+        return false;
+      }
+      scenario.route.automaticAdaptiveSettings = bool_value;
+      scenario.route.hasAutomaticAdaptiveSettings = true;
+    }
     if (JsonInt(route, "timeStepSeconds", int_value)) {
       scenario.route.timeStepSeconds = int_value;
       scenario.route.hasTimeStepSeconds = true;

@@ -30,6 +30,16 @@ report says when the weather provider has not supplied the full forecast time
 range. A bounded search that did not complete does not establish that a route
 is impossible. Inspect the details before changing inputs or constraints.</p>
 
+<h3>Automatic adaptive settings</h3>
+<p>New passages can choose numerical routing settings automatically, using boat
+performance, route geometry and cheap resident weather samples. Rapid current
+vector changes favour hourly steps. Each engine keeps its own local adaptation.
+Switching this option off restores the saved manual values. Existing routes
+stay manual until enabled. Safety limits and user memory ceilings are unchanged.</p>
+<p>Auto returns the first accepted validated route. All compares selected
+engines and admitted numerical alternatives. Effective nominal settings are
+recorded in route details; a count allowance is distinct from exhausted RAM.</p>
+
 <h3>Atlas engine (1.33.0)</h3>
 <p>Atlas uses continuous physical connection solving, adaptive spatial decisions
 and time-dependent weather guidance. Every accepted route uses the original
@@ -38,8 +48,8 @@ Its finite search does not guarantee a globally optimal route.</p>
 <p>Choose Atlas in Engine settings, or check its independent Auto
 and All membership boxes. The order is Quick, Quick2, Atlas, Standard,
 Alternative, Professional. Existing memberships and the default engine are
-preserved. Quick2 remains a provisional Auto candidate while later selected
-engines search; All selects the earliest validated arrival. Atlas's nominal
+preserved. Auto stops at the first accepted validated route, including Quick2;
+All compares selected engines and keeps the earliest validated arrival. Atlas's nominal
 heading-step and fixed-time-step controls are disabled because it uses separate
 spatial and temporal decisions. Existing Android partial-result controls remain
 available for the engines that supply failed-search prefixes.</p>

@@ -80,6 +80,7 @@ public:
   void Update();
   bool RunComfortHostContract();
   bool RunEngineHostContract();
+  bool RunAdaptiveHostContract();
 
   void AddSource(wxString name);
   void RemoveSource(wxString name);
@@ -169,6 +170,8 @@ private:
 #endif
   void UpdateCycloneControls();
   void UpdateEngineControls();
+  void OnAdaptiveSettings(wxCommandEvent& event);
+  wxCheckBox* m_cbAutomaticAdaptiveSettings = nullptr;
   bool HandleEngineEdit(wxObject* control);
   void RefreshEnginePresetStatus();
 
