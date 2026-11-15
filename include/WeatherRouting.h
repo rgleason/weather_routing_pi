@@ -339,6 +339,7 @@ public:
                                 const wxDateTime& time);
   void HandleGribTimelineFrame(const wxString& requestToken,
                                GribRecordSet* frame);
+  void OnGribRequestWakeup(wxThreadEvent& event);
 
   void RebuildList();
   /**

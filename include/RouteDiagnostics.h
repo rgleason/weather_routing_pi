@@ -31,6 +31,8 @@ struct RouteDiagnosticReport {
 RouteDiagnosticReport DescribeRoutingResult(
     const supercpn::weather_routing::RoutingResult& result,
     bool waveLimitEnabled = true);
+void AppendCancelledWorkerProgress(RouteDiagnosticReport& report,
+    const wxString& stage, const wxString& detail);
 RouteDiagnosticReport CheckWindSourceSelection(bool useGrib,
     bool climatologySelected, bool climatologyProviderAvailable);
 RouteDiagnosticReport CheckForecastWindCoverage(

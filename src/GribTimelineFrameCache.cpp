@@ -67,7 +67,22 @@ bool GribTimelineFrameCache::Acquire(
     long timeout_milliseconds,
     const std::function<void(const std::int64_t&)>& request,
     const std::function<bool()>& cancelled) {
-  return cache_.Acquire(key, value, timeout_milliseconds, request, cancelled);
+  if (!request) return false;
+  return cache_.Acquire(key, value, timeout_milliseconds,
+      [this, &request](const std::int64_t& requested) {
+        request(requested);
+        std::function<void()> wakeup;
+        {
+          std::lock_guard<std::mutex> guard(wakeup_mutex_);
+          wakeup = request_wakeup_;
+        }
+        if (wakeup) wakeup();
+      }, cancelled);
+}
+
+void GribTimelineFrameCache::SetRequestWakeup(std::function<void()> wakeup) {
+  std::lock_guard<std::mutex> guard(wakeup_mutex_);
+  request_wakeup_ = std::move(wakeup);
 }
 
 bool GribTimelineFrameCache::Publish(std::int64_t key,

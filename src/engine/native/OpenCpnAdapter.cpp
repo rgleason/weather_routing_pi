@@ -2275,9 +2275,7 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
     wxLogMessage("WR_COMFORT_SEARCH skipped reason=%s", wxString::FromUTF8(exception.what()));
   }
   if (request.cancellation.cancelled()) {
-    result = {};
-    result.status = wr::RoutingStatus::Cancelled;
-    result.message = "Routing cancelled";
+    weather_routing::CancelRoutingResultKeepingDiagnostics(result);
   }
   if (!operationAttempts.empty()) {
     result.engineAttempts = operationAttempts;

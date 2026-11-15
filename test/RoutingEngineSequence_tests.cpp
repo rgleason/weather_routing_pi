@@ -242,6 +242,70 @@ TEST(RoutingEngineSequence, AlreadyCancelledDoesNotStartAnyEngine) {
   EXPECT_EQ(calls, 0);
   EXPECT_EQ(result.status, wr::RoutingStatus::Cancelled);
 }
+TEST(RoutingEngineSequence, CancellationBetweenMethodsPreservesKnownWork) {
+  wr::CancellationToken token;
+  const auto result = native::RunRoutingEngineSequence(
+      RoutingEngine::All, token, [](auto) {
+        auto route = Success(100);
+        route.diagnostics.generatedStates = 123;
+        route.diagnostics.retainedStates = 45;
+        route.diagnostics.landChecks = 678;
+        route.diagnostics.validationSamples = 9;
+        return route;
+      }, [&](auto, const auto&) { token.cancel(); });
+  EXPECT_EQ(result.status, wr::RoutingStatus::Cancelled);
+  EXPECT_TRUE(result.legs.empty());
+  EXPECT_EQ(result.diagnostics.generatedStates, 123U);
+  EXPECT_EQ(result.diagnostics.retainedStates, 45U);
+  EXPECT_EQ(result.diagnostics.landChecks, 678U);
+  EXPECT_EQ(result.diagnostics.validationSamples, 9U);
+  ASSERT_EQ(result.engineAttempts.size(), 1U);
+  EXPECT_NE(result.engineAttempts[0].detail.find("Elapsed wall time"), std::string::npos);
+}
+TEST(RoutingEngineSequence, CancelledMethodIsIncludedWithoutErasingPriorCounts) {
+  const auto result = native::RunRoutingEngineSequence(
+      RoutingEngine::Auto, {}, [](auto engine) {
+        auto route = Failure(engine == SequenceEngine::Quick2
+            ? wr::RoutingStatus::Cancelled : wr::RoutingStatus::ResourceLimitReached);
+        route.diagnostics.generatedStates = engine == SequenceEngine::Original ? 100 : 20;
+        route.diagnostics.retainedStates = engine == SequenceEngine::Original ? 15 : 10;
+        return route;
+      });
+  EXPECT_EQ(result.status, wr::RoutingStatus::Cancelled);
+  EXPECT_EQ(result.diagnostics.generatedStates, 120U);
+  EXPECT_EQ(result.diagnostics.retainedStates, 15U); // Peak returned count, not a sum.
+  ASSERT_EQ(result.engineAttempts.size(), 2U);
+  EXPECT_EQ(result.engineAttempts.back().status, wr::RoutingStatus::Cancelled);
+  ASSERT_FALSE(result.diagnostics.stageStopReasons.empty());
+  EXPECT_NE(result.diagnostics.stageStopReasons.back().find("generated states 120"), std::string::npos);
+}
+TEST(RoutingEngineSequence, AllAccountingDoesNotChangeWinningRouteCounters) {
+  const auto result = native::RunRoutingEngineSequence(
+      RoutingEngine::All, {}, [](auto engine) {
+        auto route = Success(engine == SequenceEngine::Original ? 100 : 200);
+        route.diagnostics.generatedStates = engine == SequenceEngine::Original ? 10 : 20;
+        return route;
+      }, {}, weather_routing::EngineBit(RoutingEngine::Original) |
+             weather_routing::EngineBit(RoutingEngine::Quick));
+  EXPECT_EQ(result.engineIdentity, "original");
+  EXPECT_EQ(result.metrics.elapsed.count(), 100);
+  EXPECT_EQ(result.diagnostics.generatedStates, 10U);
+  ASSERT_EQ(result.engineAttempts.size(), 2U);
+  EXPECT_NE(result.diagnostics.stageStopReasons.back().find("generated states 30"), std::string::npos);
+}
+TEST(RoutingEngineSequence, FinalCancellationClearsRouteButKeepsDiagnostics) {
+  auto result = Success(100);
+  result.diagnostics.generatedStates = 123;
+  result.diagnostics.stageStopReasons = {"Earlier method work was retained"};
+  weather_routing::CancelRoutingResultKeepingDiagnostics(result);
+  EXPECT_EQ(result.status, wr::RoutingStatus::Cancelled);
+  EXPECT_TRUE(result.legs.empty());
+  EXPECT_FALSE(result.validation.passed);
+  EXPECT_EQ(result.metrics.elapsed.count(), 0);
+  EXPECT_EQ(result.diagnostics.generatedStates, 123U);
+  EXPECT_EQ(result.diagnostics.stageStopReasons,
+            std::vector<std::string>{"Earlier method work was retained"});
+}
 TEST(RoutingEngineSequence, FailedSequenceReportsAllAttemptReasons) {
   const auto result = native::RunRoutingEngineSequence(
       RoutingEngine::Auto, {}, [](auto) { return Failure(); });

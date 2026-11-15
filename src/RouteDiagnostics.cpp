@@ -343,6 +343,13 @@ RouteDiagnosticReport CheckForecastWindCoverage(
         {}, {}, true});
   return report;
 }
+void AppendCancelledWorkerProgress(RouteDiagnosticReport& report,
+    const wxString& stage, const wxString& detail) {
+  if (!report.cancelled || (stage.empty() && detail.empty())) return;
+  report.technical += "\n" + _("Last observed worker progress (sampled; not an operation total):") +
+      "\n" + stage + "\n" + detail;
+}
+
 RouteDiagnosticReport DescribeRoutingResult(const wr::RoutingResult& result,
                                            bool waveLimitEnabled) {
   RouteDiagnosticReport report;
@@ -454,10 +461,14 @@ RouteDiagnosticReport DescribeRoutingResult(const wr::RoutingResult& result,
     }
   }
   report.technical += wxString::Format(
-      _("\nGenerated states: %llu; retained states: %llu; validation samples: %llu."),
+      report.cancelled
+          ? _("\nReported generated states: %llu; largest returned retained-state count: %llu; reported validation samples: %llu.")
+          : _("\nGenerated states: %llu; retained states: %llu; validation samples: %llu."),
       static_cast<unsigned long long>(result.diagnostics.generatedStates),
       static_cast<unsigned long long>(result.diagnostics.retainedStates),
       static_cast<unsigned long long>(result.diagnostics.validationSamples));
+  if (report.cancelled)
+    report.technical += "\n" + _("Reported counters can omit unfinished work in the stopped method; its last observed progress is recorded separately when available.");
   return report;
 }
 }  // namespace weather_routing

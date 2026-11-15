@@ -95,6 +95,23 @@ TEST(RouteDiagnostics, CoverageCrossingDatelineNormalizesLongitudes) {
   EXPECT_TRUE(weather_routing::CheckForecastWindCoverage(
       coverage, {0, 175}, {0, -150}, {}, false).HasErrors());
 }
+TEST(RouteDiagnostics, CancelledReportRetainsLabelledSampleWithoutClaimingTotals) {
+  wr::RoutingResult result;
+  result.status = wr::RoutingStatus::Cancelled;
+  result.diagnostics.generatedStates = 123;
+  auto report = weather_routing::DescribeRoutingResult(result);
+  weather_routing::AppendCancelledWorkerProgress(report, "Quick2: Forward isochrone",
+      "500 states generated, 20 retained");
+  EXPECT_NE(report.Text().Find("Reported generated states: 123"), wxNOT_FOUND);
+  EXPECT_NE(report.Text().Find("sampled; not an operation total"), wxNOT_FOUND);
+  EXPECT_NE(report.Text().Find("500 states generated"), wxNOT_FOUND);
+  weather_routing::RouteDiagnosticReport complete;
+  complete.hasResult = complete.complete = true;
+  const auto before = complete.Text();
+  weather_routing::AppendCancelledWorkerProgress(complete, "stale stage", "stale counters");
+  EXPECT_EQ(complete.Text(), before);
+}
+
 TEST(RouteDiagnostics, MissingFrameDoesNotInventMissingParameterOrFileCause) {
   const auto report = weather_routing::CheckForecastWindCoverage({}, {1,2}, {3,4}, {}, false);
   const auto* cause = Find(report, "coverage.wind_unavailable");
