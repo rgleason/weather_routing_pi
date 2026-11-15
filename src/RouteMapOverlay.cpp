@@ -518,8 +518,13 @@ void RouteMapOverlay::InstallModernNativeResult(
       result.status == wr::RoutingStatus::CompleteUsingReverseRecovery ||
       result.status == wr::RoutingStatus::CompleteUsingFrontierRecovery ||
       result.status == wr::RoutingStatus::CompleteUsingGraphFallback;
-  InstallResultDiagnostics(weather_routing::DescribeRoutingResult(
-      result, GetConfiguration().MaxSwellMeters > 0.0));
+  auto diagnostics = weather_routing::DescribeRoutingResult(
+      result, GetConfiguration().MaxSwellMeters > 0.0);
+  const auto lastProgress = m_ModernProgress.Read();
+  if (lastProgress.sequence)
+    weather_routing::AppendCancelledWorkerProgress(diagnostics,
+        lastProgress.value.stage, lastProgress.value.detail);
+  InstallResultDiagnostics(std::move(diagnostics));
   const bool resourceExhausted = ResourceExhausted();
   const bool complete = resultComplete && !resourceExhausted;
   m_ModernNativeEstimatedPolar = complete &&

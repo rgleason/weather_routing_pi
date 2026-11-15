@@ -2,10 +2,12 @@
 #pragma once
 
 #include <array>
+#include <chrono>
 #include <functional>
 #include <utility>
 #include <string>
 #include "RoutingEngineSettings.h"
+#include "RoutingSequenceAudit.h"
 #include "supercpn/weather_routing/Engine.h"
 
 namespace weather_routing::native {
@@ -93,6 +95,11 @@ supercpn::weather_routing::RoutingResult RunRoutingEngineSequence(
   std::string failures;
   std::vector<wr::RoutingAttemptFailure> attempts;
   std::vector<wr::RoutingAttempt> history;
+  RoutingSequenceAudit audit;
+  const auto finish = [&](wr::RoutingResult route) {
+    audit.Finish(route);
+    return route;
+  };
   if (enabled == 0xffffffffU)
     enabled = mode == RoutingEngine::Auto ? kAutoEnginesMask : kAllEnginesMask;
   if (!enabled || (enabled & ~kSelectableEnginesMask)) {
@@ -111,18 +118,23 @@ supercpn::weather_routing::RoutingResult RunRoutingEngineSequence(
       last.message = "Routing engine sequence cancelled";
       last.attemptFailures = attempts;
       last.engineAttempts = history;
-      return last;
+      return finish(std::move(last));
     }
+    const auto attemptStarted = std::chrono::steady_clock::now();
     last = solve(engine);
+    const auto seconds = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - attemptStarted).count();
+    const auto work = audit.Record(last.diagnostics, seconds);
     last.engineIdentity = SequenceEngineId(engine);
     // Cancellation cancels the complete operation, including any earlier
     // winner.
     if (cancel.cancelled() || last.status == wr::RoutingStatus::Cancelled) {
       last.status = wr::RoutingStatus::Cancelled;
+      history.push_back({SequenceEngineTitle(engine), last.status, last.message + "\n" + work});
       last.message = "Routing engine sequence cancelled";
       last.attemptFailures = attempts;
       last.engineAttempts = history;
-      return last;
+      return finish(std::move(last));
     }
     if (!AcceptedRoute(last) &&
         (last.status == wr::RoutingStatus::Complete ||
@@ -130,7 +142,8 @@ supercpn::weather_routing::RoutingResult RunRoutingEngineSequence(
          last.status == wr::RoutingStatus::CompleteUsingFrontierRecovery ||
          last.status == wr::RoutingStatus::CompleteUsingGraphFallback))
       last.status = wr::RoutingStatus::ValidationFailure;
-    history.push_back({SequenceEngineTitle(engine), last.status, last.message});
+    history.push_back({SequenceEngineTitle(engine), last.status,
+                       last.message + "\n" + work});
     if (AcceptedRoute(last)) {
       last.attemptFailures = attempts;
       last.engineAttempts = history;
@@ -144,7 +157,7 @@ supercpn::weather_routing::RoutingResult RunRoutingEngineSequence(
       if (mode == RoutingEngine::Auto) {
         best.attemptFailures = attempts;
         best.engineAttempts = history;
-        return best;
+        return finish(std::move(best));
       }
     } else {
       if (!failures.empty()) failures += "; ";
@@ -161,11 +174,11 @@ supercpn::weather_routing::RoutingResult RunRoutingEngineSequence(
   if (haveBest) {
     best.attemptFailures = attempts;
     best.engineAttempts = history;
-    return best;
+    return finish(std::move(best));
   }
   last.attemptFailures = std::move(attempts);
   last.engineAttempts = std::move(history);
   last.message = "No validated route found with the selected settings.\n" + failures;
-  return last;
+  return finish(std::move(last));
 }
 }  // namespace weather_routing::native

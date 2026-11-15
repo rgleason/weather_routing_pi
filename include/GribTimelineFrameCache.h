@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <mutex>
 
 #include "WeatherDataProvider.h"
 #include "GribTimelineCachePolicy.h"
@@ -37,6 +38,10 @@ public:
                long timeout_milliseconds,
                const std::function<void(const std::int64_t&)>& request,
                const std::function<bool()>& cancelled);
+  // Set by the owning dialog before workers start; clear only after joining
+  // them. Called after a real miss has published its request state, never on
+  // positive/negative cache hits or while holding the cache's request mutex.
+  void SetRequestWakeup(std::function<void()> wakeup);
   bool TryResident(std::int64_t key, Shared_GribRecordSet* value) const {
     return cache_.TryResident(key, value);
   }
@@ -62,6 +67,8 @@ private:
   // long passages and engine attempts without increasing the frame budget.
   static constexpr std::size_t kMissingFrameCapacity = 32768;
   Cache cache_;
+  std::mutex wakeup_mutex_;
+  std::function<void()> request_wakeup_;
   int requested_mib_{kMainGribTimelineCacheDefaultMiB};
   int effective_mib_{kMainGribTimelineCacheDefaultMiB};
   int current_limit_mib_{kMainGribTimelineCacheDefaultMiB};
