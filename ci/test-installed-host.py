@@ -306,15 +306,23 @@ def test(host, cli, archive_path, output, source, host_version='5.14.2'):
                     for report in reports.glob('*'):
                         if report.is_file() and 'opencpn' in report.name.lower():
                             shutil.copy2(report, output / report.name)
+                # The failed normal run must remain a failure. Remove only its
+                # startup sentinel before this diagnostic retry, otherwise the
+                # stock Safe Restart dialog can disable plugins and hide the
+                # original crash from the debugger.
+                (config / 'startcheck.dat').unlink(missing_ok=True)
                 with (output / (label + '-lldb.log')).open('w') as debug_log:
                     try:
-                        subprocess.run(['/usr/bin/lldb', '--batch', '-o', 'run',
-                                        '-o', 'thread backtrace all', '--', str(host),
+                        subprocess.run(['/usr/bin/lldb', '--batch',
+                                        '-o', 'process launch --stop-at-entry',
+                                        '-o', 'script import time; p = lldb.debugger.GetSelectedTarget().GetProcess(); lldb.debugger.SetAsync(True); p.Continue(); time.sleep(25); p.Stop()',
+                                        '-o', 'thread backtrace all',
+                                        '-o', 'process kill', '--', str(host),
                                         '--no_opengl'], env=route_environment,
                                        cwd=host.parent, stdout=debug_log,
-                                       stderr=subprocess.STDOUT, timeout=110)
+                                       stderr=subprocess.STDOUT, timeout=75)
                     except subprocess.TimeoutExpired:
-                        debug_log.write('\nDiagnostic run timed out without reproducing the crash.\n')
+                        debug_log.write('\nDiagnostic capture timed out. The normal startup test remains failed.\n')
             require(code == 0 and result.get('status') == 'complete',
                     'Normal host route failed: ' + label + ' (exit=' + str(code) + ')')
             require(bool(result.get('candidates')), 'Normal host route has no candidate: ' + label)
