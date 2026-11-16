@@ -326,6 +326,9 @@ TEST(ShorelineDataset, VerifiedBundledFullResolutionRealWorld) {
   ShorelineDataset d(installed, 16 * 1024 * 1024);
   ASSERT_EQ(d.Version(), 237);
   const std::vector<std::array<double, 4>> crossings = {
+      {37.8267, -122.44, 37.8267, -122.41}, // Alcatraz
+      {-18.074832535885168,-163.24,-18.074832535885168,-163.08}, // Palmerston islet
+      {-20.3495,-174.54,-20.3495,-174.50}, // Ha'apai near Lalona
       {48, -5, 48, 5},           // Brittany, exact latitude cell boundary
       {47, 0, 49, 0},            // France, exact longitude cell boundary
       {53.3, -4.8, 53.3, -4.5},  // Holy Island
@@ -367,4 +370,22 @@ INSTANTIATE_TEST_SUITE_P(AllFiveResolutions, BundledShoreline, testing::Range(0,
 TEST(ShorelineDataset, InvalidResolutionRejected) {
   EXPECT_THROW(ShorelineSpecFor(-1), std::invalid_argument);
   EXPECT_THROW(ShorelineSpecFor(5), std::invalid_argument);
+}
+
+TEST(ShorelineDataset, OutlineShowsActualEdgesAndKeepsSafetyQueriesUnchanged) {
+  Files f; Fixture(f / "data"); ShorelineDataset d(f / "data");
+  const auto before=d.CrossesLand(.5,.1,.5,.9);
+  auto outline=d.ViewOutline(.1,.1,.9,.9);
+  ASSERT_FALSE(outline.zoom_in); ASSERT_EQ(outline.segments.size(),4U);
+  for (const auto& edge : outline.segments) {
+    EXPECT_TRUE(d.CrossesLand(edge[1],edge[0],edge[3],edge[2]));
+    EXPECT_GE(edge[0],.2-1e-12); EXPECT_LE(edge[0],.8+1e-12);
+  }
+  EXPECT_EQ(d.CrossesLand(.5,.1,.5,.9),before);
+  auto dense=d.ViewOutline(.1,.1,.9,.9,16,2);
+  EXPECT_TRUE(dense.zoom_in); EXPECT_TRUE(dense.segments.empty());
+  auto wide=d.ViewOutline(-20,-20,20,20);
+  EXPECT_TRUE(wide.zoom_in); EXPECT_TRUE(wide.segments.empty());
+  EXPECT_FALSE(d.ViewOutline(179.9,-.1,-179.9,.1).zoom_in);
+  EXPECT_THROW(d.ViewOutline(0,1,1,0),std::invalid_argument);
 }

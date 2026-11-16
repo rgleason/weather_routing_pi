@@ -569,6 +569,13 @@ wxWindow* WeatherRouting::BuildAndroidWorkspace(wxBoxSizer* root) {
       {_("Display settings"), command(&WeatherRouting::OnSettings)},
       {_("Chart awareness"), command(&WeatherRouting::OnChartAwarenessSettings)},
       {_("Shoreline data"), command(&WeatherRouting::OnShorelineData)},
+      {_("Show / hide routing shoreline"), [this]() {
+        wxCommandEvent event(wxEVT_MENU);
+        event.SetInt(!PassageShorelineVisible());
+        m_mPassageShorelineView->Check(event.IsChecked());
+        OnViewPassageShoreline(event);
+        if (PassageShorelineVisible()) ShowAndroidRouteOnChart();
+      }},
   });
   addActions(tools, toolsContent, _("Help"), {
       {_("Information"), command(&WeatherRouting::OnInformation)},

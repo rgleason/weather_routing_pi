@@ -432,6 +432,51 @@ bool ShorelineDataset::CrossesLand(double lat1, double lon1, double lat2,
     throw ShorelineQueryError(impl_->error);
   }
 }
+ShorelineDataset::Outline ShorelineDataset::ViewOutline(
+    double west, double south, double east, double north,
+    std::size_t max_tiles, std::size_t max_segments) {
+  Outline result;
+  if (!std::isfinite(west) || !std::isfinite(east) ||
+      !std::isfinite(south) || !std::isfinite(north) ||
+      south < -90 || north > 90 || south > north)
+    throw std::invalid_argument("Invalid shoreline view bounds");
+  double span = east - west;
+  if (span < 0) span += 360;
+  if (span < 0 || span >= 360) { result.zoom_in = true; return result; }
+  west = std::fmod(std::fmod(west, 360.) + 360., 360.);
+  east = west + span;
+  const int x0 = int(std::floor(west)), x1 = int(std::floor(east));
+  const int y0 = std::max(0, int(std::floor(south + 90)));
+  const int y1 = std::min(179, int(std::floor(north + 90)));
+  const auto count = std::size_t(x1 - x0 + 1) * std::size_t(y1 - y0 + 1);
+  if (count > max_tiles) { result.zoom_in = true; return result; }
+  std::lock_guard<std::mutex> lock(impl_->mutex);
+  if (!impl_->error.empty()) throw ShorelineQueryError(impl_->error);
+  for (int x = x0; x <= x1; ++x) for (int y = y0; y <= y1; ++y) {
+    const int tile_x = x % 360;
+    auto tile = impl_->Get(tile_x, y);
+    const double shift = x - tile_x;
+    for (const auto& ring : tile->rings)
+      for (std::size_t i = 0, j = ring.points.size() - 1;
+           i < ring.points.size(); j = i++) {
+        auto a = ring.points[j], b = ring.points[i];
+        // Match the reader's coastline index: edges introduced by clipping
+        // the original polygons to one-degree tiles are not shorelines.
+        if ((std::abs(a.x-b.x) < eps &&
+             (std::abs(a.x-tile_x) < eps || std::abs(a.x-tile_x-1) < eps)) ||
+            (std::abs(a.y-b.y) < eps &&
+             (std::abs(a.y-y+90) < eps || std::abs(a.y-y+89) < eps))) continue;
+        a.x += shift; b.x += shift;
+        if (std::max(a.x,b.x) < west || std::min(a.x,b.x) > east ||
+            std::max(a.y,b.y) < south || std::min(a.y,b.y) > north) continue;
+        if (result.segments.size() >= max_segments) {
+          result.segments.clear(); result.zoom_in = true; return result;
+        }
+        result.segments.push_back({a.x,a.y,b.x,b.y});
+      }
+  }
+  return result;
+}
 bool ShorelineDataset::WithinLandMargin(double lat1, double lon1, double lat2,
                                         double lon2, double margin) {
   if (!std::isfinite(margin) || margin < 0 || margin > 100)
