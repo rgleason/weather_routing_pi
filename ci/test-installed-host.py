@@ -311,6 +311,7 @@ def test(host, cli, archive_path, output, source, host_version='5.14.2'):
                 # stock Safe Restart dialog can disable plugins and hide the
                 # original crash from the debugger.
                 (config / 'startcheck.dat').unlink(missing_ok=True)
+                (config / '_OpenCPN_SILock').unlink(missing_ok=True)
                 with (output / (label + '-lldb.log')).open('w') as debug_log:
                     try:
                         subprocess.run(['/usr/bin/lldb', '--batch',
