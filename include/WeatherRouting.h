@@ -300,6 +300,9 @@ public:
   bool RouteComputationActive(RouteMapOverlay* route);
 
   void Render(piDC& dc, PlugIn_ViewPort& vp);
+  void RenderPassageShoreline(piDC& dc, PlugIn_ViewPort& vp);
+  bool PassageShorelineVisible() const { return bool(m_shorelinePreviewDataset); }
+
   bool ShowStabilityCorridor(
       const std::list<RouteMapOverlay*>& routes, RouteMapOverlay* selected,
       wxString* status = nullptr);
@@ -572,6 +575,7 @@ private:
   void OnSaveAllAsTracks(wxCommandEvent& event);
   void OnChartAwarenessSettings(wxCommandEvent& event);
   void OnShorelineData(wxCommandEvent& event);
+  void OnViewPassageShoreline(wxCommandEvent& event);
   void OnSettings(wxCommandEvent& event);
   void OnStatistics(wxCommandEvent& event);
   void OnReport(wxCommandEvent& event);
@@ -982,6 +986,12 @@ private:
   bool m_bShowFilter;
   wxMenuItem* m_mChartAwarenessSettings;
   wxMenuItem* m_mStabilityCorridorView;
+  wxMenuItem* m_mPassageShorelineView{nullptr};
+  std::shared_ptr<weather_routing::ShorelineDataset> m_shorelinePreviewDataset;
+  weather_routing::ShorelineDataset::Outline m_shorelinePreviewOutline;
+  std::array<double, 4> m_shorelinePreviewBounds{};
+  bool m_shorelinePreviewBoundsValid{false};
+  wxString m_shorelinePreviewLabel, m_shorelinePreviewError;
 
   wxPoint m_downPos, m_startPos, m_startMouse;
   wxTimer m_tDownTimer;

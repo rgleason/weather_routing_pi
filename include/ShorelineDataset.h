@@ -5,6 +5,8 @@
 #include <string>
 #include <cstddef>
 #include <stdexcept>
+#include <vector>
+#include <array>
 
 namespace weather_routing {
 class ShorelineQueryError : public std::runtime_error {
@@ -17,6 +19,11 @@ public:
 // host API.
 class ShorelineDataset {
 public:
+  struct Outline {
+    // lon1, lat1, lon2, lat2; cell-clipping edges are excluded.
+    std::vector<std::array<double, 4>> segments;
+    bool zoom_in{false};
+  };
   explicit ShorelineDataset(const std::filesystem::path& file,
                             std::size_t cache_bytes = 64u * 1024 * 1024);
   ~ShorelineDataset();
@@ -31,6 +38,11 @@ public:
   // A failed read invalidates this snapshot until the manager prepares it
   // again.
   std::string Error() const;
+  // Read-only visual inspection, bounded independently of safety queries.
+  // A wide/dense view asks the user to zoom in instead of simplifying geometry.
+  Outline ViewOutline(double west, double south, double east, double north,
+                      std::size_t max_tiles = 16,
+                      std::size_t max_segments = 30000);
 
 private:
   struct Impl;

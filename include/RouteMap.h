@@ -257,13 +257,12 @@ struct RouteMapConfiguration {
         ? EngineSettings.originalGribTimelineCacheMiB : QuickGribTimelineCacheMiB;
   }
   int& FastShorelineResolution() {
-    return IsOriginal() ? EngineSettings.originalShorelineResolution : QuickShorelineResolution;
+    return ShorelineResolution;
   }
   bool IsOriginal() const { return EngineSettings.engine == weather_routing::RoutingEngine::Original; }
   bool IsFastEngine() const { return IsOriginal() || IsQuick(); }
   int SelectedShorelineResolution() const {
-    return IsOriginal() ? EngineSettings.originalShorelineResolution :
-        IsQuick() ? QuickShorelineResolution : ShorelineResolution;
+    return ShorelineResolution;
   }
   int EffectiveShorelineResolution() const {
     return chart_safety_scout_preview ||

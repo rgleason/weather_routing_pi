@@ -131,7 +131,7 @@ struct Configuration {
   int ShorelineResolution{3};
   int QuickShorelineResolution{0};
   int ChartShorelineResolution{0};
-  int EffectiveShorelineResolution() const { return IsQuick() ? QuickShorelineResolution : ShorelineResolution; }
+  int EffectiveShorelineResolution() const { return ShorelineResolution; }
   bool DetectLand{true};
   double DeltaTime{10800}, ByDegrees{10}, MaxSearchAngle{95};
   int RoutingEffortPercent{200};
@@ -351,11 +351,11 @@ TEST(ShorelineSettings, LastUsedDefaultsPreserveZeroAndIndependentQuickChoice) {
   EXPECT_EQ(wr::ReadShorelineResolution(c, 4), 0);
   EXPECT_EQ(wr::ReadShorelineResolution(c, 0, "QuickShorelineResolution"), 3);
 }
-TEST(ShorelineSettings, EngineSwitchingPresetsAndResultSnapshotPreserveChoices) {
+TEST(ShorelineSettings, EngineSwitchingPresetsAndResultSnapshotPreservePassageChoice) {
   Configuration c;
   EXPECT_EQ(c.EffectiveShorelineResolution(), 3);
   c.EngineSettings.engine = wr::RoutingEngine::Quick;
-  EXPECT_EQ(c.EffectiveShorelineResolution(), 0);
+  EXPECT_EQ(c.EffectiveShorelineResolution(), 3);
   c.QuickShorelineResolution = 2;
   auto result = wr::RoutingSearchSnapshot::Capture(c, true);
   c.EngineSettings.ResetQuickToBalanced();
@@ -363,7 +363,7 @@ TEST(ShorelineSettings, EngineSwitchingPresetsAndResultSnapshotPreserveChoices) 
   EXPECT_EQ(c.QuickShorelineResolution, 2);
   EXPECT_EQ(c.ShorelineResolution, 3);
   c.QuickShorelineResolution = 4;
-  EXPECT_EQ(result.shorelineResolution, 2);
+  EXPECT_EQ(result.shorelineResolution, 3);
   EXPECT_TRUE(result.detectLand);
   c.EngineSettings.engine = wr::RoutingEngine::Main;
   EXPECT_EQ(c.EffectiveShorelineResolution(), 3);
@@ -434,4 +434,46 @@ TEST(RoutingEngineSettings, ToolkitUpgradeRetains134DataWithoutSkippingOlderData
   EXPECT_FALSE(wr::CanSkipBundledDataUpdate(134, 1, 34));
   EXPECT_FALSE(wr::CanSkipBundledDataUpdate(134, 1, 36));
   EXPECT_FALSE(wr::CanSkipBundledDataUpdate(134, 2, 0));
+}
+
+TEST(PassageShorelineSettings, LegacyMigrationRetainsFinestExplicitChoice) {
+  for (int main=0; main<5; ++main) for (int standard=0; standard<5; ++standard)
+    for (int quick=0; quick<5; ++quick) {
+      TiXmlElement xml("Configuration");
+      xml.SetAttribute("ShorelineResolution",main);
+      xml.SetAttribute("QuickShorelineResolution",standard);
+      xml.SetAttribute("OriginalShorelineResolution",quick);
+      xml.SetAttribute("ChartShorelineResolution",4);
+      EXPECT_EQ(wr::ReadPassageShorelineResolution(xml,2), std::max({main,standard,quick}));
+    }
+  TiXmlElement old("Configuration");
+  EXPECT_EQ(wr::ReadPassageShorelineResolution(old,3),3);
+  old.SetAttribute("ShorelineResolution",0);
+  EXPECT_EQ(wr::ReadPassageShorelineResolution(old,2),0);
+  old.SetAttribute("QuickShorelineResolution","bad");
+  EXPECT_EQ(wr::ReadPassageShorelineResolution(old,2),4);
+}
+TEST(PassageShorelineSettings, ExplicitChoiceWinsAndMirrorsOlderFormats) {
+  for (int chosen=0; chosen<5; ++chosen) {
+    TiXmlElement xml("Configuration");
+    xml.SetAttribute("OriginalShorelineResolution",4);
+    xml.SetAttribute("QuickShorelineResolution",4);
+    xml.SetAttribute("ShorelineResolution",4);
+    xml.SetAttribute("PassageShorelineResolution",chosen);
+    EXPECT_EQ(wr::ReadPassageShorelineResolution(xml,2),chosen);
+    wr::WritePassageShorelineResolution(xml,chosen);
+    EXPECT_EQ(wr::ReadShorelineResolution(xml,2),chosen);
+    EXPECT_EQ(wr::ReadShorelineResolution(xml,2,"QuickShorelineResolution"),chosen);
+    EXPECT_EQ(wr::ReadShorelineResolution(xml,2,"OriginalShorelineResolution"),chosen);
+  }
+}
+TEST(PassageShorelineSettings, LastUsedDefaultsMigrateAndRememberExplicitLowerChoice) {
+  wxStringInputStream input("ShorelineResolution=2\nOriginalShorelineResolution=4\nQuickShorelineResolution=0\nChartShorelineResolution=0\n");
+  wxFileConfig config(input);
+  EXPECT_EQ(wr::ReadPassageShorelineResolution(config,2),4);
+  wr::WritePassageShorelineResolution(config,1);
+  EXPECT_EQ(wr::ReadPassageShorelineResolution(config,2),1);
+  EXPECT_EQ(wr::ReadShorelineResolution(config,2,"OriginalShorelineResolution"),1);
+  EXPECT_EQ(wr::ReadShorelineResolution(config,2,"QuickShorelineResolution"),1);
+  EXPECT_EQ(wr::ReadShorelineResolution(config,4,"ChartShorelineResolution"),0);
 }

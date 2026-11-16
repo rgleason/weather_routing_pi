@@ -94,7 +94,7 @@ set(LONG_DESCRIPTION
 
 set(VERSION_MAJOR "1")
 set(VERSION_MINOR "36")
-set(VERSION_PATCH "4")
+set(VERSION_PATCH "5")
 set(VERSION_TWEAK "0")
 # Keep all five approved source archives for verification and regression tests.
 # Packages ship only Crude, Low and Intermediate; High and Full are optional
@@ -116,7 +116,7 @@ foreach(_archive IN LISTS _shoreline_archives)
   endif()
 endforeach()
 unset(_shoreline_archives)
-set(VERSION_DATE  "15/11/2026") # DD/MM/YYYY format
+set(VERSION_DATE  "16/11/2026") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov511")
 
 set(OCPN_API_VERSION_MAJOR "1")
@@ -533,6 +533,8 @@ if (NOT OCPN_FLATPAK_CONFIG)
   target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::jsonlib)
 
   add_subdirectory(opencpn-libs/plugin_dc)
+  include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/SoftwareDrawingContext.cmake")
+  wr_guard_software_drawing_context()
   if(TARGET _DC_UTILS AND TARGET wx::core)
     target_link_libraries(_DC_UTILS PRIVATE wx::core)
   endif()

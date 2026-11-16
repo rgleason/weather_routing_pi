@@ -1332,6 +1332,10 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
       wxEVT_MENU,
       &WeatherRouting::OnShorelineData, this,
       shorelineMenu->GetId());
+  m_mPassageShorelineView = m_mView->AppendCheckItem(
+      wxID_ANY, _("Show selected passage shoreline"));
+  m_mView->Bind(wxEVT_MENU, &WeatherRouting::OnViewPassageShoreline, this,
+                m_mPassageShorelineView->GetId());
   m_mView->AppendSeparator();
   m_mStabilityCorridorView =
       new wxMenuItem(m_mView, wxID_ANY, _("Show stability corridor"),
@@ -8549,6 +8553,85 @@ void WeatherRouting::OnSaveAllAsTracks(wxCommandEvent& event) {
                                 saved, skipped), _("Weather Routing"), wxOK, this);
 }
 
+void WeatherRouting::OnViewPassageShoreline(wxCommandEvent& event) {
+  m_shorelinePreviewDataset.reset();
+  m_shorelinePreviewOutline = {};
+  m_shorelinePreviewBoundsValid = false;
+  m_shorelinePreviewError.clear();
+  if (event.IsChecked()) {
+    const auto routes = CurrentRouteMaps(false);
+    if (routes.size() != 1) {
+      m_mPassageShorelineView->Check(false);
+      WR_MessageBox(_("Select one weather routing passage to inspect its shoreline."),
+                    _("Routing shoreline"), wxOK | wxICON_INFORMATION, this);
+      return;
+    }
+    auto* route = routes.front();
+    auto configuration = route->GetConfiguration();
+    bool useCharts = false, enforceCharts = false;
+    ReadExperimentalChartSafetySettings(useCharts, enforceCharts);
+    configuration.chart_safety_runtime_available = useCharts;
+    configuration.chart_safety_runtime_enforced = enforceCharts;
+    const int resolution = configuration.EffectiveShorelineResolution();
+    try {
+      // An active calculation already owns its immutable verified snapshot.
+      // Otherwise verify the selected setup once, never during chart repaint.
+      m_shorelinePreviewDataset = route->Running() && configuration.shoreline_dataset
+          ? configuration.shoreline_dataset
+          : weather_routing::ShorelineManager::Prepare(resolution);
+      m_shorelinePreviewLabel = _("Shoreline snapshot: ") + configuration.Start +
+          _(" to ") + configuration.End + " / " +
+          weather_routing::PassageShorelineSummary(resolution,
+              configuration.DetectLand, useCharts && enforceCharts);
+    } catch (const std::exception& error) {
+      m_mPassageShorelineView->Check(false);
+      WR_MessageBox(wxString::FromUTF8(error.what()), _("Routing shoreline"),
+                    wxOK | wxICON_ERROR, this);
+    }
+  }
+  RequestRefresh(GetOCPNCanvasWindow());
+}
+
+void WeatherRouting::RenderPassageShoreline(piDC& dc, PlugIn_ViewPort& vp) {
+  if (!m_shorelinePreviewDataset) return;
+  const std::array<double,4> bounds{vp.lon_min,vp.lat_min,vp.lon_max,vp.lat_max};
+  if (!m_shorelinePreviewBoundsValid || bounds != m_shorelinePreviewBounds) {
+    m_shorelinePreviewBounds = bounds;
+    m_shorelinePreviewBoundsValid = true;
+    m_shorelinePreviewOutline = {};
+    m_shorelinePreviewError.clear();
+    try {
+      m_shorelinePreviewOutline = m_shorelinePreviewDataset->ViewOutline(
+          bounds[0],bounds[1],bounds[2],bounds[3]);
+    } catch (const std::exception& error) {
+      m_shorelinePreviewError = wxString::FromUTF8(error.what());
+    }
+  }
+#ifndef __OCPN__ANDROID__
+  if (!dc.GetDC()) glPushAttrib(GL_LINE_BIT | GL_ENABLE_BIT | GL_HINT_BIT |
+                                GL_CURRENT_BIT | GL_COLOR_BUFFER_BIT);
+#endif
+  dc.SetPen(wxPen(wxColour(170,0,200), 2));
+  for (const auto& segment : m_shorelinePreviewOutline.segments) {
+    wxPoint a,b;
+    GetCanvasPixLL(&vp, &a, segment[1], std::remainder(segment[0], 360.));
+    GetCanvasPixLL(&vp, &b, segment[3], std::remainder(segment[2], 360.));
+    dc.DrawLine(a.x,a.y,b.x,b.y);
+  }
+  wxString label = m_shorelinePreviewLabel;
+  if (m_shorelinePreviewOutline.zoom_in)
+    label += _("\nZoom in to display the exact shoreline outlines.");
+  if (!m_shorelinePreviewError.empty()) label += "\n" + m_shorelinePreviewError;
+  dc.SetFont(GetFont());
+  dc.SetTextForeground(*wxWHITE);
+  dc.DrawText(label,71,67);
+  dc.SetTextForeground(wxColour(100,0,130));
+  dc.DrawText(label,70,66);
+#ifndef __OCPN__ANDROID__
+  if (!dc.GetDC()) glPopAttrib();
+#endif
+}
+
 void WeatherRouting::OnShorelineData(wxCommandEvent&) {
   if (!CanStartExternalPlanningScenario()) {
     WR_MessageBox(_("Wait for routing calculations to finish before managing shoreline data."),
@@ -8556,6 +8639,7 @@ void WeatherRouting::OnShorelineData(wxCommandEvent&) {
     return;
   }
   weather_routing::ShorelineManager::Show(this);
+  OnWeatherRouteSelected();
 }
 
 void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
@@ -9599,7 +9683,7 @@ bool WeatherRouting::OpenXML(wxString filename, bool reportfailure) {
             std::clamp(AttributeInt(e, "ComfortAdditionalPercent", 200), 0, 400);
         configuration.ComfortMaximumSeconds =
             std::clamp(AttributeInt(e, "ComfortMaximumSeconds", 20), 0, 3600);
-        configuration.ShorelineResolution = weather_routing::ReadShorelineResolution(*e, weather_routing::ShorelineManager::DefaultResolution());
+        configuration.ShorelineResolution = weather_routing::ReadPassageShorelineResolution(*e, weather_routing::ShorelineManager::DefaultResolution());
         configuration.QuickShorelineResolution = weather_routing::ReadShorelineResolution(*e, weather_routing::kDefaultQuickShorelineResolution, "QuickShorelineResolution");
         configuration.ChartShorelineResolution = weather_routing::ReadShorelineResolution(*e, 0, "ChartShorelineResolution");
         configuration.MainGribTimelineCacheMiB =
@@ -9825,8 +9909,7 @@ void WeatherRouting::SaveXML(wxString filename) {
     c->SetAttribute("ExploreComfortAlternatives", configuration.ExploreComfortAlternatives);
     c->SetAttribute("ComfortAdditionalPercent", configuration.ComfortAdditionalPercent);
     c->SetAttribute("ComfortMaximumSeconds", configuration.ComfortMaximumSeconds);
-    c->SetAttribute("ShorelineResolution", configuration.ShorelineResolution);
-    c->SetAttribute("QuickShorelineResolution", configuration.QuickShorelineResolution);
+    weather_routing::WritePassageShorelineResolution(*c, configuration.ShorelineResolution);
     c->SetAttribute("ChartShorelineResolution", configuration.ChartShorelineResolution);
     c->SetAttribute("MainGribTimelineCacheMiB",
                     configuration.MainGribTimelineCacheMiB);
@@ -12766,6 +12849,9 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
   setupDiagnostics.context += wxString::Format(
       _("\nAutomatic adaptive settings: %s. Time step and heading step above are configured inputs; effective automatic choices are calculation-local."),
       configuration.AutomaticAdaptiveSettings ? _("on") : _("off"));
+  setupDiagnostics.context += "\n" + _("Selected passage shoreline: ") +
+      weather_routing::PassageShorelineSummary(
+          configuration.SelectedShorelineResolution(), configuration.DetectLand);
   routemapoverlay->BeginDiagnosticRun(std::move(setupDiagnostics));
   // Route analysis follows the supplied waypoint sequence, including valid
   // return passages. Only a routing leg is a single start/destination pair.
@@ -13071,6 +13157,13 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
               weather_routing::ShorelineManager::Description(configuration.EffectiveShorelineResolution());
         }
         configuration.shoreline_error.clear();
+        routemapoverlay->AddDiagnostic({"source.shoreline",
+            weather_routing::DiagnosticSeverity::Notice,
+            weather_routing::PassageShorelineSummary(
+                configuration.EffectiveShorelineResolution(), true,
+                use_experimental_chart_safety && enforce_experimental_chart_safety),
+            configuration.shoreline_description,
+            _("View > Show selected passage shoreline displays the actual GSHHG outlines. The OpenCPN background map uses separate OSM data."), {}, true});
         if (!combined && !use_experimental_chart_safety) {
           for (const bool isStart : {true, false}) {
             const double lat = isStart ? configuration.StartLat : configuration.EndLat;
@@ -13633,8 +13726,7 @@ void WeatherRouting::SaveLastUsedConfigurationDefaults(
   pConf->Write("ExploreComfortAlternatives", configuration.ExploreComfortAlternatives);
   pConf->Write("ComfortAdditionalPercent", configuration.ComfortAdditionalPercent);
   pConf->Write("ComfortMaximumSeconds", configuration.ComfortMaximumSeconds);
-  pConf->Write("ShorelineResolution", configuration.ShorelineResolution);
-  pConf->Write("QuickShorelineResolution", configuration.QuickShorelineResolution);
+  weather_routing::WritePassageShorelineResolution(*pConf, configuration.ShorelineResolution);
   pConf->Write("ChartShorelineResolution", configuration.ChartShorelineResolution);
   pConf->Write("MainGribTimelineCacheMiB",
                configuration.MainGribTimelineCacheMiB);
@@ -13776,7 +13868,7 @@ void WeatherRouting::ApplyLastUsedConfigurationDefaults(
       std::clamp(static_cast<int>(pConf->ReadLong("ComfortAdditionalPercent", 200)), 0, 400);
   configuration.ComfortMaximumSeconds =
       std::clamp(static_cast<int>(pConf->ReadLong("ComfortMaximumSeconds", 20)), 0, 3600);
-  configuration.ShorelineResolution = weather_routing::ReadShorelineResolution(*pConf, weather_routing::ShorelineManager::DefaultResolution());
+  configuration.ShorelineResolution = weather_routing::ReadPassageShorelineResolution(*pConf, weather_routing::ShorelineManager::DefaultResolution());
   configuration.QuickShorelineResolution = weather_routing::ReadShorelineResolution(*pConf, weather_routing::kDefaultQuickShorelineResolution, "QuickShorelineResolution");
   configuration.ChartShorelineResolution = weather_routing::ReadShorelineResolution(*pConf, 0, "ChartShorelineResolution");
   long main_grib_cache = configuration.MainGribTimelineCacheMiB;

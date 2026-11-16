@@ -2622,7 +2622,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   m_cShorelineResolution->SetSelection(2);
   m_cShorelineResolution->SetMinSize(wxSize(
       wxMax(WR_FromDIP(this, 190), m_cShorelineResolution->GetBestSize().x), -1));
-  m_cShorelineResolution->SetToolTip(_("GSHHG shoreline detail for the selected engine; Quick, Standard and Professional remember independent choices. "
+  m_cShorelineResolution->SetToolTip(_("GSHHG shoreline detail for this passage, shared by every routing method including Auto and All. "
                                        "High and Full can be installed with the button below. "
                                        "Chart geometry and minimum-depth checks are separate."));
   fgSizer11511->Add(m_cShorelineResolution, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
@@ -2696,8 +2696,7 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
   auto shorelineRow = new wxBoxSizer(wxHORIZONTAL);
   shorelineRow->Add(m_bShorelineData, 0, wxALL, 5);
   auto shorelineNote = new wxStaticText(sbOptions1->GetStaticBox(), wxID_ANY,
-      _("Lower shoreline resolutions omit smaller coastal features and may allow "
-        "routes through land shown at higher resolutions. Chart and depth checks are separate."));
+      _("Install data, then select it for this passage."));
   const wxString shorelineNoteText = shorelineNote->GetLabel();
   shorelineNote->Wrap(WR_FromDIP(this, 440));
   shorelineRow->Add(shorelineNote, 0, wxALL, 5);

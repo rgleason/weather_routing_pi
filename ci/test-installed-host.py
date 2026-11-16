@@ -299,6 +299,31 @@ def test(host, cli, archive_path, output, source, host_version='5.14.2'):
                 shutil.copy2(log_file, output / (label + '-opencpn.log'))
             require(result_file.is_file(), 'Normal host produced no route result: ' + label)
             result = json.loads(result_file.read_text())
+            if code != 0 and sys.platform == 'darwin':
+                reports = Path.home() / 'Library/Logs/DiagnosticReports'
+                time.sleep(5)
+                if reports.exists():
+                    for report in reports.glob('*'):
+                        if report.is_file() and 'opencpn' in report.name.lower():
+                            shutil.copy2(report, output / report.name)
+                # The failed normal run must remain a failure. Remove only its
+                # startup sentinel before this diagnostic retry, otherwise the
+                # stock Safe Restart dialog can disable plugins and hide the
+                # original crash from the debugger.
+                (config / 'startcheck.dat').unlink(missing_ok=True)
+                (config / '_OpenCPN_SILock').unlink(missing_ok=True)
+                with (output / (label + '-lldb.log')).open('w') as debug_log:
+                    try:
+                        subprocess.run(['/usr/bin/lldb', '--batch',
+                                        '-o', 'process launch --stop-at-entry',
+                                        '-o', 'script import time; p = lldb.debugger.GetSelectedTarget().GetProcess(); lldb.debugger.SetAsync(True); p.Continue(); time.sleep(25); p.Stop()',
+                                        '-o', 'thread backtrace all',
+                                        '-o', 'process kill', '--', str(host),
+                                        '--no_opengl'], env=route_environment,
+                                       cwd=host.parent, stdout=debug_log,
+                                       stderr=subprocess.STDOUT, timeout=75)
+                    except subprocess.TimeoutExpired:
+                        debug_log.write('\nDiagnostic capture timed out. The normal startup test remains failed.\n')
             require(code == 0 and result.get('status') == 'complete',
                     'Normal host route failed: ' + label + ' (exit=' + str(code) + ')')
             require(bool(result.get('candidates')), 'Normal host route has no candidate: ' + label)

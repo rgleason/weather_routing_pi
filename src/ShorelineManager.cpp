@@ -356,12 +356,14 @@ void ShorelineManager::Show(wxWindow* parent) {
   auto main = new wxBoxSizer(wxVERTICAL);
   auto text =
       new wxStaticText(body, wxID_ANY,
-                       _("GSHHG Crude, Low and Intermediate are included for offline use. "
-                         "High and Full are optional verified downloads; install High "
-                         "before coastal routing where finer land detail is needed. "
-                         "Choose each route's shoreline resolution in its setup. "
-                         "This default is used when importing older routes; "
-                         "existing route selections are preserved."));
+                       _("Installed datasets are available to all passages. Installing High or Full "
+                         "does not change saved passages: select the desired Passage shoreline "
+                         "in route setup. That choice applies to every routing method. "
+                         "Lower resolutions can omit entire small islands.\n\n"
+                         "OpenCPN 5.10 and later display a separate OSM background map. "
+                         "For a more detailed display, use Chart Downloader > OSM basemap "
+                         "and add its directory in Chart Files. GSHHG downloads here "
+                         "only supply Weather Routing's land checks."));
 #ifdef __OCPN__ANDROID__
   text->SetMinSize(wxSize(0, 100));
 #else
@@ -507,7 +509,7 @@ void ShorelineManager::Show(wxWindow* parent) {
       work();
       verifiedPath = Installed(selected());
       refresh();
-      WR_MessageBox(_("Approved shoreline data is ready and verified."),
+      WR_MessageBox(_("Dataset installed and verified. To use it, select it as the Passage shoreline in route setup; saved passage choices have not changed."),
                    _("Shoreline data"), wxOK | wxICON_INFORMATION, &dialog);
     } catch (const std::exception& e) {
       WR_MessageBox(wxString::FromUTF8(e.what()), _("Shoreline data"),

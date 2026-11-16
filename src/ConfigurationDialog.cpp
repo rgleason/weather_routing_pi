@@ -48,6 +48,7 @@
 #include "weather_routing_pi.h"
 #include "WeatherRouting.h"
 #include "ShorelineManager.h"
+#include "ShorelineSettings.h"
 #include "ShorelineSpec.h"
 #include "icons.h"
 
@@ -1419,7 +1420,6 @@ bool ConfigurationDialog::HandleEngineEdit(wxObject* control) {
       const bool chartMode = m_WeatherRouting.HasEnhancedChartSafety() &&
           m_cbUseExperimentalChartSafety->GetValue() && m_cbEnforceExperimentalChartSafety->GetValue();
       if (chartMode) config.ChartShorelineResolution = resolution;
-      else if (config.IsFastEngine()) config.FastShorelineResolution() = resolution;
       else config.ShorelineResolution = resolution;
       config.shoreline_dataset.reset();
       config.shoreline_description.clear();
@@ -1590,13 +1590,13 @@ void ConfigurationDialog::UpdateEngineControls() {
     else if (shoreline != value) { shoreline = wxNOT_FOUND; break; }
     first = false;
   }
-  m_tShorelineResolution->SetLabel(chartAuthoritative ? _("Scout shoreline resolution") : _("Shoreline resolution"));
+  m_tShorelineResolution->SetLabel(chartAuthoritative ? _("Scout shoreline resolution") : _("Passage shoreline (all methods)"));
   m_cShorelineResolution->Clear();
   m_shorelineChoiceResolutions.clear();
   int selectedIndex = wxNOT_FOUND;
   for (int q = 0; q < 5; ++q) {
     const bool available = weather_routing::ShorelineManager::Available(q);
-    if (!available && q != shoreline) continue;
+    // Keep missing optional levels visible so installation is discoverable.
 #ifdef __OCPN__ANDROID__
     wxString label = wxString::Format("%d / %s", q,
         wxGetTranslation(weather_routing::kShorelineSpecs[q].quality));
@@ -1604,7 +1604,7 @@ void ConfigurationDialog::UpdateEngineControls() {
     wxString label = wxString::Format("%d - %s", q,
         wxGetTranslation(weather_routing::kShorelineSpecs[q].quality));
 #endif
-    if (!available) label += _(" (missing; install)");
+    label += available ? _(" (available)") : _(" (not installed)");
     if (q == shoreline) selectedIndex = static_cast<int>(m_shorelineChoiceResolutions.size());
     m_shorelineChoiceResolutions.push_back(q);
     m_cShorelineResolution->Append(label);
@@ -1613,7 +1613,7 @@ void ConfigurationDialog::UpdateEngineControls() {
   m_cShorelineResolution->Enable(!running);
   m_cShorelineResolution->SetToolTip(chartAuthoritative
       ? _("Chart geometry and depth checks are authoritative. This separately saved shoreline choice controls preliminary scouting. It starts at Crude; increase it for finer coastal detail.")
-      : _("Shoreline detail for the selected engine. Quick, Standard and Professional remember independent choices. High and Full require installation from Shoreline data on Advanced. Lower resolutions omit smaller coastal features."));
+      : _("One GSHHG shoreline resolution applies to every routing method, including Auto and All. Install High or Full in Shoreline data, then select it for this passage. Lower resolutions omit small islands. The OpenCPN background map uses separate OSM data."));
   m_pMainEngine->Enable(!running);
   const bool managedStep = automatic && nativeSettings && (combined ||
       engine == weather_routing::RoutingEngine::Original ||
