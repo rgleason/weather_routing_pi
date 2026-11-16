@@ -299,6 +299,22 @@ def test(host, cli, archive_path, output, source, host_version='5.14.2'):
                 shutil.copy2(log_file, output / (label + '-opencpn.log'))
             require(result_file.is_file(), 'Normal host produced no route result: ' + label)
             result = json.loads(result_file.read_text())
+            if code != 0 and sys.platform == 'darwin':
+                reports = Path.home() / 'Library/Logs/DiagnosticReports'
+                time.sleep(5)
+                if reports.exists():
+                    for report in reports.glob('*'):
+                        if report.is_file() and 'opencpn' in report.name.lower():
+                            shutil.copy2(report, output / report.name)
+                with (output / (label + '-lldb.log')).open('w') as debug_log:
+                    try:
+                        subprocess.run(['/usr/bin/lldb', '--batch', '-o', 'run',
+                                        '-o', 'thread backtrace all', '--', str(host),
+                                        '--no_opengl'], env=route_environment,
+                                       cwd=host.parent, stdout=debug_log,
+                                       stderr=subprocess.STDOUT, timeout=110)
+                    except subprocess.TimeoutExpired:
+                        debug_log.write('\nDiagnostic run timed out without reproducing the crash.\n')
             require(code == 0 and result.get('status') == 'complete',
                     'Normal host route failed: ' + label + ' (exit=' + str(code) + ')')
             require(bool(result.get('candidates')), 'Normal host route has no candidate: ' + label)
