@@ -899,7 +899,7 @@ bool weather_routing_pi::RenderOverlay(wxDC& wxdc, PlugIn_ViewPort* vp) {
   m_androidViewport = *vp;
   m_androidViewportValid = true;
 #endif
-  if (m_pWeather_Routing) {
+  if (m_pWeather_Routing && m_pWeather_Routing->PassageShorelineVisible()) {
     piDC dc(wxdc);
     m_pWeather_Routing->RenderPassageShoreline(dc, *vp);
     rendered = rendered || m_pWeather_Routing->PassageShorelineVisible();
@@ -930,7 +930,7 @@ bool weather_routing_pi::RenderGLOverlay(wxGLContext* pcontext,
   m_androidViewport = *vp;
   m_androidViewportValid = true;
 #endif
-  if (m_pWeather_Routing) {
+  if (m_pWeather_Routing && m_pWeather_Routing->PassageShorelineVisible()) {
     piDC dc;
     dc.SetVP(vp);
     m_pWeather_Routing->RenderPassageShoreline(dc, *vp);

@@ -40,3 +40,9 @@ The real Irish Sea GRIB control retains its exact track and ETA
 
 The geometry probes do not reproduce Quinton's reported Tonga route; that still
 requires his delivered GPX, configuration and diagnostics.
+
+Software chart rendering no longer initializes OpenGL in the drawing helper.
+This prevents a macOS startup crash when no GL context exists and also covers
+the visible shoreline overlay. A real wxDC drawing probe rejects any GL query
+and verifies that software lines/text are painted. Inactive shoreline viewing
+does not construct a drawing helper.

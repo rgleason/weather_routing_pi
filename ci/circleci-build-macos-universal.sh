@@ -19,32 +19,6 @@ while IFS= read -r package; do
     brew install "$package" </dev/null
 done <build-deps/macos-deps
 
-# Temporary startup investigation: replay the exact immutable failing archive.
-# Remove this diagnostic-only path once the native startup defect is identified.
-python3 - <<'MAC_PROBE'
-from pathlib import Path
-import hashlib, json, shutil, urllib.request
-from urllib.parse import urlparse
-files = [{'filename': 'weather_routing_pi-1.36.5-darwin-wx32-arm64-15.3.2-macos-arm64.tar.gz', 'sha256': '9c494413836c603cbe6a00bc8f5709bcf81f59e6be8fc7f7694d49b0c239d839'}, {'filename': 'weather_routing_pi-1.36.5-darwin-wx32-arm64-15.3.2-macos-arm64.xml', 'sha256': 'b767f0e9fe443b8f444a5f2d6eea31ab3d5e30dbd8667fa6355f3fdeab5a23b4'}]
-endpoint='https://circleci.com/api/v2/project/gh/rgleason/weather_routing_pi/19106/artifacts'
-index=json.load(urllib.request.urlopen(endpoint,timeout=30))['items']
-root=Path.cwd()
-for item in files:
-    artifact=next(x for x in index if x['path']=='artifacts/macos-arm64/package/'+item['filename'])
-    url=artifact['url']
-    parsed=urlparse(url)
-    assert parsed.scheme=='https' and parsed.hostname=='output.circle-artifacts.com'
-    destination=root/'build-package'/item['filename']
-    destination.parent.mkdir(exist_ok=True)
-    destination.write_bytes(urllib.request.urlopen(url,timeout=60).read())
-    assert hashlib.sha256(destination.read_bytes()).hexdigest()==item['sha256']
-    retained=root/'artifacts/macos-arm64/package'/destination.name
-    retained.parent.mkdir(parents=True,exist_ok=True)
-    shutil.copy2(destination,retained)
-MAC_PROBE
-python3 ci/test-macos-installed-host.py
-exit 1  # Diagnostic-only; never qualify or publish a reused package.
-
 brew_prefix=$(brew --prefix)
 wx_prefix=$(brew --prefix wxwidgets@3.2)
 export PATH="${wx_prefix}/bin:${brew_prefix}/opt/gettext/bin:${brew_prefix}/bin:${PATH}"

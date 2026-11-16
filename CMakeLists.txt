@@ -533,6 +533,8 @@ if (NOT OCPN_FLATPAK_CONFIG)
   target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::jsonlib)
 
   add_subdirectory(opencpn-libs/plugin_dc)
+  include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/SoftwareDrawingContext.cmake")
+  wr_guard_software_drawing_context()
   if(TARGET _DC_UTILS AND TARGET wx::core)
     target_link_libraries(_DC_UTILS PRIVATE wx::core)
   endif()
