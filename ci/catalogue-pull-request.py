@@ -75,9 +75,31 @@ def sha256(data):
 
 
 def git(clone, *args, capture=True, env=None):
-    result = subprocess.run(["git", "-C", str(clone), *args], check=True, env=env,
+    result = subprocess.run(["git", "-C", str(clone), *args], env=env,
                             stdout=subprocess.PIPE if capture else None)
+    if result.returncode:
+        # Never echo the command line: keep failures free of anything secret.
+        raise RuntimeError(f"git {args[0] if args else ''} failed (exit {result.returncode}); see the git output above")
     return result.stdout if capture else b""
+
+
+def push_environment(token):
+    """Environment for an authenticated push to github.com over HTTPS.
+
+    The token travels only in environment variables (GIT_CONFIG_*), never on
+    the command line, so it cannot appear in a process listing or an error.
+    The user's and the system's git configuration are ignored: CircleCI's
+    checkout rewrites https://github.com to SSH with the project's read-only
+    deploy key, which would otherwise be used instead of the token.
+    """
+    basic = base64.b64encode(f"x-access-token:{token}".encode()).decode()
+    env = {name: value for name, value in os.environ.items()
+           if not name.startswith("GIT_") and name not in TOKEN_VARIABLES.values()}
+    env.update({"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",
+                "GIT_TERMINAL_PROMPT": "0", "GIT_CONFIG_COUNT": "1",
+                "GIT_CONFIG_KEY_0": "http.https://github.com/.extraheader",
+                "GIT_CONFIG_VALUE_0": f"AUTHORIZATION: basic {basic}"})
+    return env
 
 
 # --------------------------------------------------------------------------
@@ -407,19 +429,18 @@ def push(publication_dir, reviewed, phase, fork, token, upstream=UPSTREAM, draft
             raise ValueError("Rebuilt branch differs from the reviewed dry run "
                              "(upstream moved or the publication changed); re-run phase 1 and review again")
         remote = push_url or f"https://github.com/{fork}.git"
-        basic = base64.b64encode(f"x-access-token:{token}".encode()).decode()
-        auth = ["-c", f"http.https://github.com/.extraheader=AUTHORIZATION: basic {basic}"]
+        env = push_environment(token)
         owner = fork.split("/")[0]
         title, body = pull_request_text(release, info)
         if phase == "fork-test":
             base_ref = info["branch"] + "-base"
             refs = [f"{info['base_sha']}:refs/heads/{base_ref}", f"HEAD:refs/heads/{info['branch']}"]
-            git(clone, *auth, "push", "--quiet", remote, *refs, capture=False)
+            git(clone, "push", "--quiet", remote, *refs, capture=False, env=env)
             target_repo, head, base, is_draft = fork, info["branch"], base_ref, True
             body = ("**Phase 2 test PR inside the fork; not sent to OpenCPN/plugins.** "
                     f"Base `{base_ref}` is a copy of {upstream}@`{info['base_sha'][:12]}`.\n\n" + body)
         else:
-            git(clone, *auth, "push", "--quiet", remote, f"HEAD:refs/heads/{info['branch']}", capture=False)
+            git(clone, "push", "--quiet", remote, f"HEAD:refs/heads/{info['branch']}", capture=False, env=env)
             target_repo, head, base, is_draft = upstream, f"{owner}:{info['branch']}", info["base"], draft
         existing = github.call("GET", f"/repos/{target_repo}/pulls?state=open&head={quote(owner + ':' + info['branch'])}")
         if existing:

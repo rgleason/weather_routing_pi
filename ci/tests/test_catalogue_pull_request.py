@@ -9,6 +9,7 @@ import subprocess
 import tarfile
 import tempfile
 import unittest
+import unittest.mock
 import xml.etree.ElementTree as ET
 
 from windows_pe_fixture import pe_image
@@ -218,6 +219,34 @@ class CataloguePullRequest(unittest.TestCase):
         self.assertEqual((method, path), ("POST", "/repos/OpenCPN/plugins/pulls"))
         self.assertEqual((body["head"], body["base"], body["draft"]),
                          ("rgleason:" + report["branch"], "master", False))
+
+    def test_token_never_reaches_a_command_line_or_an_error(self):
+        publication = self.publication()
+        reviewed, _ = self.dry_run(publication)
+        secret = "github_pat_SECRET123"
+        encoded = catalogue.base64.b64encode(f"x-access-token:{secret}".encode()).decode()
+        seen = []
+        real_run = catalogue.subprocess.run
+
+        def spy(arguments, *args, **kwargs):
+            seen.append(" ".join(map(str, arguments)))
+            return real_run(arguments, *args, **kwargs)
+        missing = self.root / "no-such-fork.git"   # the push fails
+        output = io.StringIO()
+        with unittest.mock.patch.object(catalogue.subprocess, "run", side_effect=spy), \
+                redirect_stdout(output):
+            with self.assertRaises(RuntimeError) as failure:
+                catalogue.push(publication, reviewed, "fork-test", "rgleason/plugins", secret,
+                               github=FakeGitHub(), push_url=str(missing), url_wait=0)
+        for text in (str(failure.exception), output.getvalue(), *seen):
+            self.assertNotIn(secret, text)
+            self.assertNotIn(encoded, text)
+
+    def test_push_ignores_git_config_that_rewrites_github_to_ssh(self):
+        env = catalogue.push_environment("t")
+        self.assertEqual((env["GIT_CONFIG_GLOBAL"], env["GIT_CONFIG_NOSYSTEM"]), (catalogue.os.devnull, "1"))
+        self.assertEqual(env["GIT_CONFIG_KEY_0"], "http.https://github.com/.extraheader")
+        self.assertNotIn("CATALOGUE_FORK_TOKEN", env)
 
     def test_push_requires_the_reviewed_diff(self):
         publication = self.publication()
