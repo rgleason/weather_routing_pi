@@ -170,8 +170,7 @@ class CataloguePullRequest(unittest.TestCase):
     def test_already_catalogued_release_has_no_changes(self):
         publication = self.publication()
         self.dry_run(publication)
-        subprocess.run(["git", "-C", str(self.upstream), "am", "-q", str(self.root / "dry-run" / "catalogue.patch")],
-                       check=True, capture_output=True)
+        run("am", "-q", str(self.root / "dry-run" / "catalogue.patch"), cwd=self.upstream)
         _, report = self.dry_run(publication, "again")
         self.assertTrue(report["no_changes"])
 
