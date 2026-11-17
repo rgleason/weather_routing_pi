@@ -11,7 +11,7 @@ def check(path):
         (False, "production"), (True, "xweather-alpha")}
     assert defaults["run_workflow_deploy"] is False
     assert defaults["run_catalogue_pr"] is False
-    assert defaults["catalogue_phase"] == "fork-test"
+    assert defaults["catalogue_phase"] == "upstream"
     assert defaults["catalogue_auto_pr"] == "off"
     assert defaults["catalogue_fork"].lower() != "opencpn/plugins"
     windows = config["jobs"]["windows-x64"]["parameters"]

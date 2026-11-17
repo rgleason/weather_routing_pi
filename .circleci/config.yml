@@ -29,7 +29,7 @@ parameters:
   catalogue_phase:
     type: enum
     enum: [fork-test, upstream]
-    default: fork-test
+    default: upstream
   catalogue_fork:
     type: string
     default: rgleason/plugins
