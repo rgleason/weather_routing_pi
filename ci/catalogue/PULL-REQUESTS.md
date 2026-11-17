@@ -6,6 +6,9 @@ The XML files always come from the `reviewed-publication` artifact (the same
 bytes that were reviewed and uploaded to Cloudsmith). They are hash-checked
 against its `publication.json`, so the XML stays a CircleCI artifact end to end.
 
+Which parameters to set when you trigger a pipeline is in
+[`../PIPELINE-SETTINGS.md`](../PIPELINE-SETTINGS.md).
+
 ## Sequence
 
 1. **Validate.** The build jobs and `stage-publication` validate every XML
@@ -39,15 +42,17 @@ against its `publication.json`, so the XML stays a CircleCI artifact end to end.
    - `pull-request.md`
    - `catalogue.patch` and `catalogue.diff`
    - `metadata/*.xml`
-5. **Phase 2, fork test.** Pushes the branch and a copy of the upstream base
+5. **Phase 2, fork test (optional).** Pushes the branch and a copy of the upstream base
    to the fork as `catalogue-test/...`, then opens a **draft PR inside the
    fork**. OpenCPN/plugins is not touched. The token must *not* be able to
    write to OpenCPN/plugins.
-6. **Phase 3, upstream.** Pushes the branch to the fork and opens the PR
-   `rgleason:<branch> -> OpenCPN/plugins:master`.
+6. **Phase 3, upstream (the default).** Pushes the branch to the fork and opens the PR
+   `rgleason:<branch> -> OpenCPN/plugins:master`. Upstream's own check runs on it, and
+   an OpenCPN maintainer merges it.
 
 Phases 2 and 3 run in their own workflow, `publish_catalogue_pr`. It runs only
-when you trigger it, and it has its own approval:
+when you trigger it with `run_catalogue_pr=true`, and it has its own approval.
+`catalogue_phase` defaults to `upstream`:
 
     catalogue-pr-review  ->  hold-for-catalogue-pr-approval  ->  catalogue-pr-push
 
@@ -61,7 +66,8 @@ GitHub token.
 
 ## Single-trigger mode (off by default)
 
-Set `catalogue_auto_pr` to `fork-test` or `upstream` on the deploy trigger:
+Set `catalogue_auto_pr` to `upstream` on the deploy trigger (`fork-test` also
+works, for a test PR inside the fork):
 
     your trigger → build → validate → approve once → Cloudsmith (all or nothing)
       → dry run → catalogue-pr-auto (push + PR)
@@ -70,39 +76,44 @@ Set `catalogue_auto_pr` to `fork-test` or `upstream` on the deploy trigger:
 the job runs only after the Cloudsmith publish and the dry run have both
 succeeded. It still rebuilds the branch, requires every URL to be live and
 the diff to match the dry run, and it is the only job that holds the GitHub
-token. Turn it on for `fork-test` first, then `upstream`, after the separate
-trigger has worked a few times.
+token. Use it once the separate trigger has worked a few times.
 
 ## One-time setup
 
-Create a CircleCI context named `opencpn-plugins-pr`. Restrict it to a
-security group that only you belong to. If your plan offers context
-expression restrictions, also limit it to `pipeline.git.branch == "master"`.
+Create a CircleCI context named `opencpn-plugins-pr` (Organization Settings →
+Contexts). Restrict it to the weather_routing_pi project and to
+`pipeline.git.branch == "master"`. Security groups need GitHub teams, which a
+personal account such as rgleason doesn't have.
 
-Add two environment variables to the context:
+Environment variables (spell the names with "-UE"):
 
-- `CATALOGUE_FORK_TOKEN` (phase 2): a fine-grained token for
-  rgleason/plugins *only*, with these permissions:
-  - Contents: read/write
-  - Pull requests: read/write
-- `CATALOGUE_GITHUB_TOKEN` (phase 3): a token that can open a PR on
-  OpenCPN/plugins. GitHub's fine-grained tokens cannot open cross-fork PRs
-  into a repository you don't own, so this is normally a classic token with
-  `public_repo` scope. The PR is only opened: upstream's checks run on it and
-  an OpenCPN maintainer merges it. Every phase refuses a token whose account
-  can write to OpenCPN/plugins.
+- `CATALOGUE_GITHUB_TOKEN` (phase 3, required): a classic token with only the
+  `public_repo` scope, created by rgleason. GitHub's fine-grained tokens cannot
+  open cross-fork PRs into a repository you don't own. The PR is only opened:
+  upstream's checks run on it and an OpenCPN maintainer merges it.
+- `CATALOGUE_FORK_TOKEN` (phase 2, only while you need a fork test): a
+  fine-grained token for rgleason/plugins *only*, with Contents and Pull
+  requests read/write.
 
-## Triggering phases 2 and 3
+Every phase refuses a token whose account can write to OpenCPN/plugins. The
+script hands the token to git only through environment variables, never on a
+command line, never prints git commands, and pushes over HTTPS rather than
+through CircleCI's read-only SSH deploy key. If a token ever appears in a log,
+revoke it on GitHub immediately.
+
+## Triggering the PR
 
 Use the workflow ID of the deploy workflow, the one that ran `publish-reviewed`:
 
     curl -X POST https://circleci.com/api/v2/project/gh/rgleason/weather_routing_pi/pipeline \
       -H "Circle-Token: $CIRCLE_TOKEN" -H 'Content-Type: application/json' \
       -d '{"branch":"master","parameters":{"run_catalogue_pr":true,
-           "release_workflow_id":"<deploy workflow uuid>","catalogue_phase":"fork-test"}}'
+           "release_workflow_id":"<deploy workflow uuid>"}}'
 
-Repeat with `"catalogue_phase":"upstream"` once the phase 2 draft PR looks
-right. After that, close the test PR and delete the two `catalogue-test/` branches.
+`catalogue_phase` defaults to `upstream`, which needs only `CATALOGUE_GITHUB_TOKEN`.
+For a test PR inside the fork, add `"catalogue_phase":"fork-test"`; that also needs
+`CATALOGUE_FORK_TOKEN`. Afterwards, close the test PR and delete its two
+`catalogue-test/` branches.
 
 ## Running locally
 

@@ -2,15 +2,18 @@
 
 This pipeline takes one build all the way to a pull request on OpenCPN/plugins.
 It stops for your review before anything is published. The pipeline is defined
-in `.circleci/config.yml`. The tokens are kept in one CircleCI context. Step-by-step
-commands for the catalogue PR are in [`catalogue/PULL-REQUESTS.md`](catalogue/PULL-REQUESTS.md).
+in `.circleci/config.yml`. The tokens are kept in one CircleCI context.
+
+- **Which settings to use when you trigger a pipeline:** [`PIPELINE-SETTINGS.md`](PIPELINE-SETTINGS.md)
+- **How the catalogue PR is built and checked:** [`catalogue/PULL-REQUESTS.md`](catalogue/PULL-REQUESTS.md)
 
 ## The flow
 
 ```
 your trigger → build all platforms → validate XML → hold: you approve
   → Cloudsmith upload (all or nothing) → Phase 1 dry run
-  → Phase 2/3: push branch to rgleason/plugins and open PR → upstream checks → maintainer merges
+  → Phase 3: push branch to rgleason/plugins and open PR on OpenCPN/plugins
+  → upstream checks → maintainer merges
 ```
 
 1. **Validate.** The build jobs and `stage-publication` check every XML and tarball pair.
@@ -32,52 +35,63 @@ your trigger → build all platforms → validate XML → hold: you approve
    - runs upstream's own PR checks: both of its XML schemas, its link checker, and a whitespace check.
 
    The XML files, patch and PR text are kept as CircleCI artifacts under `catalogue-pr/`.
-5. **Phase 2, fork test.** Pushes the branch to rgleason/plugins and opens a draft PR
-   *inside the fork*. OpenCPN/plugins is not touched.
+5. **Phase 2, fork test (optional, rarely needed).** Pushes the branch to rgleason/plugins
+   and opens a draft PR *inside the fork*. OpenCPN/plugins is not touched.
 6. **Phase 3, upstream.** Opens the PR from `rgleason:<branch>` to `OpenCPN/plugins:master`.
    Upstream's checks run on it and an OpenCPN maintainer merges it.
 
 Phases 2 and 3 rebuild the branch from scratch. They refuse to push unless the result
 matches, byte for byte, the dry run that was reviewed.
 
-## Starting phases 2 and 3
+## Starting the PR
 
-- **Separate trigger (current mode):** start a pipeline with `run_catalogue_pr=true`,
-  `release_workflow_id=<deploy workflow ID>` and `catalogue_phase=fork-test` or `upstream`.
-  This runs `catalogue-pr-review`, then `hold-for-catalogue-pr-approval`, then `catalogue-pr-push`.
-- **Single trigger (off by default):** set `catalogue_auto_pr=fork-test` or `upstream` on the
-  deploy trigger to open the PR in the same run. It still only happens after the Cloudsmith
-  upload and the dry run both succeed.
+- **Separate trigger:** start a pipeline with `run_catalogue_pr=true` and
+  `release_workflow_id=<deploy workflow ID>`. `catalogue_phase` defaults to `upstream`
+  (phase 3); set `fork-test` only for a test inside the fork. This runs
+  `catalogue-pr-review`, then `hold-for-catalogue-pr-approval`, then `catalogue-pr-push`.
+- **Single trigger (off by default):** set `catalogue_auto_pr=upstream` on the deploy
+  trigger to open the PR in the same run. It still only happens after the Cloudsmith upload
+  and the dry run both succeed.
+
+The exact settings for each situation are in [`PIPELINE-SETTINGS.md`](PIPELINE-SETTINGS.md).
 
 ## Pipeline settings
 
 | Setting | Default | Purpose |
 |---|---|---|
-| `run_catalogue_pr` | `false` | Start the phase 2/3 workflow |
-| `catalogue_phase` | `fork-test` | Phase for the separate trigger: `fork-test` or `upstream` |
-| `catalogue_auto_pr` | `"off"` | Single-trigger mode: `off`, `fork-test` or `upstream` |
+| `run_workflow_deploy` | `false` | Start a deploy (build or reuse, review, Cloudsmith, dry run) |
+| `run_catalogue_pr` | `false` | Start the PR workflow as a separate step |
+| `catalogue_phase` | `upstream` | Phase for the separate trigger: `upstream`, or `fork-test` for a test PR inside the fork |
+| `catalogue_auto_pr` | `off` | Single-trigger mode: `off`, `fork-test` or `upstream` |
 | `catalogue_fork` | `rgleason/plugins` | Fork the PR branch is pushed to |
-| `catalogue_base` | `master` | OpenCPN/plugins branch the PR targets |
-| `release_workflow_id` | `""` | Deploy workflow whose published files are used |
+| `catalogue_base` | `master` | OpenCPN/plugins branch the PR targets: `master`, `Beta`, `Alpha` or `Experimental` |
+| `release_workflow_id` | `""` | In a deploy: the validate workflow whose builds to reuse. In a PR run: the deploy workflow whose published files to use. |
+| `publication_channel` | `production` | `production`, or `xweather-alpha` for the xWeather alpha channel |
 
 ## One-time setup
 
 **CircleCI:** Organization Settings → Contexts → **`opencpn-plugins-pr`**.
 
-- Restrict it to the weather_routing_pi project.
-- Before phase 3, also add the expression restriction `pipeline.git.branch == "master"`.
-- Environment variables (only the PR push job can read them):
-  - `CATALOGUE_FORK_TOKEN`: phase 2
-  - `CATALOGUE_GITHUB_TOKEN`: phase 3
+- Restrict it to the weather_routing_pi project (project restriction) and to
+  `pipeline.git.branch == "master"` (expression restriction). Security-group restrictions
+  need GitHub teams, which a personal account such as rgleason doesn't have.
+- Environment variables (only the PR push jobs can read them; spell the names with "-UE"):
+  - `CATALOGUE_GITHUB_TOKEN`: phase 3, the normal PR. Required.
+  - `CATALOGUE_FORK_TOKEN`: phase 2, the fork test. Only while you need a fork test.
 
 **GitHub:**
 
 - `rgleason/plugins` is the fork of OpenCPN/plugins that the PRs come from.
-- **Phase 2 token:** fine-grained, covering only rgleason/plugins, with Contents read/write
-  and Pull requests read/write.
-- **Phase 3 token:** classic, with `public_repo` scope. GitHub's fine-grained tokens can't
-  open a PR into a repository you don't own.
-- Either phase refuses a token that could write to OpenCPN/plugins directly.
+- **Phase 3 token:** classic, with only the `public_repo` scope, created by rgleason.
+  GitHub's fine-grained tokens can't open a PR into a repository you don't own. A
+  one-year expiry is fine; note the date.
+- **Phase 2 token (only for a fork test):** fine-grained, covering only rgleason/plugins,
+  with Contents read/write and Pull requests read/write.
+- Either phase refuses a token whose account could write to OpenCPN/plugins directly.
+- The script passes the token to git only through environment variables, never on a command
+  line, and never prints git commands. It pushes over HTTPS, ignoring CircleCI's rewrite of
+  GitHub addresses to its read-only SSH deploy key. If a token ever appears in a log or a
+  message, revoke it on GitHub immediately.
 
 ## Releasing a new version
 
@@ -96,15 +110,20 @@ build). A rebuild of an unchanged version therefore stops before uploading anyth
 | `ci/deploy-reviewed-artifacts.py` | All-or-nothing Cloudsmith upload |
 | `ci/check-publication-config.py` | Checks that the pipeline's approval and safety rules haven't been weakened |
 | `ci/tests/test_catalogue_pull_request.py`, `ci/tests/test_publication.py` | Tests, run in `publication-contracts` |
+| `ci/PIPELINE-SETTINGS.md` | Which trigger settings to use for each situation |
 | `ci/catalogue/PULL-REQUESTS.md` | Detailed catalogue PR instructions and trigger commands |
 
-## Status (16 Nov 2026)
+## Status (17 Nov 2026)
 
-- Done: the pipeline is merged to master on rgleason/weather_routing_pi, and the CircleCI
-  context and phase 2 token are set up.
-- Next:
-  1. Bump to 1.36.6.
-  2. Run a production deploy.
-  3. Review the dry run's `catalogue-pr/SUMMARY.txt`.
-  4. Run phase 2.
-  5. Run phase 3.
+- 1.36.6 is on Cloudsmith (`opencpn/weather-routing-prod`, `1.36.6+19399.9c39ac6`), from
+  deploy workflow `bb579770-5212-42a0-ae1c-db75aecb1bce`.
+- Phase 2 was tested (draft PR rgleason/plugins#11). Phase 3 opened
+  [OpenCPN/plugins#1492](https://github.com/OpenCPN/plugins/pull/1492); OpenCPN's check
+  passed, and it is waiting for a maintainer to merge.
+- `catalogue_phase` now defaults to `upstream`; the phase 2 token has been removed.
+- Still to tidy up:
+  1. After #1492 is merged, delete its branch from rgleason/plugins.
+  2. Close rgleason/plugins#11 and delete its two `catalogue-test/` branches.
+  3. Optional: delete the unused Cloudsmith packages `1.36.5+19369.88c905c` (keep
+     `1.36.5+19290.802a388`), and re-pin `ci/catalogue/ocpn-plugin.xsd` to clear the
+     dry-run warning.
