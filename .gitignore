@@ -23,3 +23,5 @@ artifacts/
 
 /build-1.33-desktop/
 /build-1.33-android/
+_pycache_/
+__pycache__/
