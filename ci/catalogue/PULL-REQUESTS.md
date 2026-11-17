@@ -14,7 +14,10 @@ against its `publication.json`, so the XML stays a CircleCI artifact end to end.
 3. **Deploy.** `publish-reviewed` uploads the tarballs and XML to Cloudsmith
    **all or nothing**. Before anything is uploaded, every one of the 22
    files must pass two checks: Cloudsmith's own upload check, and a search
-   showing that the name and version don't exist yet. Uploads then wait for
+   showing that no earlier build of this plugin version is already
+   published. Package names carry the plugin version (for example
+   `weather_routing_pi-1.36.5-…-tarball`), so any build of 1.36.5 blocks
+   another 1.36.5. Uploads then wait for
    Cloudsmith to finish processing each file. If any upload fails, every
    package created by that run is deleted again, and a re-run starts clean.
    `rollback.json` and `published.json` record what happened. If a rollback
@@ -23,7 +26,8 @@ against its `publication.json`, so the XML stays a CircleCI artifact end to end.
    publish. It needs no secrets and pushes nothing. It:
    - clones OpenCPN/plugins `master`; your fork is not used because it may be stale
    - creates branch `weather_routing_pi-<version>-build<N>`
-   - removes the older WeatherRouting XML for the same targets and refuses downgrades
+   - removes the older WeatherRouting XML for the same targets; refuses downgrades
+     and refuses to replace an entry for the same version from another build
    - adds the new XML, named like the existing entries:
      `weather_routing_pi-<ver>-weather_routing_pi-<ver>-<target>-metadata.xml`
    - runs upstream's own PR checks: xmllint with `ocpn-plugin.xsd` and

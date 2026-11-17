@@ -174,17 +174,22 @@ class Publication(unittest.TestCase):
             calls.append(arguments)
             command = arguments[1]
             if command == "list":
-                name = arguments[5].split("^")[1].split("$")[0].replace("\\", "")
-                data = [{"name": name}] if name == existing else []
-                return subprocess.CompletedProcess(arguments, 0, json.dumps({"data": data}))
+                # Like Cloudsmith: a plain name search also returns near misses,
+                # and an earlier build of the same plugin version has another
+                # build number in its version string.
+                name = arguments[arguments.index("-q") + 1].removeprefix("name:")
+                data = [{"name": name + "-legacy", "version": "1.0.0+1.0000000"}]
+                if name == existing:
+                    data.append({"name": name, "version": "1.30.1+41.1234567"})
+                return subprocess.CompletedProcess(arguments, 0, json.dumps({"data": data}), "")
             if command == "delete":
-                return subprocess.CompletedProcess(arguments, 1 if fail_delete else 0, "")
+                return subprocess.CompletedProcess(arguments, 1 if fail_delete else 0, "", "")
             if "--dry-run" in arguments:
-                return subprocess.CompletedProcess(arguments, 0, "OK\n")
+                return subprocess.CompletedProcess(arguments, 0, "OK\n", "")
             name = arguments[arguments.index("--name") + 1]
             uploads = sum(1 for call in calls if call[1] == "push" and "--dry-run" not in call)
             created = f"Created: opencpn/weather-routing-prod/{name[-20:]}-{uploads} (perm{uploads})\n"
-            return subprocess.CompletedProcess(arguments, 1 if uploads == fail_upload else 0, created)
+            return subprocess.CompletedProcess(arguments, 1 if uploads == fail_upload else 0, created, "")
         return run, calls
 
     def test_native_upload_commands_use_only_the_production_repository(self):
@@ -206,7 +211,7 @@ class Publication(unittest.TestCase):
         fake, calls = self.cloudsmith_fake(existing=manifest["uploads"][-1]["name"])
         with patch.dict(deploy.os.environ, {"CLOUDSMITH_API_KEY": "test-fixture"}), \
                 patch.object(deploy.subprocess, "run", side_effect=fake):
-            with self.assertRaisesRegex(ValueError, "already exists in .*; nothing uploaded"):
+            with self.assertRaisesRegex(ValueError, "already published in .* as 1.30.1\\+41.1234567; nothing uploaded"):
                 deploy.upload(output, "production")
         self.assertFalse([call for call in calls if call[1] == "push" and "--dry-run" not in call])
 

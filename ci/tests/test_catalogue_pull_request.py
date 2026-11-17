@@ -92,9 +92,9 @@ class CataloguePullRequest(unittest.TestCase):
         tool = self.upstream / "tools" / "check-metadata-urls"
         tool.write_text(f"import sys\nprint('url check')\nsys.exit({code})\n")
 
-    def publication(self, version="1.36.6", channel="production"):
+    def publication(self, version="1.36.6", channel="production", build="4242"):
         profile = prepare.profile_for(channel)
-        artifacts = self.root / f"artifacts-{version}-{channel}"
+        artifacts = self.root / f"artifacts-{version}-{channel}-{build}"
         for target in prepare.TARGETS:
             directory = artifacts / target / "package"
             directory.mkdir(parents=True)
@@ -119,8 +119,8 @@ class CataloguePullRequest(unittest.TestCase):
             metadata = archive.with_name(archive.name[:-7] + ".xml")
             ET.ElementTree(root).write(metadata)
             embed.embed(archive, metadata, archive)
-        output = self.root / f"publication-{version}-{channel}"
-        prepare.prepare(artifacts, output, "abcdef1" * 5 + "abcde", "4242", channel)
+        output = self.root / f"publication-{version}-{channel}-{build}"
+        prepare.prepare(artifacts, output, "abcdef1" * 5 + "abcde", build, channel)
         return output
 
     def dry_run(self, publication, name="dry-run", **options):
@@ -173,6 +173,15 @@ class CataloguePullRequest(unittest.TestCase):
         run("am", "-q", str(self.root / "dry-run" / "catalogue.patch"), cwd=self.upstream)
         _, report = self.dry_run(publication, "again")
         self.assertTrue(report["no_changes"])
+
+    def test_same_version_from_another_build_is_refused(self):
+        # The catalogue lists 1.36.5 from build 4242; a rebuild of 1.36.5
+        # (new build number, new tarball URLs) must not replace it.
+        self.dry_run(self.publication("1.36.6"))
+        run("am", "-q", str(self.root / "dry-run" / "catalogue.patch"), cwd=self.upstream)
+        rebuild = self.publication("1.36.6", build="4300")
+        with self.assertRaisesRegex(ValueError, "already in the catalogue .* from another build; bump"):
+            self.dry_run(rebuild, "rebuild")
 
     def fork(self):
         fork = Path(tempfile.mkdtemp(dir=self.root)) / "fork.git"

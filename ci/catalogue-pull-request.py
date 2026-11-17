@@ -218,8 +218,16 @@ def build_branch(release, workdir, base, upstream_url, url_wait, require_live_ur
             raise ValueError(f"{release['name']} entry with unexpected file name; refusing to delete {path.name}")
         if version_key(old) > new_version:
             raise ValueError(f"Refusing downgrade: catalogue has {old} for {'/'.join(target)}")
-        if version_key(old) == new_version and path.name not in {e["name"] for e in release["files"]}:
-            raise ValueError(f"Version {old} already catalogued as {path.name}; bump the version")
+        if version_key(old) == new_version:
+            # The same plugin version from a different build (other tarball
+            # URLs) must never replace what users already install. Only a
+            # byte-identical file, i.e. this very release already merged, is
+            # accepted, and it produces no change.
+            same = next((e for e in release["files"] if e["name"] == path.name), None)
+            if same is None or same["data"] != path.read_bytes():
+                raise ValueError(f"Version {old} is already in the catalogue for {'/'.join(target)} "
+                                 f"({path.name}) from another build; bump the version")
+            continue
         removed.append({"file": path.name, "version": old, "target": list(target)})
         git(clone, "rm", "--quiet", "--", f"metadata/{path.name}")
     added = []

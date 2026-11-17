@@ -49,14 +49,39 @@ ANSI = re.compile(r"\x1b\[[0-9;]*m")
 CREATED = re.compile(r"Created: ([^/\s]+)/([^/\s]+)/([^/\s]+) \(([^)\s]+)\)")
 
 
-def cloudsmith(*args):
-    """Run the Cloudsmith CLI, echoing its output, and return (code, output)."""
+def cloudsmith(*args, data=False):
+    """Run the Cloudsmith CLI and return (code, output).
+
+    Normally stdout and stderr are merged and echoed. With data=True only
+    stdout is returned (the JSON document) and stderr is echoed.
+    """
     result = subprocess.run(["cloudsmith", *args], stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT, text=True)
+                            stderr=subprocess.PIPE if data else subprocess.STDOUT, text=True)
     output = ANSI.sub("", result.stdout or "")
-    if output:
-        print(output, end="" if output.endswith("\n") else "\n", flush=True)
+    echo = ANSI.sub("", (result.stderr or "") if data else output)
+    if echo:
+        print(echo, end="" if echo.endswith("\n") else "\n", flush=True)
     return result.returncode, output
+
+
+def existing_versions(repository, name):
+    """Versions of an exact package name already in the repository.
+
+    Upload names carry the plugin version but not the build number
+    (weather_routing_pi-1.36.5-debian-x86_64-12-x86_64-tarball), so any hit
+    means this plugin version was already published by an earlier build.
+    Cloudsmith ignores anchored regex queries (name:^...$ finds nothing), so
+    search by plain name and compare names exactly here.
+    """
+    code, output = cloudsmith("list", "packages", repository, "-q", f"name:{name}",
+                              "--page-all", "-F", "json", data=True)
+    try:
+        packages = json.loads(output)["data"] if code == 0 else None
+    except (ValueError, KeyError, TypeError):
+        packages = None
+    if not isinstance(packages, list):
+        raise ValueError(f"Could not check Cloudsmith for existing {name}; nothing uploaded")
+    return sorted(p.get("version", "?") for p in packages if p.get("name") == name)
 
 
 def push_arguments(profile, item, dry_run=False):
@@ -78,19 +103,11 @@ def publish_all_or_nothing(profile, items, directory):
     """
     repository = profile["repository"]
     for item in items:
-        # Names and versions only contain [A-Za-z0-9_.+-]; escape the regex
-        # metacharacters among those for Cloudsmith's anchored search.
-        literal = lambda text: re.sub(r"([.+])", r"\\\1", text)  # noqa: E731
-        query = f"name:^{literal(item['name'])}$ version:^{literal(item['version'])}$"
-        code, output = cloudsmith("list", "packages", repository, "-q", query, "-F", "json")
-        try:
-            existing = json.loads(output[output.index("{"):])["data"] if code == 0 else None
-        except (ValueError, KeyError):
-            existing = None
-        if existing is None:
-            raise ValueError(f"Could not check Cloudsmith for existing {item['name']}; nothing uploaded")
+        existing = existing_versions(repository, item["name"])
         if existing:
-            raise ValueError(f"{item['name']} {item['version']} already exists in {repository}; nothing uploaded")
+            raise ValueError(
+                f"{item['name']} is already published in {repository} as {', '.join(existing)}; "
+                "nothing uploaded. Bump the version in CMakeLists.txt before releasing again.")
         code, _ = cloudsmith(*push_arguments(profile, item, dry_run=True))
         if code:
             raise ValueError(f"Cloudsmith rejected the upload check for {item['name']}; nothing uploaded")

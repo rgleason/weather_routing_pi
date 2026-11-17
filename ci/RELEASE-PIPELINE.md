@@ -18,7 +18,8 @@ your trigger → build all platforms → validate XML → hold: you approve
    and the XML schema.
 2. **Review.** At `hold-for-publication-approval` you look over `reviewed-publication` and approve.
 3. **Cloudsmith, all or nothing.** Before uploading anything, `publish-reviewed` checks all
-   22 files with Cloudsmith and confirms none of them already exist. Each upload then waits
+   22 files with Cloudsmith and confirms no earlier build of this plugin version is
+   already published (any build of 1.36.5 blocks another 1.36.5). Each upload then waits
    until Cloudsmith has finished processing it. If any upload fails, every package from that
    run is deleted again, so a re-run starts clean. The job artifacts record what happened in
    `published.json` or `rollback.json`.
@@ -26,7 +27,8 @@ your trigger → build all platforms → validate XML → hold: you approve
    uses no token and pushes nothing. It:
    - clones OpenCPN/plugins master;
    - makes branch `weather_routing_pi-<version>-build<N>`;
-   - removes the old WeatherRouting XML for the same platforms and adds the new ones;
+   - removes the old WeatherRouting XML for the same platforms and adds the new ones
+     (it refuses downgrades, and refuses to replace the same version from another build);
    - runs upstream's own PR checks: both of its XML schemas, its link checker, and a whitespace check.
 
    The XML files, patch and PR text are kept as CircleCI artifacts under `catalogue-pr/`.
@@ -81,7 +83,9 @@ matches, byte for byte, the dry run that was reviewed.
 
 Bump `VERSION_PATCH` (or the minor version) in `CMakeLists.txt` on master before deploying.
 The catalogue and Cloudsmith use a three-part version, so a tweak-only change counts as the
-same release. The pipeline refuses to republish an existing version.
+same release. The pipeline refuses to publish a version that already exists, both on
+Cloudsmith (any earlier build of it) and in the catalogue (the same version from another
+build). A rebuild of an unchanged version therefore stops before uploading anything.
 
 ## Files
 
