@@ -5,6 +5,7 @@ import importlib.util
 import io
 import json
 from pathlib import Path
+import subprocess
 import tarfile
 import tempfile
 import unittest
@@ -166,14 +167,69 @@ class Publication(unittest.TestCase):
                 deploy.upload(output, "production")
             run.assert_not_called()
 
+    def cloudsmith_fake(self, fail_upload=None, existing=None, fail_delete=False):
+        calls = []
+
+        def run(arguments, **_):
+            calls.append(arguments)
+            command = arguments[1]
+            if command == "list":
+                name = arguments[5].split("^")[1].split("$")[0].replace("\\", "")
+                data = [{"name": name}] if name == existing else []
+                return subprocess.CompletedProcess(arguments, 0, json.dumps({"data": data}))
+            if command == "delete":
+                return subprocess.CompletedProcess(arguments, 1 if fail_delete else 0, "")
+            if "--dry-run" in arguments:
+                return subprocess.CompletedProcess(arguments, 0, "OK\n")
+            name = arguments[arguments.index("--name") + 1]
+            uploads = sum(1 for call in calls if call[1] == "push" and "--dry-run" not in call)
+            created = f"Created: opencpn/weather-routing-prod/{name[-20:]}-{uploads} (perm{uploads})\n"
+            return subprocess.CompletedProcess(arguments, 1 if uploads == fail_upload else 0, created)
+        return run, calls
+
     def test_native_upload_commands_use_only_the_production_repository(self):
         output = self.matrix()
+        fake, calls = self.cloudsmith_fake()
         with patch.dict(deploy.os.environ, {"CLOUDSMITH_API_KEY": "test-fixture"}), \
-                patch.object(deploy.subprocess, "run") as run:
+                patch.object(deploy.subprocess, "run", side_effect=fake):
             deploy.upload(output, "production")
-            self.assertEqual(run.call_count, 22)
-            for call in run.call_args_list:
-                self.assertEqual(call.args[0][-2], "opencpn/weather-routing-prod")
+        uploads = [call for call in calls if call[1] == "push" and "--dry-run" not in call]
+        self.assertEqual(len(uploads), 22)
+        self.assertEqual(len(calls), 66)   # 22 existence checks, 22 upload checks, 22 uploads
+        for call in calls:
+            self.assertIn("opencpn/weather-routing-prod", " ".join(call))
+        self.assertEqual(len(json.loads((output / "published.json").read_text())), 22)
+
+    def test_nothing_uploads_until_every_file_passes_preflight(self):
+        output = self.matrix()
+        manifest = json.loads((output / "publication.json").read_text())
+        fake, calls = self.cloudsmith_fake(existing=manifest["uploads"][-1]["name"])
+        with patch.dict(deploy.os.environ, {"CLOUDSMITH_API_KEY": "test-fixture"}), \
+                patch.object(deploy.subprocess, "run", side_effect=fake):
+            with self.assertRaisesRegex(ValueError, "already exists in .*; nothing uploaded"):
+                deploy.upload(output, "production")
+        self.assertFalse([call for call in calls if call[1] == "push" and "--dry-run" not in call])
+
+    def test_failed_upload_rolls_back_every_package_it_created(self):
+        output = self.matrix()
+        fake, calls = self.cloudsmith_fake(fail_upload=9)
+        with patch.dict(deploy.os.environ, {"CLOUDSMITH_API_KEY": "test-fixture"}), \
+                patch.object(deploy.subprocess, "run", side_effect=fake):
+            with self.assertRaisesRegex(RuntimeError, "rolled back all 9 packages"):
+                deploy.upload(output, "production")
+        deletes = [call[2] for call in calls if call[1] == "delete"]
+        self.assertEqual(len(deletes), 9)
+        self.assertTrue(all(target.startswith("opencpn/weather-routing-prod/") for target in deletes))
+        self.assertFalse((output / "published.json").exists())
+        self.assertEqual(len(json.loads((output / "rollback.json").read_text())["deleted"]), 9)
+
+    def test_failed_rollback_names_packages_to_delete_by_hand(self):
+        output = self.matrix()
+        fake, _ = self.cloudsmith_fake(fail_upload=3, fail_delete=True)
+        with patch.dict(deploy.os.environ, {"CLOUDSMITH_API_KEY": "test-fixture"}), \
+                patch.object(deploy.subprocess, "run", side_effect=fake):
+            with self.assertRaisesRegex(RuntimeError, "could NOT be rolled back.*perm1"):
+                deploy.upload(output, "production")
 
     def test_dry_run_needs_no_credentials_and_never_calls_cloudsmith(self):
         output = self.matrix()

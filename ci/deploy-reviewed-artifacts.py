@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 
 spec = importlib.util.spec_from_file_location(
@@ -41,14 +42,85 @@ def upload(directory, channel, dry_run=False):
         return
     if not os.environ.get("CLOUDSMITH_API_KEY"):
         raise ValueError("Deployment context has no CLOUDSMITH_API_KEY")
-    for item in items:
-        subprocess.run([
-            "cloudsmith", "push", "raw", "--no-republish", "--no-wait-for-sync",
+    publish_all_or_nothing(profile, items, directory)
+
+
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
+CREATED = re.compile(r"Created: ([^/\s]+)/([^/\s]+)/([^/\s]+) \(([^)\s]+)\)")
+
+
+def cloudsmith(*args):
+    """Run the Cloudsmith CLI, echoing its output, and return (code, output)."""
+    result = subprocess.run(["cloudsmith", *args], stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True)
+    output = ANSI.sub("", result.stdout or "")
+    if output:
+        print(output, end="" if output.endswith("\n") else "\n", flush=True)
+    return result.returncode, output
+
+
+def push_arguments(profile, item, dry_run=False):
+    # Waiting for sync means a package Cloudsmith fails to process counts
+    # as a failed upload and is rolled back with the rest.
+    return ["push", "raw", "--no-republish", *(["--dry-run"] if dry_run else []),
             "--name", item["name"], "--version", item["version"],
             "--summary", profile["name"] + " OpenCPN plugin",
-            profile["repository"], item["file"],
-        ], check=True)
+            profile["repository"], item["file"]]
 
+
+def publish_all_or_nothing(profile, items, directory):
+    """Publish every file or none: check all first, roll back on any failure.
+
+    Cloudsmith has no multi-package transaction, so the release is made
+    atomic here. Nothing is uploaded until all 22 files pass the server-side
+    upload check and none of them already exists; if any upload or sync then
+    fails, every package this run created is deleted again.
+    """
+    repository = profile["repository"]
+    for item in items:
+        # Names and versions only contain [A-Za-z0-9_.+-]; escape the regex
+        # metacharacters among those for Cloudsmith's anchored search.
+        literal = lambda text: re.sub(r"([.+])", r"\\\1", text)  # noqa: E731
+        query = f"name:^{literal(item['name'])}$ version:^{literal(item['version'])}$"
+        code, output = cloudsmith("list", "packages", repository, "-q", query, "-F", "json")
+        try:
+            existing = json.loads(output[output.index("{"):])["data"] if code == 0 else None
+        except (ValueError, KeyError):
+            existing = None
+        if existing is None:
+            raise ValueError(f"Could not check Cloudsmith for existing {item['name']}; nothing uploaded")
+        if existing:
+            raise ValueError(f"{item['name']} {item['version']} already exists in {repository}; nothing uploaded")
+        code, _ = cloudsmith(*push_arguments(profile, item, dry_run=True))
+        if code:
+            raise ValueError(f"Cloudsmith rejected the upload check for {item['name']}; nothing uploaded")
+    print(f"Pre-flight passed for all {len(items)} files; uploading", flush=True)
+
+    created = []
+    try:
+        for item in items:
+            code, output = cloudsmith(*push_arguments(profile, item))
+            match = CREATED.search(output)
+            if match:
+                created.append({"name": item["name"], "slug": match[3], "slug_perm": match[4]})
+            if code or not match:
+                raise RuntimeError(f"Upload of {item['name']} failed" +
+                                   ("" if match else " (no package slug reported)"))
+    except Exception:
+        failed = []
+        for package in reversed(created):
+            code, _ = cloudsmith("delete", f"{repository}/{package['slug']}", "-y")
+            if code:
+                failed.append(package)
+        (directory / "rollback.json").write_text(json.dumps(
+            {"deleted": [p for p in created if p not in failed], "delete_failed": failed}, indent=2) + "\n")
+        if failed:
+            raise RuntimeError("Upload failed and these packages could NOT be rolled back; delete them "
+                               "by hand before retrying: " + ", ".join(p["slug_perm"] for p in failed)) from None
+        raise RuntimeError(f"Upload failed; rolled back all {len(created)} packages created by this run. "
+                           "Nothing is published; re-run the job to retry.") from None
+    (directory / "published.json").write_text(json.dumps(created, indent=2) + "\n")
+    print(f"Published all {len(created)} files to {repository}", flush=True)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
@@ -56,4 +128,7 @@ if __name__ == "__main__":
     parser.add_argument("--channel", choices=publication.PROFILES, required=True)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
-    upload(args.directory, args.channel, args.dry_run)
+    try:
+        upload(args.directory, args.channel, args.dry_run)
+    except (ValueError, RuntimeError) as error:
+        raise SystemExit(f"ERROR: {error}")

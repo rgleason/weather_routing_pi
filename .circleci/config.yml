@@ -19,6 +19,31 @@ parameters:
   release_workflow_id:
     type: string
     default: ""
+  # OpenCPN/plugins catalogue PR. Phase 1 (dry run) runs automatically after
+  # every Cloudsmith publish. Phases 2 and 3 are a separate, explicitly
+  # triggered workflow: run_catalogue_pr=true, release_workflow_id=<the deploy
+  # workflow that ran publish-reviewed>, catalogue_phase=fork-test|upstream.
+  run_catalogue_pr:
+    type: boolean
+    default: false
+  catalogue_phase:
+    type: enum
+    enum: [fork-test, upstream]
+    default: fork-test
+  catalogue_fork:
+    type: string
+    default: rgleason/plugins
+  catalogue_base:
+    type: enum
+    enum: [master, Beta, Alpha, Experimental]
+    default: master
+  # Single-trigger mode, off until you turn it on: after your one approval and
+  # a successful Cloudsmith publish, open the catalogue PR in the same deploy
+  # workflow (fork-test or upstream) without the separate trigger/approval.
+  catalogue_auto_pr:
+    type: enum
+    enum: ["off", fork-test, upstream]
+    default: "off"
 
 orbs:
   win: circleci/windows@5.1.0
@@ -234,6 +259,7 @@ jobs:
       - run:
           name: Verify both publication channels and source qualification guards
           command: |
+            sudo apt-get update && sudo apt-get install -y libxml2-utils
             python3 -m pip install --user PyYAML==6.0.2
             python3 ci/check-publication-config.py
             python3 -m unittest discover -s ci/tests -v
@@ -293,6 +319,81 @@ jobs:
       - store_artifacts:
           path: reviewed-publication
 
+  # Phase 1: simulate the OpenCPN/plugins PR from the exact files just
+  # published. No secrets; nothing is pushed. The XML files, patch and PR
+  # text are kept as artifacts under catalogue-pr/.
+  catalogue-pr-dry-run:
+    docker:
+      - image: cimg/python:3.13
+    working_directory: ~/project
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - run:
+          name: Install catalogue schema validator
+          command: sudo apt-get update && sudo apt-get install -y libxml2-utils
+      - run:
+          name: Phase 1 - build and check the OpenCPN/plugins branch (dry run, nothing pushed)
+          command: |
+            python3 ci/catalogue-pull-request.py prepare reviewed-publication catalogue-pr \
+              --base "<< pipeline.parameters.catalogue_base >>"
+      - store_artifacts:
+          path: catalogue-pr
+      - persist_to_workspace:
+          root: .
+          paths: [catalogue-pr]
+
+  # Phases 2/3, step 1: recover the published files from the deploy
+  # workflow and rebuild the dry run against current upstream for review.
+  catalogue-pr-review:
+    docker:
+      - image: cimg/python:3.13
+    working_directory: ~/project
+    environment:
+      WR_RELEASE_WORKFLOW_ID: "<< pipeline.parameters.release_workflow_id >>"
+    steps:
+      - checkout
+      - run:
+          name: Install catalogue schema validator
+          command: sudo apt-get update && sudo apt-get install -y libxml2-utils
+      - run:
+          name: Recover the Cloudsmith-published reviewed-publication
+          command: python3 ci/catalogue-pull-request.py recover "$WR_RELEASE_WORKFLOW_ID" reviewed-publication
+      - run:
+          name: Rebuild the catalogue branch for review (URLs must be live)
+          command: |
+            python3 ci/catalogue-pull-request.py prepare reviewed-publication catalogue-pr \
+              --base "<< pipeline.parameters.catalogue_base >>" --require-live-urls
+      - store_artifacts:
+          path: catalogue-pr
+      - persist_to_workspace:
+          root: .
+          paths: [reviewed-publication, catalogue-pr]
+
+  # Phases 2/3, step 2 (after approval): push exactly the reviewed branch.
+  catalogue-pr-push:
+    parameters:
+      phase: {type: enum, enum: ["off", fork-test, upstream]}  # "off" only when filtered out
+    docker:
+      - image: cimg/python:3.13
+    working_directory: ~/project
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - run:
+          name: Install catalogue schema validator
+          command: sudo apt-get update && sudo apt-get install -y libxml2-utils
+      - run:
+          name: Phase << parameters.phase >> - push branch to << pipeline.parameters.catalogue_fork >> and open PR
+          command: |
+            python3 ci/catalogue-pull-request.py push reviewed-publication catalogue-pr \
+              --phase "<< parameters.phase >>" \
+              --fork "<< pipeline.parameters.catalogue_fork >>"
+      - store_artifacts:
+          path: catalogue-pr-<< parameters.phase >>
+
   android-arm64:
     parameters:
       api_headers: {type: string, default: "1.21"}
@@ -340,6 +441,7 @@ workflows:
       and:
         - not: << pipeline.parameters.run_workflow_deploy >>
         - not: << pipeline.parameters.run_windows_only >>
+        - not: << pipeline.parameters.run_catalogue_pr >>
     jobs:
       - publication-contracts
       - linux-catalogue: &trixie
@@ -468,6 +570,7 @@ workflows:
       and:
         - not: << pipeline.parameters.run_workflow_deploy >>
         - << pipeline.parameters.run_windows_only >>
+        - not: << pipeline.parameters.run_catalogue_pr >>
     jobs:
       - windows-x86:
           filters: *validation-filters
@@ -503,6 +606,7 @@ workflows:
     when:
       and:
         - << pipeline.parameters.run_workflow_deploy >>
+        - not: << pipeline.parameters.run_catalogue_pr >>
         - equal: ["", << pipeline.parameters.release_workflow_id >>]
     jobs:
       - publication-preflight
@@ -660,11 +764,20 @@ workflows:
       - publish-reviewed:
           context: xgrib-deployment
           requires: [hold-for-publication-approval]
+      - catalogue-pr-dry-run:
+          requires: [publish-reviewed]
+      - catalogue-pr-push:
+          name: catalogue-pr-auto
+          phase: << pipeline.parameters.catalogue_auto_pr >>
+          context: opencpn-plugins-pr
+          requires: [catalogue-pr-dry-run]
+          filters: pipeline.parameters.catalogue_auto_pr != "off"
 
   publish_validated_artifacts:
     when:
       and:
         - << pipeline.parameters.run_workflow_deploy >>
+        - not: << pipeline.parameters.run_catalogue_pr >>
         - not:
             equal: ["", << pipeline.parameters.release_workflow_id >>]
     jobs:
@@ -677,3 +790,28 @@ workflows:
       - publish-reviewed:
           context: xgrib-deployment
           requires: [hold-for-publication-approval]
+      - catalogue-pr-dry-run:
+          requires: [publish-reviewed]
+      - catalogue-pr-push:
+          name: catalogue-pr-auto
+          phase: << pipeline.parameters.catalogue_auto_pr >>
+          context: opencpn-plugins-pr
+          requires: [catalogue-pr-dry-run]
+          filters: pipeline.parameters.catalogue_auto_pr != "off"
+
+  publish_catalogue_pr:
+    when:
+      and:
+        - << pipeline.parameters.run_catalogue_pr >>
+        - not: << pipeline.parameters.run_workflow_deploy >>
+        - not:
+            equal: ["", << pipeline.parameters.release_workflow_id >>]
+    jobs:
+      - catalogue-pr-review
+      - hold-for-catalogue-pr-approval:
+          type: approval
+          requires: [catalogue-pr-review]
+      - catalogue-pr-push:
+          phase: << pipeline.parameters.catalogue_phase >>
+          context: opencpn-plugins-pr
+          requires: [hold-for-catalogue-pr-approval]
