@@ -11,6 +11,7 @@
 #define _WEATHER_ROUTING_CLIMATOLOGY_THREAD_GUARD_H_
 
 #include <mutex>
+#include <cstdint>
 
 enum class ClimatologyService {
   Wind,
@@ -22,6 +23,11 @@ enum class ClimatologyService {
 class ClimatologyThreadGuard {
 public:
   static void Reset();
+  static std::uint64_t Revision();
+  static void InvalidateCycloneReports();
+  static void SetCycloneCapabilities(bool workerSafe,bool revisionSupported);
+  static bool CycloneWorkerSafe();
+  static bool CycloneCacheable();
   static void MarkPrepared(ClimatologyService service);
   static bool IsPrepared(ClimatologyService service);
   static bool CanInvoke(ClimatologyService service, bool isMainThread);

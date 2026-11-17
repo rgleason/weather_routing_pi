@@ -103,7 +103,8 @@ bool WeatherDataProvider::PrepareClimatologyForWorkers(
   // The legacy provider creates its overlay/data factory in ClimatologyData,
   // but not in ClimatologyWindAtlasData. Prime it on the main thread for all
   // wind modes, including atlas routing when currents are disabled.
-  if (configuration.ClimatologyType > RouteMapConfiguration::CURRENTS_ONLY &&
+  if ((configuration.ClimatologyType > RouteMapConfiguration::CURRENTS_ONLY ||
+       (configuration.AvoidCycloneTracks && ClimatologyThreadGuard::CycloneWorkerSafe())) &&
       RouteMap::ClimatologyData) {
     double direction = 0.0;
     double speed = 0.0;
@@ -130,6 +131,7 @@ bool WeatherDataProvider::PrepareClimatologyForWorkers(
   }
 
   if (configuration.AvoidCycloneTracks &&
+      ClimatologyThreadGuard::CycloneWorkerSafe() &&
       RouteMap::ClimatologyCycloneTrackCrossings) {
     std::lock_guard<std::recursive_mutex> invocationLock(
         ClimatologyThreadGuard::InvocationMutex());

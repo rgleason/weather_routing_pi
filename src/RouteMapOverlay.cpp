@@ -217,6 +217,13 @@ bool RouteMapOverlay::Start(wxString& error) {
     error = _("The selected engine cannot analyse an existing route or use cumulative climatology. Review the routing mode and data-source settings.");
     return false;
   }
+  if (configuration.AvoidCycloneTracks && ClimatologyCycloneTrackCrossings &&
+      !ClimatologyThreadGuard::CycloneWorkerSafe()) {
+    error = _("Cyclone avoidance requires corrected historical track queries. "
+              "Update Climatology to 2.0.3 or later before calculating with "
+              "cyclone avoidance enabled.");
+    return false;
+  }
   /* test for cyclone data if needed */
   if (configuration.AvoidCycloneTracks &&
       (!ClimatologyCycloneTrackCrossings ||
@@ -2511,52 +2518,62 @@ double RouteMapOverlay::RouteInfo(enum RouteInfoType type, bool cursor_route) {
   return total;
 }
 
-/* how many cyclone tracks did we cross? which month? */
-int RouteMapOverlay::Cyclones(int* months) {
-  if (!RouteMap::ClimatologyCycloneTrackCrossings) return -1;
-
-  int days = 30;  // search for 30 day range
-  int cyclones = 0;
-
-  Lock();
+weather_routing::CycloneAssessmentRoute
+RouteMapOverlay::SnapshotCycloneAssessment() {
+  weather_routing::CycloneAssessmentRoute result;
+  if (Running()) return result;
+  const auto configuration = GetConfiguration();
+  wxString label=configuration.Start+" -> "+configuration.End;
+  if(configuration.StartTime.IsValid())
+    label+=" ("+_("Departure")+" "+
+        configuration.StartTime.Format("%Y-%m-%d %H:%M",wxDateTime::UTC)+" UTC)";
+  result.label=std::string(label.ToUTF8());
+  wxMutexLocker snapshotLock(routemutex);
+  auto add = [&](const RoutePoint* a, const RoutePoint* b,
+                 const wxDateTime& time) {
+    if (a && b)
+      result.segments.push_back(
+          {a->lat, a->lon, b->lat, b->lon,
+           time.IsValid() ? static_cast<std::int64_t>(time.GetTicks()) : 0,
+           time.IsValid() ? static_cast<int>(time.GetTm(wxDateTime::UTC).mon)
+                          : -1});
+  };
   if (m_UsesModernNativeResult) {
-    std::list<PlotData>::const_iterator data =
-        last_destination_plotdata.begin();
-    for (std::size_t index = 1; index < m_ModernRoutePositions.size() &&
-                                data != last_destination_plotdata.end();
-         ++index, ++data) {
-      Position* start = m_ModernRoutePositions[index - 1];
-      Position* end = m_ModernRoutePositions[index];
-      const wxDateTime ptime = data->time;
-      std::lock_guard<std::recursive_mutex> invocationLock(
-          ClimatologyThreadGuard::InvocationMutex());
-      if (RouteMap::ClimatologyCycloneTrackCrossings(
-              start->lat, start->lon, end->lat, end->lon, ptime, days)) {
-        if (months && ptime.IsValid()) months[ptime.GetMonth()]++;
-        cyclones++;
-      }
+    auto data = last_destination_plotdata.begin();
+    for (std::size_t i = 1; i < m_ModernRoutePositions.size() &&
+                            data != last_destination_plotdata.end();
+         ++i, ++data)
+      add(m_ModernRoutePositions[i - 1], m_ModernRoutePositions[i], data->time);
+  } else {
+    auto time = m_EndTime;
+    auto layer = origin.end();
+    for (auto* p = destination_position; p && p->parent; p = p->parent) {
+      add(p->parent, p, time);
+      if (layer == origin.begin()) break;
+      time = (*--layer)->time;
     }
-    Unlock();
-    return cyclones;
   }
-  wxDateTime ptime = m_EndTime;
-  IsoChronList::iterator it = origin.end();
+  return result;
+}
 
-  for (Position* p = destination_position; p && p->parent; p = p->parent) {
-    std::lock_guard<std::recursive_mutex> invocationLock(
+int RouteMapOverlay::Cyclones(int* months) {
+  const auto route = SnapshotCycloneAssessment();
+  if (route.segments.empty()) return -1;
+  int count = 0;
+  for (const auto& s : route.segments) {
+    std::lock_guard<std::recursive_mutex> lock(
         ClimatologyThreadGuard::InvocationMutex());
-    if (RouteMap::ClimatologyCycloneTrackCrossings(
-            p->parent->lat, p->parent->lon, p->lat, p->lon, ptime, days)) {
-      if (months) months[ptime.GetMonth()]++;
-      cyclones++;
+    if (!ClimatologyCycloneTrackCrossings) return -1;
+    const int value = ClimatologyCycloneTrackCrossings(
+        s.lat1, s.lon1, s.lat2, s.lon2, wxDateTime(static_cast<time_t>(s.time)),
+        30);
+    if (value < 0) return -1;
+    if (value > 0) {
+      ++count;
+      if (months) ++months[s.month];
     }
-
-    it--;
-    ptime = (*it)->time;
   }
-
-  Unlock();
-  return cyclones;
+  return count;
 }
 
 bool RouteMapOverlay::HasComputedResults() {

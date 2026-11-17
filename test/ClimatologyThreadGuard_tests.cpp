@@ -81,3 +81,17 @@ TEST_F(ClimatologyThreadGuardTests,
 
   EXPECT_EQ(maximumActive.load(), 1);
 }
+
+TEST_F(ClimatologyThreadGuardTests, ProviderAndFilterChangesInvalidateReportResults) {
+  const auto original=ClimatologyThreadGuard::Revision();
+  ClimatologyThreadGuard::SetCycloneCapabilities(true,true);
+  ClimatologyThreadGuard::MarkPrepared(ClimatologyService::CycloneTracks);
+  ClimatologyThreadGuard::InvalidateCycloneReports();
+  EXPECT_GT(ClimatologyThreadGuard::Revision(),original);
+  EXPECT_TRUE(ClimatologyThreadGuard::IsPrepared(ClimatologyService::CycloneTracks));
+  EXPECT_TRUE(ClimatologyThreadGuard::CycloneWorkerSafe());
+  ClimatologyThreadGuard::Reset();
+  EXPECT_FALSE(ClimatologyThreadGuard::CycloneWorkerSafe());
+  EXPECT_FALSE(ClimatologyThreadGuard::CycloneCacheable());
+  EXPECT_FALSE(ClimatologyThreadGuard::IsPrepared(ClimatologyService::CycloneTracks));
+}

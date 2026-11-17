@@ -95,6 +95,8 @@ set(TEST_SRC
     RoutingQualityPolicy_tests.cpp
     RoutingResourcePolicy_tests.cpp
     RoutingFootprint_tests.cpp
+    CycloneAssessment_tests.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/src/CycloneAssessment.cpp
     ClimatologyThreadGuard_tests.cpp
     ClimatologyCompatibility_tests.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/ClimatologyCompatibility.cpp

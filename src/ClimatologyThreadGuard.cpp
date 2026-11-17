@@ -16,6 +16,8 @@ namespace {
 std::atomic<unsigned> s_prepared{0};
 std::atomic<unsigned> s_blockedLogged{0};
 std::recursive_mutex s_invocationMutex;
+std::atomic<std::uint64_t> s_revision{1};
+std::atomic<bool> s_cycloneWorkerSafe{false},s_cycloneCacheable{false};
 
 unsigned ServiceBit(ClimatologyService service) {
   switch (service) {
@@ -33,7 +35,16 @@ unsigned ServiceBit(ClimatologyService service) {
 
 }  // namespace
 
+std::uint64_t ClimatologyThreadGuard::Revision() { return s_revision.load(); }
+void ClimatologyThreadGuard::InvalidateCycloneReports() { ++s_revision; }
+void ClimatologyThreadGuard::SetCycloneCapabilities(bool safe,bool revision) {
+  s_cycloneWorkerSafe.store(safe);s_cycloneCacheable.store(revision);
+}
+bool ClimatologyThreadGuard::CycloneWorkerSafe() { return s_cycloneWorkerSafe.load(); }
+bool ClimatologyThreadGuard::CycloneCacheable() { return s_cycloneCacheable.load(); }
 void ClimatologyThreadGuard::Reset() {
+  InvalidateCycloneReports();
+  SetCycloneCapabilities(false,false);
   s_prepared.store(0, std::memory_order_release);
   s_blockedLogged.store(0, std::memory_order_release);
 }

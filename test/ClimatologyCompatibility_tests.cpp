@@ -105,3 +105,15 @@ TEST(ClimatologyCompatibility, MalformedMessagesNeverRetainCallbacks) {
   auto value = Message(2, 0); value["ClimatologyVersionMajor"] = "2";
   EXPECT_FALSE(Read(value).valid);
 }
+
+TEST(ClimatologyCompatibility, BackgroundCycloneCapabilitiesAreExplicit) {
+  auto value=Message(2,0);
+  EXPECT_FALSE(Read(value).cyclone_worker_safe);
+  EXPECT_FALSE(Read(value).cyclone_revision_supported);
+  value["ClimatologyCycloneWorkerSafe"]=true;
+  value["ClimatologyCycloneRevisionSupported"]=true;
+  EXPECT_TRUE(Read(value).cyclone_worker_safe);
+  EXPECT_TRUE(Read(value).cyclone_revision_supported);
+  value["ClimatologyCycloneWorkerSafe"]="true";
+  EXPECT_FALSE(Read(value).cyclone_worker_safe);
+}

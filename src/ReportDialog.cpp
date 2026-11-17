@@ -20,11 +20,14 @@
 #include <cstdint>
 
 #include <wx/wx.h>
-#include <wx/progdlg.h>
+#include <wx/spinctrl.h>
+#include "WeatherDataProvider.h"
+#include "WeatherRoutingWxCompat.h"
 #include <wx/clipbrd.h>
 #include <wx/dataobj.h>
 
 #include <map>
+#include <algorithm>
 
 #include <stdlib.h>
 #include <math.h>
@@ -104,6 +107,67 @@ ReportDialog::ReportDialog(WeatherRouting& weatherrouting)
   wxSize sz = ::wxGetDisplaySize();
   SetSize(0, 0, sz.x, sz.y - 40);
 #endif
+  auto* cycloneBox =
+      new wxStaticBoxSizer(wxVERTICAL, this, _("Historical cyclone tracks"));
+  auto* controls = new wxBoxSizer(wxHORIZONTAL);
+  m_CycloneScope = new wxChoice(this, wxID_ANY);
+  m_CycloneScope->Append(_("Selected completed routes"));
+  m_CycloneScope->Append(_("All completed routes"));
+  m_CycloneScope->SetSelection(0);
+  controls->Add(m_CycloneScope, 1, wxALL, 4);
+  controls->Add(new wxStaticText(this, wxID_ANY, _("Seasonal window (days):")),
+                0, wxALL | wxALIGN_CENTER_VERTICAL, 4);
+  m_CycloneDays = new wxSpinCtrl(this, wxID_ANY, "30", wxDefaultPosition,
+                                 wxDefaultSize, wxSP_ARROW_KEYS, 1, 365, 30);
+  controls->Add(m_CycloneDays, 0, wxALL, 4);
+  cycloneBox->Add(controls, 0, wxEXPAND);
+  auto* actions = new wxBoxSizer(wxHORIZONTAL);
+  m_AnalyseCyclones =
+      new wxButton(this, wxID_ANY, _("Analyse historical cyclone crossings"));
+  m_CancelCyclones = new wxButton(this, wxID_ANY, _("Cancel analysis"));
+  m_CancelCyclones->Disable();
+  actions->Add(m_AnalyseCyclones, 1, wxALL, 4);
+  actions->Add(m_CancelCyclones, 0, wxALL, 4);
+  cycloneBox->Add(actions, 0, wxEXPAND);
+  m_CycloneResult =
+      new wxTextCtrl(this, wxID_ANY, _("Not assessed."), wxDefaultPosition,
+                     wxSize(-1, WR_FromDIP(this, wxSize(0, 90)).y),
+                     wxTE_MULTILINE | wxTE_READONLY);
+  cycloneBox->Add(m_CycloneResult, 0, wxALL | wxEXPAND, 4);
+#ifdef __OCPN__ANDROID__
+  GetSizer()->Add(cycloneBox, 0, wxEXPAND | wxALL, 4);
+  WR_StyleAndroidControls(this);
+#else
+  GetSizer()->Insert(2, cycloneBox, 0, wxEXPAND | wxALL, 4);
+  SetSize(wxSize(750, 700));
+#endif
+  m_AnalyseCyclones->Bind(
+      wxEVT_BUTTON, [this](wxCommandEvent&) { StartCycloneAssessment(); });
+  m_CancelCyclones->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+    CancelCycloneAssessment();
+    PollCycloneAssessment();
+  });
+  m_CycloneScope->Bind(wxEVT_CHOICE,
+                       [this](wxCommandEvent&) { CycloneParametersChanged(); });
+  m_CycloneDays->Bind(wxEVT_SPINCTRL,
+                      [this](wxSpinEvent&) { CycloneParametersChanged(); });
+  m_CycloneDays->Bind(wxEVT_TEXT,
+                      [this](wxCommandEvent&) { CycloneParametersChanged(); });
+  m_CycloneTimer.SetOwner(this);
+  Bind(
+      wxEVT_TIMER, [this](wxTimerEvent&) { PollCycloneAssessment(); },
+      m_CycloneTimer.GetId());
+  Bind(wxEVT_SHOW, [this](wxShowEvent& event) {
+    if (event.IsShown())
+      m_CycloneTimer.Start(100);
+    else {
+      CancelCycloneAssessment();
+      m_CycloneTimer.Stop();
+    }
+    event.Skip();
+  });
+  m_CycloneRevision = ClimatologyThreadGuard::Revision();
+  Layout();
   SetRouteMapOverlays(std::list<RouteMapOverlay*>());
 }
 
@@ -129,6 +193,9 @@ void ReportDialog::SetRoutesReportHTML(const wxString& html) {
 
 void ReportDialog::SetRouteMapOverlays(
     std::list<RouteMapOverlay*> routemapoverlays) {
+  if(m_bReportStale || m_SelectedRoutes!=routemapoverlays)
+    CancelCycloneAssessment(true);
+  m_SelectedRoutes=routemapoverlays;
   GenerateRoutesReport();
   m_DiagnosticText = _("Weather Routing diagnostic report\nIncludes the displayed route positions and settings; review before sharing.\n");
   m_CopyDiagnostics->Enable(!routemapoverlays.empty());
@@ -279,7 +346,7 @@ void ReportDialog::GenerateRoutesReport() {
 
   /* sort configurations interate over each group of configurations
      with the same start and end to determine best and worst times,
-     and cyclone crossings to determine cyclone times
+     (historical cyclone assessment is requested separately)
   */
 
   std::map<wxString, std::list<RouteMapOverlay*> > routes;
@@ -420,93 +487,189 @@ void ReportDialog::GenerateRoutesReport() {
     page += _T(" on ");
     page += FormatTime(best_comfort_date);
 
-    page += _T("<dt>");
-    page += _("Cyclones") + wxString(_T(": "));
-
-    wxProgressDialog progressdialog(_("Weather Routing"),
-                                    _("Calculating Cyclone Crossings"),
-                                    overlays.size(), this, wxPD_ELAPSED_TIME);
-    int pdi = 0;
-
-    int cyclonemonths[12] = {0};
-    std::list<RouteMapOverlay*> cyclone_safe_routes;
-    bool allsafe = true, nonesafe = true;
-    for (std::list<RouteMapOverlay*>::iterator it2 = overlays.begin();
-         it2 != overlays.end(); it2++) {
-      switch ((*it2)->Cyclones(cyclonemonths)) {
-        case -1:
-          page += _("Climatology data unavailable.");
-          goto cyclonesfailed;
-        case 0:
-          cyclone_safe_routes.push_back(*it2);
-          nonesafe = false;
-        default:
-          cyclone_safe_routes.push_back(NULL);
-          allsafe = false;
-      }
-
-      progressdialog.Update(pdi++);
-    }
-
-    int i, j;
-    for (i = 0, j = 11; i < 12; j = i++) /* get first cyclone month */
-      if (cyclonemonths[i] && !cyclonemonths[j]) {
-        int lm = i;
-        page += wxDateTime::GetMonthName((wxDateTime::Month)i);
-        for (int k = i + 1, l = i;; l = k++) {
-          if (k == 12) k = 0;
-          if (k == i) break;
-          if (cyclonemonths[k] && !cyclonemonths[l]) {
-            page += _(" and ") + wxDateTime::GetMonthName((wxDateTime::Month)k);
-            lm = k;
-          } else if (!cyclonemonths[k] && cyclonemonths[l] && l != lm)
-            page += _(" to ") + wxDateTime::GetMonthName((wxDateTime::Month)l);
-        }
-        goto had_some_cyclones;
-      }
-
-    if (cyclonemonths[0])
-      page += _("all months");
-    else
-      page += _("none");
-
-  had_some_cyclones:;
-
-    page += _T("<dt>");
-    if (allsafe)
-      page += _("All routes are safe from cyclones.");
-    else if (nonesafe)
-      page += _("No routes found to be safe from cyclones.");
-    else {
-      page += _("Start times for cyclone safe routes: ");
-      /* note: does not merge beginning and end of linked list for safe times,
-         this sometimes might be nice, but they will be in different years. */
-      bool first = true;
-      for (std::list<RouteMapOverlay*>::iterator it2 =
-               cyclone_safe_routes.begin();
-           it2 != cyclone_safe_routes.end(); it2++) {
-        if (!*it2) continue;
-        if (!first) page += _(" and ");
-        first = false;
-        page += m_WeatherRouting.m_SettingsDialog.FormatTime(
-            (*it2)->StartTime(), _T("%x"), false);
-
-        if (++it2 == cyclone_safe_routes.end()) break;
-
-        if (!*it2) continue;
-
-        while (*it2 && ++it2 != cyclone_safe_routes.end());
-
-        it2--;
-        page += _(" to ") +
-                m_WeatherRouting.m_SettingsDialog.FormatTime(
-                    (*it2)->StartTime(), _T("%x"), false);
-      }
-    }
-  cyclonesfailed:;
+    page += _T("<dt>") + _("Historical cyclone crossings: use the optional assessment below.");
   }
 
   SetRoutesReportHTML(page);
+}
+
+ReportDialog::~ReportDialog() { ShutdownCycloneAssessment(); }
+
+void ReportDialog::ShutdownCycloneAssessment() {
+  m_CycloneTimer.Stop();
+  CancelCycloneAssessment();
+  m_CycloneWorker.reset();
+}
+void ReportDialog::CancelCycloneAssessment(bool clear) {
+  if (m_CycloneJob) m_CycloneJob->Cancel();
+  if (clear) {
+    m_CycloneJob.reset();
+    m_CycloneRevision = ClimatologyThreadGuard::Revision();
+    if (m_CycloneResult) m_CycloneResult->ChangeValue(_("Not assessed."));
+  }
+  if (m_CancelCyclones) m_CancelCyclones->Disable();
+  if (m_AnalyseCyclones) m_AnalyseCyclones->Enable(!m_PreparingCyclones);
+}
+void ReportDialog::CycloneParametersChanged() {
+  const int days = m_CycloneDays->GetValue(),
+            scope = m_CycloneScope->GetSelection();
+  if (days == m_ObservedCycloneDays && scope == m_ObservedCycloneScope) return;
+  m_ObservedCycloneDays = days;
+  m_ObservedCycloneScope = scope;
+  CancelCycloneAssessment(true);
+}
+void ReportDialog::StartCycloneAssessment() {
+  if (m_PreparingCyclones) return;
+  m_ObservedCycloneDays = m_CycloneDays->GetValue();
+  m_ObservedCycloneScope = m_CycloneScope->GetSelection();
+  CancelCycloneAssessment(true);
+  if (!ClimatologyThreadGuard::CycloneWorkerSafe()) {
+    m_CycloneResult->ChangeValue(
+        _("Unavailable: this Climatology provider does not support background "
+          "cyclone assessment. Update Climatology. Routing avoidance settings "
+          "are unchanged."));
+    return;
+  }
+  auto collect = [&] {
+    std::vector<weather_routing::CycloneAssessmentRoute> snapshots;
+    for (auto* item : m_WeatherRouting.m_WeatherRoutes) {
+      auto* route = item->routemapoverlay;
+      if (!route || route->Running() || !route->ReachedDestination()) continue;
+      if (m_CycloneScope->GetSelection() == 0 &&
+          std::find(m_SelectedRoutes.begin(), m_SelectedRoutes.end(), route) ==
+              m_SelectedRoutes.end())
+        continue;
+      snapshots.push_back(route->SnapshotCycloneAssessment());
+    }
+    return snapshots;
+  };
+  auto routes = collect();
+  if (routes.empty()) {
+    m_CycloneResult->ChangeValue(_("Not assessed: select a completed route."));
+    return;
+  }
+  if (!ClimatologyThreadGuard::IsPrepared(ClimatologyService::CycloneTracks)) {
+    // Legacy provider factories create windows. Their one-time initialization
+    // stays on the UI thread and happens only after an explicit user request.
+    RouteMapConfiguration c;
+    c.StartTime = wxDateTime(
+        static_cast<time_t>(routes.front().segments.empty()
+                                ? 0
+                                : routes.front().segments.front().time));
+    c.StartLat = 0;
+    c.StartLon = 0;
+    c.Currents = false;
+    c.ClimatologyType = RouteMapConfiguration::AVERAGE;
+    c.AvoidCycloneTracks = true;
+    c.CycloneMonths = 0;
+    c.CycloneDays = 30;
+    m_PreparingCyclones = true;
+    m_AnalyseCyclones->Disable();
+    m_CycloneTimer.Stop();
+    WeatherDataProvider::PrepareClimatologyForWorkers(c);
+    m_PreparingCyclones = false;
+    m_AnalyseCyclones->Enable();
+    if (!IsShown()) return;
+    m_CycloneTimer.Start(100);
+    routes = collect();
+  }
+  if (routes.empty()) {
+    m_CycloneResult->ChangeValue(_("Not assessed: select a completed route."));
+    return;
+  }
+  m_CycloneRevision = ClimatologyThreadGuard::Revision();
+  const auto revision = m_CycloneRevision;
+  if (!m_CycloneWorker)
+    m_CycloneWorker.reset(new weather_routing::CycloneAssessment);
+  m_CycloneJob = m_CycloneWorker->Start(
+      std::move(routes), m_CycloneDays->GetValue(), revision,
+      ClimatologyThreadGuard::CycloneCacheable(),
+      [revision](const weather_routing::CycloneAssessmentSegment& s, int days) {
+        std::lock_guard<std::recursive_mutex> lock(
+            ClimatologyThreadGuard::InvocationMutex());
+        if (ClimatologyThreadGuard::Revision() != revision ||
+            !ClimatologyThreadGuard::CycloneWorkerSafe() ||
+            !ClimatologyThreadGuard::IsPrepared(
+                ClimatologyService::CycloneTracks) ||
+            !RouteMap::ClimatologyCycloneTrackCrossings)
+          return -1;
+        return RouteMap::ClimatologyCycloneTrackCrossings(
+            s.lat1, s.lon1, s.lat2, s.lon2,
+            wxDateTime(static_cast<time_t>(s.time)), days);
+      });
+  m_CycloneLogged = false;
+  m_AnalyseCyclones->Disable();
+  m_CancelCyclones->Enable();
+  PollCycloneAssessment();
+}
+void ReportDialog::PollCycloneAssessment() {
+  using Status = weather_routing::CycloneAssessmentStatus;
+  if (m_CycloneRevision != ClimatologyThreadGuard::Revision()) {
+    CancelCycloneAssessment(true);
+    return;
+  }
+  if (!m_CycloneJob) return;
+  const auto state = m_CycloneJob->Snapshot();
+  wxString text;
+  if (state.status == Status::Running)
+    text = wxString::Format(
+        _("Assessing historical tracks: %lu of %lu segments checked."),
+        static_cast<unsigned long>(state.checked),
+        static_cast<unsigned long>(state.total));
+  else if (state.status == Status::Cancelled)
+    text = _("Cancelled. Assessment incomplete.");
+  else
+    text = _("Historical track assessment finished.");
+  for (const auto& route : state.routes) {
+    text += "\n" + wxString::FromUTF8(route.label.c_str()) + ": ";
+    switch (route.status) {
+      case Status::Complete:
+        if (!route.crossing_segments)
+          text += _("No historical track crossings found.");
+        else
+          text += wxString::Format(
+              _("Historical track crossings found on %lu route segments."),
+              static_cast<unsigned long>(route.crossing_segments));
+        if(route.crossing_segments) {
+          text+=" "+_("Route months with crossings:")+" ";
+          bool first=true;
+          for(int month=0;month<12;++month)if(route.months[month]) {
+            if(!first)text+=", ";first=false;
+            text+=wxDateTime::GetMonthName(static_cast<wxDateTime::Month>(month),wxDateTime::Name_Abbr);
+          }
+        }
+        break;
+      case Status::Unavailable:
+        text += _("Unavailable. No conclusion.");
+        break;
+      case Status::Cancelled:
+        text += _("Cancelled. Assessment incomplete.");
+        break;
+      case Status::Running:
+        text += _("Assessing...");
+        break;
+      default:
+        text += _("Not assessed.");
+        break;
+    }
+  }
+  if (m_CycloneResult->GetValue() != text) m_CycloneResult->ChangeValue(text);
+  const bool running = state.status == Status::Running;
+  m_CancelCyclones->Enable(running);
+  m_AnalyseCyclones->Enable(!running);
+  if (!running && !m_CycloneLogged) {
+    m_CycloneLogged = true;
+    wxLogMessage(
+        "WR_CYCLONE_ASSESSMENT revision=%llu routes=%lu checked=%lu calls=%lu "
+        "cache_hits=%lu total_ms=%.3f max_call_ms=%.3f cancelled=%d",
+        static_cast<unsigned long long>(m_CycloneRevision),
+        static_cast<unsigned long>(state.routes.size()),
+        static_cast<unsigned long>(state.checked),
+        static_cast<unsigned long>(state.provider_calls),
+        static_cast<unsigned long>(state.cache_hits),
+        state.wait_microseconds / 1000.0, state.max_call_microseconds / 1000.0,
+        state.status == Status::Cancelled);
+  }
 }
 
 void ReportDialog::CopyDiagnostics() {

@@ -57,6 +57,10 @@ ClimatologyMessage ReadClimatologyMessage(const std::string& message) {
     result.valid = false;
     return result;
   }
+  result.cyclone_worker_safe = value["ClimatologyCycloneWorkerSafe"].isBool() &&
+      value["ClimatologyCycloneWorkerSafe"].asBool();
+  result.cyclone_revision_supported = value["ClimatologyCycloneRevisionSupported"].isBool() &&
+      value["ClimatologyCycloneRevisionSupported"].asBool();
   result.data = callbacks.data;
   result.wind_atlas = callbacks.wind_atlas;
   result.cyclones = callbacks.cyclones;

@@ -116,7 +116,7 @@ foreach(_archive IN LISTS _shoreline_archives)
   endif()
 endforeach()
 unset(_shoreline_archives)
-set(VERSION_DATE  "16/11/2026") # DD/MM/YYYY format
+set(VERSION_DATE  "17/11/2026") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov511")
 
 set(OCPN_API_VERSION_MAJOR "1")
@@ -279,6 +279,7 @@ SET(SRCS
             src/BoatDialog.cpp
             src/StatisticsDialog.cpp
             src/ReportDialog.cpp
+            src/CycloneAssessment.cpp
             src/RouteDiagnostics.cpp
             src/FilterRoutesDialog.cpp
             src/ConfigurationBatchDialog.cpp
