@@ -1,6 +1,6 @@
 # Historical cyclone assessment and responsiveness
 
-Weather Routing 1.36.6 and xWeatherRouting 2.3.4 make historical cyclone
+Weather Routing 1.36.7 and xWeatherRouting 2.3.4 make historical cyclone
 assessment an explicit report action. Opening or refreshing route details no
 longer invokes a cyclone provider or scans every completed route.
 
