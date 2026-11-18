@@ -4,6 +4,7 @@
 #include <memory>
 #include "RouteComfort.h"
 #include "RouteMap.h"
+#include "ValidatedRouteReporting.h"
 #include "supercpn/weather_routing/PartialRoutes.h"
 
 namespace weather_routing {
@@ -43,6 +44,7 @@ inline RetainedRouteCandidate RetainRouteCandidate(
   compact->message = result.message;
   compact->searchVariant = result.searchVariant;
   compact->diagnostics = result.diagnostics;
+  UseValidatedSourceReporting(*compact);
   candidate.result = compact;
   candidate.comfort = CalculateRouteComfort(compact->legs);
   candidate.windOnlyComfort = CalculateRouteComfort(compact->legs, true);

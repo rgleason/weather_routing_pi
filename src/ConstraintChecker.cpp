@@ -838,20 +838,22 @@ bool ConstraintChecker::CheckMaxLatitudeConstraint(
 bool ConstraintChecker::CheckCycloneTrackConstraint(
     RouteMapConfiguration& configuration, double lat, double lon, double dlat,
     double dlon) {
-  if (configuration.AvoidCycloneTracks &&
-      RouteMap::ClimatologyCycloneTrackCrossings &&
-      WeatherDataProvider::CanInvokeClimatology(
-          ClimatologyService::CycloneTracks)) {
-    std::lock_guard<std::recursive_mutex> invocationLock(
-        ClimatologyThreadGuard::InvocationMutex());
-    int crossings = RouteMap::ClimatologyCycloneTrackCrossings(
-        lat, lon, dlat, dlon, configuration.time,
-        configuration.CycloneMonths * 30 + configuration.CycloneDays);
-    if (crossings > 0) {
-      return false;
-    }
-  }
-  return true;
+  if (!configuration.AvoidCycloneTracks) return true;
+  std::lock_guard<std::recursive_mutex> invocationLock(
+      ClimatologyThreadGuard::InvocationMutex());
+  if (!RouteMap::ClimatologyCycloneTrackCrossings ||
+      !ClimatologyThreadGuard::CycloneWorkerSafe() ||
+      !WeatherDataProvider::CanInvokeClimatology(
+          ClimatologyService::CycloneTracks))
+    return false;
+  const int crossings = RouteMap::ClimatologyCycloneTrackCrossings(
+      lat, lon, dlat, dlon, configuration.time,
+      configuration.CycloneMonths * 30 + configuration.CycloneDays);
+  if (crossings < 0 && ClimatologyThreadGuard::ShouldLogBlocked(
+                           ClimatologyService::CycloneTracks))
+    wxLogMessage("WR_CYCLONE_AVOIDANCE result=unavailable "
+                 "action=reject-unchecked-segment");
+  return crossings == 0;
 }
 
 bool ConstraintChecker::CheckMaxCourseAngleConstraint(

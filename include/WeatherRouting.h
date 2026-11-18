@@ -279,6 +279,7 @@ public:
 
   WeatherRouting(wxWindow* parent, weather_routing_pi& plugin);
   ~WeatherRouting();
+  void ShutdownReportWorkers() { m_ReportDialog.ShutdownCycloneAssessment(); }
 
 #ifdef __OCPN__ANDROID__
   void OnEvtPanGesture(wxQT_PanGestureEvent& event);
@@ -927,6 +928,7 @@ private:
   wxTimer m_tCompute, m_tHideConfiguration, m_tRoutingProgress,
       m_tDeferredRoutingStart;
 
+  bool m_ShuttingDown{};
   bool m_bRunning;
   int m_RoutePreparationDepth;
   wxTimeSpan m_RunTime;

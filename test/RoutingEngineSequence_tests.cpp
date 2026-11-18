@@ -43,6 +43,55 @@ TEST(RoutingEngineSequence, AutoStopsAtQuickSuccess) {
   EXPECT_EQ(calls, (std::vector{SequenceEngine::Original}));
   EXPECT_EQ(result.engineIdentity, "original");
 }
+TEST(RoutingEngineSequence, CompletionIsSkippedAfterAutoSuccess) {
+  unsigned recoveries=0;
+  auto result=native::RunRoutingEngineSequence(RoutingEngine::Auto,{},
+      [](auto) { return Success(100); },{},weather_routing::kSelectableEnginesMask,
+      [&]() -> std::optional<wr::RoutingResult> { ++recoveries;return Success(50); });
+  EXPECT_TRUE(native::AcceptedRoute(result));
+  EXPECT_EQ(recoveries,0U);
+}
+TEST(RoutingEngineSequence, AutoCanCompleteBeforeRunningTheLaterMethods) {
+  std::vector<SequenceEngine> calls;
+  auto result=native::RunRoutingEngineSequence(RoutingEngine::Auto,{},
+      [&](auto engine) { calls.push_back(engine);return Failure(); },{},
+      weather_routing::kSelectableEnginesMask,
+      []() -> std::optional<wr::RoutingResult> { return Success(200); });
+  EXPECT_TRUE(native::AcceptedRoute(result));
+  EXPECT_EQ(result.engineIdentity,"quick3");
+  EXPECT_EQ(calls,(std::vector{SequenceEngine::Original,SequenceEngine::Quick2}));
+  ASSERT_EQ(result.engineAttempts.size(),3U);
+  EXPECT_EQ(result.engineAttempts.back().engine,"Quick3 recovery");
+}
+TEST(RoutingEngineSequence, CancellationAfterCompletionDiscardsRouteAndKeepsAttemptHistory) {
+  wr::CancellationToken cancel;
+  auto result=native::RunRoutingEngineSequence(RoutingEngine::Auto,cancel,
+      [](auto){return Failure();},{},weather_routing::kSelectableEnginesMask,
+      [&]() -> std::optional<wr::RoutingResult>{cancel.cancel();return Success(100);});
+  EXPECT_EQ(result.status,wr::RoutingStatus::Cancelled);
+  EXPECT_TRUE(result.legs.empty());
+  EXPECT_EQ(result.engineAttempts.size(),3U);
+  EXPECT_EQ(result.attemptFailures.size(),2U);
+}
+TEST(RoutingEngineSequence, AllRetainsRecoveryAndContinuesItsComparison) {
+  unsigned calls=0;
+  auto result=native::RunRoutingEngineSequence(RoutingEngine::All,{},
+      [&](auto engine) { ++calls;return engine==SequenceEngine::Main?Success(150):Failure(); },{},
+      weather_routing::kSelectableEnginesMask,
+      []() -> std::optional<wr::RoutingResult> { return Success(200); });
+  EXPECT_TRUE(native::AcceptedRoute(result));
+  EXPECT_EQ(result.engineIdentity,"main");
+  EXPECT_EQ(calls,6U);
+  EXPECT_EQ(result.engineAttempts.size(),7U);
+}
+TEST(RoutingEngineSequence, FailedRecoveryDoesNotHideACompletedAllResult) {
+  auto result=native::RunRoutingEngineSequence(RoutingEngine::All,{},
+      [](auto engine) { return engine==SequenceEngine::Quick2?Success(150):Failure(); },{},
+      weather_routing::kSelectableEnginesMask,
+      []() -> std::optional<wr::RoutingResult> { return Failure(); });
+  EXPECT_TRUE(native::AcceptedRoute(result));
+  EXPECT_EQ(result.engineIdentity,"quick2");
+}
 TEST(RoutingEngineSequence, AutoStopsAtValidatedQuick2) {
   std::vector<SequenceEngine> calls;
   const auto result = native::RunRoutingEngineSequence(

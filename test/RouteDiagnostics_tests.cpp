@@ -139,6 +139,48 @@ TEST(RouteDiagnostics, ActualClimatologyIntervalsKeepDurationAndDoNotBridgeGaps)
   EXPECT_NE(warning->detail.Find("09:00:00"), wxNOT_FOUND);
   EXPECT_NE(warning->action.Find("historical"), wxNOT_FOUND);
 }
+TEST(RouteDiagnostics, ReportsValidatedFallbackEvenWhenEveryLegStartsInGrib) {
+  auto result = Completed();
+  result.validation.environment.gribWindDuration = wr::Duration{7200};
+  result.validation.environment.climatologyWindDuration = wr::Duration{3600};
+  wr::EnvironmentalSourceTransition change;
+  change.variable = wr::EnvironmentalVariable::Wind;
+  change.previousSource = wr::EnvironmentalSource::GribForecast;
+  change.newSource = wr::EnvironmentalSource::Climatology;
+  change.time = result.legs.back().startTime;
+  change.position = result.legs.back().start;
+  result.validation.sourceTransitions.push_back(change);
+  auto report = weather_routing::DescribeRoutingResult(result);
+  const auto* warning = Find(report,"usage.climatology_wind");
+  ASSERT_NE(warning,nullptr);
+  EXPECT_NE(warning->detail.Find("1 h 00 min"),wxNOT_FOUND);
+  EXPECT_NE(warning->detail.Find("33.3%"),wxNOT_FOUND);
+  EXPECT_NE(warning->detail.Find("Source change recorded"),wxNOT_FOUND);
+  result.legs.front().windSource.source = wr::EnvironmentalSource::Climatology;
+  result.validation.environment.gribWindDuration = wr::Duration{10800};
+  result.validation.environment.climatologyWindDuration = wr::Duration{};
+  EXPECT_EQ(Find(weather_routing::DescribeRoutingResult(result),"usage.climatology_wind"),nullptr);
+}
+TEST(RouteDiagnostics, ReportsValidatedCurrentAndWaveChangesInsideLegs) {
+  auto result=Completed();
+  for(auto& leg:result.legs) {
+    leg.currentSource.source=wr::EnvironmentalSource::GribForecast;
+    leg.currentSource.datasetIdentity="forecast";
+  }
+  result.validation.environment.gribCurrentDuration=wr::Duration{7200};
+  result.validation.environment.currentAssumedZeroDuration=wr::Duration{3600};
+  result.validation.environment.gribWaveDuration=wr::Duration{7200};
+  result.validation.environment.missingWaveDuration=wr::Duration{3600};
+  auto report=weather_routing::DescribeRoutingResult(result);
+  ASSERT_NE(Find(report,"usage.zero_current"),nullptr);
+  EXPECT_NE(Find(report,"usage.zero_current")->detail.Find("1 h 00 min"),wxNOT_FOUND);
+  ASSERT_NE(Find(report,"usage.missing_waves"),nullptr);
+  result.validation.environment.currentAssumedZeroDuration=wr::Duration{};
+  result.validation.environment.xtdCurrentDuration=wr::Duration{3600};
+  report=weather_routing::DescribeRoutingResult(result);
+  ASSERT_NE(Find(report,"usage.alternative_current"),nullptr);
+  EXPECT_EQ(Find(report,"usage.zero_current"),nullptr);
+}
 TEST(RouteDiagnostics, MissingCurrentIsDifferentFromDisabledOrModelledZero) {
   auto result = Completed();
   result.legs[1].currentSource.datasetIdentity = "explicit-zero-current";

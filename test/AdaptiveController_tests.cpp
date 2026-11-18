@@ -39,6 +39,48 @@ void SameTrack(const wr::RoutingResult& x, const wr::RoutingResult& y) {
               y.legs[i].endTime.time_since_epoch().count());
   }
 }
+TEST(AdaptiveController, OptionalPortfolioHandoffPreservesCompletedAndAllPolicies) {
+  auto f=quick2_fixtures::make("short");
+  a::Features features;
+  features.offshore=features.windAtStart=features.sketchResolved=true;
+  features.directNm=1000;features.hours=100;
+  for (auto objective : {a::Objective::FirstAccepted,a::Objective::BestCompleted})
+  for (bool handoff : {false,true}) {
+    a::Options options;
+    options.engine=RoutingEngine::Original;
+    options.objective=objective;
+    options.nativeAllowance=1000000;
+    options.handoffAfterRepeatedRepair=handoff;
+    unsigned calls=0;
+    auto result=a::Run(options,f.request,features,
+        [&](const auto& request,const auto&,auto,auto,const auto&) {
+          a::AttemptResult out;
+          out.quotaUsed=100;
+          if (++calls==1) {
+            out.route.status=wr::RoutingStatus::NoFeasibleRoute;
+            out.stopCause=a::StopCause::RepeatedChronologicalRepair;
+          } else out.route=Good(request,1000);
+          return out;
+        });
+    if (handoff && objective==a::Objective::FirstAccepted) {
+      EXPECT_EQ(calls,1U);
+      EXPECT_FALSE(weather_routing::native::AcceptedRoute(result.route));
+      EXPECT_EQ(result.spent,100U);
+      EXPECT_FALSE(result.stopReason.empty());
+    } else {
+      EXPECT_GE(calls,2U);
+      EXPECT_TRUE(weather_routing::native::AcceptedRoute(result.route));
+    }
+  }
+}
+TEST(AdaptiveController, HandoffFeedbackDoesNotChangeDefaultRepairClassification) {
+  wr::RoutingResult failed;
+  failed.status=wr::RoutingStatus::NoFeasibleRoute;
+  failed.diagnostics.stageStopReasons={"prefix repair failed at leg 43",
+                                      "prefix repair failed at leg 43"};
+  EXPECT_EQ(a::NativeStopCause(failed),a::StopCause::Other);
+  EXPECT_EQ(a::NativeStopCause(failed,true),a::StopCause::RepeatedChronologicalRepair);
+}
 TEST(AdaptiveController, FirstAcceptedStopsBeforeOptionalComparison) {
   auto f = quick2_fixtures::make("short");
   const auto saved = f.request.options;

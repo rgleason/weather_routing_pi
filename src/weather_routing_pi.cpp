@@ -329,7 +329,12 @@ bool weather_routing_pi::DeInit() {
   m_addressSpaceTimer.Stop();
   m_addressSpaceMonitor.Shutdown();
 #endif
-  if (m_pWeather_Routing) m_pWeather_Routing->Close();
+  if (m_pWeather_Routing) {
+    // Drain report callbacks before clearing the receiver pointer: provider
+    // unload notifications must still be able to synchronize active calls.
+    m_pWeather_Routing->ShutdownReportWorkers();
+    m_pWeather_Routing->Close();
+  }
   WeatherRouting* wr = m_pWeather_Routing;
   m_pWeather_Routing =
       NULL; /* needed first as destructor may call event loop */
@@ -509,6 +514,8 @@ void weather_routing_pi::SetPluginMessage(wxString& message_id,
         wxLogWarning(
             "WR_GRIB_BROKER ignored timeline response without request token");
     }
+  } else if (message_id == "CLIMATOLOGY_CYCLONE_REVISION") {
+    ClimatologyThreadGuard::InvalidateCycloneReports();
   } else if (message_id == _T("CLIMATOLOGY")) {
     if (!m_pWeather_Routing) return; /* not ready */
 
@@ -523,6 +530,8 @@ void weather_routing_pi::SetPluginMessage(wxString& message_id,
       RouteMap::ClimatologyWindAtlasData = api.wind_atlas;
       RouteMap::ClimatologyCycloneTrackCrossings = api.cyclones;
       WeatherDataProvider::ResetClimatologyPreparation();
+      ClimatologyThreadGuard::SetCycloneCapabilities(
+          api.cyclone_worker_safe,api.cyclone_revision_supported);
     }
 
     if (m_pWeather_Routing) {

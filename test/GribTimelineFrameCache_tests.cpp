@@ -4,6 +4,22 @@
 #include <atomic>
 #include <future>
 
+TEST(GribTimelineFrameCache, SmallFramesCanUseTheAdmittedBudgetBeyond512Keys) {
+  weather_routing::GribTimelineFrameCache cache;
+  cache.Configure(64, true, 32768);
+  // Zero-payload positive entries isolate the metadata ceiling from the
+  // independently tested byte limit. Replaying an ocean timeline must hit.
+  for (std::int64_t key = 0; key < 2048; ++key)
+    ASSERT_TRUE(cache.Publish(key, {}, true));
+  Shared_GribRecordSet frame;
+  for (std::int64_t key = 0; key < 2048; ++key)
+    EXPECT_TRUE(cache.Acquire(key, &frame, 10,
+        [](auto) { ADD_FAILURE() << "Small resident frame was evicted"; },
+        [] { return false; }));
+  EXPECT_EQ(cache.Stats().positive_entries, 2048U);
+  EXPECT_EQ(cache.Stats().evictions, 0U);
+}
+
 TEST(GribTimelineFrameCache, WakesOnlyForRealMissesAfterRequestStateIsReady) {
   weather_routing::GribTimelineFrameCache cache;
   unsigned requests = 0, wakeups = 0;

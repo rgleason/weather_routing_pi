@@ -17,6 +17,8 @@ struct ClimatologyMessage {
 
   bool valid = false;
   bool supported = false;
+  bool cyclone_worker_safe = false;
+  bool cyclone_revision_supported = false;
   int major = -1;
   int minor = -1;
   std::string dataset = "legacy/unversioned";

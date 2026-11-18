@@ -28,6 +28,7 @@
 #include "RouteMap.h"
 #include "RoutingFootprint.h"
 #include "RoutingProgressState.h"
+#include "CycloneAssessment.h"
 #include "RetainedRouteCandidate.h"
 #include "LineBufferOverlay.h"
 
@@ -271,6 +272,7 @@ public:
    * @return Number of cyclone crossings, or -1 if cyclone data is unavailable.
    */
   int Cyclones(int* months);
+  weather_routing::CycloneAssessmentRoute SnapshotCycloneAssessment();
 
   /**
    * Gets the destination position.

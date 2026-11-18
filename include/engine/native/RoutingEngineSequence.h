@@ -4,6 +4,7 @@
 #include <array>
 #include <chrono>
 #include <functional>
+#include <optional>
 #include <utility>
 #include <string>
 #include "RoutingEngineSettings.h"
@@ -88,7 +89,9 @@ supercpn::weather_routing::RoutingResult RunRoutingEngineSequence(
     const supercpn::weather_routing::CancellationToken& cancel, Solve&& solve,
     const std::function<void(SequenceEngine,
         const supercpn::weather_routing::RoutingResult&)>& accepted = {},
-    unsigned enabled = 0xffffffffU) {
+    unsigned enabled = 0xffffffffU,
+    const std::function<std::optional<supercpn::weather_routing::RoutingResult>()>&
+        completion = {}) {
   namespace wr = supercpn::weather_routing;
   wr::RoutingResult best, last;
   bool haveBest = false;
@@ -169,6 +172,39 @@ supercpn::weather_routing::RoutingResult RunRoutingEngineSequence(
       attempts.push_back({SequenceEngineTitle(engine), last.status, detail});
       failures += std::string(SequenceEngineTitle(engine)) + ": [" +
           wr::toString(last.status) + "] " + detail;
+    }
+    // A shared completion phase follows the last selected fast method. It
+    // never delays Auto after an accepted result; All keeps comparing.
+    if (completion && (engine == SequenceEngine::Quick2 ||
+        (engine == SequenceEngine::Original &&
+         !(enabled & EngineBit(RoutingEngine::Quick2))))) {
+      const auto recoveryStarted = std::chrono::steady_clock::now();
+      if (auto recovered = completion()) {
+        const auto recoverySeconds = std::chrono::duration<double>(
+            std::chrono::steady_clock::now()-recoveryStarted).count();
+        const auto recoveryWork = audit.Record(recovered->diagnostics,recoverySeconds);
+        history.push_back({"Quick3 recovery",recovered->status,
+                           recovered->message + "\n" + recoveryWork});
+        if (cancel.cancelled() || recovered->status == wr::RoutingStatus::Cancelled) {
+          CancelRoutingResultKeepingDiagnostics(*recovered);
+          recovered->engineAttempts = history;
+          recovered->attemptFailures = attempts;
+          return finish(std::move(*recovered));
+        }
+        if (AcceptedRoute(*recovered)) {
+          recovered->engineIdentity = "quick3";
+          if (accepted) accepted(engine,*recovered);
+          if (!haveBest || recovered->legs.back().endTime < best.legs.back().endTime) {
+            best=std::move(*recovered); haveBest=true;
+          }
+          if (mode == RoutingEngine::Auto) {
+            best.engineAttempts=history; best.attemptFailures=attempts;
+            return finish(std::move(best));
+          }
+        } else {
+          attempts.push_back({"Quick3 recovery",recovered->status,recovered->message});
+        }
+      }
     }
   }
   if (haveBest) {
