@@ -36,6 +36,7 @@ wxString UtcText(const wxDateTime& time) {
 wxString EngineTitle(const std::string& engine) {
   if (engine == "original") return _("Quick");
   if (engine == "quick2") return _("Quick2");
+  if (engine == "quick3") return _("Quick3 recovery");
   if (engine == "quick") return _("Standard");
   if (engine == "main") return _("Professional");
   if (engine == "alternative") return _("Alternative");
@@ -346,6 +347,9 @@ void RouteComparisonDialog::RunHostContract(bool lifecycle) {
       passed = passed && segment.owner->SelectedRetainedCandidateId() == segment.candidate.id &&
           segment.owner->EndTime() == WxTime(legs.back().endTime) &&
           segment.owner->GetPlotData().size() == legs.size();
+      if (segment.candidate.result->engineIdentity == "quick3")
+        passed = passed && entry.engine == _("Quick3 recovery") &&
+            segment.owner->GetComputedSearchSettings().selectedEngine == "quick3";
     }
   }
   for (bool windOnly : {initialWindOnly, !initialWindOnly}) {

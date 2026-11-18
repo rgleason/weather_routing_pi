@@ -35,10 +35,11 @@ class PartialRouteArchive {
  public:
   struct Entry { PartialRouteSeed seed; PartialRouteTrace trace; };
   PartialRouteArchive(GeoPoint start, GeoPoint destination, TimePoint departure,
-      Duration horizon, std::size_t bytes, std::size_t maximumEntries = 16)
+      Duration horizon, std::size_t bytes, std::size_t maximumEntries = 16,
+      double maximumRemainingNm = std::numeric_limits<double>::infinity())
       : start_(start), destination_(destination), departure_(departure),
         horizon_(horizon), budget_(bytes), slots_(maximumEntries),
-        directNm_(distanceNm(start, destination)) {}
+        directNm_(distanceNm(start, destination)), maximumRemainingNm_(maximumRemainingNm) {}
   const std::vector<Entry>& entries() const { return entries_; }
   std::size_t bytes() const { return used_; }
   std::size_t byteBudget() const { return budget_; }
@@ -50,7 +51,8 @@ class PartialRouteArchive {
   // closest endpoint, rather than chained through successively wider bands.
   bool wanted(const PartialRouteSeed& seed) const {
     if (!slots_ || !budget_ || !std::isfinite(seed.remainingNm) ||
-        seed.remainingNm < 0 || seed.time <= departure_ ||
+        seed.remainingNm < 0 || seed.remainingNm > maximumRemainingNm_ ||
+        seed.time <= departure_ ||
         seed.time > departure_ + horizon_ ||
         seed.remainingNm + kReplayEndpointToleranceNm >= directNm_) return false;
     const auto anchor = std::min(nearest_, seed.remainingNm);
@@ -149,7 +151,7 @@ class PartialRouteArchive {
   TimePoint departure_;
   Duration horizon_;
   std::size_t budget_, slots_, used_{}, peak_{}, captures_{}, rejected_{};
-  double directNm_, nearest_{std::numeric_limits<double>::infinity()};
+  double directNm_, maximumRemainingNm_, nearest_{std::numeric_limits<double>::infinity()};
   std::array<unsigned, 8> counts_{};
   std::array<std::optional<std::size_t>, 8> worst_{};
   std::vector<Entry> entries_;

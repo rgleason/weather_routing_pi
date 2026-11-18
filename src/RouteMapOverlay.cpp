@@ -2795,11 +2795,33 @@ bool RouteMapOverlay::ValidatePlottedDestinationRouteLand(
   if (weather_routing::IsCombinedEngine(configuration.EngineSettings.engine) &&
       !computed.selectedEngine.empty()) {
     // Preserve the saved selector, but replay with the winning engine's rules.
-    validationConfiguration.EngineSettings.SetEngineId(
-        computed.selectedEngine == "alternative" ? "main" : computed.selectedEngine);
-    const int resolution = validationConfiguration.EffectiveShorelineResolution();
-    if (resolution >= 0 && resolution < 5 && configuration.engine_shorelines[resolution])
-      validationConfiguration.shoreline_dataset = configuration.engine_shorelines[resolution];
+    if (computed.selectedEngine == "quick3") {
+      // Recovery uses the prepared source context of its retained candidate;
+      // Quick3 is a completion stage, not another selectable settings preset.
+      bool found = false;
+      Lock();
+      for (const auto& candidate : m_RetainedCandidates)
+        if (candidate.id == m_SelectedRetainedCandidateId &&
+            candidate.result->engineIdentity == "quick3") {
+          validationConfiguration.EngineSettings = candidate.configuration.EngineSettings;
+          validationConfiguration.shoreline_dataset = candidate.configuration.shoreline_dataset;
+          found = true; break;
+        }
+      Unlock();
+      if (!found) {
+        SetFailureReason(_("Quick3's saved validation context is unavailable. Recompute this passage."));
+        m_EndTime = wxDateTime();
+        SetFinished(false);
+        clear_destination_plotdata = true;
+        return false;
+      }
+    } else {
+      validationConfiguration.EngineSettings.SetEngineId(
+          computed.selectedEngine == "alternative" ? "main" : computed.selectedEngine);
+      const int resolution = validationConfiguration.EffectiveShorelineResolution();
+      if (resolution >= 0 && resolution < 5 && configuration.engine_shorelines[resolution])
+        validationConfiguration.shoreline_dataset = configuration.engine_shorelines[resolution];
+    }
   }
 
   std::list<PlotData>& plotdata = GetPlotData(false);

@@ -62,7 +62,10 @@ public:
 private:
   void ApplyRuntimeMemoryGuard();
 
-  static constexpr std::size_t kFrameCapacity = 512;
+  // Retained grid bytes, admitted against physical/process memory, are the
+  // primary limit. A 512-entry ceiling discarded small frames long before
+  // that budget was used. Keep only a generous metadata safety ceiling.
+  static constexpr std::size_t kFrameCapacity = 32768;
   // A missing frame owns no GRIB grids. Retain its status separately across
   // long passages and engine attempts without increasing the frame budget.
   static constexpr std::size_t kMissingFrameCapacity = 32768;

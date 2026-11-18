@@ -477,3 +477,10 @@ TEST(PassageShorelineSettings, LastUsedDefaultsMigrateAndRememberExplicitLowerCh
   EXPECT_EQ(wr::ReadShorelineResolution(config,2,"QuickShorelineResolution"),1);
   EXPECT_EQ(wr::ReadShorelineResolution(config,4,"ChartShorelineResolution"),0);
 }
+
+TEST(RoutingEngineSettings, CompletionUpgradeRetains136DataAndManualPreferences) {
+  EXPECT_TRUE(weather_routing::CanSkipBundledDataUpdate(136,1,37));
+  for (int previous : {0,135,137})
+    EXPECT_FALSE(weather_routing::CanSkipBundledDataUpdate(previous,1,37));
+  EXPECT_FALSE(weather_routing::CanSkipBundledDataUpdate(136,2,4));
+}

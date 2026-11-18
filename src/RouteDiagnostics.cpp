@@ -114,7 +114,10 @@ void Warning(RouteDiagnosticReport& report, const wr::RoutingWarning& warning) {
 template <typename Predicate>
 void Usage(RouteDiagnosticReport& report, const wr::RoutingResult& result,
            const std::string& code, const wxString& title,
-           const wxString& consequence, Predicate affected) {
+           const wxString& consequence, Predicate affected,
+           std::optional<wr::Duration> measured = {},
+           std::optional<wr::EnvironmentalVariable> variable = {},
+           wr::EnvironmentalSource source = wr::EnvironmentalSource::Missing) {
   long long seconds = 0;
   wxString intervals;
   unsigned ranges = 0;
@@ -139,7 +142,21 @@ void Usage(RouteDiagnosticReport& report, const wr::RoutingResult& result,
           DiagnosticTimeUtc(first.startTime), DiagnosticTimeUtc(end),
           PointText(first.start), PointText(endPoint));
   }
-  if (!ranges) return;
+  if (measured) {
+    // Whole-leg labels describe the search sample, not source changes during
+    // the final replay. Report measured time and actual recorded transitions.
+    seconds = measured->count();
+    intervals.clear(); ranges = 0;
+    if (variable)
+      for (const auto& change : result.validation.sourceTransitions) {
+        if (change.variable != *variable ||
+            (change.previousSource != source && change.newSource != source)) continue;
+        if (++ranges <= 20)
+          intervals += wxString::Format(_("\nSource change recorded at %s UTC; %s"),
+              DiagnosticTimeUtc(change.time),PointText(change.position));
+      }
+  }
+  if (seconds <= 0) return;
   wxString detail = wxString::Format(_("Affected duration: %s."),
                                      DurationText(seconds));
   if (result.metrics.elapsed.count() > 0)
@@ -147,8 +164,9 @@ void Usage(RouteDiagnosticReport& report, const wr::RoutingResult& result,
         100.0 * seconds / result.metrics.elapsed.count());
   detail += intervals;
   if (ranges > 20)
-    detail += wxString::Format(_("\n%u further intervals omitted from this summary."),
-                               ranges - 20);
+    detail += wxString::Format(measured
+        ? _("\n%u further source changes omitted from this summary.")
+        : _("\n%u further intervals omitted from this summary."), ranges - 20);
   report.Add({code, DiagnosticSeverity::Warning, title, detail, consequence});
 }
 }  // namespace
@@ -391,35 +409,70 @@ RouteDiagnosticReport DescribeRoutingResult(const wr::RoutingResult& result,
         if (item.code == "warning." + std::to_string(static_cast<int>(code))) return true;
       return false;
     });
+    const auto& observed = result.validation.environment;
+    const auto measured = [&](wr::Duration used, wr::Duration total)
+        -> std::optional<wr::Duration> {
+      return result.validation.passed && total.count() > 0
+          ? std::optional<wr::Duration>{used} : std::nullopt;
+    };
+    const auto windTime = observed.gribWindDuration + observed.climatologyWindDuration;
+    const auto waveTime = observed.gribWaveDuration + observed.missingWaveDuration;
+    const auto currentTime = observed.gribCurrentDuration + observed.xtdCurrentDuration +
+        observed.currentAssumedZeroDuration;
+    const auto hasCurrent = [&](auto predicate) {
+      return std::any_of(result.legs.begin(),result.legs.end(),predicate);
+    };
+    const bool climatologyCurrent = hasCurrent([](const auto& leg) {
+      return leg.currentSource.source == wr::EnvironmentalSource::XtdCurrentPrediction &&
+          leg.currentSource.modelIdentity == "OpenCPN climatology current";
+    });
+    const bool alternativeCurrent = hasCurrent([](const auto& leg) {
+      return leg.currentSource.source == wr::EnvironmentalSource::XtdCurrentPrediction &&
+          leg.currentSource.modelIdentity != "OpenCPN climatology current";
+    });
+    const bool disabledCurrent = hasCurrent([](const auto& leg) {
+      return leg.currentSource.datasetIdentity == "current-disabled";
+    });
     Usage(report, result, "usage.climatology_wind",
         _("Climatology wind was used"),
         _("Climatology describes historical conditions rather than a forecast for this passage. Review forecast coverage for these sections."),
-        [](const auto& leg) { return leg.windSource.source == wr::EnvironmentalSource::Climatology; });
+        [](const auto& leg) { return leg.windSource.source == wr::EnvironmentalSource::Climatology; },
+        measured(observed.climatologyWindDuration,windTime),
+        wr::EnvironmentalVariable::Wind,wr::EnvironmentalSource::Climatology);
     Usage(report, result, "usage.climatology_current",
         _("Climatology current was used"),
         _("Climatology describes historical current conditions rather than a prediction for this passage."),
         [](const auto& leg) { return leg.currentSource.source == wr::EnvironmentalSource::XtdCurrentPrediction &&
-            leg.currentSource.modelIdentity == "OpenCPN climatology current"; });
+            leg.currentSource.modelIdentity == "OpenCPN climatology current"; },
+        measured(climatologyCurrent && !alternativeCurrent ? observed.xtdCurrentDuration : wr::Duration{},currentTime),
+        wr::EnvironmentalVariable::Current,wr::EnvironmentalSource::XtdCurrentPrediction);
     Usage(report, result, "usage.alternative_current",
         _("Alternative current data were used"),
         _("Review the recorded current provider and its coverage."),
         [](const auto& leg) { return leg.currentSource.source == wr::EnvironmentalSource::XtdCurrentPrediction &&
-            leg.currentSource.modelIdentity != "OpenCPN climatology current"; });
+            leg.currentSource.modelIdentity != "OpenCPN climatology current"; },
+        measured(!climatologyCurrent || alternativeCurrent ? observed.xtdCurrentDuration : wr::Duration{},currentTime),
+        wr::EnvironmentalVariable::Current,wr::EnvironmentalSource::XtdCurrentPrediction);
     Usage(report, result, "usage.zero_current",
         _("Zero current was assumed where data were unavailable"),
         _("Review current coverage; passage times and track may be affected."),
         [](const auto& leg) { return leg.currentSource.source == wr::EnvironmentalSource::NoDataAssumedZero &&
-            leg.currentSource.datasetIdentity != "current-disabled"; });
+            leg.currentSource.datasetIdentity != "current-disabled"; },
+        measured(disabledCurrent ? wr::Duration{} : observed.currentAssumedZeroDuration,currentTime),
+        wr::EnvironmentalVariable::Current,wr::EnvironmentalSource::NoDataAssumedZero);
     Usage(report, result, "usage.missing_waves",
         _("Wave-height data are missing"),
         waveLimitEnabled
             ? _("The wave-height limit could not be checked there. Missing wave heights do not mean calm seas.")
             : _("Missing wave heights do not mean calm seas. Wave-based comfort information is incomplete in those sections."),
-        [](const auto& leg) { return !leg.waves.available; });
+        [](const auto& leg) { return !leg.waves.available; },
+        measured(observed.missingWaveDuration,waveTime),
+        wr::EnvironmentalVariable::Waves,wr::EnvironmentalSource::Missing);
     Usage(report, result, "usage.estimated_waves",
         _("Some wave heights were estimated"),
         _("The maximum of nearby connected-water cells is not a guaranteed upper bound."),
-        [](const auto& leg) { return leg.waves.nearbyHeightEstimate; });
+        [](const auto& leg) { return leg.waves.nearbyHeightEstimate; },
+        measured(observed.estimatedWaveDuration,waveTime));
     Usage(report, result, "usage.waiting",
         _("Stationary waiting or anchoring was assumed"),
         _("Verify anchoring suitability at each position; the calculation does not establish it."),

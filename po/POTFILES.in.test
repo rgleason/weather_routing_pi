@@ -27,6 +27,7 @@ src/StatisticsDialog.cpp
 src/ReportDialog.cpp
 src/CycloneAssessment.cpp
 src/RouteDiagnostics.cpp
+src/QuickCompletion.cpp
 src/FilterRoutesDialog.cpp
 src/ConfigurationBatchDialog.cpp
 src/EditPolarDialog.cpp

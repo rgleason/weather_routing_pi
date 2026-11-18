@@ -7,6 +7,8 @@ inline bool CanSkipBundledDataUpdate(int installed, int major, int minor) {
   // 1.35 changes toolkit compatibility only; its bundled data is identical
   // to 1.34. Keep older installations on the ordinary data-upgrade path.
   if (installed == 134 && major == 1 && minor == 35) return true;
+  // 1.37 changes computation/reporting only; retain 1.36 user data.
+  if (installed == 136 && major == 1 && minor == 37) return true;
   return installed >= 124 && installed <= 132 && major == 1 &&
          minor >= 25 && minor <= 33;
 }

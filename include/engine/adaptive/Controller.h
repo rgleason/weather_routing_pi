@@ -49,6 +49,9 @@ struct Options {
   MemoryContext memory;
   std::function<std::uint64_t()> availableMemoryMiB;
   std::function<bool()> userCancelled;
+  // Optional portfolio handoff; individual/manual methods and All keep their
+  // established numerical attempts. Qualification is separate from recovery.
+  bool handoffAfterRepeatedRepair{};
 };
 struct AttemptResult {
   wr::RoutingResult route;
@@ -375,6 +378,13 @@ inline Result Run(const Options& options, const wr::RoutingRequest& original,
       output.route = {};
       output.route.status = wr::RoutingStatus::Cancelled;
       output.route.message = "Routing stopped";
+      break;
+    }
+    if (first && !have && options.engine == RoutingEngine::Original &&
+        options.handoffAfterRepeatedRepair &&
+        outcome.stopCause == StopCause::RepeatedChronologicalRepair) {
+      output.stopReason = "Handing off after repeated chronological repair failures";
+      output.route.diagnostics.stageStopReasons.push_back(output.stopReason);
       break;
     }
     if (index + 1 < choices.size()) {
