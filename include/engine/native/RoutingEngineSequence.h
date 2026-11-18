@@ -91,7 +91,8 @@ supercpn::weather_routing::RoutingResult RunRoutingEngineSequence(
         const supercpn::weather_routing::RoutingResult&)>& accepted = {},
     unsigned enabled = 0xffffffffU,
     const std::function<std::optional<supercpn::weather_routing::RoutingResult>()>&
-        completion = {}) {
+        completion = {}, bool competingFastPair = false,
+    const std::function<std::optional<double>(SequenceEngine)>& measuredSeconds = {}) {
   namespace wr = supercpn::weather_routing;
   wr::RoutingResult best, last;
   bool haveBest = false;
@@ -125,13 +126,17 @@ supercpn::weather_routing::RoutingResult RunRoutingEngineSequence(
     }
     const auto attemptStarted = std::chrono::steady_clock::now();
     last = solve(engine);
-    const auto seconds = std::chrono::duration<double>(
+    auto seconds = std::chrono::duration<double>(
         std::chrono::steady_clock::now() - attemptStarted).count();
+    if (measuredSeconds) seconds = measuredSeconds(engine).value_or(seconds);
     const auto work = audit.Record(last.diagnostics, seconds);
     last.engineIdentity = SequenceEngineId(engine);
     // Cancellation cancels the complete operation, including any earlier
     // winner.
-    if (cancel.cancelled() || last.status == wr::RoutingStatus::Cancelled) {
+    const bool competingFast = competingFastPair &&
+        (engine == SequenceEngine::Original || engine == SequenceEngine::Quick2);
+    if (cancel.cancelled() ||
+        (last.status == wr::RoutingStatus::Cancelled && !competingFast)) {
       last.status = wr::RoutingStatus::Cancelled;
       history.push_back({SequenceEngineTitle(engine), last.status, last.message + "\n" + work});
       last.message = "Routing engine sequence cancelled";
@@ -157,12 +162,12 @@ supercpn::weather_routing::RoutingResult RunRoutingEngineSequence(
       }
       // Auto returns its first accepted result, including Quick2. All alone
       // continues the selected-engine comparison.
-      if (mode == RoutingEngine::Auto) {
+      if (mode == RoutingEngine::Auto && !competingFast) {
         best.attemptFailures = attempts;
         best.engineAttempts = history;
         return finish(std::move(best));
       }
-    } else {
+    } else if (!(competingFast && last.status == wr::RoutingStatus::Cancelled)) {
       if (!failures.empty()) failures += "; ";
       std::string detail = last.message.empty() ? "no validated complete route" : last.message;
       if (last.status == wr::RoutingStatus::WaveDataRequired)
@@ -172,6 +177,11 @@ supercpn::weather_routing::RoutingResult RunRoutingEngineSequence(
       attempts.push_back({SequenceEngineTitle(engine), last.status, detail});
       failures += std::string(SequenceEngineTitle(engine)) + ": [" +
           wr::toString(last.status) + "] " + detail;
+    }
+    if (competingFastPair && engine == SequenceEngine::Quick2 && haveBest) {
+      best.attemptFailures = attempts;
+      best.engineAttempts = history;
+      return finish(std::move(best));
     }
     // A shared completion phase follows the last selected fast method. It
     // never delays Auto after an accepted result; All keeps comparing.

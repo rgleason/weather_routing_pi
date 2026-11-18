@@ -39,8 +39,8 @@ namespace weather_routing {
 GribTimelineFrameCache::GribTimelineFrameCache()
     : cache_(kFrameCapacity,
              MiBToBytes(kMainGribTimelineCacheDefaultMiB),
-             [](const Shared_GribRecordSet& frame) {
-               return frame.EstimatedMemoryBytes();
+             [](const Reply& reply) {
+               return reply.frame.EstimatedMemoryBytes();
              }, kMissingFrameCapacity) {}
 
 GribTimelineCacheAdmission GribTimelineFrameCache::Configure(
@@ -62,45 +62,160 @@ GribTimelineCacheAdmission GribTimelineFrameCache::Configure(
   return admission;
 }
 
-bool GribTimelineFrameCache::Acquire(
-    const std::int64_t& key, Shared_GribRecordSet* value,
-    long timeout_milliseconds,
-    const std::function<void(const std::int64_t&)>& request,
-    const std::function<bool()>& cancelled) {
-  if (!request) return false;
-  return cache_.Acquire(key, value, timeout_milliseconds,
-      [this, &request](const std::int64_t& requested) {
-        request(requested);
+GribTimelineFrameCache::Reply GribTimelineFrameCache::Acquire(
+    std::int64_t key, long timeout_milliseconds,
+    const std::function<bool()>& cancelled, bool* cache_hit,
+    std::atomic<unsigned>* waiters) {
+  Reply reply;
+  cache_.AcquireRequest(key, &reply, timeout_milliseconds,
+      [this](const Request& request) {
         std::function<void()> wakeup;
         {
-          std::lock_guard<std::mutex> guard(wakeup_mutex_);
+          std::lock_guard<std::mutex> guard(queue_mutex_);
+          requests_.push_back(request);
           wakeup = request_wakeup_;
         }
         if (wakeup) wakeup();
-      }, cancelled);
+      }, cancelled, cache_hit, waiters);
+  return reply;
+}
+
+std::optional<GribTimelineFrameCache::Request>
+GribTimelineFrameCache::TakePendingRequest(bool allowPrefetch) {
+  std::lock_guard<std::mutex> guard(queue_mutex_);
+  while (!requests_.empty()) {
+    const auto request = requests_.front();
+    requests_.pop_front();
+    if (cache_.IsPending(request)) return request;
+  }
+  if (next_slice_ && (allowPrefetch || cache_.HasWaiters(*next_slice_))) {
+    const auto request = std::exchange(next_slice_, std::nullopt);
+    if (cache_.IsPending(*request)) return request;
+  }
+  return std::nullopt;
+}
+
+void GribTimelineFrameCache::WakeHost() {
+  std::function<void()> wakeup;
+  {
+    std::lock_guard<std::mutex> guard(queue_mutex_);
+    wakeup = request_wakeup_;
+  }
+  if (wakeup) wakeup();
+}
+
+void GribTimelineFrameCache::PrefetchNextSlice(const Request& request, std::size_t bytes) {
+  // Canonical native forecast sampling uses quarter-hour buckets. Keep one
+  // speculative slice in reserve, with room for several ordinary replies.
+  constexpr std::int64_t cadence = 15 * 60;
+  if (request.prefetch || request.key % cadence || !configured_) return;
+  const auto limit = MiBToBytes(current_limit_mib_);
+  if (bytes > limit / 4 || cache_.TotalWeight() > limit - 4 * bytes) return;
+  try {
+    std::lock_guard<std::mutex> guard(queue_mutex_);
+    if (!next_slice_ || !cache_.IsPending(*next_slice_))
+      next_slice_ = cache_.Prefetch(request.key + cadence);
+  } catch (const std::bad_alloc&) {
+    // Lookahead is optional. The next demand request uses the normal path.
+  }
 }
 
 void GribTimelineFrameCache::SetRequestWakeup(std::function<void()> wakeup) {
-  std::lock_guard<std::mutex> guard(wakeup_mutex_);
+  std::lock_guard<std::mutex> guard(queue_mutex_);
   request_wakeup_ = std::move(wakeup);
 }
 
-bool GribTimelineFrameCache::Publish(std::int64_t key,
-                                     const Shared_GribRecordSet& value,
-                                     bool valid) {
-  ApplyRuntimeMemoryGuard();
-  return cache_.Publish(key, value, valid);
+bool GribTimelineFrameCache::TryResident(std::int64_t key,
+                                         Shared_GribRecordSet* value) const {
+  Reply reply;
+  if (!value || !cache_.TryResident(key, &reply)) return false;
+  *value = std::move(reply.frame);
+  return true;
 }
 
-void GribTimelineFrameCache::PublishUnavailable(std::int64_t key) {
+bool GribTimelineFrameCache::Publish(const Request& request,
+                                     const Reply& reply) {
   ApplyRuntimeMemoryGuard();
-  cache_.PublishUnavailable(key);
+  return cache_.Publish(request, reply, reply.status == Status::Available,
+                        {{}, Status::OutOfMemory});
+}
+
+void GribTimelineFrameCache::PublishFrame(
+    const Request& request, const GribRecordSet* grib) {
+  if (!grib || !grib->m_GribRecordPtrArray[Idx_WIND_VX] ||
+      !grib->m_GribRecordPtrArray[Idx_WIND_VY]) {
+    if (cache_.DiscardUnusedPrefetch(request)) return;
+    Publish(request, {{}, grib ? Status::NoWind : Status::NoFrame});
+    return;
+  }
+
+  const auto* wind = grib->m_GribRecordPtrArray[Idx_WIND_VX];
+  // The ABI does not expose the provider's record-set ID.
+  const unsigned int id = static_cast<unsigned int>(wind->getRecordRefDate()) ^
+      (static_cast<unsigned int>(wind->getIdCenter()) << 24) ^
+      (static_cast<unsigned int>(wind->getNi()) << 16);
+  /* copy the grib record set */
+  try {
+    auto copied = std::make_shared<WR_GribRecordSet>(id);
+    copied->m_Reference_Time = grib->m_Reference_Time;
+    for (int i = 0; i < Idx_COUNT; i++) {
+      switch (i) {
+        case Idx_HTSIGW:
+        case Idx_WVDIR:
+        case Idx_WVPER:
+        case Idx_WIND_GUST:
+        case Idx_WIND_VX:
+        case Idx_WIND_VY:
+        case Idx_SEACURRENT_VX:
+        case Idx_SEACURRENT_VY:
+        case Idx_AIR_TEMP:
+        case Idx_CAPE:
+        case Idx_CLOUD_TOT:
+        case Idx_HUMID_RE:
+        case Idx_PRECIP_TOT:
+        case Idx_SEA_TEMP:
+        case Idx_PRESSURE:
+        case Idx_COMP_REFL:
+          if (grib->m_GribRecordPtrArray[i]) {
+            copied->SetUnRefGribRecord(
+                i, new GribRecord(*grib->m_GribRecordPtrArray[i]));
+          }
+          break;
+        default:
+          break;
+      }
+    }
+    Shared_GribRecordSet frame(std::move(copied));
+    const auto bytes = frame.EstimatedMemoryBytes();
+    if (request.prefetch) {
+      ApplyRuntimeMemoryGuard();
+      const auto limit = MiBToBytes(current_limit_mib_);
+      if ((bytes > limit || cache_.TotalWeight() > limit - bytes) &&
+          cache_.DiscardUnusedPrefetch(request))
+        return;
+    }
+    if (Publish(request, {frame, Status::Available})) PrefetchNextSlice(request, bytes);
+  } catch (const std::bad_alloc&) {
+    PublishOutOfMemory(request);
+  }
+}
+
+void GribTimelineFrameCache::PublishUnavailable(const Request& request) {
+  if (!cache_.DiscardUnusedPrefetch(request))
+    cache_.PublishUnavailable(request, {{}, Status::NoReply});
+}
+
+void GribTimelineFrameCache::PublishOutOfMemory(const Request& request) {
+  cache_.Abandon(request, {{}, Status::OutOfMemory});
 }
 
 void GribTimelineFrameCache::NotifyAll() { cache_.NotifyAll(); }
 
 std::size_t GribTimelineFrameCache::Clear(bool reset_statistics) {
   const std::size_t released = cache_.TotalWeight();
+  std::lock_guard<std::mutex> guard(queue_mutex_);
+  requests_.clear();
+  next_slice_.reset();
   cache_.Clear(reset_statistics);
   next_memory_check_milliseconds_ = 0;
   return released;

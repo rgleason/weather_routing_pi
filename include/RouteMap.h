@@ -31,6 +31,7 @@
 #include <array>
 #include <list>
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
@@ -40,7 +41,6 @@
 
 #include "ODAPI.h"
 #include "GribRecordSet.h"
-#include "KeyedRequestCache.h"
 #include "GribTimelineFrameCache.h"
 #include "ConstraintChecker.h"
 #include "RoutePoint.h"
@@ -941,6 +941,7 @@ public:
   void Reset();
   void BeginDiagnosticRun(weather_routing::RouteDiagnosticReport report);
   void SetDiagnostics(weather_routing::RouteDiagnosticReport report);
+  void AppendDiagnosticContext(const wxString& text);
   void AddDiagnostic(weather_routing::RouteDiagnostic diagnostic);
   void InstallResultDiagnostics(weather_routing::RouteDiagnosticReport report);
   weather_routing::RouteDiagnosticReport GetDiagnostics();
@@ -1041,28 +1042,33 @@ public:
    */
   bool NeedsGrib() {
     Lock();
-    bool needsgrib = m_bNeedsGrib;
+    bool needsgrib = m_bNeedsGrib || m_GribTimelineReaders.load(std::memory_order_relaxed) != 0;
     Unlock();
     return needsgrib;
   }
   /** Return true while propagation is paused for main-thread chart data. */
   bool NeedsChartSafetyData() {
     Lock();
-    bool needed = m_bNeedsChartSafetyData;
+    bool needed = m_bNeedsChartSafetyData || m_ChartWaiters.load(std::memory_order_relaxed) != 0;
     Unlock();
     return needed;
   }
-  /** Resume propagation after the main thread has serviced tile requests. */
-  void ChartSafetyDataServiced();
-  /** Pause a worker until queued chart-semantic tile requests are serviced. */
-  bool AwaitChartSafetyData(long timeoutMilliseconds = 30000);
+  using DataClock = std::chrono::steady_clock;
+  std::uint64_t ChartServiceRevision() const {
+    return m_ChartServiceRevision.load(std::memory_order_acquire);
+  }
+  // A worker rechecks the exact geometry that requested tiles after service
+  // advances. The legacy propagator still waits for its entire layer.
+  void ChartSafetyDataServiced(bool queueEmpty);
+  bool AwaitChartSafetyData(std::uint64_t revision, DataClock::time_point deadline,
+                            const std::atomic_bool* methodStop = nullptr);
+  void NotifyDataWaiters();
   void RequestedGrib() {
     Lock();
     m_bNeedsGrib = false;
     Unlock();
   }
-  void SetNewGrib(GribRecordSet* grib, std::int64_t timeline_key = -1);
-  void SetNewGrib(WR_GribRecordSet* grib, std::int64_t timeline_key = -1);
+  void SetNewGrib(WR_GribRecordSet* grib);
   /**
    * Acquire a copied GRIB timeline frame.  Worker threads request missing
    * frames through the normal main-thread plugin-message path and wait on a
@@ -1071,12 +1077,13 @@ public:
    */
   bool AcquireGribTimelineFrame(const wxDateTime& time,
                                 Shared_GribRecordSet& frame,
-                                long timeoutMilliseconds = 30000);
+                                long timeoutMilliseconds = 30000,
+                                const std::atomic_bool* methodStop = nullptr);
   bool TryResidentGribTimelineFrame(const wxDateTime& time,
                                     Shared_GribRecordSet& frame) const;
   int GribTimelineCacheBudgetMiB() const { return m_GribTimelineCache->EffectiveMiB(); }
-  /** Release an unanswered request without claiming this frame is missing. */
-  void SetGribProviderUnavailable(std::int64_t timeline_key);
+  std::shared_ptr<weather_routing::GribTimelineFrameCache>
+  GribTimelineCache() const { return m_GribTimelineCache; }
   void SetGribTimelineFrameCache(
       const std::shared_ptr<weather_routing::GribTimelineFrameCache>& cache) {
     if (cache) m_GribTimelineCache = cache;
@@ -1086,17 +1093,6 @@ public:
     m_NewGrib = nullptr;
     m_SharedNewGrib.SetGribRecordSet(nullptr);
     Unlock();
-  }
-  /**
-   * Thread-safe accessor to get the time when new weather data is needed.
-   *
-   * @return Time when new weather data is required
-   */
-  wxDateTime NewTime() {
-    Lock();
-    wxDateTime time = m_NewTime;
-    Unlock();
-    return time;
   }
   /**
    * Thread-safe accessor to get the starting time of the route.
@@ -1209,7 +1205,7 @@ public:
     m_bFinished = true;
     Unlock();
     m_CancellationFlag->store(true, std::memory_order_relaxed);
-    m_GribTimelineCache->NotifyAll();
+    NotifyDataWaiters();
   }
   void ResetFinished() {
     Lock();
@@ -1433,8 +1429,11 @@ private:
   wxDateTime m_NewTime;
 
   void MarkResourceExhaustionLocked(const wxString& context);
-  bool PublishTimelineFrame(std::int64_t timeline_key,
-                            const Shared_GribRecordSet& frame);
+  std::atomic<unsigned> m_GribTimelineReaders{0};
+  std::atomic<unsigned> m_ChartWaiters{0};
+  std::atomic<std::uint64_t> m_ChartServiceRevision{0};
+  std::mutex m_ChartWaitMutex;
+  std::condition_variable m_ChartServiceReady;
   std::shared_ptr<weather_routing::GribTimelineFrameCache>
       m_GribTimelineCache;
   std::shared_ptr<std::atomic_bool> m_CancellationFlag;

@@ -341,40 +341,53 @@ std::int64_t GribTimelineKey(const wxDateTime& time) {
 
 bool RouteMap::AcquireGribTimelineFrame(const wxDateTime& time,
                                         Shared_GribRecordSet& frame,
-                                        long timeoutMilliseconds) {
+                                        long timeoutMilliseconds,
+                                        const std::atomic_bool* methodStop) {
   const std::int64_t key = GribTimelineKey(time);
   if (key < 0) return false;
-  return m_GribTimelineCache->Acquire(
-      key, &frame, timeoutMilliseconds,
-      [this, time](const std::int64_t&) {
-        Lock();
-        m_NewTime = time;
-        m_bNeedsGrib = true;
-        Unlock();
-      },
-      [this] { return m_CancellationFlag->load(std::memory_order_relaxed); });
+  using Status = weather_routing::GribTimelineFrameCache::Status;
+  bool cacheHit = false;
+  auto reply = m_GribTimelineCache->Acquire(key, timeoutMilliseconds,
+      [this, methodStop] {
+        return m_CancellationFlag->load(std::memory_order_relaxed) ||
+               (methodStop && methodStop->load(std::memory_order_relaxed));
+      }, &cacheHit, &m_GribTimelineReaders);
+  frame = std::move(reply.frame);
+  if (reply.status == Status::Available) return true;
+  if (cacheHit) return false;
+  const auto requestedTime = [&] {
+    return _("Requested time: ") + time.Format("%Y-%m-%d %H:%M:%S", wxDateTime::UTC) + " UTC";
+  };
+  switch (reply.status) {
+    case Status::NoReply:
+      AddDiagnostic({"provider.no_reply", weather_routing::DiagnosticSeverity::Warning,
+          _("The weather service did not answer a request"), requestedTime(),
+          _("Check that the weather provider is enabled and ready. A missing reply is not proof that the GRIB contains no wind.")});
+      break;
+    case Status::NoFrame:
+      AddDiagnostic({"provider.no_frame", weather_routing::DiagnosticSeverity::Warning,
+          _("The weather provider returned no forecast frame"), requestedTime(),
+          _("Review the loaded forecast and its valid times. The selected fallback may be needed.")});
+      break;
+    case Status::NoWind:
+      AddDiagnostic({"provider.no_wind", weather_routing::DiagnosticSeverity::Warning,
+          _("The requested forecast frame has no complete wind vector"),
+          _("At least one wind component is missing at the requested time."),
+          _("Load a forecast containing both wind components for the route and time.")});
+      break;
+    case Status::OutOfMemory:
+      ReportResourceExhaustion(_("preparing a GRIB timeline frame"));
+      break;
+    default:
+      break;
+  }
+  return false;
 }
 
 bool RouteMap::TryResidentGribTimelineFrame(const wxDateTime& time,
                                            Shared_GribRecordSet& frame) const {
   const auto key = GribTimelineKey(time);
   return key >= 0 && m_GribTimelineCache->TryResident(key, &frame);
-}
-
-void RouteMap::SetGribProviderUnavailable(std::int64_t timeline_key) {
-  if (timeline_key >= 0) m_GribTimelineCache->PublishUnavailable(timeline_key);
-}
-
-bool RouteMap::PublishTimelineFrame(std::int64_t timeline_key,
-                                    const Shared_GribRecordSet& frame) {
-  if (timeline_key < 0) return true;
-  const bool published = m_GribTimelineCache->Publish(
-      timeline_key, frame, frame.GetGribRecordSet() != nullptr);
-  if (!published) {
-    MarkResourceExhaustionLocked(_("caching a GRIB timeline frame"));
-    m_CancellationFlag->store(true, std::memory_order_relaxed);
-  }
-  return published;
 }
 
 void RouteMap::MarkResourceExhaustionLocked(const wxString& context) {
@@ -395,7 +408,7 @@ void RouteMap::ReportResourceExhaustion(const wxString& context) {
   MarkResourceExhaustionLocked(context);
   Unlock();
   m_CancellationFlag->store(true, std::memory_order_relaxed);
-  m_GribTimelineCache->NotifyAll();
+  NotifyDataWaiters();
 }
 
 static long CountIsoRouteListPositions(const IsoRouteList& routes) {
@@ -1121,6 +1134,11 @@ void RouteMap::SetDiagnostics(weather_routing::RouteDiagnosticReport report) {
   m_Diagnostics = std::move(report);
 }
 
+void RouteMap::AppendDiagnosticContext(const wxString& text) {
+  ScopedDiagnosticLock lock(*this);
+  m_Diagnostics.context += text;
+}
+
 void RouteMap::AddDiagnostic(weather_routing::RouteDiagnostic diagnostic) {
   ScopedDiagnosticLock lock(*this);
   if (diagnostic.code.rfind("provider.", 0) == 0) {
@@ -1180,7 +1198,13 @@ void RouteMap::Reset() {
   Unlock();
 }
 
-void RouteMap::ChartSafetyDataServiced() {
+void RouteMap::ChartSafetyDataServiced(bool queueEmpty) {
+  {
+    std::lock_guard<std::mutex> lock(m_ChartWaitMutex);
+    m_ChartServiceRevision.fetch_add(1, std::memory_order_release);
+    m_ChartServiceReady.notify_all();
+  }
+  if (!queueEmpty) return;
   Lock();
   m_bNeedsChartSafetyData = false;
   m_Configuration.chart_safety_missing_tile_rejections = 0;
@@ -1195,38 +1219,37 @@ void RouteMap::ChartSafetyDataServiced() {
   Unlock();
 }
 
-bool RouteMap::AwaitChartSafetyData(long timeoutMilliseconds) {
-  Lock();
-  m_bNeedsChartSafetyData = true;
-  Unlock();
-  const wxLongLong started = wxGetUTCTimeMillis();
-  while (NeedsChartSafetyData()) {
-    if (Finished()) return false;
-    if ((wxGetUTCTimeMillis() - started).ToLong() >= timeoutMilliseconds)
-      return false;
-    wxMilliSleep(10);
-  }
-  return true;
+bool RouteMap::AwaitChartSafetyData(std::uint64_t revision,
+                                   DataClock::time_point deadline,
+                                   const std::atomic_bool* methodStop) {
+  std::unique_lock<std::mutex> lock(m_ChartWaitMutex);
+  const auto cancelled = [&] {
+    return m_CancellationFlag->load(std::memory_order_relaxed) ||
+           (methodStop && methodStop->load(std::memory_order_relaxed));
+  };
+  m_ChartWaiters.fetch_add(1, std::memory_order_relaxed);
+  if (ChartServiceRevision() == revision && !cancelled())
+    m_GribTimelineCache->WakeHost();
+  const bool signalled = m_ChartServiceReady.wait_until(lock, deadline, [&] {
+    return ChartServiceRevision() != revision || cancelled();
+  });
+  m_ChartWaiters.fetch_sub(1, std::memory_order_relaxed);
+  return signalled && !cancelled();
+}
+
+void RouteMap::NotifyDataWaiters() {
+  m_GribTimelineCache->NotifyAll();
+  std::lock_guard<std::mutex> lock(m_ChartWaitMutex);
+  m_ChartServiceReady.notify_all();
 }
 
 std::map<time_t, std::weak_ptr<WR_GribRecordSet>> grib_key;
 wxMutex s_key_mutex;
 
-void RouteMap::SetNewGrib(GribRecordSet* grib, std::int64_t timeline_key) {
+void RouteMap::SetNewGrib(WR_GribRecordSet* grib) {
   if (!grib || !grib->m_GribRecordPtrArray[Idx_WIND_VX] ||
-      !grib->m_GribRecordPtrArray[Idx_WIND_VY]) {
-    PublishTimelineFrame(timeline_key, Shared_GribRecordSet());
+      !grib->m_GribRecordPtrArray[Idx_WIND_VY])
     return;
-  }
-
-  // XXX should be grib->m_ID in a newer OpenCPN version
-  unsigned int bogus_ID;  // grib->m_ID
-
-  GribRecord* tmp = grib->m_GribRecordPtrArray[Idx_WIND_VX];
-  // RecordRefDate is time_t and high byte is likely the same in many grib
-  // files, add some entropy
-  bogus_ID = tmp->getRecordRefDate() ^ (tmp->getIdCenter() << 24) ^
-             (tmp->getNi() << 16);
 
   {
     std::map<time_t, std::weak_ptr<WR_GribRecordSet>>::iterator it;
@@ -1237,82 +1260,7 @@ void RouteMap::SetNewGrib(GribRecordSet* grib, std::int64_t timeline_key) {
     if (existing) {
       m_SharedNewGrib.SetSharedGribRecordSet(existing);
       m_NewGrib = m_SharedNewGrib.GetGribRecordSet();
-      // compute fake generation grib->m_ID
-      if (m_NewGrib->m_ID == bogus_ID) {
-        PublishTimelineFrame(timeline_key, m_SharedNewGrib);
-        return;
-      }
-    }
-  }
-  /* copy the grib record set */
-  try {
-    auto copied = std::make_shared<WR_GribRecordSet>(bogus_ID /* XXX */);
-    copied->m_Reference_Time = grib->m_Reference_Time;
-    for (int i = 0; i < Idx_COUNT; i++) {
-      switch (i) {
-        case Idx_HTSIGW:
-        case Idx_WVDIR:
-        case Idx_WVPER:
-        case Idx_WIND_GUST:
-        case Idx_WIND_VX:
-        case Idx_WIND_VY:
-        case Idx_SEACURRENT_VX:
-        case Idx_SEACURRENT_VY:
-        case Idx_AIR_TEMP:
-        case Idx_CAPE:
-        case Idx_CLOUD_TOT:
-        case Idx_HUMID_RE:
-        case Idx_PRECIP_TOT:
-        case Idx_SEA_TEMP:
-        case Idx_PRESSURE:
-        case Idx_COMP_REFL:
-          if (grib->m_GribRecordPtrArray[i]) {
-            copied->SetUnRefGribRecord(
-                i, new GribRecord(*grib->m_GribRecordPtrArray[i]));
-          }
-          break;
-        default:
-          break;
-      }
-    }
-    m_SharedNewGrib.SetSharedGribRecordSet(std::move(copied));
-    m_NewGrib = m_SharedNewGrib.GetGribRecordSet();
-    {
-      wxMutexLocker lock(s_key_mutex);
-      grib_key[m_NewGrib->m_Reference_Time] =
-          m_SharedNewGrib.GetSharedGribRecordSet();
-    }
-    PublishTimelineFrame(timeline_key, m_SharedNewGrib);
-  } catch (const std::bad_alloc&) {
-    m_NewGrib = nullptr;
-    m_SharedNewGrib.SetSharedGribRecordSet(nullptr);
-    MarkResourceExhaustionLocked(_("copying a GRIB timeline frame"));
-    m_CancellationFlag->store(true, std::memory_order_relaxed);
-    PublishTimelineFrame(timeline_key, Shared_GribRecordSet());
-    return;
-  }
-}
-
-void RouteMap::SetNewGrib(WR_GribRecordSet* grib, std::int64_t timeline_key) {
-  if (!grib || !grib->m_GribRecordPtrArray[Idx_WIND_VX] ||
-      !grib->m_GribRecordPtrArray[Idx_WIND_VY]) {
-    PublishTimelineFrame(timeline_key, Shared_GribRecordSet());
-    return;
-  }
-
-  {
-    std::map<time_t, std::weak_ptr<WR_GribRecordSet>>::iterator it;
-    wxMutexLocker lock(s_key_mutex);
-    it = grib_key.find(grib->m_Reference_Time);
-    const std::shared_ptr<WR_GribRecordSet> existing =
-        it == grib_key.end() ? nullptr : it->second.lock();
-    if (existing) {
-      m_SharedNewGrib.SetSharedGribRecordSet(existing);
-      m_NewGrib = m_SharedNewGrib.GetGribRecordSet();
-      if (m_NewGrib->m_ID == grib->m_ID) {
-        PublishTimelineFrame(timeline_key, m_SharedNewGrib);
-        return;
-      }
+      if (m_NewGrib->m_ID == grib->m_ID) return;
     }
   }
   /* copy the grib record set */
@@ -1345,13 +1293,11 @@ void RouteMap::SetNewGrib(WR_GribRecordSet* grib, std::int64_t timeline_key) {
       grib_key[m_NewGrib->m_Reference_Time] =
           m_SharedNewGrib.GetSharedGribRecordSet();
     }
-    PublishTimelineFrame(timeline_key, m_SharedNewGrib);
   } catch (const std::bad_alloc&) {
     m_NewGrib = nullptr;
     m_SharedNewGrib.SetSharedGribRecordSet(nullptr);
     MarkResourceExhaustionLocked(_("copying a GRIB timeline frame"));
     m_CancellationFlag->store(true, std::memory_order_relaxed);
-    PublishTimelineFrame(timeline_key, Shared_GribRecordSet());
     return;
   }
 }

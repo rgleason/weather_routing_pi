@@ -1046,7 +1046,7 @@ SettingsDialogBase::SettingsDialogBase(wxWindow* parent, wxWindowID id,
   fgSizer93->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
 
   m_staticText115 = new wxStaticText(sbSizer26->GetStaticBox(), wxID_ANY,
-                                     _("Maximum concurrent routes"),
+                                     _("Maximum routing workers"),
                                      wxDefaultPosition, wxDefaultSize, 0);
   m_staticText115->Wrap(-1);
   fgSizer93->Add(m_staticText115, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
@@ -1057,7 +1057,22 @@ SettingsDialogBase::SettingsDialogBase(wxWindow* parent, wxWindowID id,
   m_sConcurrentThreads->SetMaxSize(wxSize(140, -1));
 
   fgSizer93->Add(m_sConcurrentThreads, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
-  m_sConcurrentThreads->SetToolTip(_("Upper limit for simultaneous routes. Available physical RAM may reduce concurrency. Existing searches continue; forecast resolution and routing effort are preserved."));
+  m_sConcurrentThreads->SetToolTip(_("Maximum workers shared by routes and routing methods. Available physical RAM can reduce concurrency. Each admitted method keeps its search allowance."));
+
+  m_cbParallelMethods = new wxCheckBox(
+      sbSizer26->GetStaticBox(), wxID_ANY, _("Allow parallel routing methods"));
+  m_cbParallelMethods->SetToolTip(
+      _("Use spare workers for All and overlap Quick and Quick2 in Auto."));
+  fgSizer93->Add(m_cbParallelMethods, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
+  m_sParallelMethods = new wxSpinCtrl(
+      sbSizer26->GetStaticBox(), wxID_ANY, wxEmptyString, wxDefaultPosition,
+      wxDefaultSize, wxSP_ARROW_KEYS, 2, 6, 2);
+  m_sParallelMethods->SetToolTip(_("Maximum methods per route for All. Auto uses up to two. This shares the concurrent worker limit."));
+  m_sParallelMethods->Disable();
+  fgSizer93->Add(m_sParallelMethods, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
+  m_cbParallelMethods->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent&) {
+    m_sParallelMethods->Enable(m_cbParallelMethods->GetValue());
+  });
 
   sbSizer26->Add(fgSizer93, 1, wxEXPAND | wxTOP | wxBOTTOM | wxLEFT, 5);
 

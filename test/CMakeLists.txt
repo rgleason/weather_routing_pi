@@ -71,6 +71,7 @@ set(TEST_SRC
     KeyedRequestCache_tests.cpp
     GribTimelineFrameCache_tests.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/GribTimelineFrameCache.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/src/GribRecord.cpp
     GribTimelineCachePolicy_tests.cpp
     DeviceMemoryPolicy_tests.cpp
     OceanPrewarmPolicy_tests.cpp

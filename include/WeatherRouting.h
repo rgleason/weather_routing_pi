@@ -339,8 +339,6 @@ public:
    */
   std::list<RouteMapOverlay*> CurrentRouteMaps(bool messagedialog = false);
   RouteMapOverlay* FirstCurrentRouteMap();
-  void RequestGribTimelineFrame(RouteMapOverlay* routeMapOverlay,
-                                const wxDateTime& time);
   void HandleGribTimelineFrame(const wxString& requestToken,
                                GribRecordSet* frame);
   void OnGribRequestWakeup(wxThreadEvent& event);
@@ -375,6 +373,8 @@ public:
   std::shared_ptr<weather_routing::GribTimelineFrameCache>
       m_GribTimelineFrameCache;
   bool m_GribTimelineCacheBatchActive{false};
+  std::shared_ptr<weather_routing::RoutingWorkerBudget> m_RoutingWorkerBudget{
+      std::make_shared<weather_routing::RoutingWorkerBudget>()};
   std::int64_t m_NextMemoryWorkerCheckMilliseconds{0};
   std::uint64_t m_AvailableWorkerMemoryMiB{0};
   int m_EstimatedWorkerMemoryMiB{256};
@@ -845,9 +845,13 @@ private:
   wxTimer m_tHeadlessRouteTest;
   std::unique_ptr<HeadlessRouteTestState> m_HeadlessRouteTestState;
 
+  bool ServiceGribTimelineRequest(
+      const std::shared_ptr<weather_routing::GribTimelineFrameCache>& cache,
+      bool allowPrefetch = false);
+
   struct PendingGribRequest {
-    RouteMapOverlay* route_map_overlay;
-    std::int64_t timeline_key;
+    std::shared_ptr<weather_routing::GribTimelineFrameCache> cache;
+    weather_routing::GribTimelineFrameCache::Request request;
   };
 
   std::mutex m_GribRequestMutex;

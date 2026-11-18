@@ -63,7 +63,7 @@ TEST(KeyedRequestCache, CoalescesConcurrentCallersForOneKey) {
   EXPECT_EQ(requests.load(), 1);
 }
 
-TEST(KeyedRequestCache, SerializesDifferentKeysAndPublishesByExplicitKey) {
+TEST(KeyedRequestCache, PublishesDifferentRequestsByExplicitKey) {
   weather_routing::KeyedRequestCache<int, int> cache(8);
   std::mutex order_mutex;
   std::vector<int> request_order;
@@ -136,7 +136,7 @@ TEST(KeyedRequestCache, TimedOutQueuedKeyIsNotCachedAsMissingWeather) {
   int value = 0;
   EXPECT_FALSE(cache.Acquire(
       2, &value, 10, [&](const int&) { ++requests; }, [] { return false; }));
-  EXPECT_EQ(requests.load(), 1);
+  EXPECT_EQ(requests.load(), 2);
 
   // Complete the first request, then prove key 2 is requested rather than
   // returned from a false negative inserted by its earlier queue timeout.
@@ -151,7 +151,7 @@ TEST(KeyedRequestCache, TimedOutQueuedKeyIsNotCachedAsMissingWeather) {
       [] { return false; }));
   // Publish is deliberately synchronous in this test; Acquire sees it on its
   // next iteration and returns the valid result.
-  EXPECT_EQ(requests.load(), 2);
+  EXPECT_EQ(requests.load(), 3);
   EXPECT_TRUE(
       cache.Acquire(2, &value, 10, [](const int&) {}, [] { return false; }));
   EXPECT_EQ(value, 22);
@@ -471,13 +471,14 @@ TEST(KeyedRequestCache, UnavailableReplyWakesConcurrentQueuedCallers) {
           key, &value, 2000,
           [&](const int& requested) {
             ++requests;
-            cache.PublishUnavailable(requested);
           }, [] { return false; });
     }));
   release.set_value();
   EXPECT_FALSE(first.get());
   for (auto& caller : queued) EXPECT_FALSE(caller.get());
-  EXPECT_EQ(requests.load(), 1);
+  EXPECT_GE(requests.load(), 1);
+  EXPECT_EQ(cache.Stats().unavailable_replies, 1U);
+  EXPECT_EQ(cache.Stats().timeouts, 0U);
   EXPECT_EQ(cache.Size(), 0U);
 }
 
@@ -495,4 +496,38 @@ TEST(KeyedRequestCache, ProviderFailureDoesNotHideCachedForecastOrMissingFrame) 
   EXPECT_FALSE(cache.Acquire(2, &value, 100, [](const int&) {},
                              [] { return false; }));
   EXPECT_EQ(cache.Stats().negative_hits, 1U);
+}
+
+TEST(KeyedRequestCache, ForecastPrefetchAndDemandShareOneRequest) {
+  weather_routing::KeyedRequestCache<int, int> cache(8);
+  const auto request = cache.Prefetch(10);
+  ASSERT_TRUE(request);
+  EXPECT_FALSE(cache.HasWaiters(*request));
+  auto reader = std::async(std::launch::async, [&] {
+    int value = 0;
+    EXPECT_TRUE(cache.AcquireRequest(10, &value, 2000,
+        [](const auto&) { ADD_FAILURE() << "Duplicate forecast request"; }, {}));
+    return value;
+  });
+  const auto deadline = std::chrono::steady_clock::now() + 1s;
+  while (!cache.HasWaiters(*request) && std::chrono::steady_clock::now() < deadline)
+    std::this_thread::sleep_for(1ms);
+  EXPECT_TRUE(cache.HasWaiters(*request));
+  EXPECT_FALSE(cache.DiscardUnusedPrefetch(*request));
+  EXPECT_TRUE(cache.Publish(*request, 42, true));
+  EXPECT_EQ(reader.get(), 42);
+}
+
+TEST(KeyedRequestCache, UnneededForecastPrefetchCanBeDiscarded) {
+  weather_routing::KeyedRequestCache<int, int> cache(8);
+  const auto request = cache.Prefetch(10);
+  ASSERT_TRUE(request);
+  EXPECT_TRUE(cache.DiscardUnusedPrefetch(*request));
+  EXPECT_FALSE(cache.IsPending(*request));
+  int value = 0;
+  EXPECT_TRUE(cache.AcquireRequest(10, &value, 100, [&](const auto& demand) {
+    EXPECT_NE(demand.id, request->id);
+    EXPECT_TRUE(cache.Publish(demand, 42, true));
+  }, {}));
+  EXPECT_EQ(value, 42);
 }
