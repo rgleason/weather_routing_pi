@@ -484,3 +484,14 @@ TEST(RoutingEngineSettings, CompletionUpgradeRetains136DataAndManualPreferences)
     EXPECT_FALSE(weather_routing::CanSkipBundledDataUpdate(previous,1,37));
   EXPECT_FALSE(weather_routing::CanSkipBundledDataUpdate(136,2,4));
 }
+
+TEST(BundledDataUpgradePolicy, PerformanceReleaseKeepsExistingBundledData) {
+  using weather_routing::CanSkipBundledDataUpdate;
+  EXPECT_TRUE(CanSkipBundledDataUpdate(136, 1, 38));
+  EXPECT_TRUE(CanSkipBundledDataUpdate(137, 1, 38));
+  EXPECT_TRUE(CanSkipBundledDataUpdate(203, 2, 5));
+  EXPECT_TRUE(CanSkipBundledDataUpdate(204, 2, 5));
+  EXPECT_FALSE(CanSkipBundledDataUpdate(0, 1, 38));
+  EXPECT_FALSE(CanSkipBundledDataUpdate(135, 1, 38));
+  EXPECT_FALSE(CanSkipBundledDataUpdate(137, 2, 5));
+}

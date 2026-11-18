@@ -255,6 +255,9 @@ bool RouteMapOverlay::Start(wxString& error) {
   m_LivePreview.Begin();
   m_LivePreviewSequence = 0;
   m_LivePreviewFrames.clear();
+  m_ValidatedSearchRoute.reset();
+  m_ValidatedRouteChanged.store(false);
+  m_ExploringMethods.store(false);
   m_LivePreviewPublished.store(0);
   m_LivePreviewRendered.store(0);
   RequestModernPreview(false);
@@ -270,6 +273,7 @@ bool RouteMapOverlay::Start(wxString& error) {
   Unlock();
 
   CaptureSearchSettings(configuration, ModernNativeRouteEnabled(configuration));
+  RequestedGrib();  // Native workers enqueue the forecast times they need.
   m_Thread = new RouteMapOverlayThread(*this);
   m_Thread->Run();
   return true;
@@ -410,7 +414,8 @@ bool RouteMapOverlay::GetModernNativeProgress(wxString& stage,
   detail += wxString::Format(_("\nWorker elapsed: %lld s; last update: %lld s ago"),
                              static_cast<long long>(elapsed),
                              static_cast<long long>(age));
-  if (NeedsChartSafetyData()) stage = _("Waiting for chart data");
+  if (ExploringMethods()) stage = _("Validated route available - comparing active methods");
+  else if (NeedsChartSafetyData()) stage = _("Waiting for chart data");
   else if (NeedsGrib()) stage = _("Waiting for weather data");
   return true;
 }
@@ -443,9 +448,40 @@ bool RouteMapOverlay::ConsumeModernPreview() {
   return true;
 }
 
+void RouteMapOverlay::PublishValidatedSearchRoute(
+    const supercpn::weather_routing::RoutingResult& result) {
+  auto route = std::make_shared<supercpn::weather_routing::RoutingPreview>();
+  route->path.reserve(result.legs.size() + 1);
+  route->path.push_back(result.legs.front().start);
+  for (const auto& leg : result.legs) route->path.push_back(leg.end);
+  Lock();
+  m_ValidatedSearchRoute = std::move(route);
+  Unlock();
+  m_ValidatedRouteChanged.store(true);
+  wxLogMessage("WR_PARALLEL_AUTO route_available legs=%zu", result.legs.size());
+}
+
 void RouteMapOverlay::RenderModernPreview(SettingsDialog& settings, piDC& dc,
                                          PlugIn_ViewPort& vp, bool courseOnly) {
   Lock();
+  if (m_ValidatedSearchRoute) {
+    auto route = m_ValidatedSearchRoute;
+    Unlock();
+    if (!courseOnly || settings.m_sRouteThickness->GetValue() <= 0) return;
+    dc.SetPen(wxPen(wxColour(0, 110, 140), 2));
+    wxPoint previous;
+    bool havePrevious = false;
+    for (const auto& p : route->path) {
+      wxPoint pixel;
+      WR_GetCanvasPixLL(&vp, &pixel, p.latitude, p.longitude);
+      if (havePrevious && std::abs(pixel.x - previous.x) < vp.pix_width / 2)
+        dc.DrawLine(previous.x, previous.y, pixel.x, pixel.y);
+      previous = pixel;
+      havePrevious = true;
+    }
+    if (havePrevious) dc.DrawText(_("Validated route"), previous.x + 8, previous.y + 8);
+    return;
+  }
   if (m_LivePreviewFrames.empty()) { Unlock(); return; }
   const auto drawStarted = std::chrono::steady_clock::now();
   const auto point = [&](const auto& p) {
@@ -891,6 +927,7 @@ void RouteMapOverlay::DeleteThread() {
   m_Thread->Delete();
   delete m_Thread;
   m_Thread = nullptr;
+  ReleaseRoutingWorker();
 }
 
 static void SetColor(piDC& dc, wxColour c, bool penifgl = false) {
@@ -2296,10 +2333,6 @@ void RouteMapOverlay::RequestGrib(wxDateTime time,
 
   Json::FastWriter w;
 
-  // Acknowledge this key before the synchronous plug-in message. Its response
-  // can wake another worker which requests the next key; clearing afterwards
-  // would erase that new request.
-  RequestedGrib();
   SendPluginMessage("GRIB_TIMELINE_RECORD_REQUEST", w.write(v));
 }
 

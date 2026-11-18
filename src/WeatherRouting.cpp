@@ -1842,28 +1842,23 @@ void WeatherRouting::OnGribRequestWakeup(wxThreadEvent&) {
   if (!m_RunningRouteMaps.empty()) m_tCompute.Start(1, true);
 }
 
-void WeatherRouting::RequestGribTimelineFrame(
-    RouteMapOverlay* routeMapOverlay, const wxDateTime& time) {
-  if (!routeMapOverlay || !time.IsValid()) return;
+bool WeatherRouting::ServiceGribTimelineRequest(
+    const std::shared_ptr<weather_routing::GribTimelineFrameCache>& cache,
+    bool allowPrefetch) {
+  const auto request = cache->TakePendingRequest(allowPrefetch);
+  if (!request) return false;
 
+  const wxDateTime time(static_cast<time_t>(request->key));
   const wxString requestToken = wxString::Format(
       "wr-%llu", static_cast<unsigned long long>(m_NextGribRequestToken++));
   {
     std::lock_guard<std::mutex> lock(m_GribRequestMutex);
-    m_PendingGribRequests.emplace(
-        requestToken,
-        PendingGribRequest{routeMapOverlay,
-                           static_cast<std::int64_t>(time.GetTicks())});
+    m_PendingGribRequests.emplace(requestToken, PendingGribRequest{cache, *request});
   }
 
-  /*
-   * OpenCPN currently delivers plugin messages synchronously.  The token makes
-   * the ownership explicit and prevents a nested or unrelated timeline reply
-   * from being published to the wrong departure worker.  If a provider does
-   * not answer in this call, fail the request closed rather than retaining a
-   * raw route pointer beyond its guaranteed lifetime.
-   */
-  routeMapOverlay->RequestGrib(time, requestToken);
+  // OpenCPN dispatches plugin messages synchronously on the host thread.
+  // Distinct worker requests may queue while the provider services one time.
+  RouteMapOverlay::RequestGrib(time, requestToken);
 
   bool unanswered = false;
   {
@@ -1871,25 +1866,16 @@ void WeatherRouting::RequestGribTimelineFrame(
     unanswered = m_PendingGribRequests.erase(requestToken) != 0;
   }
   if (unanswered) {
-    routeMapOverlay->Lock();
-    routeMapOverlay->SetGribProviderUnavailable(
-        static_cast<std::int64_t>(time.GetTicks()));
-    routeMapOverlay->Unlock();
-    routeMapOverlay->AddDiagnostic({"provider.no_reply",
-        weather_routing::DiagnosticSeverity::Warning,
-        _("The weather service did not answer a request"),
-        _("Requested time: ") + time.Format("%Y-%m-%d %H:%M:%S", wxDateTime::UTC) + " UTC",
-        _("Check that the weather provider is enabled and ready. A missing reply is not proof that the GRIB contains no wind.")});
-    wxLogWarning(
-        "WR_GRIB_BROKER no synchronous response token=%s timeline=%s",
-        requestToken, time.FormatISOCombined());
+    cache->PublishUnavailable(*request);
+    wxLogWarning("WR_GRIB_BROKER no synchronous response token=%s timeline=%s",
+                 requestToken, time.FormatISOCombined());
   }
+  return true;
 }
 
 void WeatherRouting::HandleGribTimelineFrame(const wxString& requestToken,
                                              GribRecordSet* frame) {
-  RouteMapOverlay* routeMapOverlay = nullptr;
-  std::int64_t expectedTimelineKey = -1;
+  std::optional<PendingGribRequest> pending;
   {
     std::lock_guard<std::mutex> lock(m_GribRequestMutex);
     const auto found = m_PendingGribRequests.find(requestToken);
@@ -1898,31 +1884,14 @@ void WeatherRouting::HandleGribTimelineFrame(const wxString& requestToken,
                    requestToken);
       return;
     }
-    routeMapOverlay = found->second.route_map_overlay;
-    expectedTimelineKey = found->second.timeline_key;
+    pending = std::move(found->second);
     m_PendingGribRequests.erase(found);
   }
 
-  if (!frame)
-    routeMapOverlay->AddDiagnostic({"provider.no_frame",
-        weather_routing::DiagnosticSeverity::Warning,
-        _("The weather provider returned no forecast frame"),
-        _("Requested time: ") + wxDateTime(static_cast<time_t>(expectedTimelineKey)).Format(
-            "%Y-%m-%d %H:%M:%S", wxDateTime::UTC) + " UTC",
-        _("Review the loaded forecast and its valid times. The selected fallback may be needed.")});
-  else if (!frame->m_GribRecordPtrArray[Idx_WIND_VX] ||
-           !frame->m_GribRecordPtrArray[Idx_WIND_VY])
-    routeMapOverlay->AddDiagnostic({"provider.no_wind",
-        weather_routing::DiagnosticSeverity::Warning,
-        _("The requested forecast frame has no complete wind vector"),
-        _("At least one wind component is missing at the requested time."),
-        _("Load a forecast containing both wind components for the route and time.")});
-  routeMapOverlay->Lock();
-  routeMapOverlay->SetNewGrib(frame, expectedTimelineKey);
-  routeMapOverlay->Unlock();
+  pending->cache->PublishFrame(pending->request, frame);
   wxLogMessage(
       "WR_GRIB_BROKER delivered token=%s timeline_key=%lld valid=%d",
-      requestToken, static_cast<long long>(expectedTimelineKey),
+      requestToken, static_cast<long long>(pending->request.key),
       frame != nullptr ? 1 : 0);
 }
 
@@ -2709,7 +2678,8 @@ void WeatherRouting::ShowRoutingProgress(const wxString& title) {
     stopExtra->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
       unsigned count = 0;
       for (auto* route : m_WeatherRoutes)
-        if (route->routemapoverlay->ExploringComfort()) {
+        if (route->routemapoverlay->ExploringComfort() ||
+            route->routemapoverlay->ExploringMethods()) {
           route->routemapoverlay->StopComfortExploration();
           ++count;
         }
@@ -2880,7 +2850,8 @@ void WeatherRouting::RefreshRoutingProgressTiming() {
   if (m_StopComfortButton) {
     bool exploring = false;
     for (auto* route : m_WeatherRoutes)
-      exploring = exploring || route->routemapoverlay->ExploringComfort();
+      exploring = exploring || route->routemapoverlay->ExploringComfort() ||
+                  route->routemapoverlay->ExploringMethods();
     m_StopComfortButton->Enable(exploring);
   }
   if (!m_RoutingProgressDialog || !m_RoutingProgressTiming) return;
@@ -9291,6 +9262,8 @@ void WeatherRouting::OnComputationTimer(wxTimerEvent&) {
     routemapoverlay->RequestModernPreview(livePreviewVisible && routemapoverlay->m_bEndRouteVisible &&
         (m_SettingsDialog.m_sIsoChronThickness->GetValue() > 0 ||
          m_SettingsDialog.m_sRouteThickness->GetValue() > 0));
+    if (routemapoverlay->ValidatedRouteNeedsRefresh() && routemapoverlay->m_bEndRouteVisible)
+      RequestRefresh(GetOCPNCanvasWindow());
     livePreviewChanged = routemapoverlay->ConsumeModernPreview() || livePreviewChanged;
 
     /* Service chart-derived data only on the application thread.  The route
@@ -9307,8 +9280,8 @@ void WeatherRouting::OnComputationTimer(wxTimerEvent&) {
         chartSafetyRequestsServiced += chartSafetyService.requests_serviced;
       }
       const auto& service = chartSafetyService;
-      if (service.pending_after == 0) {
-        routemapoverlay->ChartSafetyDataServiced();
+      if (service.pending_after == 0 || service.requests_serviced > 0) {
+        routemapoverlay->ChartSafetyDataServiced(service.pending_after == 0);
         wxLogMessage(
             "WR_GRID_REQUEST_RESUME route=\"%s -> %s\" serviced=%d "
             "built=%d failed=%d elapsed_ms=%d",
@@ -9321,11 +9294,18 @@ void WeatherRouting::OnComputationTimer(wxTimerEvent&) {
     /* get a new grib for the route map if needed */
     if (routemapoverlay->NeedsGrib() && !routemapoverlay->Finished()) {
       wxStopWatch sectionTimer;
-      RequestGribTimelineFrame(routemapoverlay, routemapoverlay->NewTime());
-      gribRequestMs += sectionTimer.Time();
-      gribRequests++;
+      if (ServiceGribTimelineRequest(routemapoverlay->GribTimelineCache())) {
+        gribRequestMs += sectionTimer.Time();
+        gribRequests++;
+      }
     }
   }
+
+  // A spare service tick may prepare one predicted slice. Real misses and
+  // chart work get priority, and the cache caps speculative storage.
+  if (!gribRequests && !chartSafetyServiceAttempted &&
+      !m_RunningRouteMaps.empty() && m_GribTimelineFrameCache)
+    ServiceGribTimelineRequest(m_GribTimelineFrameCache, true);
 
   // Batch all workers into one repaint budget. Departure candidates must not
   // each force a full chart redraw; user interactions and final results keep
@@ -9384,22 +9364,24 @@ void WeatherRouting::OnComputationTimer(wxTimerEvent&) {
       departure_candidates_active, requested_departure_workers,
       wxThread::GetCPUCount(), deterministic_host_service_lane,
       authoritative_chart_search);
-  if (!m_WaitingRouteMaps.empty()) {
+  if (!m_WaitingRouteMaps.empty() || !m_RunningRouteMaps.empty()) {
     const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count();
     if (now >= m_NextMemoryWorkerCheckMilliseconds) {
       m_NextMemoryWorkerCheckMilliseconds = now + 1000;
       m_AvailableWorkerMemoryMiB = weather_routing::AvailablePhysicalMemoryMiB();
-      m_MemorySampleRunningWorkers = static_cast<int>(m_RunningRouteMaps.size());
+      m_MemorySampleRunningWorkers = static_cast<int>(m_RoutingWorkerBudget->InUse());
       m_EstimatedWorkerMemoryMiB = 256;
-      for (auto* waiting : m_WaitingRouteMaps) {
-        const auto config = waiting->GetConfiguration();
+      const auto accountWorker = [&](RouteMapOverlay* route) {
+        const auto config = route->GetConfiguration();
         if (config.IsFastEngine()) m_EstimatedWorkerMemoryMiB = std::max(
             m_EstimatedWorkerMemoryMiB, config.EngineSettings.FastSettings().memoryBudgetMiB);
         if (config.AutomaticAdaptiveSettings)
           m_EstimatedWorkerMemoryMiB = std::max(m_EstimatedWorkerMemoryMiB,
               weather_routing::adaptive::EstimatedWorkerMiB(config.EngineSettings));
-      }
+      };
+      for (auto* route : m_RunningRouteMaps) accountWorker(route);
+      for (auto* route : m_WaitingRouteMaps) accountWorker(route);
     }
     const int requested = route_worker_limit;
     route_worker_limit = weather_routing::MemoryAwareRouteWorkerLimit(
@@ -9409,16 +9391,33 @@ void WeatherRouting::OnComputationTimer(wxTimerEvent&) {
       wxLogMessage("WR_MEMORY_SCHEDULER available_mib=%llu requested=%d effective=%d search_allowance_mib=%d",
           static_cast<unsigned long long>(m_AvailableWorkerMemoryMiB), requested,
           route_worker_limit, m_EstimatedWorkerMemoryMiB);
+    const int global = weather_routing::EffectiveRouteWorkerLimit(
+        m_SettingsDialog.m_sConcurrentThreads->GetValue(), false, 0,
+        wxThread::GetCPUCount(), false, false);
+    m_RoutingWorkerBudget->SetLimit(weather_routing::MemoryAwareRouteWorkerLimit(
+        global, m_MemorySampleRunningWorkers, m_AvailableWorkerMemoryMiB,
+        m_EstimatedWorkerMemoryMiB));
   }
-  if ((int)m_RunningRouteMaps.size() < route_worker_limit &&
+  auto workerSlot = !m_WaitingRouteMaps.empty() &&
+      static_cast<int>(m_RunningRouteMaps.size()) < route_worker_limit
+      ? m_RoutingWorkerBudget->TryAcquire() : std::nullopt;
+  if (workerSlot && (int)m_RunningRouteMaps.size() < route_worker_limit &&
       m_WaitingRouteMaps.size()) {
     sectionTimer.Start();
     RouteMapOverlay* routemapoverlay = m_WaitingRouteMaps.front();
     m_WaitingRouteMaps.pop_front();
+    const auto config = routemapoverlay->GetConfiguration();
+    const unsigned parallelLimit = m_SettingsDialog.m_cbParallelMethods->GetValue() &&
+        weather_routing::IsCombinedEngine(config.EngineSettings.engine) &&
+        !ModernNativeRouteRequiresSerialHostServices(config)
+        ? m_SettingsDialog.m_sParallelMethods->GetValue() : 0;
+    routemapoverlay->AdmitRoutingWorker(m_RoutingWorkerBudget, std::move(*workerSlot),
+                                       parallelLimit);
     wxString error;
     if (routemapoverlay->Start(error))
       m_RunningRouteMaps.push_back(routemapoverlay);
     else {
+      routemapoverlay->ReleaseRoutingWorker();
       routemapoverlay->SetError(error);
       if (EnvString("WR_HEADLESS_ROUTE_TEST").empty() &&
           m_WaitingRouteMaps.empty() && m_RunningRouteMaps.empty()) {
@@ -11029,7 +11028,7 @@ bool WeatherRouting::CollectChartSafetyScoutGeometry(
   long next_heartbeat_ms = 250;
   while (routemapoverlay->Running()) {
     if (routemapoverlay->NeedsGrib() && !routemapoverlay->Finished()) {
-      RequestGribTimelineFrame(routemapoverlay, routemapoverlay->NewTime());
+      ServiceGribTimelineRequest(routemapoverlay->GribTimelineCache());
     }
 
     const long elapsed_ms = timer.Time();
@@ -13349,7 +13348,8 @@ void WeatherRouting::ReleaseGribTimelineCacheBatch() {
       "evictions=%llu reloads_after_eviction=%llu peak_entries=%lu "
       "peak_mib=%.1f released_mib=%.1f lookups=%llu negative_hits=%llu "
       "positive_entries=%lu negative_entries=%lu no_reply=%llu "
-      "backoff_skips=%llu timeouts=%llu wait_ms=%.1f",
+      "backoff_skips=%llu timeouts=%llu wait_ms=%.1f "
+      "joined_requests=%llu peak_pending_requests=%lu",
       m_GribTimelineFrameCache->RequestedMiB(),
       m_GribTimelineFrameCache->EffectiveMiB(),
       static_cast<unsigned long>(frames),
@@ -13369,7 +13369,9 @@ void WeatherRouting::ReleaseGribTimelineCacheBatch() {
       static_cast<unsigned long long>(statistics.unavailable_replies),
       static_cast<unsigned long long>(statistics.unavailable_skips),
       static_cast<unsigned long long>(statistics.timeouts),
-      statistics.wait_microseconds / 1000.0);
+      statistics.wait_microseconds / 1000.0,
+      static_cast<unsigned long long>(statistics.joined_requests),
+      static_cast<unsigned long>(statistics.peak_pending_requests));
   m_GribTimelineFrameCache->Clear();
   m_GribTimelineCacheBatchActive = false;
 }

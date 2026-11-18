@@ -34,6 +34,7 @@
 #include "engine/native/ComfortAlternatives.h"
 #include "engine/native/ConstraintTime.h"
 #include "engine/native/CoordinateNormalization.h"
+#include "engine/native/RoutingMethodExecution.h"
 #include "engine/native/RoutingEngineSequence.h"
 #include "engine/adaptive/Controller.h"
 #include "engine/adaptive/AdvisoryWeather.h"
@@ -161,9 +162,11 @@ std::shared_ptr<OpenCpnSharedWeatherCache> SharedWeatherCacheFor(
 class OpenCpnWeatherProvider final : public wr::WeatherProvider {
 public:
   OpenCpnWeatherProvider(RouteMapOverlay& overlay,
-                         RouteMapConfiguration configuration)
+                         RouteMapConfiguration configuration,
+                         std::shared_ptr<std::atomic_bool> methodStop = {})
       : overlay_(overlay),
         configuration_(std::move(configuration)),
+        methodStop_(std::move(methodStop)),
         sharedCache_(SharedWeatherCacheFor(configuration_)) {}
 
   wr::ParameterCoverage windCoverage() const override {
@@ -183,7 +186,7 @@ public:
     if (windCoverage_) return *windCoverage_;
     wr::ParameterCoverage coverage;
     Shared_GribRecordSet frame;
-    if (configuration_.UseGrib && overlay_.AcquireGribTimelineFrame(
+    if (configuration_.UseGrib && acquireFrame(
             configuration_.StartTime, frame)) {
       const auto* records = frame.GetGribRecordSet();
       const auto* u = records ? records->m_GribRecordPtrArray[Idx_WIND_VX] : nullptr;
@@ -211,7 +214,7 @@ public:
     if (waveCoverage_) return *waveCoverage_;
     wr::ParameterCoverage coverage;
     Shared_GribRecordSet frame;
-    if (configuration_.UseGrib && overlay_.AcquireGribTimelineFrame(
+    if (configuration_.UseGrib && acquireFrame(
             configuration_.StartTime, frame)) {
       const auto* records = frame.GetGribRecordSet();
       const auto* h = records ? records->m_GribRecordPtrArray[Idx_HTSIGW] : nullptr;
@@ -333,7 +336,7 @@ private:
       // exact times; interior buckets keep the established fast sampling.
       const auto mask = [&](std::int64_t time) {
         Shared_GribRecordSet frame;
-        if (!overlay_.AcquireGribTimelineFrame(
+        if (!acquireFrame(
                 ToWx(wr::TimePoint{wr::Duration{time}}), frame)) return 0U;
         const auto* records = frame.GetGribRecordSet();
         if (!records) return 0U;
@@ -468,7 +471,7 @@ private:
     configuration.grib_is_data_deficient = false;
     Shared_GribRecordSet frame;
     if (configuration.UseGrib) {
-      if (!overlay_.AcquireGribTimelineFrame(configuration.time, frame)) {
+      if (!acquireFrame(configuration.time, frame)) {
         if (configuration.ClimatologyType <=
             RouteMapConfiguration::CURRENTS_ONLY)
           return publish({});
@@ -520,8 +523,13 @@ private:
     return publish(sample);
   }
 
+  bool acquireFrame(const wxDateTime& time, Shared_GribRecordSet& frame) const {
+    return overlay_.AcquireGribTimelineFrame(time, frame, 30000, methodStop_.get());
+  }
+
   RouteMapOverlay& overlay_;
   RouteMapConfiguration configuration_;
+  std::shared_ptr<std::atomic_bool> methodStop_;
   std::shared_ptr<OpenCpnSharedWeatherCache> sharedCache_;
   mutable std::uint64_t cacheCalls_{};
   mutable std::uint64_t cacheImmediateHits_{};
@@ -720,8 +728,10 @@ private:
 class OpenCpnLandProvider final : public wr::LandAndBoundaryProvider {
 public:
   OpenCpnLandProvider(RouteMapOverlay& overlay,
-                      RouteMapConfiguration configuration)
-      : overlay_(overlay), configuration_(std::move(configuration)) {}
+                      RouteMapConfiguration configuration,
+                      std::shared_ptr<std::atomic_bool> methodStop = {})
+      : overlay_(overlay), configuration_(std::move(configuration)),
+        methodStop_(std::move(methodStop)) {}
 
   bool pointForbidden(wr::GeoPoint point) const override {
     if (configuration_.IsOriginal() && configuration_.DetectLand &&
@@ -775,7 +785,9 @@ public:
     constexpr unsigned kMaximumPreparationRounds = 64;
     unsigned rounds = 0;
     unsigned missing = 0;
+    const auto deadline = RouteMap::DataClock::now() + std::chrono::seconds(30);
     for (; rounds < kMaximumPreparationRounds; ++rounds) {
+      const auto revision = overlay_.ChartServiceRevision();
       RouteMapConfiguration configuration = configuration_;
       configuration.UseChartSafetyForPropagation = true;
       configuration.SafetyMarginLand = std::max(0.0, margin);
@@ -789,7 +801,7 @@ public:
       }
       missing = configuration.chart_safety_missing_tile_rejections;
       if (missing == 0) break;
-      if (!overlay_.AwaitChartSafetyData()) break;
+      if (!overlay_.AwaitChartSafetyData(revision, deadline, methodStop_.get())) break;
     }
     wxLogMessage(
         "WR_VALIDATION_TILE_BATCH route=\"%s -> %s\" legs=%lu rounds=%u "
@@ -816,23 +828,26 @@ private:
                                                    end.longitude))
       return true;
     const double bearing = wr::initialBearingDegrees(start, end);
-    bool safe = ConstraintChecker::CheckLandConstraint(
-        configuration, start.latitude, start.longitude, end.latitude,
-        end.longitude, bearing, !configuration.IsOriginal());
-    if (!configuration.shoreline_error.empty())
-      throw weather_routing::ShorelineQueryError(
-          configuration.shoreline_error.ToStdString());
-    if (configuration.chart_safety_missing_tile_rejections > 0) {
-      if (!overlay_.AwaitChartSafetyData()) return true;
-      configuration = configuration_;
-      configuration.time = ToWx(time);
-      configuration.UseChartSafetyForPropagation = authoritativeChart;
-      configuration.SafetyMarginLand = std::max(0.0, margin);
-      safe = ConstraintChecker::CheckLandConstraint(
+    auto deadline = RouteMap::DataClock::time_point{};
+    for (;;) {
+      const auto revision = overlay_.ChartServiceRevision();
+      configuration.chart_safety_missing_tile_rejections = 0;
+      const bool safe = ConstraintChecker::CheckLandConstraint(
           configuration, start.latitude, start.longitude, end.latitude,
           end.longitude, bearing, !configuration.IsOriginal());
+      if (!configuration.shoreline_error.empty())
+        throw weather_routing::ShorelineQueryError(
+            configuration.shoreline_error.ToStdString());
+      if (!configuration.chart_safety_missing_tile_rejections) {
+        if (!safe) return true;
+        break;
+      }
+      if (deadline == RouteMap::DataClock::time_point{})
+        deadline = RouteMap::DataClock::now() + std::chrono::seconds(30);
+      if (RouteMap::DataClock::now() >= deadline ||
+          !overlay_.AwaitChartSafetyData(revision, deadline, methodStop_.get()))
+        return true;
     }
-    if (!safe) return true;
     if (configuration.DetectBoundary &&
         RouteMap::ODFindClosestBoundaryLineCrossing) {
       RoutePoint point(start.latitude, start.longitude);
@@ -907,7 +922,9 @@ public:
     auto pointClearAtConfiguredMargin = [&]() {
       RouteMapConfiguration configuration = configuration_;
       configuration.time = configuration.StartTime;
-      configuration.UseChartSafetyForPropagation = true;
+      // The shoreline scout runs before the chart request service is active.
+      configuration.UseChartSafetyForPropagation =
+          !configuration.chart_safety_scout_preview;
       configuration.SafetyMarginLand =
           std::max(0.0, configuration_.SafetyMarginLand);
       configuration.chart_safety_missing_tile_rejections = 0;
@@ -929,10 +946,17 @@ public:
                        configuration.chart_safety_missing_tile_rejections};
     };
 
-    auto [clear, missing] = pointClearAtConfiguredMargin();
-    if (missing > 0 && overlay_.AwaitChartSafetyData())
-      std::tie(clear, missing) = pointClearAtConfiguredMargin();
-    return clear ? std::numeric_limits<double>::infinity() : 0.0;
+    auto deadline = RouteMap::DataClock::time_point{};
+    for (;;) {
+      const auto revision = overlay_.ChartServiceRevision();
+      const auto [clear, missing] = pointClearAtConfiguredMargin();
+      if (!missing) return clear ? std::numeric_limits<double>::infinity() : 0.0;
+      if (deadline == RouteMap::DataClock::time_point{})
+        deadline = RouteMap::DataClock::now() + std::chrono::seconds(30);
+      if (RouteMap::DataClock::now() >= deadline ||
+          !overlay_.AwaitChartSafetyData(revision, deadline, methodStop_.get()))
+        return 0.0;
+    }
   }
   bool supportsLandRejectionGuidance() const override {
     // This adapter's segment hook also enforces these non-coastline limits.
@@ -950,6 +974,7 @@ public:
 private:
   RouteMapOverlay& overlay_;
   RouteMapConfiguration configuration_;
+  std::shared_ptr<std::atomic_bool> methodStop_;
 };
 
 // Advisory samples only. Search/validation continue to use the ordinary
@@ -1344,7 +1369,7 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
     return false;
   }
   std::uint64_t quickGenerated = 0;
-  std::uint64_t originalGenerated = 0;
+  std::atomic<std::uint64_t> originalGenerated{0};
   std::uint64_t quick2Generated = 0;
   std::uint64_t atlasGenerated = 0;
   auto solveSingleImplementation = [&](const wr::RoutingRequest& solveRequest,
@@ -1566,7 +1591,9 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
   };
   auto solveAdaptive = [&](const wr::RoutingRequest& solveRequest,
                            const wr::RoutingEnvironment& solveEnvironment,
-                           const RouteMapConfiguration& selectedConfiguration) {
+                           const RouteMapConfiguration& selectedConfiguration,
+                           const weather_routing::native::MethodStop& methodStop = {},
+                           const std::function<void()>& onRepair = {}) {
     namespace adaptive = weather_routing::adaptive;
     using weather_routing::RoutingEngine;
     const auto selected = selectedConfiguration.EngineSettings.engine;
@@ -1616,13 +1643,14 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
     options.memory.searchMiB = selected == RoutingEngine::Quick2 ? 128 :
         std::max(1, selectedConfiguration.EngineSettings.FastSettings().memoryBudgetMiB);
     options.availableMemoryMiB = weather_routing::AvailablePhysicalMemoryMiB;
-    options.userCancelled = [&overlay] {
-      return overlay.CancellationFlag()->load(std::memory_order_relaxed);
+    options.userCancelled = [&overlay, methodStop] {
+      return overlay.CancellationFlag()->load(std::memory_order_relaxed) ||
+             (methodStop && methodStop->load(std::memory_order_relaxed));
     };
     const bool arrival = selectedConfiguration.TimeMode == RouteMapConfiguration::ROUTE_BY_ARRIVAL_TIME;
     if (arrival) {
       const auto spent = selected == RoutingEngine::Quick ? quickGenerated :
-          selected == RoutingEngine::Quick2 ? quick2Generated : originalGenerated;
+          selected == RoutingEngine::Quick2 ? quick2Generated : originalGenerated.load();
       const std::uint64_t ceiling = selected == RoutingEngine::Quick ? 1800000ULL :
           selected == RoutingEngine::Quick2 ? 6000000ULL : 20000000ULL;
       options.nativeAllowance = std::min(options.nativeAllowance, ceiling - std::min(ceiling, spent));
@@ -1634,6 +1662,7 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
         [&](const wr::RoutingRequest& input, const adaptive::Recipe& recipe,
             std::uint64_t allowance, std::uint64_t firstPhase,
             const adaptive::StepSchedule& schedule) {
+          if (onRepair && recipe.role == adaptive::Role::ReplayRecovery) onRepair();
           auto bounded = input;
           bounded.limits.maximumGeneratedStates = allowance;
           adaptive::AttemptResult out;
@@ -1698,21 +1727,20 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
           (chosen.standardStep == wr::Duration{} ? options.standardStep : chosen.standardStep) : chosen.step;
       const auto heading = selected == RoutingEngine::Quick ?
           (chosen.standardHeading ? chosen.standardHeading : options.standardHeading) : chosen.heading;
-      auto diagnostics = overlay.GetDiagnostics();
       if (selected == RoutingEngine::Quick2)
-        diagnostics.context += wxString::Format("\nAutomatic settings (%s, policy %u): nominal step %lld s; heading fan managed by Quick2; %lu attempt(s)",
+        overlay.AppendDiagnosticContext(wxString::Format("\nAutomatic settings (%s, policy %u): nominal step %lld s; heading fan managed by Quick2; %lu attempt(s)",
             id, adaptive::kPolicyRevision, static_cast<long long>(step.count()),
-            static_cast<unsigned long>(planned.attempts.size()));
+            static_cast<unsigned long>(planned.attempts.size())));
       else
-        diagnostics.context += wxString::Format("\nAutomatic settings (%s, policy %u): nominal step %lld s, heading %.1f degrees; %lu attempt(s)",
+        overlay.AppendDiagnosticContext(wxString::Format("\nAutomatic settings (%s, policy %u): nominal step %lld s, heading %.1f degrees; %lu attempt(s)",
             id, adaptive::kPolicyRevision, static_cast<long long>(step.count()), heading,
-            static_cast<unsigned long>(planned.attempts.size()));
-      overlay.SetDiagnostics(diagnostics);
+            static_cast<unsigned long>(planned.attempts.size())));
     }
     weather_routing::UseValidatedSourceReporting(planned.route);
     return std::move(planned.route);
   };
   OpenCpnWeatherProvider::CacheDiagnostics sequenceWeatherCache;
+  std::mutex sequenceMetadata;
   std::vector<weather_routing::RetainedRouteCandidate> retainedCandidates;
   std::vector<weather_routing::RetainedRouteCandidate> partialCandidates;
   struct PartialContext {
@@ -1741,8 +1769,16 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
                    const wr::RoutingEnvironment& solveEnvironment) {
     if (!weather_routing::IsCombinedEngine(configuration.EngineSettings.engine))
       return solveAdaptive(solveRequest, solveEnvironment, configuration);
-    using weather_routing::native::SequenceEngine;
-    auto runAttempt = [&](SequenceEngine selectedEngine) {
+    using namespace weather_routing::native;
+    using weather_routing::RoutingEngine;
+    const auto routeThread = std::this_thread::get_id();
+    auto runAttempt = [&](SequenceEngine selectedEngine, const MethodStop& methodStop = {},
+                          const std::function<void()>& onRepair = {}) {
+      if (std::this_thread::get_id() != routeThread) {
+        ConstraintChecker::ResetSegmentSafetyDiagnostics(useChartSafety, enforceChartSafety);
+        ConstraintChecker::SetSegmentSafetyDiagnosticContext(wxString::Format(
+            "parallel method route=\"%s to %s\"", configuration.Start, configuration.End));
+      }
       auto candidateConfiguration =
           weather_routing::native::ConfigurationForSequenceEngine(
               configuration, selectedEngine);
@@ -1773,9 +1809,9 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
           }
         }
         auto candidateWeather = std::make_shared<OpenCpnWeatherProvider>(
-            overlay, candidateConfiguration);
+            overlay, candidateConfiguration, methodStop);
         auto candidateLand = std::make_shared<OpenCpnLandProvider>(
-            overlay, candidateConfiguration);
+            overlay, candidateConfiguration, methodStop);
         auto candidatePerformance =
             std::make_shared<OpenCpnPerformanceModel>(candidateConfiguration);
         wr::RoutingEnvironment candidateEnvironment;
@@ -1785,6 +1821,9 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
         candidateEnvironment.memberIdentity = "OpenCPN native deterministic";
         auto candidateRequest = BuildRequest(overlay, candidateConfiguration);
         candidateRequest.departure = solveRequest.departure;
+        if (methodStop)
+          candidateRequest.cancellation = solveRequest.cancellation.bounded(
+              MethodClock::time_point::max(), methodStop);
         if (capturePartials) {
           try {
           auto archive = std::make_shared<wr::PartialRouteArchive>(candidateRequest.start,
@@ -1799,6 +1838,7 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
           auto recoveryEnvironment = quick3Prototype &&
               (selectedEngine == SequenceEngine::Original || selectedEngine == SequenceEngine::Quick2)
               ? candidateEnvironment : wr::RoutingEnvironment{};
+          std::lock_guard<std::mutex> lock(sequenceMetadata);
           partialContexts.push_back({candidateConfiguration, std::move(replayRequest),
               std::move(recoveryEnvironment), archive});
           candidateRequest.partials = std::move(archive);
@@ -1817,8 +1857,10 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
                                 .route;
         else
           candidateResult = solveAdaptive(candidateRequest, candidateEnvironment,
-                                        candidateConfiguration);
+                                        candidateConfiguration, methodStop, onRepair);
         weather_routing::UseValidatedSourceReporting(candidateResult);
+        {
+        std::lock_guard<std::mutex> lock(sequenceMetadata);
         const auto cache = candidateWeather->cacheDiagnostics();
         sequenceWeatherCache.calls += cache.calls;
         sequenceWeatherCache.immediateHits += cache.immediateHits;
@@ -1828,6 +1870,7 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
         sequenceWeatherCache.waits += cache.waits;
         sequenceWeatherCache.interpolationMicroseconds +=
             cache.interpolationMicroseconds;
+        }
         // Check the delivered plotting chords before selecting a winner,
         // so a host rejection can fall back to another candidate.
         if (weather_routing::native::AcceptedRoute(candidateResult) &&
@@ -1892,9 +1935,46 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
       empty.message = "Select at least one routing engine in Advanced";
       return empty;
     }
+    const unsigned selectedMethods = configuration.EngineSettings.SelectedEngines();
+    const auto mode = configuration.EngineSettings.engine;
+    const unsigned methodLimit = configuration.TimeMode == RouteMapConfiguration::ROUTE_BY_DEPARTURE_TIME
+        ? overlay.ParallelMethodLimit() : 0;
+    AutoFastResults fast;
+    std::optional<ParallelAllMethods> comparison;
+    if (methodLimit >= 2 && mode == weather_routing::RoutingEngine::All) {
+      comparison.emplace(selectedMethods, methodLimit, runAttempt,
+          [&] { return overlay.TryAdmitMethodWorker(); },
+          [&] { overlay.NotifyDataWaiters(); }, solveRequest.cancellation);
+      wxLogMessage("WR_PARALLEL_ALL workers=%zu", comparison->LaneCount());
+    }
+    const unsigned fastPair = EngineBit(RoutingEngine::Original) |
+                                  EngineBit(RoutingEngine::Quick2);
+    if (methodLimit >= 2 && mode == RoutingEngine::Auto &&
+        (selectedMethods & fastPair) == fastPair) {
+      if (auto slot = overlay.TryAdmitMethodWorker()) {
+        struct StopComparing {
+          RouteMapOverlay& overlay;
+          ~StopComparing() { overlay.SetExploringMethods(false); }
+        } stopComparing{overlay};
+        fast = RunStaggeredFastMethods(runAttempt, std::move(*slot),
+            solveRequest.cancellation, *overlay.ComfortStopFlag(),
+            [&] { overlay.NotifyDataWaiters(); },
+            [&](const wr::RoutingResult& accepted) {
+              overlay.PublishValidatedSearchRoute(accepted);
+              overlay.SetExploringMethods(true);
+            });
+        wxLogMessage("WR_PARALLEL_AUTO quick2_started=%d", fast.competed());
+      }
+    }
+    auto takeAttempt = [&](SequenceEngine engine) {
+      if (comparison) return comparison->Take(engine);
+      if (engine == SequenceEngine::Original && fast.quick) return std::move(*fast.quick);
+      if (engine == SequenceEngine::Quick2 && fast.quick2) return std::move(*fast.quick2);
+      return runAttempt(engine);
+    };
     return weather_routing::native::RunRoutingEngineSequence(
         configuration.EngineSettings.engine, solveRequest.cancellation,
-        runAttempt, [&](SequenceEngine engine, const wr::RoutingResult& accepted) {
+        takeAttempt, [&](SequenceEngine engine, const wr::RoutingResult& accepted) {
           // Arrival-planning probes are internal evaluations, not a collection
           // of interchangeable deadline-valid results. Retain its winner only.
           if (configuration.TimeMode == RouteMapConfiguration::ROUTE_BY_ARRIVAL_TIME)
@@ -1912,13 +1992,22 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
           retainedCandidates.push_back(weather_routing::RetainRouteCandidate(
               accepted, candidateConfiguration));
         }, configuration.EngineSettings.SelectedEngines(), [&]() -> std::optional<wr::RoutingResult> {
-          if (!quick3Prototype || partialContexts.empty()) return {};
+          if (!quick3Prototype) return {};
+          std::vector<PartialContext> recoveryContexts;
+          {
+            std::lock_guard<std::mutex> lock(sequenceMetadata);
+            for (const auto& saved : partialContexts)
+              if (saved.configuration.IsOriginal() ||
+                  saved.configuration.EngineSettings.engine == weather_routing::RoutingEngine::Quick2)
+                recoveryContexts.push_back(saved);
+          }
+          std::stable_sort(recoveryContexts.begin(), recoveryContexts.end(),
+              [](const auto& a, const auto& b) {
+                return a.configuration.IsOriginal() && !b.configuration.IsOriginal();
+              });
           std::vector<const wr::PartialRouteArchive::Entry*> traces;
           const PartialContext* context = nullptr;
-          for (const auto& saved : partialContexts) {
-            if (!saved.configuration.IsOriginal() &&
-                saved.configuration.EngineSettings.engine != weather_routing::RoutingEngine::Quick2)
-              continue;
+          for (const auto& saved : recoveryContexts) {
             context = &saved;
             for (const auto& entry : saved.archive->entries())
               if (entry.seed.remainingNm <= 40) traces.push_back(&entry);
@@ -1952,6 +2041,11 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
               recovered.allowanceReached?1:0,recovered.milliseconds,
               weather_routing::native::AcceptedRoute(recovered.route)?1:0);
           return std::move(recovered.route);
+        }, fast.competed(), [&](SequenceEngine engine) -> std::optional<double> {
+          if (comparison) return comparison->Seconds(engine);
+          if (engine == SequenceEngine::Original && fast.quick) return fast.seconds[0];
+          if (engine == SequenceEngine::Quick2 && fast.quick2) return fast.seconds[1];
+          return {};
         });
   };
   OpenCpnWeatherProvider::CacheDiagnostics arrivalWeatherCache;

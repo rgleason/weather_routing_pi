@@ -477,6 +477,13 @@ void SettingsDialog::LoadSettings() {
       ConcurrentThreads, 0, weather_routing::AvailablePhysicalMemoryMiB());
   pConf->Read(_T("ConcurrentThreads"), &ConcurrentThreads, ConcurrentThreads);
   m_sConcurrentThreads->SetValue(ConcurrentThreads);
+  bool parallelMethods = false;
+  int parallelLimit = 2;
+  pConf->Read("ParallelRoutingMethods", &parallelMethods, false);
+  pConf->Read("ParallelRoutingMethodLimit", &parallelLimit, 2);
+  m_cbParallelMethods->SetValue(parallelMethods);
+  m_sParallelMethods->SetValue(std::clamp(parallelLimit, 2, 6));
+  m_sParallelMethods->Enable(parallelMethods);
 
   // Set defaults
   bool columns[WeatherRouting::NUM_COLS];
@@ -687,6 +694,8 @@ void SettingsDialog::SaveSettings() {
   pConf->Write(_T("DisplayComfortOnRoute"), m_cbDisplayComfort->GetValue());
   pConf->Write(_T("DisplayCurrent"), m_cbDisplayCurrent->GetValue());
   pConf->Write(_T("ConcurrentThreads"), m_sConcurrentThreads->GetValue());
+  pConf->Write("ParallelRoutingMethods", m_cbParallelMethods->GetValue());
+  pConf->Write("ParallelRoutingMethodLimit", m_sParallelMethods->GetValue());
 
   for (int i = 0; i < WeatherRouting::NUM_COLS; i++)
     pConf->Write(wxString::Format(_T("Column_") + _(column_names[i]), i),

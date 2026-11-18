@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 #include <map>
 #include "engine/native/RoutingEngineSequence.h"
+#include "engine/native/RoutingMethodExecution.h"
 #include "original_routing/Engine.h"
 #include "quick2_routing/Engine.h"
 #include "supercpn/weather_routing/Engine.h"
@@ -506,4 +507,107 @@ TEST(RoutingEngineSequence, FailureHeadlineSummarisesEveryAttemptHonestly) {
   EXPECT_EQ(result.message.find("try the main engine"), std::string::npos);
   EXPECT_NE(result.message.find("invalid_start"), std::string::npos);
   EXPECT_NE(result.message.find("resource_limit"), std::string::npos);
+}
+
+TEST(RoutingMethodExecution, DeparturesAndMethodsShareSlots) {
+  weather_routing::RoutingWorkerBudget budget;
+  budget.SetLimit(2);
+  auto departure = budget.TryAcquire();
+  auto method = budget.TryAcquire();
+  ASSERT_TRUE(departure);
+  ASSERT_TRUE(method);
+  EXPECT_FALSE(budget.TryAcquire());
+  budget.SetLimit(1);
+  method.reset();
+  EXPECT_FALSE(budget.TryAcquire());
+  departure.reset();
+  EXPECT_TRUE(budget.TryAcquire());
+}
+
+TEST(RoutingMethodExecution, ParallelAllPreservesStableComparisonAndBudgets) {
+  using namespace std::chrono_literals;
+  weather_routing::RoutingWorkerBudget budget;
+  budget.SetLimit(2);
+  auto departure = budget.TryAcquire();
+  std::promise<void> quickStarted, quick2Started;
+  auto quickReady = quickStarted.get_future();
+  auto quick2Ready = quick2Started.get_future();
+  std::array<std::atomic<unsigned>, 6> calls{};
+  const unsigned selected = weather_routing::kSelectableEnginesMask;
+  native::ParallelAllMethods batch(selected, 6, [&](auto engine, const auto&, const auto&) {
+    ++calls[static_cast<unsigned>(engine)];
+    if (engine == SequenceEngine::Original) {
+      quickStarted.set_value();
+      EXPECT_EQ(quick2Ready.wait_for(2s), std::future_status::ready);
+    } else if (engine == SequenceEngine::Quick2) {
+      quick2Started.set_value();
+      EXPECT_EQ(quickReady.wait_for(2s), std::future_status::ready);
+    }
+    return Success(100);
+  }, [&] { return budget.TryAcquire(); }, [] {}, {});
+  EXPECT_EQ(batch.LaneCount(), 2u);
+  const auto result = native::RunRoutingEngineSequence(
+      RoutingEngine::All, {}, [&](auto engine) { return batch.Take(engine); }, {}, selected);
+  EXPECT_EQ(result.engineIdentity, "original");
+  EXPECT_EQ(result.engineAttempts.size(), 6u);
+  for (const auto& count : calls) EXPECT_EQ(count.load(), 1u);
+}
+
+TEST(RoutingMethodExecution, StaggeredAutoPublishesThenRetainsImprovement) {
+  using namespace std::chrono_literals;
+  weather_routing::RoutingWorkerBudget budget;
+  auto slot = budget.TryAcquire();
+  ASSERT_TRUE(slot);
+  std::promise<void> published;
+  auto firstPublication = published.get_future();
+  std::atomic_bool keep{false};
+  std::vector<int> deliveries;
+  auto results = native::RunStaggeredFastMethods([&](auto engine, const auto&, const auto& hedge) {
+    if (engine == SequenceEngine::Original) {
+      hedge();
+      EXPECT_EQ(firstPublication.wait_for(2s), std::future_status::ready);
+      return Success(80);
+    }
+    return Success(100);
+  }, std::move(*slot), {}, keep, [] {}, [&](const auto& result) {
+    deliveries.push_back(result.metrics.elapsed.count());
+    if (deliveries.size() == 1) published.set_value();
+  }, 1h, 5s);
+  ASSERT_TRUE(results.competed());
+  EXPECT_EQ(deliveries, (std::vector<int>{100, 80}));
+  const auto best = native::RunRoutingEngineSequence(RoutingEngine::Auto, {},
+      [&](auto engine) {
+        return engine == SequenceEngine::Original ? *results.quick : *results.quick2;
+      }, {}, weather_routing::EngineBit(RoutingEngine::Original) |
+             weather_routing::EngineBit(RoutingEngine::Quick2), {}, true);
+  EXPECT_EQ(best.engineIdentity, "original");
+  EXPECT_EQ(best.metrics.elapsed.count(), 80);
+}
+
+TEST(RoutingMethodExecution, AutoLoserCancellationDoesNotCancelValidatedRoute) {
+  using namespace std::chrono_literals;
+  weather_routing::RoutingWorkerBudget budget;
+  auto slot = budget.TryAcquire();
+  ASSERT_TRUE(slot);
+  std::atomic_bool keep{false};
+  auto results = native::RunStaggeredFastMethods([&](auto engine, const auto& stop, const auto& hedge) {
+    if (engine == SequenceEngine::Original) {
+      hedge();
+      const auto deadline = native::MethodClock::now() + 2s;
+      while (!stop->load() && native::MethodClock::now() < deadline)
+        std::this_thread::sleep_for(1ms);
+      EXPECT_TRUE(stop->load());
+      return Failure(wr::RoutingStatus::Cancelled);
+    }
+    return Success(100);
+  }, std::move(*slot), {}, keep, [] {}, [](const auto&) {}, 1h, 5ms);
+  ASSERT_TRUE(results.competed());
+  const auto best = native::RunRoutingEngineSequence(RoutingEngine::Auto, {},
+      [&](auto engine) {
+        return engine == SequenceEngine::Original ? *results.quick : *results.quick2;
+      }, {}, weather_routing::EngineBit(RoutingEngine::Original) |
+             weather_routing::EngineBit(RoutingEngine::Quick2), {}, true);
+  EXPECT_EQ(best.engineIdentity, "quick2");
+  EXPECT_TRUE(native::AcceptedRoute(best));
+  EXPECT_TRUE(best.attemptFailures.empty());
 }

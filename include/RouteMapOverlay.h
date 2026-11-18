@@ -25,6 +25,7 @@
 #include <vector>
 #include <string>
 
+#include "RoutingWorkerBudget.h"
 #include "RouteMap.h"
 #include "RoutingFootprint.h"
 #include "RoutingProgressState.h"
@@ -232,7 +233,7 @@ public:
    * Requests grib data for a specific time.
    * @param time Time for which to request grib data.
    */
-  void RequestGrib(wxDateTime time, const wxString& requestToken);
+  static void RequestGrib(wxDateTime time, const wxString& requestToken);
 
   /**
    * Gets plot data for either the cursor route or destination route.
@@ -384,6 +385,26 @@ public:
     return m_ModernNativeCoastalEndpointLeeway;
   }
   std::shared_ptr<std::atomic_bool> ComfortStopFlag() const { return m_ComfortStop; }
+  void AdmitRoutingWorker(
+      std::shared_ptr<weather_routing::RoutingWorkerBudget> budget,
+      weather_routing::RoutingWorkerBudget::Slot slot, unsigned methodLimit) {
+    m_RoutingWorkerBudget = std::move(budget);
+    m_RoutingWorkerSlot = std::move(slot);
+    m_ParallelMethodLimit = methodLimit;
+  }
+  void ReleaseRoutingWorker() {
+    m_RoutingWorkerSlot.reset();
+    m_RoutingWorkerBudget.reset();
+    m_ParallelMethodLimit = 0;
+  }
+  unsigned ParallelMethodLimit() const { return m_ParallelMethodLimit; }
+  std::optional<weather_routing::RoutingWorkerBudget::Slot> TryAdmitMethodWorker() {
+    return m_RoutingWorkerBudget ? m_RoutingWorkerBudget->TryAcquire() : std::nullopt;
+  }
+  void PublishValidatedSearchRoute(const supercpn::weather_routing::RoutingResult&);
+  bool ValidatedRouteNeedsRefresh() { return m_ValidatedRouteChanged.exchange(false); }
+  bool ExploringMethods() const { return m_ExploringMethods.load(); }
+  void SetExploringMethods(bool active) { m_ExploringMethods.store(active); }
   void StopComfortExploration() { m_ComfortStop->store(true); }
   bool ExploringComfort() const { return m_ExploringComfort.load(); }
   void SetExploringComfort(bool active) { m_ExploringComfort.store(active); }
@@ -544,7 +565,13 @@ private:
   std::vector<ModernIsochroneLayer> m_ModernIsochrones;
   std::size_t m_ModernCursorLayer{std::numeric_limits<std::size_t>::max()};
   std::size_t m_ModernCursorTrace{std::numeric_limits<std::size_t>::max()};
+  std::shared_ptr<weather_routing::RoutingWorkerBudget> m_RoutingWorkerBudget;
+  std::optional<weather_routing::RoutingWorkerBudget::Slot> m_RoutingWorkerSlot;
+  unsigned m_ParallelMethodLimit{};
   using LivePreview = std::shared_ptr<const supercpn::weather_routing::RoutingPreview>;
+  LivePreview m_ValidatedSearchRoute;
+  std::atomic<bool> m_ValidatedRouteChanged{false};
+  std::atomic<bool> m_ExploringMethods{false};
   weather_routing::RoutingProgressState<LivePreview> m_LivePreview;
   std::atomic<bool> m_LivePreviewWanted{false};
   std::atomic<std::uint64_t> m_LivePreviewPhase{0};

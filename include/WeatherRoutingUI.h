@@ -347,6 +347,8 @@ public:
   wxCheckBox* m_cbDisplayApparentWindBarbs;
   wxCheckBox* m_cbDisplayComfort;
   wxSpinCtrl* m_sConcurrentThreads;
+  wxCheckBox* m_cbParallelMethods;
+  wxSpinCtrl* m_sParallelMethods;
   wxCheckListBox* m_cblFields;
 #ifdef __WXMSW__
   wxStaticText* m_staticText166;

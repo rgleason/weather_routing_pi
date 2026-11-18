@@ -165,13 +165,14 @@ private:
 class Shared_GribRecordSet {
 public:
   Shared_GribRecordSet(WR_GribRecordSet* ptr = 0)
-      : m_data(ptr) {}
+      : m_data(ptr ? std::shared_ptr<WR_GribRecordSet>(ptr) : nullptr) {}
   explicit Shared_GribRecordSet(
       std::shared_ptr<WR_GribRecordSet> ptr)
       : m_data(std::move(ptr)) {}
 
   void SetGribRecordSet(WR_GribRecordSet* ptr) {
-    m_data.reset(ptr);
+    if (ptr) m_data.reset(ptr);
+    else m_data.reset();
   }
   void SetSharedGribRecordSet(std::shared_ptr<WR_GribRecordSet> ptr) {
     m_data = std::move(ptr);

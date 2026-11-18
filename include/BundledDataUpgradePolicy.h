@@ -9,6 +9,9 @@ inline bool CanSkipBundledDataUpdate(int installed, int major, int minor) {
   if (installed == 134 && major == 1 && minor == 35) return true;
   // 1.37 changes computation/reporting only; retain 1.36 user data.
   if (installed == 136 && major == 1 && minor == 37) return true;
+  // The routing performance releases keep the previous bundled data.
+  if (major == 1 && minor == 38) return installed == 136 || installed == 137;
+  if (major == 2 && minor == 5) return installed == 203 || installed == 204;
   return installed >= 124 && installed <= 132 && major == 1 &&
          minor >= 25 && minor <= 33;
 }
