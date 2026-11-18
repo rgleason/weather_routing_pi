@@ -270,6 +270,27 @@ class QualifiedWorkflow(unittest.TestCase):
         self.assertEqual(revision, "a" * 40)
         self.assertEqual(len(selected), 24)
 
+    def test_github_app_production_uses_checkout_provenance(self):
+        _, _, jobs = self.source()
+        workflow = {"project_slug": "circleci/organisation/project"}
+        for job in jobs:
+            job["project_slug"] = workflow["project_slug"]
+        pipeline = {"trigger_parameters": {"git": {
+            "repo_url": "https://github.com/rgleason/weather_routing_pi",
+            "branch": "master", "checkout_sha": "a" * 40}}}
+        repository, revision, selected = recover.check_source(workflow, pipeline, jobs, "production")
+        self.assertEqual(repository, "https://github.com/rgleason/weather_routing_pi")
+        self.assertEqual(revision, "a" * 40)
+        self.assertEqual(len(selected), 24)
+        for key, value in [("branch", "pull/714"),
+                           ("repo_url", "https://github.com/pob220/weather_routing_pi")]:
+            git = pipeline["trigger_parameters"]["git"]
+            previous = git[key]
+            git[key] = value
+            with self.assertRaisesRegex(ValueError, "master"):
+                recover.check_source(workflow, pipeline, jobs, "production")
+            git[key] = previous
+
     def test_github_app_alpha_uses_checkout_provenance(self):
         workflow, _, jobs = self.source()
         workflow["project_slug"] = "circleci/organisation/project"
@@ -289,7 +310,7 @@ class QualifiedWorkflow(unittest.TestCase):
             with self.assertRaises(ValueError):
                 recover.check_source(workflow, pipeline, jobs, "xweather-alpha")
             git[field] = previous
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, "master"):
             recover.check_source(workflow, pipeline, jobs, "production")
 
     def test_missing_or_failed_legacy_wx329_build_prevents_promotion(self):
