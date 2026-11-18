@@ -2,6 +2,10 @@
 set -eu
 
 export DEBIAN_FRONTEND=noninteractive
+
+# Retry downloads up to 3 times to handle transient PPA 503 errors
+echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries
+
 apt-get update
 apt-get install -y --no-install-recommends \
   binutils \
