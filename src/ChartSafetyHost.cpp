@@ -63,6 +63,7 @@ using SnapshotFn = bool (*)(double, double, double, double, int, int,
                             PlugInSegmentSafetyResult*);
 using ServiceFn = bool (*)(int, int,
                            PlugInSegmentSafetyRequestServiceResult*);
+using MaskDeliveryProtectionFn = bool (*)();
 using ReleaseFn = void (*)();
 using SetPersistentFn = bool (*)(int);
 using SavePersistentFn = bool (*)();
@@ -79,6 +80,7 @@ struct HostFunctions {
   RawTilesFn raw_tiles{nullptr};
   SnapshotFn snapshot{nullptr};
   ServiceFn service{nullptr};
+  bool protects_requested_masks{false};
   ReleaseFn release{nullptr};
   SetPersistentFn set_persistent{nullptr};
   SavePersistentFn save_persistent{nullptr};
@@ -395,6 +397,10 @@ bool Initialize(ChartSafetyCache* cache) {
       "PlugIn_PrewarmSegmentSafetyHazardSnapshot");
   g_host.service = Resolve<ServiceFn>(
       "PlugIn_ServicePendingSegmentSafetyRequests");
+  const auto protects_requested_masks = Resolve<MaskDeliveryProtectionFn>(
+      "PlugIn_SegmentSafetyProtectsRequestedMasks");
+  g_host.protects_requested_masks =
+      protects_requested_masks && protects_requested_masks();
   g_host.release = Resolve<ReleaseFn>(
       "PlugIn_ReleaseSegmentSafetyRouteMaskPins");
   g_host.set_persistent = Resolve<SetPersistentFn>(
@@ -787,6 +793,15 @@ bool ServicePendingRequests(
     PlugInSegmentSafetyRequestServiceResult* result) {
   return g_host.available &&
          g_host.service(max_requests, max_milliseconds, result);
+}
+
+bool ServiceInteractivePendingRequests(
+    PlugInSegmentSafetyRequestServiceResult* result) {
+  // Older hosts can evict a demand while prefetching its neighbour. Service
+  // one demand at a time with minimal lookahead on those hosts.
+  return g_host.protects_requested_masks
+             ? ServicePendingRequests(16, 50, result)
+             : ServicePendingRequests(1, 1, result);
 }
 
 void ReleaseRouteMaskPins() {

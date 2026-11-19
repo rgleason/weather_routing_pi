@@ -9274,8 +9274,8 @@ void WeatherRouting::OnComputationTimer(wxTimerEvent&) {
       if (!chartSafetyServiceAttempted) {
         chartSafetyServiceAttempted = true;
         wxStopWatch chartRequestTimer;
-        weather_routing::chart_safety_host::ServicePendingRequests(
-            16, 50, &chartSafetyService);
+        weather_routing::chart_safety_host::ServiceInteractivePendingRequests(
+            &chartSafetyService);
         chartSafetyRequestMs += chartRequestTimer.Time();
         chartSafetyRequestsServiced += chartSafetyService.requests_serviced;
       }

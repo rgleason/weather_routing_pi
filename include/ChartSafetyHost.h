@@ -99,6 +99,10 @@ bool PrewarmRouteMaskForPolylinesWithTileHalo(
 bool ServicePendingRequests(
     int max_requests, int max_milliseconds,
     PlugInSegmentSafetyRequestServiceResult* result);
+/** Service live routing requests within the host's interactive budget. */
+bool ServiceInteractivePendingRequests(
+    PlugInSegmentSafetyRequestServiceResult* result);
+
 void ReleaseRouteMaskPins();
 
 }  // namespace chart_safety_host
