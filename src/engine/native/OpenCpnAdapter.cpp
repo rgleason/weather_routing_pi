@@ -795,9 +795,13 @@ public:
       for (const auto& leg : legs) {
         configuration.time = ToWx(leg.startTime);
         const double bearing = wr::initialBearingDegrees(leg.start, leg.end);
+        // Regional geometry serves the search. Prepare the detailed masks
+        // needed by independent final validation before replaying the route.
         (void)ConstraintChecker::CheckLandConstraint(
             configuration, leg.start.latitude, leg.start.longitude,
-            leg.end.latitude, leg.end.longitude, bearing);
+            leg.end.latitude, leg.end.longitude, bearing,
+            true /* allow endpoint margin relaxation */,
+            true /* require fine chart */);
       }
       missing = configuration.chart_safety_missing_tile_rejections;
       if (missing == 0) break;

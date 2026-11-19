@@ -453,7 +453,8 @@ bool EndpointMarginOnlyHitIsZeroMarginSafe(RouteMapConfiguration* configuration,
 bool SegmentSafetyRejectsLand(RouteMapConfiguration* configuration,
                               double lat1, double lon1, double lat2,
                               double lon2, double safety_margin_nm,
-                              bool allow_endpoint_margin_relaxation = true) {
+                              bool allow_endpoint_margin_relaxation,
+                              bool require_fine_chart) {
   if (!s_useExperimentalChartSafety || !configuration ||
       !configuration->UseChartSafetyForPropagation ||
       (s_forceGshhsForPerformance && !s_enforceExperimentalChartSafety)) {
@@ -476,6 +477,7 @@ bool SegmentSafetyRejectsLand(RouteMapConfiguration* configuration,
   options.struct_size = sizeof(options);
   options.safety_margin_nm = safety_margin_nm;
   options.check_land = true;
+  options.force_authoritative_fine_validation = require_fine_chart ? 1 : 0;
   weather_routing::ApplyMinimumDepthPolicy(options,
                                            configuration->MinimumDepthMeters);
   /*
@@ -908,7 +910,8 @@ bool ConstraintChecker::CheckMaxDivertedCourse(
 
 bool ConstraintChecker::CheckLandConstraint(
     RouteMapConfiguration& configuration, double lat, double lon, double dlat1,
-    double dlon1, double cog, bool allow_endpoint_margin_relaxation) {
+    double dlon1, double cog, bool allow_endpoint_margin_relaxation,
+    bool require_fine_chart) {
   if (configuration.offshoreHazards &&
       configuration.offshoreHazards->Intersect(
           lat, lon, dlat1, dlon1, configuration.SafetyMarginLand))
@@ -922,7 +925,8 @@ bool ConstraintChecker::CheckLandConstraint(
     }
     if (SegmentSafetyRejectsLand(&configuration, lat, lon, dlat1, ndlon1,
                                  configuration.SafetyMarginLand,
-                                 allow_endpoint_margin_relaxation)) {
+                                 allow_endpoint_margin_relaxation,
+                                 require_fine_chart)) {
       return false;
     }
   }

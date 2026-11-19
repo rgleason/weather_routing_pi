@@ -58,6 +58,7 @@ using CheckFn = bool (*)(double, double, double, double,
                          PlugInSegmentSafetyResult*);
 using RawTilesFn = bool (*)(const long*, const long*, int, int,
                             PlugInSegmentSafetyResult*);
+using OpenWaterFn = bool (*)(long, long, const PlugInSegmentSafetyOptions*);
 using SnapshotFn = bool (*)(double, double, double, double, int, int,
                             const PlugInSegmentSafetyOptions*,
                             PlugInSegmentSafetyResult*);
@@ -78,6 +79,7 @@ struct HostFunctions {
   IdentityFn get_identity{nullptr};
   CheckFn check{nullptr};
   RawTilesFn raw_tiles{nullptr};
+  OpenWaterFn open_water{nullptr};
   SnapshotFn snapshot{nullptr};
   ServiceFn service{nullptr};
   bool protects_requested_masks{false};
@@ -236,7 +238,8 @@ bool RequestRawTiles(const std::set<std::pair<long, long>>& raw_tiles,
                      const PlugInSegmentSafetyOptions* options,
                      PlugInSegmentSafetyResult* result,
                      const weather_routing::chart_safety_host::
-                         PrewarmProgressCallback& progress) {
+                         PrewarmProgressCallback& progress,
+                     bool allow_open_water = false) {
   if (raw_tiles.empty() || !options || !ConfirmHostIdentity()) return false;
 
   std::vector<long> lat_tiles;
@@ -259,6 +262,10 @@ bool RequestRawTiles(const std::set<std::pair<long, long>>& raw_tiles,
   constexpr std::size_t kExternalPrewarmBatchTiles = 1;
   PlugInSegmentSafetyResult totals = {};
   PlugInSegmentSafetyResult batch_result = {};
+  std::size_t geometry_tiles = 0;
+  const bool try_open_water = allow_open_water && g_host.open_water &&
+                              options->check_land &&
+                              !options->force_authoritative_fine_validation;
   const std::size_t requested_tiles = raw_tiles.size();
   if (progress) progress(cached_tiles, requested_tiles);
   for (std::size_t offset = 0; offset < lat_tiles.size();
@@ -267,6 +274,12 @@ bool RequestRawTiles(const std::set<std::pair<long, long>>& raw_tiles,
       return false;
     const std::size_t count =
         std::min(kExternalPrewarmBatchTiles, lat_tiles.size() - offset);
+    if (try_open_water &&
+        g_host.open_water(lat_tiles[offset], lon_tiles[offset], options)) {
+      ++geometry_tiles;
+      if (progress) progress(cached_tiles + offset + 1, requested_tiles);
+      continue;
+    }
     batch_result = {};
     batch_result.struct_size = sizeof(batch_result);
     if (!g_host.raw_tiles(lat_tiles.data() + offset, lon_tiles.data() + offset,
@@ -292,13 +305,14 @@ bool RequestRawTiles(const std::set<std::pair<long, long>>& raw_tiles,
     result->struct_size = sizeof(*result);
     result->status = PI_SEGMENT_SAFETY_SAFE;
     result->diagnostic_reason = PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_CLEAR;
-    if (!lat_tiles.empty()) *result = batch_result;
+    if (batch_result.struct_size) *result = batch_result;
     result->prewarm_base_tiles_built = totals.prewarm_base_tiles_built;
     result->prewarm_base_tiles_reused =
         totals.prewarm_base_tiles_reused + static_cast<int>(cached_tiles);
     result->prewarm_masks_built = totals.prewarm_masks_built;
     result->prewarm_masks_reused = totals.prewarm_masks_reused;
-    result->prewarm_fine_tiles_avoided = totals.prewarm_fine_tiles_avoided;
+    result->prewarm_fine_tiles_avoided =
+        totals.prewarm_fine_tiles_avoided + static_cast<int>(geometry_tiles);
     result->prewarm_requested_tiles = static_cast<int>(requested_tiles);
     result->grid_build_ms = totals.grid_build_ms;
     result->grid_cells_total = totals.grid_cells_total;
@@ -308,6 +322,9 @@ bool RequestRawTiles(const std::set<std::pair<long, long>>& raw_tiles,
     result->grid_cells_unknown = totals.grid_cells_unknown;
     result->water_tile_shortcuts = totals.water_tile_shortcuts;
   }
+  if (geometry_tiles)
+    wxLogMessage("WR_OPEN_WATER_PREWARM fine_tiles_avoided=%zu requested=%zu",
+                 geometry_tiles, requested_tiles);
   return !weather_routing::chart_safety_host::PrewarmCancellationRequested();
 }
 
@@ -369,7 +386,7 @@ bool PrewarmRawTiles(
     AddTileHalo(tile.first, tile.second, margin_tile_halo, &raw_tiles);
   }
 
-  return RequestRawTiles(raw_tiles, options, result, progress);
+  return RequestRawTiles(raw_tiles, options, result, progress, true);
 }
 
 }  // namespace
@@ -393,6 +410,8 @@ bool Initialize(ChartSafetyCache* cache) {
   g_host.check = Resolve<CheckFn>("PlugIn_CheckSegmentSafety");
   g_host.raw_tiles = Resolve<RawTilesFn>(
       "PlugIn_PrewarmSegmentSafetyRawTiles");
+  g_host.open_water = Resolve<OpenWaterFn>(
+      "PlugIn_PrewarmSegmentSafetyOpenWater");
   g_host.snapshot = Resolve<SnapshotFn>(
       "PlugIn_PrewarmSegmentSafetyHazardSnapshot");
   g_host.service = Resolve<ServiceFn>(
