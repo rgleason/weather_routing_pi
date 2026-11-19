@@ -965,6 +965,7 @@ public:
     return configuration_.MaxDivertedCourse >= 180.0 &&
            configuration_.MaxCourseAngle >= 180.0 &&
            !configuration_.DetectBoundary &&
+           !configuration_.offshoreHazards &&
            !configuration_.AvoidCycloneTracks;
   }
   std::string identity() const override {

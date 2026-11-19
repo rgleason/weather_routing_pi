@@ -19,6 +19,7 @@
 
 #include <wx/wx.h>
 #include <wx/glcanvas.h>
+#include <wx/file.h>
 
 #include <algorithm>
 #include <array>
@@ -34,6 +35,8 @@
 #include "Utilities.h"
 #include "Boat.h"
 #include "ConstraintChecker.h"
+#include "OffshoreHazards.h"
+#include "weather_routing_pi.h"
 #include "WeatherDataProvider.h"
 #include "engine/native/RouteGust.h"
 #include "RouteMapOverlay.h"
@@ -250,6 +253,48 @@ bool RouteMapOverlay::Start(wxString& error) {
     return false;
   }
 
+  std::shared_ptr<const weather_routing::OffshoreHazards> offshoreHazards;
+  if (configuration.DetectLand && !configuration.chart_safety_scout_preview) {
+    using weather_routing::OffshoreHazards;
+    const wxString path = weather_routing_pi::StandardPath() +
+                          wxString::FromUTF8(OffshoreHazards::kFilename);
+    if (wxFileExists(path)) {
+      try {
+        wxFile file(path);
+        const auto length = file.IsOpened() ? file.Length() : wxInvalidOffset;
+        if (length <= 0 || length > static_cast<wxFileOffset>(OffshoreHazards::kMaxFileBytes))
+          throw std::runtime_error("Unreadable or invalid-size offshore hazard file");
+        std::string contents(static_cast<std::size_t>(length), '\0');
+        if (file.Read(contents.data(), contents.size()) != length)
+          throw std::runtime_error("Unable to read offshore hazard file");
+        offshoreHazards = OffshoreHazards::Parse(contents);
+        const auto checkEndpoint = [&](double lat, double lon) {
+          const auto check = offshoreHazards->Intersect(
+              lat, lon, lat, lon, configuration.SafetyMarginLand);
+          if (check.indeterminate)
+            throw std::runtime_error("Unable to check an endpoint for offshore hazards");
+          if (const auto* hazard = check.hazard)
+            throw std::runtime_error("Route endpoint inside offshore hazard exclusion " +
+                                     hazard->id + " (" + hazard->source + ")");
+        };
+        checkEndpoint(configuration.StartLat, configuration.StartLon);
+        checkEndpoint(configuration.EndLat, configuration.EndLon);
+      } catch (const std::exception& failure) {
+        error = _("Unable to route with offshore hazard exclusions") + "\n" +
+                wxString::FromUTF8(failure.what());
+        SetError(error);
+        return false;
+      }
+      AddDiagnostic({"setup.offshore_hazards", weather_routing::DiagnosticSeverity::Notice,
+          _("Supplemental offshore hazard exclusions are active"),
+          wxString::Format(_("%s, revision %s. %u exclusions."),
+              wxString::FromUTF8(offshoreHazards->Name().c_str()),
+              wxString::FromUTF8(offshoreHazards->Revision().c_str()),
+              static_cast<unsigned>(offshoreHazards->Size())), {}, {}, true});
+    }
+  }
+
+  SetOffshoreHazards(std::move(offshoreHazards));
   Lock();
   m_ModernProgress.Begin();
   m_LivePreview.Begin();

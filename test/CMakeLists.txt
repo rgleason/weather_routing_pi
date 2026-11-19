@@ -62,6 +62,8 @@ set(TEST_SRC
     AppendOnlyCache_tests.cpp
     ChartSafetyCache_tests.cpp
     ChartSafetyHost_tests.cpp
+    OffshoreHazards_tests.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/src/OffshoreHazards.cpp
     RouteSafetyCheck_tests.cpp
     ChartSafetyAtlas_tests.cpp
     ChartHazardEvaluator_tests.cpp

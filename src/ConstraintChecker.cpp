@@ -21,6 +21,7 @@
 
 #include "ConstraintChecker.h"
 #include "ChartSafetyHost.h"
+#include "OffshoreHazards.h"
 #include "ChartSafetyPolicy.h"
 #include "supercpn/weather_routing/CoastalEndpointPolicy.h"
 #include "WeatherDataProvider.h"
@@ -908,6 +909,10 @@ bool ConstraintChecker::CheckMaxDivertedCourse(
 bool ConstraintChecker::CheckLandConstraint(
     RouteMapConfiguration& configuration, double lat, double lon, double dlat1,
     double dlon1, double cog, bool allow_endpoint_margin_relaxation) {
+  if (configuration.offshoreHazards &&
+      configuration.offshoreHazards->Intersect(
+          lat, lon, dlat1, dlon1, configuration.SafetyMarginLand))
+    return false;
   if (configuration.DetectLand) {
     double ndlon1 = dlon1;
 
@@ -928,6 +933,24 @@ bool ConstraintChecker::CheckFinalRouteLandConstraint(
     RouteMapConfiguration& configuration, double lat, double lon, double dlat1,
     double dlon1, double cog, wxString* failure_reason,
     bool coastal_departure_egress, bool coastal_destination_ingress) {
+  // Coastal chart-margin exceptions never waive a supplemental exclusion.
+  if (configuration.offshoreHazards) {
+    const auto check = configuration.offshoreHazards->Intersect(
+        lat, lon, dlat1, dlon1, configuration.SafetyMarginLand);
+    if (check.indeterminate) {
+      if (failure_reason)
+        *failure_reason = _("Unable to check offshore hazards for this leg");
+      return false;
+    }
+    if (const auto* hazard = check.hazard) {
+      if (failure_reason)
+        *failure_reason = wxString::Format(
+            _("Offshore hazard exclusion: %s (%s)"),
+            wxString::FromUTF8(hazard->id.c_str()),
+            wxString::FromUTF8(hazard->source.c_str()));
+      return false;
+    }
+  }
   if (configuration.DetectLand &&
       (coastal_departure_egress || coastal_destination_ingress) &&
       configuration.SafetyMarginLand > 0.0) {

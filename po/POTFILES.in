@@ -7,6 +7,7 @@ src/PluginWaypointLists.cpp
 src/ChartSafetyAtlas.cpp
 src/ChartHazardEvaluator.cpp
 src/ChartSafetyHost.cpp
+src/OffshoreHazards.cpp
 src/RouteSafetyCheck.cpp
 src/RouteSafetyDialog.cpp
 src/OceanPrewarmPolicy.cpp
@@ -86,6 +87,7 @@ include/AppendOnlyCache.h
 include/ChartSafetyCache.h
 include/ChartHazardEvaluator.h
 include/ChartSafetyHost.h
+include/OffshoreHazards.h
 include/RouteSafetyCheck.h
 include/RouteSafetyDialog.h
 include/headless/HeadlessRouteMonitor.h
