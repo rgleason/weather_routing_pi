@@ -59,6 +59,9 @@ using CheckFn = bool (*)(double, double, double, double,
 using RawTilesFn = bool (*)(const long*, const long*, int, int,
                             PlugInSegmentSafetyResult*);
 using OpenWaterFn = bool (*)(long, long, const PlugInSegmentSafetyOptions*);
+using ImportOpenWaterLayerFn = bool (*)(const char*, bool (*)(void*, int, int),
+                                        void*, char*, int);
+using RemoveOpenWaterLayerFn = bool (*)();
 using SnapshotFn = bool (*)(double, double, double, double, int, int,
                             const PlugInSegmentSafetyOptions*,
                             PlugInSegmentSafetyResult*);
@@ -80,6 +83,8 @@ struct HostFunctions {
   CheckFn check{nullptr};
   RawTilesFn raw_tiles{nullptr};
   OpenWaterFn open_water{nullptr};
+  ImportOpenWaterLayerFn import_open_water_layer{nullptr};
+  RemoveOpenWaterLayerFn remove_open_water_layer{nullptr};
   SnapshotFn snapshot{nullptr};
   ServiceFn service{nullptr};
   bool protects_requested_masks{false};
@@ -412,6 +417,10 @@ bool Initialize(ChartSafetyCache* cache) {
       "PlugIn_PrewarmSegmentSafetyRawTiles");
   g_host.open_water = Resolve<OpenWaterFn>(
       "PlugIn_PrewarmSegmentSafetyOpenWater");
+  g_host.import_open_water_layer = Resolve<ImportOpenWaterLayerFn>(
+      "PlugIn_ImportSegmentSafetyOpenWaterLayer");
+  g_host.remove_open_water_layer = Resolve<RemoveOpenWaterLayerFn>(
+      "PlugIn_RemoveSegmentSafetyOpenWaterLayer");
   g_host.snapshot = Resolve<SnapshotFn>(
       "PlugIn_PrewarmSegmentSafetyHazardSnapshot");
   g_host.service = Resolve<ServiceFn>(
@@ -589,6 +598,32 @@ bool SavePersistentCache() {
 
 bool ClearPersistentCache() {
   return !g_host.clear_persistent || g_host.clear_persistent();
+}
+
+bool HasOpenWaterLayerImport() {
+  return g_host.available && g_host.import_open_water_layer &&
+         g_host.remove_open_water_layer;
+}
+
+bool ImportOpenWaterLayer(const wxString& path, wxString* message,
+                          OpenWaterLayerProgress progress) {
+  if (!HasOpenWaterLayerImport()) {
+    *message = _("This OpenCPN build cannot install an open-water layer.");
+    return false;
+  }
+  const auto report = [](void* context, int done, int total) {
+    return (*static_cast<OpenWaterLayerProgress*>(context))(done, total);
+  };
+  const auto utf8 = path.ToUTF8();
+  char detail[512]{};
+  const bool ok = g_host.import_open_water_layer(
+      utf8.data(), progress ? +report : nullptr, &progress, detail, sizeof(detail));
+  *message = wxString::FromUTF8(detail);
+  return ok;
+}
+
+bool RemoveOpenWaterLayer() {
+  return HasOpenWaterLayerImport() && g_host.remove_open_water_layer();
 }
 
 void InvalidateDerivedMasks() {

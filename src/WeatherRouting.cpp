@@ -4670,6 +4670,15 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
   // autosave timer and display a modal error over the running benchmark.
   m_tAutoSaveXML.Stop();
   wxString mode = EnvString("WR_HEADLESS_ROUTE_TEST");
+  if (mode == "open-water-import") {
+    wxString message;
+    const bool ok = weather_routing::chart_safety_host::ImportOpenWaterLayer(
+        EnvString("WR_HEADLESS_OPEN_WATER_LAYER"), &message);
+    wxLogMessage("WR_OPEN_WATER_LAYER headless_import=%d message=\"%s\"",
+                 ok ? 1 : 0, message);
+    FinishHeadlessRouteTestProcess(ok ? 0 : 2);
+    return;
+  }
   weather_routing_engine::RoutingScenario scenario;
   wxString scenario_path;
   wxString scenario_output_path;
@@ -8830,6 +8839,58 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
                        m_weather_routing_pi
                            .EffectiveChartSafetyRamCacheMiB()));
   top->Add(effective, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
+
+  if (weather_routing::chart_safety_host::HasOpenWaterLayerImport()) {
+    auto* layer = new wxStaticBoxSizer(wxHORIZONTAL, &dialog,
+                                      _("Open-water starting layer"));
+    auto* import_layer = new wxButton(&dialog, wxID_ANY, _("Import…"));
+    auto* remove_layer = new wxButton(&dialog, wxID_ANY, _("Remove"));
+    layer->Add(import_layer, 1, wxALL | wxEXPAND, 5);
+    layer->Add(remove_layer, 1, wxALL | wxEXPAND, 5);
+    top->Add(layer, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
+    import_layer->Bind(wxEVT_BUTTON, [this, &dialog](wxCommandEvent&) {
+      if (!CanStartExternalPlanningScenario()) {
+        WR_MessageBox(_("Wait for routing to finish before importing a layer."),
+                      _("Open-water starting layer"), wxOK, &dialog);
+        return;
+      }
+      wxFileDialog file(&dialog, _("Import open-water starting layer"),
+                        wxEmptyString, wxEmptyString,
+                        _("Open-water layer files (*.json)|*.json"),
+                        wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+      if (file.ShowModal() != wxID_OK || !CanStartExternalPlanningScenario()) return;
+      wxString message;
+      bool ok;
+      {
+        wxProgressDialog progress(_("Open-water starting layer"),
+                                  _("Verifying regions against loaded charts"),
+                                  100, &dialog, wxPD_APP_MODAL | wxPD_CAN_ABORT);
+        int previous = -1;
+        ok = weather_routing::chart_safety_host::ImportOpenWaterLayer(
+            file.GetPath(), &message, [&](int done, int total) {
+              const int percent = 100 * done / total;
+              if (!CanStartExternalPlanningScenario()) return false;
+              if (percent == previous) return true;
+              previous = percent;
+              return progress.Update(percent, wxString::Format(
+                  _("Verified %d of %d regions"), done, total));
+            });
+      }
+      WR_MessageBox(message, _("Open-water starting layer"),
+                    wxOK | (ok ? wxICON_INFORMATION : wxICON_WARNING), &dialog);
+    });
+    remove_layer->Bind(wxEVT_BUTTON, [this, &dialog](wxCommandEvent&) {
+      if (!CanStartExternalPlanningScenario()) {
+        WR_MessageBox(_("Wait for routing to finish before removing the layer."),
+                      _("Open-water starting layer"), wxOK, &dialog);
+        return;
+      }
+      const bool ok = weather_routing::chart_safety_host::RemoveOpenWaterLayer();
+      WR_MessageBox(ok ? _("Open-water starting layer removed.")
+                       : _("Unable to remove the open-water starting layer."),
+                    _("Open-water starting layer"), wxOK, &dialog);
+    });
+  }
 
   wxButton* clear = new wxButton(
       &dialog, wxID_ANY, _("Clear Persistent Certified Safe-Area Cache"));

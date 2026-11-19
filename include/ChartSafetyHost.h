@@ -38,6 +38,11 @@ bool FlushCache();
 bool SetPersistentCacheEnabled(bool enabled);
 bool SavePersistentCache();
 bool ClearPersistentCache();
+using OpenWaterLayerProgress = std::function<bool(int, int)>;
+bool HasOpenWaterLayerImport();
+bool ImportOpenWaterLayer(const wxString& path, wxString* message,
+                          OpenWaterLayerProgress progress = {});
+bool RemoveOpenWaterLayer();
 void InvalidateDerivedMasks();
 /** Return applicable chart metadata without opening/decrypting chart data. */
 std::vector<ChartSafetyAtlasChart> AtlasCharts();
