@@ -4677,6 +4677,12 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
   // autosave timer and display a modal error over the running benchmark.
   m_tAutoSaveXML.Stop();
   wxString mode = EnvString("WR_HEADLESS_ROUTE_TEST");
+  if (mode == "chart-tile-worker") {
+    const bool ok = weather_routing::chart_safety_host::RunTileWorker(
+        EnvString("OCPN_CHART_TILE_WORKER_DIR"));
+    FinishHeadlessRouteTestProcess(ok ? 0 : 2);
+    return;
+  }
   if (mode == "open-water-import") {
     wxString message;
     const bool ok = weather_routing::chart_safety_host::ImportOpenWaterLayer(

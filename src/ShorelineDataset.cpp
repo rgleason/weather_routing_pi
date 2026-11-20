@@ -6,6 +6,7 @@
 #include "DeviceMemoryPolicy.h"
 #include "SystemMemory.h"
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <cmath>
 #include <chrono>
@@ -181,6 +182,15 @@ public:
 };
 }  // namespace
 struct ShorelineDataset::Impl {
+  std::atomic<std::uint64_t> queries{}, hits{}, misses{}, lockWaitUs{}, buildUs{}, queryUs{};
+  struct Timing {
+    std::atomic<std::uint64_t>& counter;
+    std::chrono::steady_clock::time_point start{std::chrono::steady_clock::now()};
+    ~Timing() {
+      counter.fetch_add(std::chrono::duration_cast<std::chrono::microseconds>(
+          std::chrono::steady_clock::now()-start).count(), std::memory_order_relaxed);
+    }
+  };
   std::ifstream file;
   std::array<std::uint32_t, 64800> offsets{};
   int version = 0;
@@ -191,7 +201,7 @@ struct ShorelineDataset::Impl {
   std::string error;
   std::list<int> lru;
   struct Entry {
-    std::shared_ptr<Tile> tile;
+    std::shared_ptr<const Tile> tile;
     std::list<int>::iterator order;
   };
   std::unordered_map<int, Entry> cache;
@@ -213,7 +223,14 @@ struct ShorelineDataset::Impl {
         throw std::runtime_error("Invalid shoreline cell offset");
     }
   }
-  std::shared_ptr<Tile> Get(int x, int y) {
+  // Geometry is immutable after publication. A query keeps its own shared
+  // owner, so eviction cannot invalidate geometry used by another worker.
+  std::shared_ptr<const Tile> Get(int x, int y) {
+    const auto began = std::chrono::steady_clock::now();
+    std::lock_guard<std::mutex> lock(mutex);
+    lockWaitUs.fetch_add(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now()-began).count(), std::memory_order_relaxed);
+    if (!error.empty()) throw ShorelineQueryError(error);
     const auto now = std::chrono::steady_clock::now();
     if (now >= next_memory_check) {
       next_memory_check = now + std::chrono::seconds(1);
@@ -233,9 +250,12 @@ struct ShorelineDataset::Impl {
     const int key = x * 180 + y;
     auto found = cache.find(key);
     if (found != cache.end()) {
+      hits.fetch_add(1, std::memory_order_relaxed);
       lru.splice(lru.begin(), lru, found->second.order);
       return found->second.tile;
     }
+    misses.fetch_add(1, std::memory_order_relaxed);
+    Timing buildTiming{buildUs};
     auto tile = std::make_shared<Tile>();
     auto reserve = [&](auto& values, std::size_t capacity) {
       using Value = typename std::decay_t<decltype(values)>::value_type;
@@ -331,6 +351,10 @@ struct ShorelineDataset::Impl {
     used += tile->bytes;
     return tile;
   }
+  void CheckError() const {
+    std::lock_guard<std::mutex> lock(mutex);
+    if (!error.empty()) throw ShorelineQueryError(error);
+  }
   bool CheckBin(int bx, int by, Edge segment, Point midpoint) {
     if (by < 0 || by >= 180 * 16) return false;
     bx = (bx % (360 * 16) + 360 * 16) % (360 * 16);
@@ -352,6 +376,10 @@ ShorelineDataset::ShorelineDataset(const std::filesystem::path& p,
     : impl_(new Impl(p, b)) {}
 ShorelineDataset::~ShorelineDataset() = default;
 int ShorelineDataset::Version() const { return impl_->version; }
+ShorelineDataset::Statistics ShorelineDataset::Stats() const {
+  return {impl_->queries.load(), impl_->hits.load(), impl_->misses.load(),
+      impl_->lockWaitUs.load(), impl_->buildUs.load(), impl_->queryUs.load()};
+}
 std::string ShorelineDataset::Error() const {
   std::lock_guard<std::mutex> lock(impl_->mutex);
   return impl_->error;
@@ -365,8 +393,9 @@ bool ShorelineDataset::CrossesLand(double lat1, double lon1, double lat2,
   if (!std::isfinite(lat1) || !std::isfinite(lat2) || !std::isfinite(lon1) ||
       !std::isfinite(lon2) || std::abs(lat1) > 90 || std::abs(lat2) > 90)
     throw std::runtime_error("Invalid shoreline query coordinates");
-  std::lock_guard<std::mutex> lock(impl_->mutex);
-  if (!impl_->error.empty()) throw ShorelineQueryError(impl_->error);
+  impl_->queries.fetch_add(1, std::memory_order_relaxed);
+  Impl::Timing queryTiming{impl_->queryUs};
+  impl_->CheckError();
   try {
     lon1 = std::fmod(std::fmod(lon1, 360.) + 360., 360.);
     lon2 = lon1 + std::remainder(lon2 - lon1, 360.);
@@ -428,7 +457,9 @@ bool ShorelineDataset::CrossesLand(double lat1, double lon1, double lat2,
   } catch (const std::bad_alloc&) {
     throw;
   } catch (const std::exception& e) {
-    impl_->error = std::string("Shoreline data error: ") + e.what();
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    if (impl_->error.empty())
+      impl_->error = std::string("Shoreline data error: ") + e.what();
     throw ShorelineQueryError(impl_->error);
   }
 }
@@ -450,8 +481,7 @@ ShorelineDataset::Outline ShorelineDataset::ViewOutline(
   const int y1 = std::min(179, int(std::floor(north + 90)));
   const auto count = std::size_t(x1 - x0 + 1) * std::size_t(y1 - y0 + 1);
   if (count > max_tiles) { result.zoom_in = true; return result; }
-  std::lock_guard<std::mutex> lock(impl_->mutex);
-  if (!impl_->error.empty()) throw ShorelineQueryError(impl_->error);
+  impl_->CheckError();
   for (int x = x0; x <= x1; ++x) for (int y = y0; y <= y1; ++y) {
     const int tile_x = x % 360;
     auto tile = impl_->Get(tile_x, y);
@@ -484,8 +514,9 @@ bool ShorelineDataset::WithinLandMargin(double lat1, double lon1, double lat2,
         "shoreline margin must be between 0 and 100 NM");
   if (CrossesLand(lat1, lon1, lat2, lon2)) return true;
   if (margin == 0) return false;
-  std::lock_guard<std::mutex> lock(impl_->mutex);
-  if (!impl_->error.empty()) throw ShorelineQueryError(impl_->error);
+  impl_->queries.fetch_add(1, std::memory_order_relaxed);
+  Impl::Timing queryTiming{impl_->queryUs};
+  impl_->CheckError();
   // Inspect the entire buffer, including islands wholly between the centre
   // line and offset lines. Indexed coastline-edge distance replaces the old
   // five-line approximation. Short pieces bound projection distortion; the
@@ -565,7 +596,9 @@ bool ShorelineDataset::WithinLandMargin(double lat1, double lon1, double lat2,
   } catch (const std::bad_alloc&) {
     throw;
   } catch (const std::exception& e) {
-    impl_->error = std::string("Shoreline margin data error: ") + e.what();
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    if (impl_->error.empty())
+      impl_->error = std::string("Shoreline margin data error: ") + e.what();
     throw ShorelineQueryError(impl_->error);
   }
 }

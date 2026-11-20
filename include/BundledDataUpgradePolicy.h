@@ -16,6 +16,8 @@ inline bool CanSkipBundledDataUpdate(int installed, int major, int minor) {
   if (major == 2 && minor == 6) return installed == 205;
   if (major == 1 && minor == 40) return installed == 139;
   if (major == 2 && minor == 7) return installed == 206;
+  if (major == 1 && minor == 41) return installed >= 138 && installed <= 140;
+  if (major == 2 && minor == 8) return installed >= 205 && installed <= 207;
   return installed >= 124 && installed <= 132 && major == 1 &&
          minor >= 25 && minor <= 33;
 }

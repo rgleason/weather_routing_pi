@@ -1554,25 +1554,46 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
       const double bearing =
           initialBearingDegrees(from.position, request.destination);
       std::optional<ResolvedEnvironment> fanWeather;
-      for (double heading :
-           headings(layerHeadingStep, bearing, request.options.adaptiveHeadings,
-                    request.options.refinedHeadingStepDegrees,
-                    request.options.maximumSearchAngleDegrees)) {
+      const auto fanHeadings = headings(layerHeadingStep, bearing,
+          request.options.adaptiveHeadings, request.options.refinedHeadingStepDegrees,
+          request.options.maximumSearchAngleDegrees);
+      const Duration integrationSlice{coastalDepartureEgress || refineIntegration
+          ? std::chrono::minutes{5} : std::chrono::minutes{15}};
+      struct Expansion {
+        std::vector<Node> nodes;
+        RoutingDiagnostics diagnostics;
+        professional_policy::Diagnostics policy;
+        RoutingStatus failure{RoutingStatus::Complete};
+      };
+      const bool parallel = environment.parallelFor && fanHeadings.size() >= 16;
+      std::vector<Expansion> expanded(parallel ? fanHeadings.size() : 0);
+      if (parallel) environment.parallelFor(fanHeadings.size(),
+          [&](std::size_t h, const RoutingEnvironment& lane) {
+            if (request.cancellation.cancelled()) return;
+            auto& out = expanded[h];
+            Context local{context.options, out.policy, context.effort,
+                          context.attempt, context.began};
+            std::optional<ResolvedEnvironment> weather;
+            out.nodes = propagate(request, lane, *lane.performance, from,
+                fanHeadings[h], layerStep, out.diagnostics, integrationSlice,
+                &out.failure, context.sanity() ? &weather : nullptr, &local);
+          });
+      for (std::size_t h = 0; h < fanHeadings.size(); ++h) {
         workerProgress.tick(request, RoutingProgressStage::ForwardIsochrone,
                             diagnostics, attempt, totalAttempts);
-        // Exploratory propagation is independently replayed at a dense
-        // cadence before any route can be returned. Match the adapter's
-        // canonical 15-minute weather buckets here: five-minute integration
-        // multiplied provider traffic by roughly three without adding
-        // forecast detail, while final replay remains unchanged.
-        const Duration integrationSlice{
-            coastalDepartureEgress || refineIntegration
-                ? std::chrono::minutes{5}
-                : std::chrono::minutes{15}};
-        for (auto& next : propagate(request, environment, performance, from,
-                                    heading, layerStep, diagnostics,
-                                    integrationSlice, &dataFailure,
-                                    context.sanity()?&fanWeather:nullptr, &context)) {
+        std::vector<Node> nodes;
+        if (parallel) {
+          auto& out = expanded[h];
+          internal::mergeEvaluationDiagnostics(diagnostics, out.diagnostics);
+          context.diagnostics.initialWeatherReuses += out.policy.initialWeatherReuses;
+          if (out.failure != RoutingStatus::Complete) dataFailure = out.failure;
+          nodes = std::move(out.nodes);
+        } else {
+          nodes = propagate(request, environment, performance, from, fanHeadings[h],
+              layerStep, diagnostics, integrationSlice, &dataFailure,
+              context.sanity() ? &fanWeather : nullptr, &context);
+        }
+        for (auto& next : nodes) {
           const std::uint64_t ordinaryForwardGenerated =
               diagnostics.generatedStates -
               diagnostics.coastalEndpointGeneratedStates;

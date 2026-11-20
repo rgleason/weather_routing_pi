@@ -178,3 +178,31 @@ TEST(GribTimelineFrameCache, UnansweredServiceIsRetriedInANewBatch) {
   EXPECT_EQ(cache.Acquire(100, 100, {}).status, Status::NoReply);
   EXPECT_EQ(requests, 2U);
 }
+
+TEST(GribTimelineFrameCache, BoundedLookaheadYieldsToDemandAndSurvivesClear) {
+  Cache cache;
+  cache.Configure(64, true, 32768);
+  GribRecordSet records(1);
+  GribRecord wind;
+  records.m_GribRecordPtrArray[Idx_WIND_VX] = &wind;
+  records.m_GribRecordPtrArray[Idx_WIND_VY] = &wind;
+  cache.SetRequestWakeup([&] {
+    const auto request = cache.TakePendingRequest();
+    ASSERT_TRUE(request);
+    cache.PublishFrame(*request, &records);
+  });
+  EXPECT_EQ(cache.Acquire(0, 100, {}).status, Status::Available);
+  EXPECT_FALSE(cache.TakePendingRequest());
+  for (int n = 1; n <= 3; ++n) {
+    const auto request = cache.TakePendingRequest(true);
+    ASSERT_TRUE(request);
+    EXPECT_EQ(request->key, n * 900);
+    EXPECT_TRUE(request->prefetch);
+    cache.PublishFrame(*request, nullptr);
+  }
+  EXPECT_FALSE(cache.TakePendingRequest(true));
+  cache.Clear();
+  EXPECT_EQ(cache.Acquire(3600, 100, {}).status, Status::Available);
+  cache.Clear();
+  EXPECT_FALSE(cache.TakePendingRequest(true));
+}

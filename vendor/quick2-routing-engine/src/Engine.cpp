@@ -482,6 +482,16 @@ Result Engine::route(const wr::RoutingRequest& request,
         d.lineageNodes = history.size();
         return true;
       };
+      struct ExactEvaluation {
+        std::vector<in::MotionCandidate> motions;
+        wr::RoutingDiagnostics diagnostics;
+        wr::RoutingStatus failure{wr::RoutingStatus::Complete};
+      };
+      // Small demand-led batches overlap independent integration and shoreline
+      // work. No proposal is admitted until the coordinator reaches it in the
+      // original ordering; unused speculative results never consume budgets.
+      std::vector<std::size_t> exactIndices;
+      std::vector<ExactEvaluation> exactBatch;
       // Two passes reserve angular diversity before filling remaining cells.
       for (unsigned pass = 0; pass < 2 && next.size() < options.frontierLimit;
            ++pass) {
@@ -506,10 +516,54 @@ Result Engine::route(const wr::RoutingRequest& request,
           p.attempted = true;
           ++attempts;
           ++d.exactMotions;
-          auto motions = in::checkedMotion(request, environment, performance,
-                                           history[p.parent].state, p.heading,
-                                           p.duration, std::chrono::minutes{5},
-                                           r.diagnostics, &lastFailure);
+          std::vector<in::MotionCandidate> motions;
+          if (environment.parallelFor) {
+            const auto index = static_cast<std::size_t>(&p - proposals.data());
+            auto cached = std::find(exactIndices.begin(), exactIndices.end(), index);
+            if (cached == exactIndices.end()) {
+              exactIndices.clear(); exactBatch.clear();
+              std::map<std::pair<int, int>, unsigned> plannedCells;
+              std::array<unsigned, 24> plannedSectors{};
+              const auto quota = std::min<std::size_t>(8, options.frontierLimit-next.size());
+              for (std::size_t j = index; j < proposals.size() && exactIndices.size() < quota; ++j) {
+                const auto& future = proposals[j];
+                if (j != index && future.attempted) continue;
+                const auto futureSector = static_cast<unsigned>(wr::normalizeHeading(
+                    wr::initialBearingDegrees(request.start, future.position))/15)%24;
+                if (j != index && pass == 0 && sectors[futureSector]+plannedSectors[futureSector] >=
+                    std::max(1u, options.frontierLimit/24)) continue;
+                const auto key = grid.key(future.position);
+                const auto found = proposalCells.find(key);
+                const auto attempted = found == proposalCells.end() ? 0u : found->second;
+                if (j != index && attempted+plannedCells[key] >= 4) continue;
+                exactIndices.push_back(j);
+                if (j != index) ++plannedCells[key];
+                ++plannedSectors[futureSector];
+              }
+              exactBatch.resize(exactIndices.size());
+              environment.parallelFor(exactBatch.size(),
+                  [&](std::size_t n, const wr::RoutingEnvironment& lane) {
+                    if (request.cancellation.cancelled()) return;
+                    const auto& proposal = proposals[exactIndices[n]];
+                    auto& out = exactBatch[n];
+                    out.motions = in::checkedMotion(request, lane, *lane.performance,
+                        history[proposal.parent].state, proposal.heading,
+                        proposal.duration, std::chrono::minutes{5},
+                        out.diagnostics, &out.failure);
+                  });
+              d.preparedMotions += exactBatch.size();
+              cached = exactIndices.begin();
+            }
+            auto& out = exactBatch[static_cast<std::size_t>(cached-exactIndices.begin())];
+            in::mergeEvaluationDiagnostics(r.diagnostics, out.diagnostics);
+            if (out.failure != wr::RoutingStatus::Complete) lastFailure = out.failure;
+            motions = std::move(out.motions);
+          } else {
+            ++d.preparedMotions;
+            motions = in::checkedMotion(request, environment, performance,
+                history[p.parent].state, p.heading, p.duration,
+                std::chrono::minutes{5}, r.diagnostics, &lastFailure);
+          }
           for (auto& motion : motions) {
             if (next.size() >= options.frontierLimit) break;
             if (admit(std::move(motion), p, false)) ++sectors[sector];

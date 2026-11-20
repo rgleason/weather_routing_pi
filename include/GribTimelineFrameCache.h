@@ -83,7 +83,7 @@ private:
   Cache cache_;
   std::mutex queue_mutex_;
   std::deque<Request> requests_;
-  std::optional<Request> next_slice_;
+  std::deque<Request> next_slices_;
   std::function<void()> request_wakeup_;
   int requested_mib_{kMainGribTimelineCacheDefaultMiB};
   int effective_mib_{kMainGribTimelineCacheDefaultMiB};

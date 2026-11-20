@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 #include <filesystem>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <cstddef>
@@ -19,6 +20,11 @@ public:
 // host API.
 class ShorelineDataset {
 public:
+  struct Statistics {
+    std::uint64_t queries{}, cacheHits{}, cacheMisses{};
+    std::uint64_t lockWaitMicroseconds{}, tileBuildMicroseconds{}, queryMicroseconds{};
+  };
+  Statistics Stats() const;
   struct Outline {
     // lon1, lat1, lon2, lat2; cell-clipping edges are excluded.
     std::vector<std::array<double, 4>> segments;

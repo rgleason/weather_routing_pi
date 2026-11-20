@@ -43,6 +43,8 @@ bool HasOpenWaterLayerImport();
 bool ImportOpenWaterLayer(const wxString& path, wxString* message,
                           OpenWaterLayerProgress progress = {});
 bool RemoveOpenWaterLayer();
+/** Private isolated-helper entry point, unavailable on ordinary hosts. */
+bool RunTileWorker(const wxString& directory);
 void InvalidateDerivedMasks();
 /** Return applicable chart metadata without opening/decrypting chart data. */
 std::vector<ChartSafetyAtlasChart> AtlasCharts();

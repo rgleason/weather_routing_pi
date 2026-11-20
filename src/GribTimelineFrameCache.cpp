@@ -88,9 +88,14 @@ GribTimelineFrameCache::TakePendingRequest(bool allowPrefetch) {
     requests_.pop_front();
     if (cache_.IsPending(request)) return request;
   }
-  if (next_slice_ && (allowPrefetch || cache_.HasWaiters(*next_slice_))) {
-    const auto request = std::exchange(next_slice_, std::nullopt);
-    if (cache_.IsPending(*request)) return request;
+  for (auto it = next_slices_.begin(); it != next_slices_.end();) {
+    if (!cache_.IsPending(*it)) { it = next_slices_.erase(it); continue; }
+    if (allowPrefetch || cache_.HasWaiters(*it)) {
+      const auto request = *it;
+      next_slices_.erase(it);
+      return request;
+    }
+    ++it;
   }
   return std::nullopt;
 }
@@ -105,18 +110,22 @@ void GribTimelineFrameCache::WakeHost() {
 }
 
 void GribTimelineFrameCache::PrefetchNextSlice(const Request& request, std::size_t bytes) {
-  // Canonical native forecast sampling uses quarter-hour buckets. Keep one
-  // speculative slice in reserve, with room for several ordinary replies.
+  // At most three upcoming canonical slices, with demand priority and
+  // space reserved for ordinary replies. This never changes requested times
+  // or promotes an unavailable forecast to available weather.
   constexpr std::int64_t cadence = 15 * 60;
   if (request.prefetch || request.key % cadence || !configured_) return;
   const auto limit = MiBToBytes(current_limit_mib_);
-  if (bytes > limit / 4 || cache_.TotalWeight() > limit - 4 * bytes) return;
+  if (bytes > limit / 6 || cache_.TotalWeight() > limit - 6 * bytes) return;
   try {
     std::lock_guard<std::mutex> guard(queue_mutex_);
-    if (!next_slice_ || !cache_.IsPending(*next_slice_))
-      next_slice_ = cache_.Prefetch(request.key + cadence);
+    for (auto it = next_slices_.begin(); it != next_slices_.end();)
+      if (!cache_.IsPending(*it)) it = next_slices_.erase(it); else ++it;
+    for (unsigned n = 1; n <= 3 && next_slices_.size() < 3; ++n)
+      if (const auto next = cache_.Prefetch(request.key + n * cadence))
+        next_slices_.push_back(*next);
   } catch (const std::bad_alloc&) {
-    // Lookahead is optional. The next demand request uses the normal path.
+    // Preparation is optional; the ordinary demand path remains authoritative.
   }
 }
 
@@ -215,7 +224,7 @@ std::size_t GribTimelineFrameCache::Clear(bool reset_statistics) {
   const std::size_t released = cache_.TotalWeight();
   std::lock_guard<std::mutex> guard(queue_mutex_);
   requests_.clear();
-  next_slice_.reset();
+  next_slices_.clear();
   cache_.Clear(reset_statistics);
   next_memory_check_milliseconds_ = 0;
   return released;

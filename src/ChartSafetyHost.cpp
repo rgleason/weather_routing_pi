@@ -21,6 +21,8 @@
 #include <vector>
 
 #include <wx/log.h>
+#include <wx/app.h>
+#include <wx/utils.h>
 #include <wx/thread.h>
 
 #include "ChartHazardEvaluator.h"
@@ -56,6 +58,8 @@ using IdentityFn = bool (*)(char*, int);
 using CheckFn = bool (*)(double, double, double, double,
                          const PlugInSegmentSafetyOptions*,
                          PlugInSegmentSafetyResult*);
+using QueueHelperTilesFn = int (*)(const long*, const long*, int, int);
+using HelperTilePendingFn = bool (*)(long,long);
 using RawTilesFn = bool (*)(const long*, const long*, int, int,
                             PlugInSegmentSafetyResult*);
 using OpenWaterFn = bool (*)(long, long, const PlugInSegmentSafetyOptions*);
@@ -82,6 +86,8 @@ struct HostFunctions {
   IdentityFn get_identity{nullptr};
   CheckFn check{nullptr};
   RawTilesFn raw_tiles{nullptr};
+  QueueHelperTilesFn queue_helpers{nullptr};
+  HelperTilePendingFn helper_pending{nullptr};
   OpenWaterFn open_water{nullptr};
   ImportOpenWaterLayerFn import_open_water_layer{nullptr};
   RemoveOpenWaterLayerFn remove_open_water_layer{nullptr};
@@ -273,24 +279,52 @@ bool RequestRawTiles(const std::set<std::pair<long, long>>& raw_tiles,
                               !options->force_authoritative_fine_validation;
   const std::size_t requested_tiles = raw_tiles.size();
   if (progress) progress(cached_tiles, requested_tiles);
+  // Certify the starting-layer shortcut before scheduling detailed work. A
+  // bounded lookahead window gives helpers useful work while preserving the
+  // one-tile cancellation/fallback cadence of older hosts and providers.
+  const bool helpers = g_host.queue_helpers && g_host.helper_pending;
+  std::vector<signed char> open_water_state(lat_tiles.size(), -1);
   for (std::size_t offset = 0; offset < lat_tiles.size();
        offset += kExternalPrewarmBatchTiles) {
     if (weather_routing::chart_safety_host::PrewarmCancellationRequested())
       return false;
     const std::size_t count =
         std::min(kExternalPrewarmBatchTiles, lat_tiles.size() - offset);
-    if (try_open_water &&
-        g_host.open_water(lat_tiles[offset], lon_tiles[offset], options)) {
+    if (helpers) {
+      std::vector<long> upcoming_lat, upcoming_lon;
+      const auto last = std::min(lat_tiles.size(), offset+32);
+      for (auto next=offset; next<last; ++next) {
+        if (weather_routing::chart_safety_host::PrewarmCancellationRequested()) return false;
+        if (open_water_state[next] < 0) {
+          open_water_state[next] = try_open_water &&
+              g_host.open_water(lat_tiles[next],lon_tiles[next],options) ? 1 : 0;
+          if (progress) progress(cached_tiles+offset, requested_tiles);
+        }
+        if (!open_water_state[next]) {
+          upcoming_lat.push_back(lat_tiles[next]); upcoming_lon.push_back(lon_tiles[next]);
+        }
+      }
+      if (!upcoming_lat.empty()) g_host.queue_helpers(upcoming_lat.data(),upcoming_lon.data(),
+          static_cast<int>(upcoming_lat.size()), options->check_depth != 0 ? 1 : 0);
+    }
+    if ((helpers && open_water_state[offset] == 1) || (!helpers && try_open_water &&
+        g_host.open_water(lat_tiles[offset], lon_tiles[offset], options))) {
       ++geometry_tiles;
       if (progress) progress(cached_tiles + offset + 1, requested_tiles);
       continue;
     }
-    batch_result = {};
-    batch_result.struct_size = sizeof(batch_result);
-    if (!g_host.raw_tiles(lat_tiles.data() + offset, lon_tiles.data() + offset,
-                          static_cast<int>(count),
-                          options->check_depth != 0 ? 1 : 0, &batch_result))
-      return false;
+    // Poll the small completion queue, rather than repeating full catalogue
+    // confirmation and extraction while the worker is still busy. A declined
+    // or failed helper naturally reaches the ordinary one-tile host path.
+    while (helpers && g_host.helper_pending(lat_tiles[offset],lon_tiles[offset])) {
+      if (weather_routing::chart_safety_host::PrewarmCancellationRequested()) return false;
+      if (progress) progress(cached_tiles+offset,requested_tiles);
+      wxYieldIfNeeded(); wxMilliSleep(2);
+    }
+    if (weather_routing::chart_safety_host::PrewarmCancellationRequested()) return false;
+    batch_result = {}; batch_result.struct_size = sizeof(batch_result);
+    if (!g_host.raw_tiles(lat_tiles.data()+offset,lon_tiles.data()+offset,
+        static_cast<int>(count), options->check_depth != 0 ? 1 : 0, &batch_result)) return false;
     totals.prewarm_base_tiles_built += batch_result.prewarm_base_tiles_built;
     totals.prewarm_base_tiles_reused += batch_result.prewarm_base_tiles_reused;
     totals.prewarm_masks_built += batch_result.prewarm_masks_built;
@@ -398,6 +432,11 @@ bool PrewarmRawTiles(
 
 namespace weather_routing {
 namespace chart_safety_host {
+bool RunTileWorker(const wxString& directory) {
+  const auto run = Resolve<bool (*)(const char*)>("PlugIn_RunSegmentSafetyTileWorker");
+  return run && run(directory.ToUTF8().data());
+}
+
 
 namespace {
 void DependenciesChangedCallback(void*) {
@@ -415,6 +454,8 @@ bool Initialize(ChartSafetyCache* cache) {
   g_host.check = Resolve<CheckFn>("PlugIn_CheckSegmentSafety");
   g_host.raw_tiles = Resolve<RawTilesFn>(
       "PlugIn_PrewarmSegmentSafetyRawTiles");
+  g_host.queue_helpers = Resolve<QueueHelperTilesFn>("PlugIn_QueueSegmentSafetyRawTileHelpers");
+  g_host.helper_pending = Resolve<HelperTilePendingFn>("PlugIn_SegmentSafetyRawTileHelperPending");
   g_host.open_water = Resolve<OpenWaterFn>(
       "PlugIn_PrewarmSegmentSafetyOpenWater");
   g_host.import_open_water_layer = Resolve<ImportOpenWaterLayerFn>(
@@ -461,6 +502,8 @@ bool Initialize(ChartSafetyCache* cache) {
     return false;
   }
   g_host.registered = true;
+  if (const auto enable = Resolve<void (*)(int)>("PlugIn_EnableSegmentSafetyTileHelpers"))
+    enable(1);
 
   // Registration immediately reports the core's current identity. Treat it
   // as provisional because later-loaded chart providers (notably o-charts)
@@ -472,6 +515,9 @@ bool Initialize(ChartSafetyCache* cache) {
 }
 
 void Shutdown() {
+  if (g_host.registered)
+    if (const auto enable = Resolve<void (*)(int)>("PlugIn_EnableSegmentSafetyTileHelpers"))
+      enable(0);
   g_evaluator.reset();
   if (g_host.registered && g_host.register_cache)
     g_host.register_cache(nullptr);

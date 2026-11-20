@@ -1,0 +1,11 @@
+# 1.41.0
+
+Routing helpers use the existing shared worker budget. Quick2 integrates a bounded batch of eligible motion candidates concurrently; Standard evaluates independent heading fans concurrently. Each lane owns mutable weather/polar state, and the coordinator commits results, lineage, pruning and budgets in their established order. Final route replay is unchanged.
+
+Published GSHHG tiles are immutable and remain owned by a query through eviction. Cache loading/retention remains synchronized; intersection and clearance geometry runs outside the cache lock. Prepared weather samples and forecast-boundary checks are shared within one method family/departure; separate departure probes keep independent samples. Missing forecast data and cancelled requests retain their distinct meanings. Forecast lookahead is bounded by the frame memory budget and yields to demand.
+
+The companion OpenCPN host optionally prepares detailed chart tiles in isolated helper processes on desktop Linux. Python 3 and Xvfb are required for these helpers. CM93/S-57 semantics are supported; plugin-vector results are transferable only when the provider explicitly permits semantic caching. The parent checks the semantic ABI, portable chart catalogue, active group, per-tile dependencies, provider precedence and required depth evidence before use. Unsupported providers, unavailable tools, failed workers and invalid results use the ordinary authoritative path. The installed open-water starting layer, hazard exclusions and detailed final validation remain in force. Older hosts keep the established chart service.
+
+Diagnostics report shoreline cache waits/builds, aggregate weather worker waits/builds and chart-helper delivery latency/import costs. Worker-time totals can overlap and are not additive wall-clock phases.
+
+Qualification and measured comparisons are recorded in the workspace report at `output/routing-1.41-2.8-20261120`.

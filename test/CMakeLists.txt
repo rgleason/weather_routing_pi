@@ -114,6 +114,7 @@ set(TEST_SRC
     ${WEATHER_ROUTING_SOURCE_DIR}/src/navobj_util.cpp
     NearbyWaveHeight_tests.cpp
     RouteGust_tests.cpp
+    RoutingStepExecutor_tests.cpp
     ModernNativeEngine_tests.cpp
     ProfessionalSearchPolicy_tests.cpp
     OriginalEngine_tests.cpp

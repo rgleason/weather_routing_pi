@@ -21,7 +21,7 @@ struct Options {
   unsigned maximumValidatedCandidates{8};
 };
 struct Diagnostics {
-  std::uint64_t proposals{}, exactMotions{}, duplicateCells{},
+  std::uint64_t proposals{}, exactMotions{}, preparedMotions{}, duplicateCells{},
       frontierTruncations{};
   std::uint64_t lineageNodes{}, searchArrayBytes{};
   unsigned layers{}, peakFrontier{}, validatedCandidates{};
