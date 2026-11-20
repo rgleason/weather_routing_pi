@@ -30,6 +30,8 @@ namespace chart_safety_host {
 /** Detect and attach to the optional enhanced OpenCPN chart-safety service. */
 bool Initialize(ChartSafetyCache* cache);
 void Shutdown();
+/** Opt-in policy for additional chart/layer helper processes. */
+void SetAdditionalHelpersEnabled(bool enabled, unsigned routingWorkerLimit = 1);
 bool Available();
 std::string Status();
 /** Confirm and return the post-provider-load global semantic ABI identity. */

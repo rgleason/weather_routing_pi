@@ -81,6 +81,9 @@ using ChartInfoFn = bool (*)(int, PlugInSegmentSafetyChartInfoV1*);
 using CoverageTilesFn = bool (*)(const int*, int, double, long*, long*, int,
                                  int*, int*);
 
+bool g_additional_helpers_enabled = false;
+unsigned g_additional_helper_limit = 0;
+
 struct HostFunctions {
   RegisterFn register_cache{nullptr};
   IdentityFn get_identity{nullptr};
@@ -502,8 +505,10 @@ bool Initialize(ChartSafetyCache* cache) {
     return false;
   }
   g_host.registered = true;
+  if (const auto limit = Resolve<void (*)(int)>("PlugIn_SetSegmentSafetyHelperProcessLimit"))
+    limit(static_cast<int>(g_additional_helper_limit));
   if (const auto enable = Resolve<void (*)(int)>("PlugIn_EnableSegmentSafetyTileHelpers"))
-    enable(1);
+    enable(g_additional_helpers_enabled ? 1 : 0);
 
   // Registration immediately reports the core's current identity. Treat it
   // as provisional because later-loaded chart providers (notably o-charts)
@@ -512,6 +517,18 @@ bool Initialize(ChartSafetyCache* cache) {
   g_evaluator =
       std::make_unique<weather_routing::ChartHazardEvaluator>(*cache);
   return true;
+}
+
+void SetAdditionalHelpersEnabled(bool enabled, unsigned routingWorkerLimit) {
+  g_additional_helpers_enabled = enabled;
+  g_additional_helper_limit = enabled && routingWorkerLimit > 1
+      ? std::min(6u,routingWorkerLimit-1) : 0;
+  if (g_host.registered)
+    if (const auto limit = Resolve<void (*)(int)>("PlugIn_SetSegmentSafetyHelperProcessLimit"))
+      limit(static_cast<int>(g_additional_helper_limit));
+  if (g_host.registered)
+    if (const auto set = Resolve<void (*)(int)>("PlugIn_EnableSegmentSafetyTileHelpers"))
+      set(enabled ? 1 : 0);
 }
 
 void Shutdown() {
@@ -662,6 +679,21 @@ bool ImportOpenWaterLayer(const wxString& path, wxString* message,
   };
   const auto utf8 = path.ToUTF8();
   char detail[512]{};
+  // Older hosts have no resource-policy API. Their existing recursion guard
+  // also provides a serial import path, so opting out never launches helpers.
+  struct SerialVerifierScope {
+    wxString previous;
+    bool had{}, changed{};
+    explicit SerialVerifierScope(bool serial) : changed(serial) {
+      if (changed) { had=wxGetEnv("OCPN_OPEN_WATER_VERIFIER_CHILD",&previous);
+        wxSetEnv("OCPN_OPEN_WATER_VERIFIER_CHILD","1"); }
+    }
+    ~SerialVerifierScope() { if (changed) {
+      if (had) wxSetEnv("OCPN_OPEN_WATER_VERIFIER_CHILD",previous);
+      else wxUnsetEnv("OCPN_OPEN_WATER_VERIFIER_CHILD");
+    } }
+  } serial(!g_additional_helpers_enabled || !g_additional_helper_limit ||
+      !Resolve<void (*)(int)>("PlugIn_SetSegmentSafetyHelperProcessLimit"));
   const bool ok = g_host.import_open_water_layer(
       utf8.data(), progress ? +report : nullptr, &progress, detail, sizeof(detail));
   *message = wxString::FromUTF8(detail);

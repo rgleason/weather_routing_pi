@@ -9486,7 +9486,7 @@ void WeatherRouting::OnComputationTimer(wxTimerEvent&) {
         !ModernNativeRouteRequiresSerialHostServices(config)
         ? m_SettingsDialog.m_sParallelMethods->GetValue() : 0;
     routemapoverlay->AdmitRoutingWorker(m_RoutingWorkerBudget, std::move(*workerSlot),
-                                       parallelLimit);
+                                       parallelLimit, m_SettingsDialog.m_cbAdditionalHelpers->GetValue());
     wxString error;
     if (routemapoverlay->Start(error))
       m_RunningRouteMaps.push_back(routemapoverlay);
@@ -12791,6 +12791,9 @@ void WeatherRouting::ExportRoute(RouteMapOverlay& routemapoverlay) {
 }
 
 void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
+  weather_routing::chart_safety_host::SetAdditionalHelpersEnabled(
+      m_SettingsDialog.m_cbAdditionalHelpers->GetValue(),
+      static_cast<unsigned>(m_SettingsDialog.m_sConcurrentThreads->GetValue()));
   if (!routemapoverlay || routemapoverlay->Running()) return;
   if (m_RoutePreparationDepth == 0)
     m_ChartSafetyPreparationCancelled.store(false,
@@ -13114,6 +13117,8 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
           configuration.RoutingEffortPercent),
       m_SettingsDialog.m_sConcurrentThreads->GetValue(),
       configuration.SelectedGribTimelineCacheMiB());
+  routeStartLog += wxString::Format(" additional_helpers=%d",
+      m_SettingsDialog.m_cbAdditionalHelpers->GetValue() ? 1 : 0);
   wxLogMessage("%s", routeStartLog);
 
   // Decide endpoint depth suitability before any potentially large chart
@@ -13386,6 +13391,7 @@ void WeatherRouting::BeginGribTimelineCacheBatch(
     wxQueueEvent(this, new wxThreadEvent(wxEVT_WR_GRIB_REQUEST));
   });
   m_GribTimelineFrameCache->Clear();
+  m_GribTimelineFrameCache->SetAdditionalPrefetchEnabled(m_SettingsDialog.m_cbAdditionalHelpers->GetValue());
   const std::uint64_t availableMiB =
       weather_routing::AvailablePhysicalMemoryMiB();
   const auto admission = m_GribTimelineFrameCache->Configure(

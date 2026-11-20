@@ -31,6 +31,7 @@
 #include "RoutingResourcePolicy.h"
 #include "SunCalculator.h"
 #include "SystemMemory.h"
+#include "CalculationHelperPolicy.h"
 #include "WeatherDataProvider.h"
 #include "engine/native/ComfortAlternatives.h"
 #include "engine/native/ConstraintTime.h"
@@ -161,7 +162,7 @@ struct OpenCpnSharedWeatherCache {
 };
 
 std::shared_ptr<OpenCpnSharedWeatherCache> SharedWeatherCacheFor(
-    const RouteMapConfiguration& configuration) {
+    const RouteMapConfiguration& configuration, bool additionalHelpers = false) {
   // A canonical bucket is deterministic only within one route's immutable
   // service context. Reusing populated samples between departure candidates
   // was observed to change the retained native frontier: an 08:00 candidate
@@ -170,7 +171,8 @@ std::shared_ptr<OpenCpnSharedWeatherCache> SharedWeatherCacheFor(
   // owns this bounded cache. The departure scheduler runs native candidates
   // one at a time, so isolation does not multiply the peak working set.
   auto cache = std::make_shared<OpenCpnSharedWeatherCache>();
-  cache->sampleLimit = configuration.IsFastEngine() ? 32768U : 500000U;
+  cache->sampleLimit = weather_routing::PreparedWeatherSampleLimit(additionalHelpers,
+      configuration.IsFastEngine(),weather_routing::AvailablePhysicalMemoryMiB());
   return cache;
 }
 
@@ -183,7 +185,7 @@ public:
       : overlay_(overlay),
         configuration_(std::move(configuration)),
         methodStop_(std::move(methodStop)),
-        sharedCache_(shared ? std::move(shared) : SharedWeatherCacheFor(configuration_)) {}
+        sharedCache_(shared ? std::move(shared) : SharedWeatherCacheFor(configuration_,overlay.AdditionalCalculationHelpersEnabled())) {}
 
   ~OpenCpnWeatherProvider() override {
     // Each lane owns its hot counters. Publish once to avoid a shared cache
@@ -507,14 +509,17 @@ private:
         // (roughly tens of MiB for this compact sample).
         const size_t cacheLimit = sharedCache_->sampleLimit;
         if (sharedCache_->samples.size() >= cacheLimit) {
-          size_t erase = cacheLimit / 10;
+          size_t erase = weather_routing::WeatherSampleEvictionBatch(cacheLimit);
           for (auto it = sharedCache_->samples.begin();
                it != sharedCache_->samples.end() && erase > 0;) {
             it = sharedCache_->samples.erase(it);
             --erase;
           }
         }
-        sharedCache_->samples.emplace(key, sample);
+        try { sharedCache_->samples.emplace(key, sample); }
+        catch (const std::bad_alloc&) {
+          // Retaining an optional sample must not discard valid weather.
+        }
         sharedCache_->inFlight.erase(key);
         flight.active = false;
       }
@@ -1163,7 +1168,8 @@ void EnableStepWorkers(RouteMapOverlay& overlay,
     const std::shared_ptr<std::atomic_bool>& stop,
     wr::RoutingEnvironment& environment,
     std::shared_ptr<OpenCpnSharedWeatherCache> shared) {
-  if (configuration.DetectBoundary || configuration.chart_safety_scout_preview)
+  if (!overlay.AdditionalCalculationHelpersEnabled() ||
+      configuration.DetectBoundary || configuration.chart_safety_scout_preview)
     return;
   wxString serial;
   if (wxGetEnv("WR_STEP_WORKERS", &serial) && serial == "0") return;
@@ -1895,7 +1901,7 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
     using weather_routing::RoutingEngine;
     // Sharing is limited to the methods for this one departure/service
     // snapshot. Independent departure and arrival probes get a fresh family.
-    auto methodWeather = SharedWeatherCacheFor(configuration);
+    auto methodWeather = SharedWeatherCacheFor(configuration,overlay.AdditionalCalculationHelpersEnabled());
     const auto routeThread = std::this_thread::get_id();
     auto runAttempt = [&](SequenceEngine selectedEngine, const MethodStop& methodStop = {},
                           const std::function<void()>& onRepair = {}) {

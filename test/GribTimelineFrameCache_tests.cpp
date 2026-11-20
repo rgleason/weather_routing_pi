@@ -181,6 +181,7 @@ TEST(GribTimelineFrameCache, UnansweredServiceIsRetriedInANewBatch) {
 
 TEST(GribTimelineFrameCache, BoundedLookaheadYieldsToDemandAndSurvivesClear) {
   Cache cache;
+  cache.SetAdditionalPrefetchEnabled(true);
   cache.Configure(64, true, 32768);
   GribRecordSet records(1);
   GribRecord wind;
@@ -204,5 +205,20 @@ TEST(GribTimelineFrameCache, BoundedLookaheadYieldsToDemandAndSurvivesClear) {
   cache.Clear();
   EXPECT_EQ(cache.Acquire(3600, 100, {}).status, Status::Available);
   cache.Clear();
+  EXPECT_FALSE(cache.TakePendingRequest(true));
+}
+
+TEST(GribTimelineFrameCache, NoSpeculativeRequestsWithoutOptIn) {
+  Cache cache; cache.Configure(64,true,32768);
+  std::promise<void> queued;
+  cache.SetRequestWakeup([&] { queued.set_value(); });
+  auto future=std::async(std::launch::async,[&] { return cache.Acquire(900,2000,{}); });
+  ASSERT_EQ(queued.get_future().wait_for(1s),std::future_status::ready);
+  auto request=cache.TakePendingRequest(); ASSERT_TRUE(request);
+  GribRecordSet records(1); GribRecord wind;
+  records.m_GribRecordPtrArray[Idx_WIND_VX]=&wind;
+  records.m_GribRecordPtrArray[Idx_WIND_VY]=&wind;
+  cache.PublishFrame(*request,&records);
+  EXPECT_EQ(future.get().status,Status::Available);
   EXPECT_FALSE(cache.TakePendingRequest(true));
 }

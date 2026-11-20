@@ -90,7 +90,7 @@ GribTimelineFrameCache::TakePendingRequest(bool allowPrefetch) {
   }
   for (auto it = next_slices_.begin(); it != next_slices_.end();) {
     if (!cache_.IsPending(*it)) { it = next_slices_.erase(it); continue; }
-    if (allowPrefetch || cache_.HasWaiters(*it)) {
+    if ((allowPrefetch && prefetch_enabled_.load()) || cache_.HasWaiters(*it)) {
       const auto request = *it;
       next_slices_.erase(it);
       return request;
@@ -114,7 +114,7 @@ void GribTimelineFrameCache::PrefetchNextSlice(const Request& request, std::size
   // space reserved for ordinary replies. This never changes requested times
   // or promotes an unavailable forecast to available weather.
   constexpr std::int64_t cadence = 15 * 60;
-  if (request.prefetch || request.key % cadence || !configured_) return;
+  if (!prefetch_enabled_.load() || request.prefetch || request.key % cadence || !configured_) return;
   const auto limit = MiBToBytes(current_limit_mib_);
   if (bytes > limit / 6 || cache_.TotalWeight() > limit - 6 * bytes) return;
   try {

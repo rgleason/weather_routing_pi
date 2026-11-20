@@ -101,6 +101,7 @@ set(TEST_SRC
     DepartureScheduler_tests.cpp
     RoutingQualityPolicy_tests.cpp
     RoutingResourcePolicy_tests.cpp
+    CalculationHelperPolicy_tests.cpp
     RoutingFootprint_tests.cpp
     CycloneAssessment_tests.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/CycloneAssessment.cpp
