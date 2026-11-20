@@ -8861,7 +8861,7 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
   if (weather_routing::chart_safety_host::HasOpenWaterLayerImport()) {
     auto* layer = new wxStaticBoxSizer(wxHORIZONTAL, &dialog,
                                       _("Open-water starting layer"));
-    auto* import_layer = new wxButton(&dialog, wxID_ANY, _("Import…"));
+    auto* import_layer = new wxButton(&dialog, wxID_ANY, _("Import..."));
     auto* remove_layer = new wxButton(&dialog, wxID_ANY, _("Remove"));
     layer->Add(import_layer, 1, wxALL | wxEXPAND, 5);
     layer->Add(remove_layer, 1, wxALL | wxEXPAND, 5);
@@ -8989,6 +8989,15 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
     if (child->GetContainingSizer() != androidActions) child->Reparent(fields);
   quota_row->SetOrientation(wxVERTICAL);
   ram_row->SetOrientation(wxVERTICAL);
+  for (auto* row : {quota_row, ram_row})
+    for (auto* item : row->GetChildren()) {
+      item->SetFlag(wxEXPAND | wxALL);
+      item->SetBorder(8);
+      item->Show(true);
+    }
+  for (auto* item : androidActions->GetChildren())
+    if (auto* button = wxDynamicCast(item->GetWindow(), wxButton))
+      button->SetMinSize(wxSize(120, 72));
   fields->SetSizer(top);
   auto* content = new wxBoxSizer(wxVERTICAL);
   content->Add(fields, 0, wxEXPAND | wxALL, 12);
