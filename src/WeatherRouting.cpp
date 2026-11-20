@@ -1353,6 +1353,13 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
   m_mView->Bind(wxEVT_MENU, &WeatherRouting::OnShowRoutingStatus, this,
                progressItem->GetId());
 
+#ifndef __OCPN__ANDROID__
+  m_mView->AppendSeparator();
+  const auto* minimizeItem = m_mView->Append(wxID_ANY, _("Minimize to toolbar"));
+  m_mView->Bind(wxEVT_MENU, [this](wxCommandEvent&) { Iconize(true); },
+                minimizeItem->GetId());
+#endif
+
   wxIcon icon;
   icon.CopyFromBitmap(*_img_WeatherRouting);
   m_ConfigurationDialog.SetIcon(icon);

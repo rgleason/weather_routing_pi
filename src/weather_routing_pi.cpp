@@ -815,6 +815,15 @@ void weather_routing_pi::OnToolbarToolCallback(int id) {
     m_pWeather_Routing->CancelAndroidChartPick();
     return;
   }
+#else
+  // A minimized frame is still shown. Restore it before toggling visibility.
+  if (m_pWeather_Routing->IsIconized()) {
+    m_pWeather_Routing->Iconize(false);
+    if (!m_pWeather_Routing->IsShown()) m_pWeather_Routing->Show(true);
+    m_pWeather_Routing->Raise();
+    SetToolbarItemState(m_leftclick_tool_id, true);
+    return;
+  }
 #endif
   m_pWeather_Routing->Show(!m_pWeather_Routing->IsShown());
 }
