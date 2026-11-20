@@ -185,6 +185,12 @@ public:
         methodStop_(std::move(methodStop)),
         sharedCache_(shared ? std::move(shared) : SharedWeatherCacheFor(configuration_)) {}
 
+  ~OpenCpnWeatherProvider() override {
+    // Each lane owns its hot counters. Publish once to avoid a shared cache
+    // line bouncing between workers on every wind/current/wave lookup.
+    sharedCache_->calls.fetch_add(cacheCalls_, std::memory_order_relaxed);
+  }
+
   wr::ParameterCoverage windCoverage() const override {
     // A fallback setting alone cannot establish provider readiness. Keep the
     // solver's blended-source policy, but inspect the GRIB bounds separately
@@ -410,7 +416,6 @@ private:
   OpenCpnSample load(wr::GeoPoint position, wr::TimePoint requested) const {
     if (methodStop_ && methodStop_->load(std::memory_order_relaxed)) return {};
     ++cacheCalls_;
-    sharedCache_->calls.fetch_add(1, std::memory_order_relaxed);
     // Fifteen-minute weather slices match final validation and avoid a full
     // copied GRIB grid for every sub-second timestamp encountered by graph
     // labels. A 0.01-degree spatial key is roughly 0.36 NM east/west in the
@@ -2833,13 +2838,12 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
     for (const auto& shoreline : configuration.engine_shorelines) {
       if (!shoreline || !reported.insert(shoreline.get()).second) continue;
       const auto stats = shoreline->Stats();
-      wxLogMessage("WR_SHORELINE_PERF queries=%llu hits=%llu misses=%llu "
-          "cache_wait_ms=%.3f tile_build_ms=%.3f query_worker_ms=%.3f",
-          static_cast<unsigned long long>(stats.queries),
+      wxLogMessage("WR_SHORELINE_PERF tile_lookups=%llu hits=%llu misses=%llu "
+          "cache_wait_ms=%.3f tile_build_ms=%.3f",
+          static_cast<unsigned long long>((stats.cacheHits+stats.cacheMisses)),
           static_cast<unsigned long long>(stats.cacheHits),
           static_cast<unsigned long long>(stats.cacheMisses),
-          stats.lockWaitMicroseconds/1000.0, stats.tileBuildMicroseconds/1000.0,
-          stats.queryMicroseconds/1000.0);
+          stats.lockWaitMicroseconds/1000.0, stats.tileBuildMicroseconds/1000.0);
     }
   }
   // The solvers retain wind/current/waves, but gusts are optional output data.

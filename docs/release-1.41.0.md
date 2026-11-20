@@ -6,6 +6,6 @@ Published GSHHG tiles are immutable and remain owned by a query through eviction
 
 The companion OpenCPN host optionally prepares detailed chart tiles in isolated helper processes on desktop Linux. Python 3 and Xvfb are required for these helpers. CM93/S-57 semantics are supported; plugin-vector results are transferable only when the provider explicitly permits semantic caching. The parent checks the semantic ABI, portable chart catalogue, active group, per-tile dependencies, provider precedence and required depth evidence before use. Unsupported providers, unavailable tools, failed workers and invalid results use the ordinary authoritative path. The installed open-water starting layer, hazard exclusions and detailed final validation remain in force. Older hosts keep the established chart service.
 
-Diagnostics report shoreline cache waits/builds, aggregate weather worker waits/builds and chart-helper delivery latency/import costs. Worker-time totals can overlap and are not additive wall-clock phases.
+Diagnostics report contended shoreline cache waits and tile builds, aggregate weather worker waits/builds and chart-helper delivery latency/import costs. Hot cache hits do not read diagnostic clocks; each weather lane publishes its lookup total on completion. Worker-time totals can overlap and are not additive wall-clock phases.
 
 Qualification and measured comparisons are recorded in the workspace report at `output/routing-1.41-2.8-20261120`.

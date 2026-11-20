@@ -21,8 +21,8 @@ public:
 class ShorelineDataset {
 public:
   struct Statistics {
-    std::uint64_t queries{}, cacheHits{}, cacheMisses{};
-    std::uint64_t lockWaitMicroseconds{}, tileBuildMicroseconds{}, queryMicroseconds{};
+    std::uint64_t cacheHits{}, cacheMisses{};
+    std::uint64_t lockWaitMicroseconds{}, tileBuildMicroseconds{};
   };
   Statistics Stats() const;
   struct Outline {
