@@ -1565,7 +1565,8 @@ SearchArtifacts forwardSearch(const RoutingRequest& request,
         professional_policy::Diagnostics policy;
         RoutingStatus failure{RoutingStatus::Complete};
       };
-      const bool parallel = environment.parallelFor && fanHeadings.size() >= 16;
+      const bool parallel = environment.parallelFor && fanHeadings.size() >= 16 &&
+          (!environment.canParallelize || environment.canParallelize());
       std::vector<Expansion> expanded(parallel ? fanHeadings.size() : 0);
       if (parallel) environment.parallelFor(fanHeadings.size(),
           [&](std::size_t h, const RoutingEnvironment& lane) {

@@ -27,8 +27,27 @@ class RoutingStepExecutor {
     ready_.notify_all();
     for (auto& thread : threads_) thread.join();
   }
+  bool CanParallelize() {
+    Prepare();
+    return !threads_.empty();
+  }
   void Run(std::size_t count, const Task& task) {
     if (!count) return;
+    Prepare();
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      task_ = task; count_ = count; next_ = 0; failure_ = {};
+      remaining_ = threads_.size(); ++generation_;
+    }
+    ready_.notify_all();
+    Work(environments_.front());
+    std::unique_lock<std::mutex> lock(mutex_);
+    complete_.wait(lock, [&] { return remaining_ == 0; });
+    task_ = {};
+    if (failure_) std::rethrow_exception(failure_);
+  }
+ private:
+  void Prepare() {
     if (environments_.empty()) {
       environments_.push_back(factory_());
       // Leave room for the companion Auto method and UI services. Admission
@@ -55,19 +74,7 @@ class RoutingStepExecutor {
         } catch (const std::system_error&) { break; }
       }
     }
-    {
-      std::lock_guard<std::mutex> lock(mutex_);
-      task_ = task; count_ = count; next_ = 0; failure_ = {};
-      remaining_ = threads_.size(); ++generation_;
-    }
-    ready_.notify_all();
-    Work(environments_.front());
-    std::unique_lock<std::mutex> lock(mutex_);
-    complete_.wait(lock, [&] { return remaining_ == 0; });
-    task_ = {};
-    if (failure_) std::rethrow_exception(failure_);
   }
- private:
   void Work(const Environment& environment) {
     try {
       for (;;) {

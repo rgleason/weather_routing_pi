@@ -482,6 +482,8 @@ Result Engine::route(const wr::RoutingRequest& request,
         d.lineageNodes = history.size();
         return true;
       };
+      const bool parallelMotions = environment.parallelFor &&
+          (!environment.canParallelize || environment.canParallelize());
       struct ExactEvaluation {
         std::vector<in::MotionCandidate> motions;
         wr::RoutingDiagnostics diagnostics;
@@ -517,7 +519,7 @@ Result Engine::route(const wr::RoutingRequest& request,
           ++attempts;
           ++d.exactMotions;
           std::vector<in::MotionCandidate> motions;
-          if (environment.parallelFor) {
+          if (parallelMotions) {
             const auto index = static_cast<std::size_t>(&p - proposals.data());
             auto cached = std::find(exactIndices.begin(), exactIndices.end(), index);
             if (cached == exactIndices.end()) {

@@ -194,6 +194,8 @@ struct RoutingEnvironment {
   std::function<void(std::size_t,
       const std::function<void(std::size_t, const RoutingEnvironment&)>&)>
       parallelFor;
+  // If admission fails, retain ordinary serial evaluation without speculation.
+  std::function<bool()> canParallelize;
 
 };
 

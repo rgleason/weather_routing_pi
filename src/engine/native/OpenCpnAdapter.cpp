@@ -1177,6 +1177,7 @@ void EnableStepWorkers(RouteMapOverlay& overlay,
       }, [&overlay] { return overlay.TryAdmitMethodWorker(); });
   static std::atomic<std::uint64_t> nextIdentity{0};
   const auto identity = ++nextIdentity;
+  environment.canParallelize = [executor] { return executor->CanParallelize(); };
   environment.parallelFor = [executor, identity,
       use = configuration.chart_safety_runtime_available && configuration.DetectLand,
       enforce = configuration.chart_safety_runtime_enforced](std::size_t count,

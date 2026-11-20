@@ -90,3 +90,30 @@ TEST(RoutingStepExecutor, CancellingParallelSearchCannotPublishAnUnvalidatedTrac
   EXPECT_FALSE(result.validation.passed);
   EXPECT_TRUE(result.legs.empty());
 }
+
+TEST(RoutingStepExecutor, NoHelperAdmissionUsesOrdinarySerialEvaluation) {
+  namespace wr = supercpn::weather_routing;
+  auto f = quick2_fixtures::make("variable");
+  f.environment.performance = std::make_shared<wr::PolarPerformanceModel>(f.request.vessel);
+  auto serial = quick2_routing::Engine{}.route(f.request, f.environment);
+  auto serialStandard = wr::RoutingEngine{}.route(f.request, f.environment);
+  weather_routing::native::RoutingStepExecutor pool(
+      [&] { return f.environment; }, [] {
+        return std::optional<weather_routing::RoutingWorkerBudget::Slot>{};
+      });
+  EXPECT_FALSE(pool.CanParallelize());
+  f.environment.canParallelize = [&] { return pool.CanParallelize(); };
+  unsigned parallelCalls = 0;
+  f.environment.parallelFor = [&](std::size_t, const auto&) { ++parallelCalls; };
+  auto actual = quick2_routing::Engine{}.route(f.request, f.environment);
+  auto actualStandard = wr::RoutingEngine{}.route(f.request, f.environment);
+  EXPECT_EQ(actualStandard.status, serialStandard.status);
+  EXPECT_EQ(parallelCalls, 0u);
+  EXPECT_EQ(actual.route.status, serial.route.status);
+  EXPECT_EQ(actual.frontier.preparedMotions, actual.frontier.exactMotions);
+  ASSERT_EQ(actual.route.legs.size(), serial.route.legs.size());
+  for (std::size_t i=0;i<serial.route.legs.size();++i) {
+    EXPECT_EQ(actual.route.legs[i].end, serial.route.legs[i].end);
+    EXPECT_EQ(actual.route.legs[i].endTime, serial.route.legs[i].endTime);
+  }
+}

@@ -1,6 +1,6 @@
 # 1.41.0
 
-Routing helpers use the existing shared worker budget. Quick2 integrates a bounded batch of eligible motion candidates concurrently; Standard evaluates independent heading fans concurrently. Each lane owns mutable weather/polar state, and the coordinator commits results, lineage, pruning and budgets in their established order. Final route replay is unchanged.
+Routing helpers use the existing shared worker budget. Quick2 integrates a bounded batch of eligible motion candidates concurrently; Standard evaluates independent heading fans concurrently. Each lane owns mutable weather/polar state, and the coordinator commits results, lineage, pruning and budgets in their established order. If no helper fits the shared budget, the method uses its ordinary serial evaluation without speculative batches. Final route replay is unchanged.
 
 Published GSHHG tiles are immutable and remain owned by a query through eviction. Cache loading/retention remains synchronized; intersection and clearance geometry runs outside the cache lock. Prepared weather samples and forecast-boundary checks are shared within one method family/departure; separate departure probes keep independent samples. Missing forecast data and cancelled requests retain their distinct meanings. Forecast lookahead is bounded by the frame memory budget and yields to demand.
 
