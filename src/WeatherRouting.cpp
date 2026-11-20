@@ -8811,7 +8811,12 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
                    : _("Does not fit the configured quota.")));
     atlas_size->Wrap(520);
     dialog.Layout();
+#ifdef __OCPN__ANDROID__
+    WR_LayoutAndroidDetailSheet(&dialog);
+    WR_FitAndroidSheet(&dialog);
+#else
     dialog.Fit();
+#endif
   };
 
   atlas_all->Bind(wxEVT_CHECKBOX, [=](wxCommandEvent&) {
@@ -8867,11 +8872,23 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
                       _("Open-water starting layer"), wxOK, &dialog);
         return;
       }
+      wxString layer_path;
+#ifdef __OCPN__ANDROID__
+      // The SAF picker grants access to Downloads and copies the selected
+      // document into app-readable storage. A desktop path picker cannot
+      // grant that permission on scoped-storage Android installations.
+      if (PlatformFileSelectorDialog(nullptr, &layer_path,
+              _("Import open-water starting layer"), wxEmptyString,
+              wxEmptyString, "*.json") != wxID_OK) return;
+#else
       wxFileDialog file(&dialog, _("Import open-water starting layer"),
                         wxEmptyString, wxEmptyString,
                         _("Open-water layer files (*.json)|*.json"),
                         wxFD_OPEN | wxFD_FILE_MUST_EXIST);
-      if (file.ShowModal() != wxID_OK || !CanStartExternalPlanningScenario()) return;
+      if (file.ShowModal() != wxID_OK) return;
+      layer_path = file.GetPath();
+#endif
+      if (!CanStartExternalPlanningScenario()) return;
       wxString message;
       bool ok;
       {
@@ -8880,7 +8897,7 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
                                   100, &dialog, wxPD_APP_MODAL | wxPD_CAN_ABORT);
         int previous = -1;
         ok = weather_routing::chart_safety_host::ImportOpenWaterLayer(
-            file.GetPath(), &message, [&](int done, int total) {
+            layer_path, &message, [&](int done, int total) {
               const int percent = 100 * done / total;
               if (!CanStartExternalPlanningScenario()) return false;
               if (percent == previous) return true;
@@ -8957,6 +8974,43 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
 
   dialog.SetSizerAndFit(top);
   update_atlas_estimate();
+#ifdef __OCPN__ANDROID__
+  // Keep modal actions visible and scroll the content as one panel. The
+  // desktop fitted form can otherwise extend beyond the Android canvas.
+  dialog.SetSizer(nullptr, false);
+  top->Detach(androidActions);
+  std::vector<wxWindow*> original_children;
+  for (auto* child : dialog.GetChildren()) original_children.push_back(child);
+  auto* scroll = new wxScrolledWindow(&dialog, wxID_ANY);
+  scroll->SetScrollRate(0, 16);
+  auto* fields = new wxPanel(scroll, wxID_ANY);
+  fields->SetName("wr-detail-fields");
+  for (auto* child : original_children)
+    if (child->GetContainingSizer() != androidActions) child->Reparent(fields);
+  quota_row->SetOrientation(wxVERTICAL);
+  ram_row->SetOrientation(wxVERTICAL);
+  fields->SetSizer(top);
+  auto* content = new wxBoxSizer(wxVERTICAL);
+  content->Add(fields, 0, wxEXPAND | wxALL, 12);
+  content->AddSpacer(32);
+  scroll->SetSizer(content);
+  auto* root = new wxBoxSizer(wxVERTICAL);
+  root->Add(androidActions, 0, wxEXPAND);
+  root->Add(scroll, 1, wxEXPAND);
+  dialog.SetSizer(root);
+  WR_StyleAndroidControls(&dialog);
+  WR_InstallAndroidBack(&dialog, [&dialog]() { dialog.EndModal(wxID_CANCEL); });
+  new WR_AndroidSheetFitFilter(&dialog);
+  const wxSize canvas = GetCanvasByIndex(0)->GetClientSize();
+  dialog.SetMinSize(wxSize(0, 0));
+  dialog.SetSize(canvas.x - 24, canvas.y - 24);
+  dialog.CentreOnParent();
+  WR_LayoutAndroidDetailSheet(&dialog);
+  dialog.Bind(wxEVT_SIZE, [&dialog](wxSizeEvent& event) {
+    WR_LayoutAndroidDetailSheet(&dialog);
+    event.Skip();
+  });
+#endif
   if (dialog.ShowModal() == wxID_OK) {
     m_weather_routing_pi.SetUsePersistentChartSafeCache(persistent->GetValue());
     m_weather_routing_pi.SetChartSafetyRamCacheMiB(ram->GetValue());
