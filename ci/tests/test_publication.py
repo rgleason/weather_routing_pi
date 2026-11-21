@@ -10,6 +10,7 @@ import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
+from urllib.error import HTTPError
 import xml.etree.ElementTree as ET
 
 from windows_pe_fixture import pe_image
@@ -357,6 +358,43 @@ class QualifiedWorkflow(unittest.TestCase):
     def test_missing_normal_runtime_proof_cannot_qualify_a_package(self):
         with self.assertRaisesRegex(ValueError, "normal installation"):
             recover.check_runtime({"routes": []}, "weather_routing_pi", False)
+
+    def test_missing_artifact_listing_recovers_the_retained_package_by_job_id(self):
+        _, _, jobs = self.source()
+        job = next(job for job in jobs if job["name"] == "flatpak25.08-x86_64")
+        job.update(id="12345678-abcd-4567-89ab-123456789abc", job_number=42)
+        prefix = "artifacts/flatpak-x86_64"
+        receipt = Path(prefix) / "runtime/acceptance.json"
+        archive = "weather_routing_pi-1.38.0-x86_64_flatpak-25.08.tar.gz"
+        contents = {
+            str(receipt): json.dumps({"package": archive}),
+            f"{prefix}/package/{archive}": "validated archive",
+            f"{prefix}/package/weather_routing_pi-1.38.0-flatpak-x86_64-25.08-flatpak.xml":
+                "validated metadata",
+        }
+
+        def download(artifact, destination):
+            path = str(destination.relative_to(output))
+            self.assertEqual(artifact["url"],
+                f"https://output.circle-artifacts.com/output/job/{job['id']}/artifacts/0/{path}")
+            if path not in contents:
+                raise HTTPError(artifact["url"], 404, "Not Found", None, None)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text(contents[path])
+
+        unavailable = HTTPError(None, 404, "Not Found", None, None)
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            with patch.object(recover, "fetch_json", side_effect=unavailable), \
+                    patch.object(recover, "download", side_effect=download):
+                pair = recover.recover_package(job, "flatpak-x86_64",
+                    "weather_routing_pi", output, receipt)
+                self.assertEqual([(output / path).read_text() for path in pair],
+                                 ["validated archive", "validated metadata"])
+                contents[str(receipt)] = json.dumps({"package": f"../{archive}"})
+                with self.assertRaisesRegex(ValueError, "Invalid package filename"):
+                    recover.recover_package(job, "flatpak-x86_64",
+                        "weather_routing_pi", output, receipt)
 
 
 class ReleaseRequest(unittest.TestCase):

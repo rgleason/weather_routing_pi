@@ -7,6 +7,7 @@ import json
 from pathlib import Path, PurePosixPath
 import re
 import time
+from urllib.error import HTTPError
 from urllib.parse import quote, urlparse
 from urllib.request import urlopen
 
@@ -75,7 +76,9 @@ def download(artifact, destination):
                         stream.write(block)
                 temporary.replace(destination)
                 return
-            except OSError:
+            except OSError as error:
+                if isinstance(error, HTTPError) and error.code == 404:
+                    raise
                 if attempt == 2:
                     raise RuntimeError("Artifact download failed after three attempts") from None
                 time.sleep(attempt + 1)
@@ -106,6 +109,72 @@ def check_runtime(receipt, package, flatpak):
     return receipt.get("package_sha256")
 
 
+def download_from_job(job_id, path, output):
+    if not re.fullmatch(r"[0-9a-fA-F-]{36}", job_id):
+        raise ValueError("Expected a CircleCI job UUID")
+    url = f"https://output.circle-artifacts.com/output/job/{job_id}/artifacts/0/{quote(str(path))}"
+    download({"url": url}, output / path)
+
+
+def recover_direct(job, target, package, output, runtime_path):
+    """Use the retained receipt or manifest to locate the exact package."""
+    prefix = PurePosixPath("artifacts", target, "package")
+    checksums = prefix / "SHA256SUMS"
+    try:
+        download_from_job(job["id"], checksums, output)
+    except HTTPError as error:
+        if error.code != 404 or runtime_path is None:
+            raise
+
+    if runtime_path:
+        download_from_job(job["id"], runtime_path, output)
+        archive = json.loads((output / runtime_path).read_text())["package"]
+    else:
+        archives = [PurePosixPath(line.split(maxsplit=1)[1].lstrip("*")).name
+                    for line in (output / checksums).read_text().splitlines()
+                    if line.endswith(".tar.gz")]
+        if len(archives) != 1:
+            raise ValueError(f"Expected one final archive in {checksums}")
+        archive = archives[0]
+
+    match = re.fullmatch(rf"{re.escape(package)}-(\d+\.\d+\.\d+)-[\w.+-]+\.tar\.gz", archive)
+    if not match:
+        raise ValueError(f"Invalid package filename in qualification receipt: {archive!r}")
+    metadata = archive.removesuffix(".tar.gz") + ".xml"
+    if target.startswith("flatpak-"):
+        metadata = f"{package}-{match[1]}-{target}-{publication.EXPECTED_TARGETS[target][1]}-flatpak.xml"
+    pair = [prefix / archive, prefix / metadata]
+    for path in pair:
+        download_from_job(job["id"], path, output)
+    return pair
+
+
+def recover_package(job, target, package, output, runtime_path):
+    project = quote(job["project_slug"], safe="/")
+    try:
+        artifacts = fetch_json(f"/api/v1.1/project/{project}/{job['job_number']}/artifacts")
+    except HTTPError as error:
+        if error.code != 404:
+            raise
+        print(f"Artifact listing unavailable for {job['name']}; using retained files by job ID", flush=True)
+        return recover_direct(job, target, package, output, runtime_path)
+
+    prefix = PurePosixPath("artifacts", target, "package")
+    pair = [item for item in artifacts if PurePosixPath(item["path"]).parent == prefix and
+            PurePosixPath(item["path"]).name.startswith(package + "-") and
+            item["path"].endswith((".tar.gz", ".xml"))]
+    if len(pair) != 2:
+        raise ValueError(f"Expected one final archive and XML for {job['name']}")
+    for item in pair:
+        download(item, output / item["path"])
+    if runtime_path:
+        download(unique_artifact(artifacts, runtime_path), output / runtime_path)
+    checksums = prefix / "SHA256SUMS"
+    if any(item["path"] == str(checksums) for item in artifacts):
+        download(unique_artifact(artifacts, checksums), output / checksums)
+    return [PurePosixPath(item["path"]) for item in pair]
+
+
 def recover(workflow_id, output, channel):
     if not re.fullmatch(r"[0-9a-fA-F-]{36}", workflow_id):
         raise ValueError("Expected a CircleCI workflow UUID")
@@ -119,41 +188,28 @@ def recover(workflow_id, output, channel):
     profile = publication.profile_for(channel)
     packages, runtime = [], []
     for job_name, target in TARGETS.items():
-        job = jobs[job_name]
-        project = quote(job["project_slug"], safe="/")
-        artifacts = fetch_json(f"/api/v1.1/project/{project}/{job['job_number']}/artifacts")
         prefix = PurePosixPath("artifacts", target, "package")
-        # Unix retention also includes the stock host's source archive,
-        # appdata XML and test reports. Only the selected plugin is a pair.
-        pair = [item for item in artifacts if PurePosixPath(item["path"]).parent == prefix and
-                PurePosixPath(item["path"]).name.startswith(profile["package"] + "-") and
-                item["path"].endswith((".tar.gz", ".xml"))]
-        if len(pair) != 2:
-            raise ValueError(f"Expected one final archive and XML for {job_name}")
-        for item in pair:
-            download(item, output / item["path"])
+        flatpak = job_name.startswith("flatpak")
+        runtime_path = None if job_name.startswith("android") else PurePosixPath(
+            "artifacts", target, "runtime" if flatpak else "normal-runtime", "acceptance.json")
+        pair = recover_package(jobs[job_name], target, profile["package"], output, runtime_path)
         directory = output / prefix
         archive, _, _, _, _ = publication.inspect_pair(directory, channel)
         with archive.open("rb") as stream:
             checksum = hashlib.file_digest(stream, "sha256").hexdigest()
-        if not job_name.startswith("android"):
-            relative = PurePosixPath("artifacts", target,
-                                    "runtime" if job_name.startswith("flatpak") else "normal-runtime",
-                                    "acceptance.json")
-            download(unique_artifact(artifacts, relative), output / relative)
-            receipt = json.loads((output / relative).read_text())
-            expected_digest = check_runtime(receipt, profile["package"], job_name.startswith("flatpak"))
+        if runtime_path:
+            receipt = json.loads((output / runtime_path).read_text())
+            expected_digest = check_runtime(receipt, profile["package"], flatpak)
             if receipt.get("package") != archive.name or (expected_digest and expected_digest != checksum):
                 raise ValueError("Final package differs from its runtime qualification receipt")
             runtime.append({"job": job_name, "routes": len(receipt["routes"])})
-        manifests = [item for item in artifacts if item["path"] == str(prefix / "SHA256SUMS")]
-        if manifests:
-            download(unique_artifact(artifacts, prefix / "SHA256SUMS"), directory / "SHA256SUMS")
-            lines = (directory / "SHA256SUMS").read_text().splitlines()
+        manifest = directory / "SHA256SUMS"
+        if manifest.is_file():
+            lines = manifest.read_text().splitlines()
             if not any(line.startswith(checksum + " ") and line.rstrip().endswith(archive.name) for line in lines):
                 raise ValueError("Final package differs from its recorded SHA256 manifest")
-        packages.extend({"path": item["path"], "sha256": hashlib.sha256((output / item["path"]).read_bytes()).hexdigest()}
-                        for item in pair)
+        packages.extend({"path": str(path), "sha256": hashlib.sha256((output / path).read_bytes()).hexdigest()}
+                        for path in pair)
         print(f"Qualified {job_name}: {archive.name} {checksum}", flush=True)
     receipt = {"channel": channel, "workflow_id": workflow_id,
                "pipeline_number": workflow["pipeline_number"], "repository": repository,
