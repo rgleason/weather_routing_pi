@@ -48,7 +48,8 @@ TEST(RoutingStepExecutor, Quick2ParallelReductionPreservesTimedTrack) {
     for (std::size_t i = 0; i < serial.legs.size(); ++i) {
       EXPECT_DOUBLE_EQ(serial.legs[i].end.latitude, parallel.legs[i].end.latitude);
       EXPECT_DOUBLE_EQ(serial.legs[i].end.longitude, parallel.legs[i].end.longitude);
-      EXPECT_EQ(serial.legs[i].endTime, parallel.legs[i].endTime);
+      EXPECT_EQ(serial.legs[i].endTime.time_since_epoch().count(),
+              parallel.legs[i].endTime.time_since_epoch().count());
     }
   }
 }
@@ -70,7 +71,8 @@ TEST(RoutingStepExecutor, StandardParallelReductionPreservesTimedTrack) {
   for (std::size_t i = 0; i < serial.legs.size(); ++i) {
     EXPECT_DOUBLE_EQ(serial.legs[i].end.latitude, parallel.legs[i].end.latitude);
     EXPECT_DOUBLE_EQ(serial.legs[i].end.longitude, parallel.legs[i].end.longitude);
-    EXPECT_EQ(serial.legs[i].endTime, parallel.legs[i].endTime);
+    EXPECT_EQ(serial.legs[i].endTime.time_since_epoch().count(),
+              parallel.legs[i].endTime.time_since_epoch().count());
   }
 }
 
@@ -114,6 +116,7 @@ TEST(RoutingStepExecutor, NoHelperAdmissionUsesOrdinarySerialEvaluation) {
   ASSERT_EQ(actual.route.legs.size(), serial.route.legs.size());
   for (std::size_t i=0;i<serial.route.legs.size();++i) {
     EXPECT_EQ(actual.route.legs[i].end, serial.route.legs[i].end);
-    EXPECT_EQ(actual.route.legs[i].endTime, serial.route.legs[i].endTime);
+    EXPECT_EQ(actual.route.legs[i].endTime.time_since_epoch().count(),
+              serial.route.legs[i].endTime.time_since_epoch().count());
   }
 }
