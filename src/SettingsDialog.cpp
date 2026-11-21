@@ -38,6 +38,8 @@
 #include "AndroidDialogHeader.h"
 #include "DeviceMemoryPolicy.h"
 #include "SystemMemory.h"
+#include "CalculationHelperPolicy.h"
+#include "ChartSafetyHost.h"
 #ifdef __OCPN__ANDROID__
 #include <QAbstractSpinBox>
 #endif
@@ -95,6 +97,17 @@ SettingsDialog::SettingsDialog(wxWindow* parent)
 #endif
 #endif
 {
+  m_sConcurrentThreads->Bind(wxEVT_SPINCTRL, [this](wxSpinEvent& event) {
+    if (!m_loadingSettings) { SaveSettings(); GetOCPNConfigObject()->Flush(); }
+    event.Skip();
+  });
+  for (auto* checkbox : {m_cbAdditionalHelpers, m_cbParallelMethods})
+    checkbox->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent& event) {
+      if (!m_loadingSettings) {
+        SaveSettings(); GetOCPNConfigObject()->Flush();
+      }
+      event.Skip();
+    });
 #ifdef __WXMSW__
 
   wxLogMessage("SettingsDialog::Constructor - Windows-specific code starting");
@@ -408,6 +421,10 @@ SettingsDialog::~SettingsDialog() {
 }
 
 void SettingsDialog::LoadSettings() {
+  struct LoadingScope { bool& flag; bool previous;
+    explicit LoadingScope(bool& value) : flag(value), previous(value) { flag=true; }
+    ~LoadingScope() { flag=previous; }
+  } loading(m_loadingSettings);
   wxFileConfig* pConf = GetOCPNConfigObject();
   pConf->SetPath(_T( "/PlugIns/WeatherRouting" ));
 
@@ -477,9 +494,12 @@ void SettingsDialog::LoadSettings() {
       ConcurrentThreads, 0, weather_routing::AvailablePhysicalMemoryMiB());
   pConf->Read(_T("ConcurrentThreads"), &ConcurrentThreads, ConcurrentThreads);
   m_sConcurrentThreads->SetValue(ConcurrentThreads);
-  bool parallelMethods = false;
+  const auto helperPreferences = weather_routing::ReadCalculationHelperPreferences(*pConf);
+  const bool parallelMethods = helperPreferences.parallel_methods;
+  m_cbAdditionalHelpers->SetValue(helperPreferences.additional_helpers);
+  weather_routing::chart_safety_host::SetAdditionalHelpersEnabled(helperPreferences.additional_helpers,
+      static_cast<unsigned>(m_sConcurrentThreads->GetValue()));
   int parallelLimit = 2;
-  pConf->Read("ParallelRoutingMethods", &parallelMethods, false);
   pConf->Read("ParallelRoutingMethodLimit", &parallelLimit, 2);
   m_cbParallelMethods->SetValue(parallelMethods);
   m_sParallelMethods->SetValue(std::clamp(parallelLimit, 2, 6));
@@ -545,7 +565,10 @@ void SettingsDialog::LoadSettings() {
   auto* computation = new wxPanel(book, wxID_ANY);
   auto* computationLayout = new wxBoxSizer(wxVERTICAL);
   for (wxWindow* control : {static_cast<wxWindow*>(m_staticText115),
-                            static_cast<wxWindow*>(m_sConcurrentThreads)}) {
+                            static_cast<wxWindow*>(m_sConcurrentThreads),
+                            static_cast<wxWindow*>(m_cbParallelMethods),
+                            static_cast<wxWindow*>(m_sParallelMethods),
+                            static_cast<wxWindow*>(m_cbAdditionalHelpers)}) {
     control->GetContainingSizer()->Detach(control);
     control->Reparent(computation);
     control->Show();
@@ -694,7 +717,10 @@ void SettingsDialog::SaveSettings() {
   pConf->Write(_T("DisplayComfortOnRoute"), m_cbDisplayComfort->GetValue());
   pConf->Write(_T("DisplayCurrent"), m_cbDisplayCurrent->GetValue());
   pConf->Write(_T("ConcurrentThreads"), m_sConcurrentThreads->GetValue());
-  pConf->Write("ParallelRoutingMethods", m_cbParallelMethods->GetValue());
+  weather_routing::WriteCalculationHelperPreferences(*pConf,
+      {m_cbAdditionalHelpers->GetValue(),m_cbParallelMethods->GetValue()});
+  weather_routing::chart_safety_host::SetAdditionalHelpersEnabled(m_cbAdditionalHelpers->GetValue(),
+      static_cast<unsigned>(m_sConcurrentThreads->GetValue()));
   pConf->Write("ParallelRoutingMethodLimit", m_sParallelMethods->GetValue());
 
   for (int i = 0; i < WeatherRouting::NUM_COLS; i++)
@@ -846,6 +872,7 @@ void SettingsDialog::OnLogUsageChanged(wxCommandEvent& event) {
 // Platform-independent methods
 
 void SettingsDialog::OnUpdate() {
+  if (m_loadingSettings) return;
   WeatherRouting* weather_routing = dynamic_cast<WeatherRouting*>(GetParent());
   if (weather_routing) weather_routing->UpdateDisplaySettings();
 }

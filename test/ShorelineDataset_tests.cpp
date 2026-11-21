@@ -389,3 +389,26 @@ TEST(ShorelineDataset, OutlineShowsActualEdgesAndKeepsSafetyQueriesUnchanged) {
   EXPECT_FALSE(d.ViewOutline(179.9,-.1,-179.9,.1).zoom_in);
   EXPECT_THROW(d.ViewOutline(0,1,1,0),std::invalid_argument);
 }
+
+TEST(ShorelineDataset, ConcurrentMarginAndOutlineQueriesSurviveEviction) {
+  Files f;
+  Fixture(f / "data");
+  ShorelineDataset d(f / "data", 64 * 1024);
+  std::vector<std::future<bool>> workers;
+  for (int n = 0; n < 8; ++n)
+    workers.push_back(std::async(std::launch::async, [&, n] {
+      for (int i = 0; i < 100; ++i) {
+        if (!d.CrossesLand(.5, 0, .5, 1) ||
+            d.CrossesLand(0, 179, 0, -179) ||
+            !d.WithinLandMargin(.19, 0, .19, 1, .7) ||
+            d.WithinLandMargin(.19, 0, .19, 1, .5)) return false;
+        if (d.CrossesLand(30, 2 + (i + n) % 70, 30.1, 2.1 + (i + n) % 70))
+          return false;
+        if (d.ViewOutline(0, 0, 1, 1).segments.empty()) return false;
+      }
+      return true;
+    }));
+  for (auto& worker : workers) EXPECT_TRUE(worker.get());
+  EXPECT_TRUE(d.Error().empty());
+  EXPECT_LE(d.CacheBytes(), 64u * 1024);
+}

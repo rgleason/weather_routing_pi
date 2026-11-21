@@ -584,6 +584,40 @@ TEST(RoutingMethodExecution, StaggeredAutoPublishesThenRetainsImprovement) {
   EXPECT_EQ(best.metrics.elapsed.count(), 80);
 }
 
+
+TEST(RoutingMethodExecution, StaggeredAutoDrainsCompletionArrivingDuringPublication) {
+  using namespace std::chrono_literals;
+  for (int run = 0; run < 32; ++run) {
+    weather_routing::RoutingWorkerBudget budget;
+    auto slot = budget.TryAcquire();
+    ASSERT_TRUE(slot);
+    std::promise<void> published;
+    auto firstPublication = published.get_future();
+    std::atomic_bool keep{false};
+    std::vector<int> deliveries;
+    const auto results = native::RunStaggeredFastMethods(
+        [&](auto engine, const auto&, const auto& hedge) {
+          if (engine == SequenceEngine::Original) {
+            hedge();
+            firstPublication.wait();
+            return Success(80);
+          }
+          return Success(100);
+        }, std::move(*slot), {}, keep, [] {}, [&](const auto& result) {
+          deliveries.push_back(result.metrics.elapsed.count());
+          if (deliveries.size() == 1) {
+            published.set_value();
+            // Model a GUI publication callback while the other method finishes.
+            std::this_thread::sleep_for(2ms);
+          }
+        }, 1h, 5s);
+    ASSERT_TRUE(results.quick);
+    ASSERT_TRUE(results.quick2);
+    EXPECT_EQ(results.quick->metrics.elapsed.count(), 80);
+    EXPECT_EQ(deliveries, (std::vector<int>{100, 80}));
+  }
+}
+
 TEST(RoutingMethodExecution, AutoLoserCancellationDoesNotCancelValidatedRoute) {
   using namespace std::chrono_literals;
   weather_routing::RoutingWorkerBudget budget;

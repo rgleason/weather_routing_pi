@@ -1074,6 +1074,12 @@ SettingsDialogBase::SettingsDialogBase(wxWindow* parent, wxWindowID id,
     m_sParallelMethods->Enable(m_cbParallelMethods->GetValue());
   });
 
+  m_cbAdditionalHelpers = new wxCheckBox(sbSizer26->GetStaticBox(), wxID_ANY,
+      _("Enable additional calculation helpers"));
+  m_cbAdditionalHelpers->SetToolTip(_("Use spare routing workers for search and allow weather prefetch. Detailed charts use at most two helper processes. Layer verification also obeys worker and memory limits. A one-worker limit disables extra processes. Applies to new calculations and layer imports."));
+  fgSizer93->Add(m_cbAdditionalHelpers, 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
+  fgSizer93->Add(0, 0);
+
   sbSizer26->Add(fgSizer93, 1, wxEXPAND | wxTOP | wxBOTTOM | wxLEFT, 5);
 
   fgSizer101->Add(sbSizer26, 1, wxEXPAND | wxALL, 5);

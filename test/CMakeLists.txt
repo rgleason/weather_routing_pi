@@ -62,6 +62,8 @@ set(TEST_SRC
     AppendOnlyCache_tests.cpp
     ChartSafetyCache_tests.cpp
     ChartSafetyHost_tests.cpp
+    OffshoreHazards_tests.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/src/OffshoreHazards.cpp
     RouteSafetyCheck_tests.cpp
     ChartSafetyAtlas_tests.cpp
     ChartHazardEvaluator_tests.cpp
@@ -99,6 +101,7 @@ set(TEST_SRC
     DepartureScheduler_tests.cpp
     RoutingQualityPolicy_tests.cpp
     RoutingResourcePolicy_tests.cpp
+    CalculationHelperPolicy_tests.cpp
     RoutingFootprint_tests.cpp
     CycloneAssessment_tests.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/CycloneAssessment.cpp
@@ -112,6 +115,7 @@ set(TEST_SRC
     ${WEATHER_ROUTING_SOURCE_DIR}/src/navobj_util.cpp
     NearbyWaveHeight_tests.cpp
     RouteGust_tests.cpp
+    RoutingStepExecutor_tests.cpp
     ModernNativeEngine_tests.cpp
     ProfessionalSearchPolicy_tests.cpp
     OriginalEngine_tests.cpp

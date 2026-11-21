@@ -348,6 +348,7 @@ public:
   wxCheckBox* m_cbDisplayComfort;
   wxSpinCtrl* m_sConcurrentThreads;
   wxCheckBox* m_cbParallelMethods;
+  wxCheckBox* m_cbAdditionalHelpers;
   wxSpinCtrl* m_sParallelMethods;
   wxCheckListBox* m_cblFields;
 #ifdef __WXMSW__

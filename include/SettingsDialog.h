@@ -64,6 +64,7 @@ public:
 #endif
 
 private:
+  bool m_loadingSettings{false};
   bool m_useLocalTimeZone = false;
   wxString m_displayTimeZone = "UTC";
 #ifdef __WXMSW__

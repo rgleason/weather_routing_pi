@@ -21,6 +21,8 @@
 #include <vector>
 
 #include <wx/log.h>
+#include <wx/app.h>
+#include <wx/utils.h>
 #include <wx/thread.h>
 
 #include "ChartHazardEvaluator.h"
@@ -56,13 +58,20 @@ using IdentityFn = bool (*)(char*, int);
 using CheckFn = bool (*)(double, double, double, double,
                          const PlugInSegmentSafetyOptions*,
                          PlugInSegmentSafetyResult*);
+using QueueHelperTilesFn = int (*)(const long*, const long*, int, int);
+using HelperTilePendingFn = bool (*)(long,long);
 using RawTilesFn = bool (*)(const long*, const long*, int, int,
                             PlugInSegmentSafetyResult*);
+using OpenWaterFn = bool (*)(long, long, const PlugInSegmentSafetyOptions*);
+using ImportOpenWaterLayerFn = bool (*)(const char*, bool (*)(void*, int, int),
+                                        void*, char*, int);
+using RemoveOpenWaterLayerFn = bool (*)();
 using SnapshotFn = bool (*)(double, double, double, double, int, int,
                             const PlugInSegmentSafetyOptions*,
                             PlugInSegmentSafetyResult*);
 using ServiceFn = bool (*)(int, int,
                            PlugInSegmentSafetyRequestServiceResult*);
+using MaskDeliveryProtectionFn = bool (*)();
 using ReleaseFn = void (*)();
 using SetPersistentFn = bool (*)(int);
 using SavePersistentFn = bool (*)();
@@ -72,13 +81,22 @@ using ChartInfoFn = bool (*)(int, PlugInSegmentSafetyChartInfoV1*);
 using CoverageTilesFn = bool (*)(const int*, int, double, long*, long*, int,
                                  int*, int*);
 
+bool g_additional_helpers_enabled = false;
+unsigned g_additional_helper_limit = 0;
+
 struct HostFunctions {
   RegisterFn register_cache{nullptr};
   IdentityFn get_identity{nullptr};
   CheckFn check{nullptr};
   RawTilesFn raw_tiles{nullptr};
+  QueueHelperTilesFn queue_helpers{nullptr};
+  HelperTilePendingFn helper_pending{nullptr};
+  OpenWaterFn open_water{nullptr};
+  ImportOpenWaterLayerFn import_open_water_layer{nullptr};
+  RemoveOpenWaterLayerFn remove_open_water_layer{nullptr};
   SnapshotFn snapshot{nullptr};
   ServiceFn service{nullptr};
+  bool protects_requested_masks{false};
   ReleaseFn release{nullptr};
   SetPersistentFn set_persistent{nullptr};
   SavePersistentFn save_persistent{nullptr};
@@ -234,7 +252,8 @@ bool RequestRawTiles(const std::set<std::pair<long, long>>& raw_tiles,
                      const PlugInSegmentSafetyOptions* options,
                      PlugInSegmentSafetyResult* result,
                      const weather_routing::chart_safety_host::
-                         PrewarmProgressCallback& progress) {
+                         PrewarmProgressCallback& progress,
+                     bool allow_open_water = false) {
   if (raw_tiles.empty() || !options || !ConfirmHostIdentity()) return false;
 
   std::vector<long> lat_tiles;
@@ -257,20 +276,58 @@ bool RequestRawTiles(const std::set<std::pair<long, long>>& raw_tiles,
   constexpr std::size_t kExternalPrewarmBatchTiles = 1;
   PlugInSegmentSafetyResult totals = {};
   PlugInSegmentSafetyResult batch_result = {};
+  std::size_t geometry_tiles = 0;
+  const bool try_open_water = allow_open_water && g_host.open_water &&
+                              options->check_land &&
+                              !options->force_authoritative_fine_validation;
   const std::size_t requested_tiles = raw_tiles.size();
   if (progress) progress(cached_tiles, requested_tiles);
+  // Certify the starting-layer shortcut before scheduling detailed work. A
+  // bounded lookahead window gives helpers useful work while preserving the
+  // one-tile cancellation/fallback cadence of older hosts and providers.
+  const bool helpers = g_host.queue_helpers && g_host.helper_pending;
+  std::vector<signed char> open_water_state(lat_tiles.size(), -1);
   for (std::size_t offset = 0; offset < lat_tiles.size();
        offset += kExternalPrewarmBatchTiles) {
     if (weather_routing::chart_safety_host::PrewarmCancellationRequested())
       return false;
     const std::size_t count =
         std::min(kExternalPrewarmBatchTiles, lat_tiles.size() - offset);
-    batch_result = {};
-    batch_result.struct_size = sizeof(batch_result);
-    if (!g_host.raw_tiles(lat_tiles.data() + offset, lon_tiles.data() + offset,
-                          static_cast<int>(count),
-                          options->check_depth != 0 ? 1 : 0, &batch_result))
-      return false;
+    if (helpers) {
+      std::vector<long> upcoming_lat, upcoming_lon;
+      const auto last = std::min(lat_tiles.size(), offset+32);
+      for (auto next=offset; next<last; ++next) {
+        if (weather_routing::chart_safety_host::PrewarmCancellationRequested()) return false;
+        if (open_water_state[next] < 0) {
+          open_water_state[next] = try_open_water &&
+              g_host.open_water(lat_tiles[next],lon_tiles[next],options) ? 1 : 0;
+          if (progress) progress(cached_tiles+offset, requested_tiles);
+        }
+        if (!open_water_state[next]) {
+          upcoming_lat.push_back(lat_tiles[next]); upcoming_lon.push_back(lon_tiles[next]);
+        }
+      }
+      if (!upcoming_lat.empty()) g_host.queue_helpers(upcoming_lat.data(),upcoming_lon.data(),
+          static_cast<int>(upcoming_lat.size()), options->check_depth != 0 ? 1 : 0);
+    }
+    if ((helpers && open_water_state[offset] == 1) || (!helpers && try_open_water &&
+        g_host.open_water(lat_tiles[offset], lon_tiles[offset], options))) {
+      ++geometry_tiles;
+      if (progress) progress(cached_tiles + offset + 1, requested_tiles);
+      continue;
+    }
+    // Poll the small completion queue, rather than repeating full catalogue
+    // confirmation and extraction while the worker is still busy. A declined
+    // or failed helper naturally reaches the ordinary one-tile host path.
+    while (helpers && g_host.helper_pending(lat_tiles[offset],lon_tiles[offset])) {
+      if (weather_routing::chart_safety_host::PrewarmCancellationRequested()) return false;
+      if (progress) progress(cached_tiles+offset,requested_tiles);
+      wxYieldIfNeeded(); wxMilliSleep(2);
+    }
+    if (weather_routing::chart_safety_host::PrewarmCancellationRequested()) return false;
+    batch_result = {}; batch_result.struct_size = sizeof(batch_result);
+    if (!g_host.raw_tiles(lat_tiles.data()+offset,lon_tiles.data()+offset,
+        static_cast<int>(count), options->check_depth != 0 ? 1 : 0, &batch_result)) return false;
     totals.prewarm_base_tiles_built += batch_result.prewarm_base_tiles_built;
     totals.prewarm_base_tiles_reused += batch_result.prewarm_base_tiles_reused;
     totals.prewarm_masks_built += batch_result.prewarm_masks_built;
@@ -290,13 +347,14 @@ bool RequestRawTiles(const std::set<std::pair<long, long>>& raw_tiles,
     result->struct_size = sizeof(*result);
     result->status = PI_SEGMENT_SAFETY_SAFE;
     result->diagnostic_reason = PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_CLEAR;
-    if (!lat_tiles.empty()) *result = batch_result;
+    if (batch_result.struct_size) *result = batch_result;
     result->prewarm_base_tiles_built = totals.prewarm_base_tiles_built;
     result->prewarm_base_tiles_reused =
         totals.prewarm_base_tiles_reused + static_cast<int>(cached_tiles);
     result->prewarm_masks_built = totals.prewarm_masks_built;
     result->prewarm_masks_reused = totals.prewarm_masks_reused;
-    result->prewarm_fine_tiles_avoided = totals.prewarm_fine_tiles_avoided;
+    result->prewarm_fine_tiles_avoided =
+        totals.prewarm_fine_tiles_avoided + static_cast<int>(geometry_tiles);
     result->prewarm_requested_tiles = static_cast<int>(requested_tiles);
     result->grid_build_ms = totals.grid_build_ms;
     result->grid_cells_total = totals.grid_cells_total;
@@ -306,6 +364,9 @@ bool RequestRawTiles(const std::set<std::pair<long, long>>& raw_tiles,
     result->grid_cells_unknown = totals.grid_cells_unknown;
     result->water_tile_shortcuts = totals.water_tile_shortcuts;
   }
+  if (geometry_tiles)
+    wxLogMessage("WR_OPEN_WATER_PREWARM fine_tiles_avoided=%zu requested=%zu",
+                 geometry_tiles, requested_tiles);
   return !weather_routing::chart_safety_host::PrewarmCancellationRequested();
 }
 
@@ -367,13 +428,18 @@ bool PrewarmRawTiles(
     AddTileHalo(tile.first, tile.second, margin_tile_halo, &raw_tiles);
   }
 
-  return RequestRawTiles(raw_tiles, options, result, progress);
+  return RequestRawTiles(raw_tiles, options, result, progress, true);
 }
 
 }  // namespace
 
 namespace weather_routing {
 namespace chart_safety_host {
+bool RunTileWorker(const wxString& directory) {
+  const auto run = Resolve<bool (*)(const char*)>("PlugIn_RunSegmentSafetyTileWorker");
+  return run && run(directory.ToUTF8().data());
+}
+
 
 namespace {
 void DependenciesChangedCallback(void*) {
@@ -391,10 +457,22 @@ bool Initialize(ChartSafetyCache* cache) {
   g_host.check = Resolve<CheckFn>("PlugIn_CheckSegmentSafety");
   g_host.raw_tiles = Resolve<RawTilesFn>(
       "PlugIn_PrewarmSegmentSafetyRawTiles");
+  g_host.queue_helpers = Resolve<QueueHelperTilesFn>("PlugIn_QueueSegmentSafetyRawTileHelpers");
+  g_host.helper_pending = Resolve<HelperTilePendingFn>("PlugIn_SegmentSafetyRawTileHelperPending");
+  g_host.open_water = Resolve<OpenWaterFn>(
+      "PlugIn_PrewarmSegmentSafetyOpenWater");
+  g_host.import_open_water_layer = Resolve<ImportOpenWaterLayerFn>(
+      "PlugIn_ImportSegmentSafetyOpenWaterLayer");
+  g_host.remove_open_water_layer = Resolve<RemoveOpenWaterLayerFn>(
+      "PlugIn_RemoveSegmentSafetyOpenWaterLayer");
   g_host.snapshot = Resolve<SnapshotFn>(
       "PlugIn_PrewarmSegmentSafetyHazardSnapshot");
   g_host.service = Resolve<ServiceFn>(
       "PlugIn_ServicePendingSegmentSafetyRequests");
+  const auto protects_requested_masks = Resolve<MaskDeliveryProtectionFn>(
+      "PlugIn_SegmentSafetyProtectsRequestedMasks");
+  g_host.protects_requested_masks =
+      protects_requested_masks && protects_requested_masks();
   g_host.release = Resolve<ReleaseFn>(
       "PlugIn_ReleaseSegmentSafetyRouteMaskPins");
   g_host.set_persistent = Resolve<SetPersistentFn>(
@@ -427,6 +505,10 @@ bool Initialize(ChartSafetyCache* cache) {
     return false;
   }
   g_host.registered = true;
+  if (const auto limit = Resolve<void (*)(int)>("PlugIn_SetSegmentSafetyHelperProcessLimit"))
+    limit(static_cast<int>(g_additional_helper_limit));
+  if (const auto enable = Resolve<void (*)(int)>("PlugIn_EnableSegmentSafetyTileHelpers"))
+    enable(g_additional_helpers_enabled ? 1 : 0);
 
   // Registration immediately reports the core's current identity. Treat it
   // as provisional because later-loaded chart providers (notably o-charts)
@@ -437,7 +519,22 @@ bool Initialize(ChartSafetyCache* cache) {
   return true;
 }
 
+void SetAdditionalHelpersEnabled(bool enabled, unsigned routingWorkerLimit) {
+  g_additional_helpers_enabled = enabled;
+  g_additional_helper_limit = enabled && routingWorkerLimit > 1
+      ? std::min(6u,routingWorkerLimit-1) : 0;
+  if (g_host.registered)
+    if (const auto limit = Resolve<void (*)(int)>("PlugIn_SetSegmentSafetyHelperProcessLimit"))
+      limit(static_cast<int>(g_additional_helper_limit));
+  if (g_host.registered)
+    if (const auto set = Resolve<void (*)(int)>("PlugIn_EnableSegmentSafetyTileHelpers"))
+      set(enabled ? 1 : 0);
+}
+
 void Shutdown() {
+  if (g_host.registered)
+    if (const auto enable = Resolve<void (*)(int)>("PlugIn_EnableSegmentSafetyTileHelpers"))
+      enable(0);
   g_evaluator.reset();
   if (g_host.registered && g_host.register_cache)
     g_host.register_cache(nullptr);
@@ -564,6 +661,47 @@ bool SavePersistentCache() {
 
 bool ClearPersistentCache() {
   return !g_host.clear_persistent || g_host.clear_persistent();
+}
+
+bool HasOpenWaterLayerImport() {
+  return g_host.available && g_host.import_open_water_layer &&
+         g_host.remove_open_water_layer;
+}
+
+bool ImportOpenWaterLayer(const wxString& path, wxString* message,
+                          OpenWaterLayerProgress progress) {
+  if (!HasOpenWaterLayerImport()) {
+    *message = _("This OpenCPN build cannot install an open-water layer.");
+    return false;
+  }
+  const auto report = [](void* context, int done, int total) {
+    return (*static_cast<OpenWaterLayerProgress*>(context))(done, total);
+  };
+  const auto utf8 = path.ToUTF8();
+  char detail[512]{};
+  // Older hosts have no resource-policy API. Their existing recursion guard
+  // also provides a serial import path, so opting out never launches helpers.
+  struct SerialVerifierScope {
+    wxString previous;
+    bool had{}, changed{};
+    explicit SerialVerifierScope(bool serial) : changed(serial) {
+      if (changed) { had=wxGetEnv("OCPN_OPEN_WATER_VERIFIER_CHILD",&previous);
+        wxSetEnv("OCPN_OPEN_WATER_VERIFIER_CHILD","1"); }
+    }
+    ~SerialVerifierScope() { if (changed) {
+      if (had) wxSetEnv("OCPN_OPEN_WATER_VERIFIER_CHILD",previous);
+      else wxUnsetEnv("OCPN_OPEN_WATER_VERIFIER_CHILD");
+    } }
+  } serial(!g_additional_helpers_enabled || !g_additional_helper_limit ||
+      !Resolve<void (*)(int)>("PlugIn_SetSegmentSafetyHelperProcessLimit"));
+  const bool ok = g_host.import_open_water_layer(
+      utf8.data(), progress ? +report : nullptr, &progress, detail, sizeof(detail));
+  *message = wxString::FromUTF8(detail);
+  return ok;
+}
+
+bool RemoveOpenWaterLayer() {
+  return HasOpenWaterLayerImport() && g_host.remove_open_water_layer();
 }
 
 void InvalidateDerivedMasks() {
@@ -787,6 +925,15 @@ bool ServicePendingRequests(
     PlugInSegmentSafetyRequestServiceResult* result) {
   return g_host.available &&
          g_host.service(max_requests, max_milliseconds, result);
+}
+
+bool ServiceInteractivePendingRequests(
+    PlugInSegmentSafetyRequestServiceResult* result) {
+  // Older hosts can evict a demand while prefetching its neighbour. Service
+  // one demand at a time with minimal lookahead on those hosts.
+  return g_host.protects_requested_masks
+             ? ServicePendingRequests(16, 50, result)
+             : ServicePendingRequests(1, 1, result);
 }
 
 void ReleaseRouteMaskPins() {

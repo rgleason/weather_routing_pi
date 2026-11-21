@@ -752,6 +752,14 @@ public:
         new RouteCheckFixtureMutation(wxString::FromUTF8(input["routeGuid"].asCString()), action);
       return;
     }
+    if (mode == "chart-tile-worker") {
+      const bool ok = weather_routing::chart_safety_host::RunTileWorker(
+          wxString::FromUTF8(getenv("OCPN_CHART_TILE_WORKER_DIR") ?
+              getenv("OCPN_CHART_TILE_WORKER_DIR") : ""));
+      wxLogMessage("WR_TILE_HELPER_WORKER complete=%d", ok ? 1 : 0);
+      wxTheApp->ExitMainLoop();
+      return;
+    }
     if (!plugin->m_pWeather_Routing) plugin->NewWR();
     if (!plugin->m_pWeather_Routing) {
       wxLogMessage("WR_HEADLESS_ROUTE_TEST abort reason=weather_routing_unavailable");
@@ -790,7 +798,8 @@ void weather_routing_pi::MaybeStartHeadlessRouteTest() {
   m_headless_route_test_starter = starter;
   wxString test_mode;
   wxGetEnv("WR_HEADLESS_ROUTE_TEST", &test_mode);
-  starter->StartOnce(test_mode.IsSameAs("route-check", false) ? 12000 : 5000);
+  starter->StartOnce(test_mode == "chart-tile-worker" ? 100 :
+      test_mode.IsSameAs("route-check", false) ? 12000 : 5000);
 }
 
 void weather_routing_pi::NewWR() {
@@ -813,6 +822,15 @@ void weather_routing_pi::OnToolbarToolCallback(int id) {
 #ifdef __OCPN__ANDROID__
   if (m_pWeather_Routing->AndroidChartPickPending()) {
     m_pWeather_Routing->CancelAndroidChartPick();
+    return;
+  }
+#else
+  // A minimized frame is still shown. Restore it before toggling visibility.
+  if (m_pWeather_Routing->IsIconized()) {
+    m_pWeather_Routing->Iconize(false);
+    if (!m_pWeather_Routing->IsShown()) m_pWeather_Routing->Show(true);
+    m_pWeather_Routing->Raise();
+    SetToolbarItemState(m_leftclick_tool_id, true);
     return;
   }
 #endif

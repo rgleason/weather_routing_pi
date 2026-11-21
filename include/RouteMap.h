@@ -178,6 +178,7 @@ public:
 };
 
 class weather_routing_pi;
+namespace weather_routing { class OffshoreHazards; }
 
 /**
  * Represents a named geographic position that can be used as a start or end
@@ -227,6 +228,7 @@ struct RouteMapPosition {
  * position, timestamp, error flags, and intermediate calculation results.
  */
 struct RouteMapConfiguration {
+  std::shared_ptr<const weather_routing::OffshoreHazards> offshoreHazards;
   // GUI output validation after the calculation has released its frames.
   // Never enable host point requests for ordinary routing workers.
   bool output_grib_point_queries{false};
@@ -1126,6 +1128,12 @@ public:
     m_Configuration = o;
     m_bValid = m_Configuration.Update();
     m_bFinished = false;
+    Unlock();
+  }
+  void SetOffshoreHazards(
+      std::shared_ptr<const weather_routing::OffshoreHazards> snapshot) {
+    Lock();
+    m_Configuration.offshoreHazards = std::move(snapshot);
     Unlock();
   }
   void SetConfigurationPreserveResult(const RouteMapConfiguration& o) {

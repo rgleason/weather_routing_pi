@@ -30,6 +30,8 @@ namespace chart_safety_host {
 /** Detect and attach to the optional enhanced OpenCPN chart-safety service. */
 bool Initialize(ChartSafetyCache* cache);
 void Shutdown();
+/** Opt-in policy for additional chart/layer helper processes. */
+void SetAdditionalHelpersEnabled(bool enabled, unsigned routingWorkerLimit = 1);
 bool Available();
 std::string Status();
 /** Confirm and return the post-provider-load global semantic ABI identity. */
@@ -38,6 +40,13 @@ bool FlushCache();
 bool SetPersistentCacheEnabled(bool enabled);
 bool SavePersistentCache();
 bool ClearPersistentCache();
+using OpenWaterLayerProgress = std::function<bool(int, int)>;
+bool HasOpenWaterLayerImport();
+bool ImportOpenWaterLayer(const wxString& path, wxString* message,
+                          OpenWaterLayerProgress progress = {});
+bool RemoveOpenWaterLayer();
+/** Private isolated-helper entry point, unavailable on ordinary hosts. */
+bool RunTileWorker(const wxString& directory);
 void InvalidateDerivedMasks();
 /** Return applicable chart metadata without opening/decrypting chart data. */
 std::vector<ChartSafetyAtlasChart> AtlasCharts();
@@ -99,6 +108,10 @@ bool PrewarmRouteMaskForPolylinesWithTileHalo(
 bool ServicePendingRequests(
     int max_requests, int max_milliseconds,
     PlugInSegmentSafetyRequestServiceResult* result);
+/** Service live routing requests within the host's interactive budget. */
+bool ServiceInteractivePendingRequests(
+    PlugInSegmentSafetyRequestServiceResult* result);
+
 void ReleaseRouteMaskPins();
 
 }  // namespace chart_safety_host
