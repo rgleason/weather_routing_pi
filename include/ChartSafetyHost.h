@@ -42,6 +42,7 @@ bool SavePersistentCache();
 bool ClearPersistentCache();
 using OpenWaterLayerProgress = std::function<bool(int, int)>;
 bool HasOpenWaterLayerImport();
+wxString DescribeOpenWaterLayer(const wxString& data_dir, bool* saved);
 bool ImportOpenWaterLayer(const wxString& path, wxString* message,
                           OpenWaterLayerProgress progress = {});
 bool RemoveOpenWaterLayer();
