@@ -509,3 +509,16 @@ TEST(BundledDataUpgradePolicy, ConcurrentRoutingReleasePreservesPersonalData) {
   EXPECT_FALSE(weather_routing::CanSkipBundledDataUpdate(0,2,8));
   EXPECT_FALSE(weather_routing::CanSkipBundledDataUpdate(207,1,41));
 }
+
+TEST(BundledDataUpgradePolicy, QueryAndEndpointReleasePreservesPersonalData) {
+  for (int installed : {138, 139, 140, 141})
+    EXPECT_TRUE(weather_routing::CanSkipBundledDataUpdate(installed, 1, 42));
+  for (int installed : {205, 206, 207, 208})
+    EXPECT_TRUE(weather_routing::CanSkipBundledDataUpdate(installed, 2, 9));
+  EXPECT_FALSE(weather_routing::CanSkipBundledDataUpdate(0, 1, 42));
+  EXPECT_FALSE(weather_routing::CanSkipBundledDataUpdate(0, 2, 9));
+  EXPECT_FALSE(weather_routing::CanSkipBundledDataUpdate(137, 1, 42));
+  EXPECT_FALSE(weather_routing::CanSkipBundledDataUpdate(204, 2, 9));
+  EXPECT_FALSE(weather_routing::CanSkipBundledDataUpdate(208, 1, 42));
+  EXPECT_FALSE(weather_routing::CanSkipBundledDataUpdate(141, 2, 9));
+}

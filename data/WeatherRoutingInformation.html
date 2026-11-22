@@ -12,6 +12,49 @@ a certain time.  By merging the results of many calculations,
 it is possible to form a map determining routes
 to any given location within the map.
 
+<h3 id="endpoint-preflight">Before Compute: start and destination checks</h3>
+<p>With <b>Detect Land</b> enabled, Compute checks both endpoints before
+starting any routing method, including <b>Auto</b> and <b>All</b>. Required
+chart-aware routing uses the active chart data on a compatible host; otherwise
+it uses the passage's selected GSHHG shoreline. The message identifies the
+start or destination, its name, coordinates and data source.</p>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Endpoint result</th><th>What happens</th></tr>
+<tr><td>On land in the selected data</td><td>Search stops. Inspect the named
+endpoint and choose a suitable offshore position or review the data source.</td></tr>
+<tr><td>In water, inside the configured shore margin</td><td>A warning offers
+<b>Continue</b> or <b>Cancel</b>. Continue uses the existing bounded coastal
+entry/exit handling; it does not remove land or minimum-depth checks.</td></tr>
+<tr><td>In water and clear of the margin</td><td>Normal setup and route checks continue.</td></tr>
+<tr><td>Required chart evidence unavailable, or a charted drying/unsafe area
+or minimum-depth failure</td><td>The calculation stops with the specific
+reason. Unavailable data is not reported as land.</td></tr>
+</table>
+<p>The exact endpoint is checked with zero margin before its clearance buffer.
+A water endpoint near shore is therefore not rejected merely because that
+buffer touches land. Review the retained diagnostic report for the result.
+Passing endpoint preflight does not validate the whole passage: weather,
+vessel performance, routing constraints and final route checks still apply.</p>
+
+<h3 id="calculation-resources">Calculation helpers and stored chart data</h3>
+<p><b>Settings &gt; Computation &gt; Enable additional calculation helpers</b>
+is off on first use and remembers your choice. It permits additional work
+within a routing method and forecast/chart preparation within the shared
+worker and memory limits. <b>Parallel routing methods</b> is a separate,
+remembered option. In Auto it can overlap Quick and Quick2; the other checked
+methods remain fallbacks. All compares the checked methods. More workers can
+use more CPU and memory and do not guarantee a shorter calculation.</p>
+<p>The GRIB timeline cache and chart-safety cache have separate memory
+allowances. These are limits, not immediate reservations. Routine efficiency
+improvements apply automatically; no new option is required.</p>
+<p>The <b>Open-water starting layer</b> section of the Chart Awareness Settings window shows
+the installed layer, its available coverage and active/inactive status where
+the host supports this. A verified layer can speed offshore chart checks;
+coastal detail, hazards and required depth still need their applicable checks.
+An installed layer is separate from the passage's GSHHG selection and from
+OpenCPN's displayed basemap. Suitable detailed tiles can also be reused from
+the persistent chart cache when enabled.</p>
+
 <h3>Route checks, errors and warnings (1.36.0)</h3>
 <p>Select a route and open <b>View &gt; Details and report</b> to see the
 retained checks, causes and suggested next steps. The same action is available
@@ -151,12 +194,14 @@ routes. Stop a route before clearing its results. You can clear a finished
 route while another route computes. Clearing is separate from hiding and
 does not remove routes or tracks already saved to OpenCPN.</p>
 
-<h3>Routing engines (1.18.4)</h3>
+<h3>Routing methods and settings</h3>
 <p>Basic offers <b>Quick</b> (Hardened Original contour search),
 <b>Standard</b> (the former Quick engine), and <b>Professional</b> (the former
-Main engine). Quick is the first-install default. Existing routes and saved
+Main engine). New passages use Auto with all six methods selected unless you
+have saved other defaults. Existing routes and saved
 defaults keep their algorithm and numerical settings after upgrading.</p>
-<p>Each engine remembers its own tuning, shoreline resolution and GRIB cache.
+<p>The passage shoreline selection applies to all routing methods. Each method
+retains its applicable numerical tuning and GRIB cache settings.
 Advanced shows the selected engine's controls. Reset engine to preset previews
 an Apply/Cancel action and preserves safety, weather, boat and memory settings.</p>
 <p>Quick requires a real endpoint connection and independent chronological
@@ -164,8 +209,8 @@ validation. Missing currents fail when currents are enabled. All engines apply
 the same wave-height policy: direct data first, then bounded local estimates
 without crossing land. Larger gaps and times outside wave coverage remain
 unknown and are reported. Enable <b>Require wave coverage</b> to reject unknown
-wave heights. A zero maximum wave height disables the ceiling. Quick
-does not silently waive the configured shoreline margin at either endpoint.
+wave heights. A zero maximum wave height disables the ceiling. Bounded coastal
+endpoint access is disclosed in the report; actual land and required depths remain checked.
 Isochrones and route-to-cursor traces are approximate search previews, not
 validated sailing tracks. No engine guarantees an optimal route or navigation
 safety independent of the available data.</p>
@@ -173,9 +218,9 @@ safety independent of the available data.</p>
 are bundled; High and Full are optional installations through Shoreline data.
 Chart/depth enforcement is separate and requires a compatible host.
 GSHHG shoreline checks alone do not verify reefs or charted depths.
-Quick and Standard start at three-hour nominal steps and 10-degree headings;
-Professional starts at one hour, 10 degrees and 100% effort. Review the boat,
-wind-angle limits, weather coverage and safety limits before calculating.</p>
+Use the selected method's enabled controls, or automatic adaptive settings,
+to choose numerical inputs. The report records the effective settings. Review
+the boat, wind-angle limits, weather coverage and safety limits before calculating.</p>
 <h3>Quick Start</h3>
 <h4>Android tablet</h4>
 <p>Load or generate your forecast in xGRIB, then open xWeatherRouting from
@@ -219,8 +264,9 @@ identify incomplete wave coverage and local wave-height estimates.</p>
 
 <p>
 <ul>
-  <li><b>Time Step</b> Time to sail before considering a course or sail change.  This is the difference in time between the isochrones on the map.  Small time-steps are needed to navigate through narrow channels and give a more accurate result.  Generally the route's computed time becomes faster with smaller time steps as it can find a more optimal route with more variation, however it will take longer to calculate (generally four times longer for half the time step).</li>
-  <li><b>Grib</b> Enable using current grib from grib plugin.</li>
+  <li><b>Time Step</b> Nominal time between search propagations. Smaller steps provide more opportunities to change course and resolve coastal detail, but require more work. Some methods adapt the step automatically; review the effective settings in the report.</li>
+  <li><b>Heading separation</b> Spacing between trial headings. A larger separation tries fewer alternatives and can reduce work on a long ocean passage; a smaller separation provides finer angular detail. Coarse settings can miss a useful tack or detour. This is separate from the width of the search allowed by the angle limits below.</li>
+  <li><b>Grib</b> Enable GRIB data from the selected forecast source. Review the source and its wind, current and wave coverage in the route report.</li>
   <li><b>Climatology</b> <ul>
       <li><b>Disable</b> Do not allow climatology to be used.</li>
       <li><b>Currents Only</b> Use climatology for currents, but never wind.</li>
@@ -237,7 +283,7 @@ identify incomplete wave coverage and local wave-height estimates.</p>
   <li><b>Wind Strength Percentage</b> Multiply wind strength from data source by this percentage to allow computation of possible "what if" scenarios of greater or lesser wind strength.</li>
   <li><b>Integrator</b> Newton's method is default and fastest, but doesn't take into account changes
     in wind/current along each step.  Rutta Kunge (4th order) is much more accurate taking 4 samples, but a lot slower.  Generally Newton's method with a smaller time step is recommended for more accuracy.</li>
-  <li><b>Detect Land</b> Use GSHHS coastline data to avoid sailing through land.  This check is quite slow and should be optimized in the future.  It is recommended to upgrade to the high resolution background map <a href="http://opencpn.org/ocpn/chart_sources">available here</a>.</li>
+  <li><b>Detect Land</b> Use the selected passage GSHHG dataset for shoreline checks, or enforced chart data when chart-aware routing is active. The displayed OSM basemap is separate. <a href="#endpoint-preflight">Endpoint preflight</a> checks the start and destination before search and distinguishes land from a water endpoint inside the shore margin.</li>
   <li><b>Optimize Tacking</b> Boat may sail on all courses 0-360, even directly upwind and it is assumed that the captain performs tacking at the optimal angles to closely approximate the generated weather route for upwind and downwind.  Tacks will not be visible in the generated route.  This may allow navigation in tighter areas, or otherwise better results without decreasing the time step.
   <li><b>Inverted Regions</b> This is relatively rare, but in some cases it may be
     possible to reach a location from two different routes (imagine either side of an island)
@@ -256,8 +302,8 @@ identify incomplete wave coverage and local wave-height estimates.</p>
     neighbourhood and 15 NM, without crossing land. These are reported estimates,
     not guaranteed upper bounds. No spatial or temporal extrapolation is used.</li>
   <li><b>Max Diverted Course</b> Maximum course error to continue toward destination.  Not all possible courses will be considered and therefore the most optimal route may not be found.  This usually (but not in all cases) is obvious when the optimal route is sometimes near the edge of the graph.  Using a reasonable value can greatly speeds the rate of computation.</li>
-  <li><b>Max Course Angle</b> Like Max Diverted Course, except the search range is based from the starting position to the destination.  Normally should be set to 180.</li>
-  <li><b>Max Search Angle</b> This specifies how much the boat course can change between propagations.  A value of 180 gives the maximum flexibility of boat movement, but increases the computation time.  A minimum of 90 is usually needed for tacking, a value of 120 is recommended with strong currents.  Smaller values (60 or less) can give very fast results, but should be used with care, as if the other settings are not appropriate, an inaccurate graph will result.  For example, if tacking is needed at any time, then in this case, all courses (0-360) must be specified as degree steps and "optimize tacking" should be enabled.
+  <li><b>Max Course Angle</b> Limits candidate positions relative to the original start-to-destination direction. It restricts where the search can spread, rather than the spacing between trial headings.</li>
+  <li><b>Max Search Angle</b> Limits trial headings on either side of a reference direction. Quick (the Hardened Original engine) uses the previous leg. Standard, Alternative and Professional use the bearing from the current position to the destination in forward search. A narrower angle reduces work but can exclude a necessary tack or weather/land detour. Use the controls enabled for the selected method; automatic methods may choose their own effective settings.</li>
   <li><b>Max True Wind Knots</b> Do not navigate in areas with more true wind than this value.</li>
   <li><b>Max Apparent Wind Knots</b> Do not navigate in areas with more apparent wind than this value.  This should be set to a high value (ie: 100) if not used to avoid extra calculations.</li>
   <li><b>Max wave height</b> Maximum significant height of combined wind sea and swell,
