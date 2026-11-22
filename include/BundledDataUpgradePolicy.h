@@ -18,6 +18,9 @@ inline bool CanSkipBundledDataUpdate(int installed, int major, int minor) {
   if (major == 2 && minor == 7) return installed == 206;
   if (major == 1 && minor == 41) return installed >= 138 && installed <= 140;
   if (major == 2 && minor == 8) return installed >= 205 && installed <= 207;
+  // Query-copy and endpoint-preflight changes retain the preceding data.
+  if (major == 1 && minor == 42) return installed >= 138 && installed <= 141;
+  if (major == 2 && minor == 9) return installed >= 205 && installed <= 208;
   return installed >= 124 && installed <= 132 && major == 1 &&
          minor >= 25 && minor <= 33;
 }

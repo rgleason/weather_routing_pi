@@ -63,6 +63,7 @@
 #include "MultiLegRouteOutput.h"
 #include "RouteWaypointExtractor.h"
 #include "RouteWaypointValidation.h"
+#include "RoutingEndpointPreflight.h"
 #include "weather_routing_pi.h"
 #include "WeatherRouting.h"
 #include "BundledDataUpgradePolicy.h"
@@ -2977,6 +2978,220 @@ void WeatherRouting::RecordChartSafetyPreparationFailure(
   }
   if (m_RoutingProgressDialog)
     UpdateRoutingProgress(_("Cannot compute route"), reason, -1, -1);
+}
+
+bool WeatherRouting::ValidateRoutingEndpoints(
+    RouteMapOverlay* route, const RouteMapConfiguration& configuration,
+    bool useChartSafety, bool enforceChartSafety) {
+  using weather_routing::EndpointSurface;
+  using weather_routing::RoutingEndpointProbe;
+  if (!route || configuration.chart_safety_scout_preview ||
+      !configuration.DetectLand)
+    return true;
+
+  auto endpoints = configuration;
+  if (endpoints.StartType == RouteMapConfiguration::START_FROM_BOAT) {
+    endpoints.Start = _("Boat");
+    endpoints.StartLat = m_weather_routing_pi.m_boat_lat;
+    endpoints.StartLon = m_weather_routing_pi.m_boat_lon;
+  }
+  if (!std::isfinite(endpoints.StartLat) || !std::isfinite(endpoints.StartLon) ||
+      !std::isfinite(endpoints.EndLat) || !std::isfinite(endpoints.EndLon) ||
+      std::abs(endpoints.StartLat) > 90 || std::abs(endpoints.EndLat) > 90) {
+    const wxString invalid = _("Endpoint checking requires valid start and destination coordinates.");
+    route->SetError(invalid);
+    RecordChartSafetyPreparationFailure(route, invalid);
+    return false;
+  }
+  const bool charts = useChartSafety && enforceChartSafety;
+  std::shared_ptr<weather_routing::ShorelineDataset> shoreline;
+  wxString shorelineSource, shorelineError;
+  if (charts) {
+    const double latitudes[] = {endpoints.StartLat, endpoints.EndLat};
+    const double longitudes[] = {endpoints.StartLon, endpoints.EndLon};
+    const int counts[] = {1, 1};
+    auto options = ChartSafetyRouteMaskOptions(endpoints);
+    options.safety_margin_nm = 0;
+    options.check_depth = 0;
+    options.minimum_depth_m = 0;
+    PlugInSegmentSafetyResult prepared = {};
+    prepared.struct_size = sizeof(prepared);
+    weather_routing::chart_safety_host::PrewarmRouteMaskForPolylinesWithTileHalo(
+        latitudes, longitudes, counts, 2, 0, 0, &options, &prepared,
+        [this](std::size_t done, std::size_t total) {
+          if (m_RoutingProgressDialog && m_RoutingProgressDialog->IsShown())
+            UpdateRoutingProgress(_("Checking route endpoints"),
+                _("Preparing chart evidence for the start and destination"),
+                static_cast<int>(done), static_cast<int>(total));
+        });
+  } else {
+    try {
+      const int resolution = endpoints.SelectedShorelineResolution();
+      shoreline = weather_routing::ShorelineManager::Prepare(resolution);
+      shorelineSource = weather_routing::ShorelineManager::Description(resolution);
+    } catch (const std::exception& error) {
+      shorelineSource = _("Selected GSHHG shoreline dataset");
+      shorelineError = wxString::FromUTF8(error.what());
+    }
+  }
+
+  wxString failures, warnings;
+  for (const bool isStart : {true, false}) {
+    const double latitude = isStart ? endpoints.StartLat : endpoints.EndLat;
+    const double longitude = weather_routing::CanonicalChartLongitude(
+        isStart ? endpoints.StartLon : endpoints.EndLon);
+    const wxString role = isStart ? _("Start") : _("Destination");
+    const wxString name = isStart ? endpoints.Start : endpoints.End;
+    const auto query = [&](double margin) -> RoutingEndpointProbe {
+      if (!std::isfinite(latitude) || !std::isfinite(longitude) ||
+          std::abs(latitude) > 90)
+        return {EndpointSurface::Unavailable, "", "Invalid endpoint coordinates"};
+      if (!charts) {
+        if (!shoreline)
+          return {EndpointSurface::Unavailable, shorelineSource.ToStdString(),
+                  shorelineError.ToStdString()};
+        try {
+          const bool hit = margin > 0
+              ? shoreline->WithinLandMargin(latitude, longitude, latitude,
+                                             longitude, margin)
+              : shoreline->CrossesLand(latitude, longitude, latitude, longitude);
+          return {hit ? EndpointSurface::Land : EndpointSurface::Water,
+                  shorelineSource.ToStdString(), ""};
+        } catch (const std::exception& error) {
+          return {EndpointSurface::Unavailable, shorelineSource.ToStdString(),
+                  error.what()};
+        }
+      }
+
+      auto options = ChartSafetyRouteMaskOptions(endpoints);
+      options.safety_margin_nm = margin;
+      // Classify the point separately from the existing minimum-depth gate.
+      options.check_depth = 0;
+      options.minimum_depth_m = 0;
+      PlugInSegmentSafetyResult result = {};
+      result.struct_size = sizeof(result);
+      bool queried = false;
+      for (int attempt = 0; attempt < 5; ++attempt) {
+        if (weather_routing::chart_safety_host::PrewarmCancellationRequested())
+          return {EndpointSurface::Unavailable, "chart-safety service", "Cancelled"};
+        result = {};
+        result.struct_size = sizeof(result);
+        queried = weather_routing::chart_safety_host::CheckSegment(
+            latitude, longitude, latitude, longitude, &options, &result);
+        if (!queried || result.status != PI_SEGMENT_SAFETY_PENDING_DATA) break;
+        PlugInSegmentSafetyRequestServiceResult service = {};
+        service.struct_size = sizeof(service);
+        weather_routing::chart_safety_host::ServicePendingRequests(8, 250, &service);
+      }
+      wxString source = result.source == PI_SEGMENT_SAFETY_SOURCE_CM93
+          ? _("CM93 chart")
+          : result.source == PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART
+          ? _("ENC/vector chart")
+          : result.source == PI_SEGMENT_SAFETY_SOURCE_PLUGIN_VECTOR
+          ? _("Plugin vector chart") : _("Chart-safety service");
+      if (result.chart_path[0])
+        source += "\n" + wxString::FromUTF8(result.chart_path);
+      EndpointSurface surface = EndpointSurface::Unavailable;
+      if (queried) {
+        switch (result.status) {
+          case PI_SEGMENT_SAFETY_SAFE: surface = EndpointSurface::Water; break;
+          case PI_SEGMENT_SAFETY_CROSSES_LAND: surface = EndpointSurface::Land; break;
+          case PI_SEGMENT_SAFETY_DRYING_AREA: surface = EndpointSurface::Drying; break;
+          case PI_SEGMENT_SAFETY_UNSAFE_AREA: surface = EndpointSurface::Unsafe; break;
+          case PI_SEGMENT_SAFETY_WITHIN_LAND_MARGIN: surface = EndpointSurface::Margin; break;
+          default: break;
+        }
+      }
+      return {surface, source.ToStdString(), result.message};
+    };
+    const auto assessment = weather_routing::AssessRoutingEndpoint(
+        endpoints.SafetyMarginLand, query);
+    const auto& evidence = assessment.Evidence();
+    const wxString source = wxString::FromUTF8(evidence.source.c_str());
+    wxString detail = wxString::Format(
+        _("%s \"%s\"\nPosition: %.6f, %.6f\nData source: %s"),
+        role, name, latitude, longitude, source);
+    if (!evidence.detail.empty())
+      detail += "\n" + wxString::FromUTF8(evidence.detail.c_str());
+    wxString title;
+    if (assessment.Blocked()) {
+      title = evidence.surface == EndpointSurface::Land
+          ? wxString::Format(_("%s is on land in the selected data"), role)
+          : evidence.surface == EndpointSurface::Drying
+          ? wxString::Format(_("%s is in a charted drying area"), role)
+          : evidence.surface == EndpointSurface::Unsafe
+          ? wxString::Format(_("%s is in a charted unsafe area"), role)
+          : wxString::Format(_("Could not complete the %s endpoint check"), role);
+      if (!failures.empty()) failures += "\n\n";
+      failures += title + "\n" + detail;
+      const char* code = evidence.surface == EndpointSurface::Land
+          ? (isStart ? "setup.start_land" : "setup.destination_land")
+          : (isStart ? "setup.start_endpoint" : "setup.destination_endpoint");
+      route->AddDiagnostic({code,
+          weather_routing::DiagnosticSeverity::Error, title, detail,
+          _("Review the data source and choose an appropriate offshore routing position, or load the required data."), {}, true});
+    } else if (assessment.WarnAboutMargin()) {
+      title = wxString::Format(
+          _("%s is in water but within the configured %.2f NM shore margin"),
+          role, endpoints.SafetyMarginLand);
+      if (!warnings.empty()) warnings += "\n\n";
+      warnings += title + "\n" + detail;
+      route->AddDiagnostic({isStart ? "setup.start_margin" : "setup.destination_margin",
+          weather_routing::DiagnosticSeverity::Warning, title, detail,
+          _("Review the endpoint. Existing coastal entry/exit handling and final route checks still apply."), {}, true});
+    }
+    wxLogMessage("WR_ENDPOINT_PREFLIGHT endpoint=%s name=\"%s\" lat=%.6f lon=%.6f "
+                 "point=%d blocked=%d margin_warning=%d source=\"%s\"",
+        role, name, latitude, longitude, static_cast<int>(assessment.point.surface),
+        assessment.Blocked() ? 1 : 0, assessment.WarnAboutMargin() ? 1 : 0, source);
+  }
+  const bool headless = !EnvString("WR_HEADLESS_ROUTE_TEST").empty();
+  if (weather_routing::chart_safety_host::PrewarmCancellationRequested()) {
+    failures = _("Endpoint checking was stopped.");
+  }
+  if (!failures.empty()) {
+    route->SetError(failures);
+    RecordChartSafetyPreparationFailure(route, failures);
+    if (!headless && m_EndpointPreflightDecisions.emplace(
+            "error:" + failures, false).second) {
+      WR_MessageDialog dialog(this, failures, _("Cannot compute route"),
+                               wxOK | wxICON_ERROR);
+      dialog.ShowModal();
+    }
+    return false;
+  }
+  if (!ValidateChartSafetyEndpoints(route, endpoints, useChartSafety,
+                                    enforceChartSafety))
+    return false;
+  if (!warnings.empty()) {
+    const auto key = "margin:" + warnings;
+    auto found = m_EndpointPreflightDecisions.find(key);
+    if (found == m_EndpointPreflightDecisions.end()) {
+      bool proceed;
+      if (headless) {
+        // Noninteractive callers retain the diagnostic and the established
+        // coastal policy. Tests can explicitly exercise cancellation.
+        proceed = EnvString("WR_HEADLESS_ENDPOINT_MARGIN_DECISION") != "cancel";
+      } else {
+        WR_MessageDialog dialog(this,
+            warnings + "\n\n" + _("Continue using the existing coastal entry/exit handling? Every delivered route will still be validated."),
+            _("Endpoint shore-margin warning"),
+            wxOK | wxCANCEL | wxCANCEL_DEFAULT | wxICON_WARNING);
+        dialog.SetOKLabel(_("Continue"));
+        proceed = dialog.ShowModal() == wxID_OK;
+      }
+      found = m_EndpointPreflightDecisions.emplace(key, proceed).first;
+      wxLogMessage("WR_ENDPOINT_MARGIN_DECISION route=\"%s -> %s\" proceed=%d noninteractive=%d",
+          endpoints.Start, endpoints.End, proceed ? 1 : 0, headless ? 1 : 0);
+    }
+    if (!found->second) {
+      const wxString cancelled = _("Calculation cancelled after the endpoint shore-margin warning.");
+      route->SetError(cancelled);
+      RecordChartSafetyPreparationFailure(route, cancelled);
+      return false;
+    }
+  }
+  return true;
 }
 
 bool WeatherRouting::ValidateChartSafetyEndpoints(
@@ -7785,6 +8000,7 @@ bool WeatherRouting::ComputeDepartureTimeOptimization(
 }
 
 void WeatherRouting::StartCurrentRouteComputations() {
+  m_EndpointPreflightDecisions.clear();
   std::list<RouteMapOverlay*> currentroutemaps = CurrentRouteMaps();
   wxDateTime optimizationNominalStartTime;
   bool showOptimizationResults = false;
@@ -7820,6 +8036,7 @@ void WeatherRouting::StartCurrentRouteComputations() {
 }
 
 void WeatherRouting::StartAllRouteComputations() {
+  m_EndpointPreflightDecisions.clear();
   std::vector<RouteMapOverlay*> all_routes;
   for (int i = 0; i < m_panel->m_lWeatherRoutes->GetItemCount(); i++) {
     WeatherRoute* weatherroute = reinterpret_cast<WeatherRoute*>(
@@ -7878,6 +8095,7 @@ void WeatherRouting::OnCompute(wxCommandEvent& event) {
 }
 
 void WeatherRouting::OnComputeMultiLegSequence(wxCommandEvent& event) {
+  m_EndpointPreflightDecisions.clear();
   CancelMultiLegDepartureOptimization(true);
   RouteMapOverlay* selected = FirstCurrentRouteMap();
   if (!selected) {
@@ -11432,7 +11650,7 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
   } else {
     for (RouteMapOverlay* route : routemapoverlays) {
       if (!route) continue;
-      if (ValidateChartSafetyEndpoints(route, route->GetConfiguration(),
+      if (ValidateRoutingEndpoints(route, route->GetConfiguration(),
                                        use_chart_safety,
                                        enforce_chart_safety))
         eligible_routes.push_back(route);
@@ -13242,7 +13460,7 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
 
   // Decide endpoint depth suitability before any potentially large chart
   // reachability/scout prewarm.
-  if (!ValidateChartSafetyEndpoints(routemapoverlay, configuration,
+  if (!ValidateRoutingEndpoints(routemapoverlay, configuration,
                                     use_chart_safety,
                                     enforce_chart_safety))
     return;
@@ -13365,21 +13583,6 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
                 use_experimental_chart_safety && enforce_experimental_chart_safety),
             configuration.shoreline_description,
             _("View > Show selected passage shoreline displays the actual GSHHG outlines. The OpenCPN background map uses separate OSM data."), {}, true});
-        if (!combined && !use_experimental_chart_safety) {
-          for (const bool isStart : {true, false}) {
-            const double lat = isStart ? configuration.StartLat : configuration.EndLat;
-            const double lon = isStart ? configuration.StartLon : configuration.EndLon;
-            if (!configuration.shoreline_dataset->CrossesLand(lat, lon, lat, lon)) continue;
-            routemapoverlay->AddDiagnostic({isStart ? "setup.start_land" : "setup.destination_land",
-                weather_routing::DiagnosticSeverity::Error,
-                isStart ? _("Start is on land in the selected shoreline model")
-                        : _("Destination is on land in the selected shoreline model"),
-                wxString::Format("%s: %.6f, %.6f\n%s",
-                    isStart ? configuration.Start : configuration.End, lat, lon,
-                    configuration.shoreline_description),
-                _("Inspect the endpoint on the chart and choose an appropriate offshore routing position."), {}, true});
-          }
-        }
         routemapoverlay->SetConfiguration(configuration);
         wxLogMessage("WR_ROUTE_SHORELINE route=\"%s to %s\" %s",
                      configuration.Start, configuration.End,

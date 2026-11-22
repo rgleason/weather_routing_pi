@@ -328,7 +328,9 @@ ConfigurationDialog::ConfigurationDialog(WeatherRouting& weatherrouting)
         "is off. Crude, Low and Intermediate are bundled; High and Full can be "
         "installed from Shoreline data. With both chart options "
         "enabled on a compatible host, loaded charts decide route land and "
-        "depth safety; GSHHG helps the initial search.");
+        "depth safety; GSHHG helps the initial search. Compute checks both "
+        "endpoints before search: land stops the calculation; water inside "
+        "the shore margin offers Continue with existing coastal access.");
   m_cbDetectLand->SetToolTip(detect_land_note);
   m_sSafetyMarginLand->SetToolTip(
       detect_land_note + _("\n\nSpecify a minimum distance in nautical miles "

@@ -21,6 +21,40 @@ must configure your vessel correctly in the boat dialog; add a polar to
 specify how the boat sails. When ready, select "Compute" from the
 Configuration menu to compute the weather route.
 
+== Endpoint checks before Compute
+
+With *Detect Land* enabled, Compute checks the start and destination before
+launching any individual routing method, Auto or All. Required chart-aware
+routing uses the active chart data on a compatible host; otherwise the
+passage's selected GSHHG dataset is used.
+
+* An endpoint on land stops the search. The message identifies Start or
+Destination, its name, coordinates and data source.
+* A water endpoint inside the configured shore margin offers *Continue* or
+*Cancel*. Continue retains existing bounded coastal entry/exit handling.
+Actual land, drying/unsafe areas and required minimum depths remain checked.
+* Missing required evidence is reported separately from land. Load or review
+the required data before trying again.
+
+The endpoint is checked at zero margin before its clearance buffer. A passed
+endpoint check is not a completed or validated passage. Review the retained
+diagnostic report and the finished route's checks and warnings.
+
+== Calculation resources and starting layer
+
+*Settings > Computation > Enable additional calculation helpers* is off on
+first use and remembers the saved choice. *Parallel routing methods* is a
+separate remembered option. Auto can overlap Quick and Quick2; other checked
+methods remain fallbacks. All compares selected methods within worker limits.
+More workers can use more CPU and memory and do not guarantee a shorter run.
+GRIB and chart caches have separate memory limits.
+
+The *Open-water starting layer* section of the Chart Awareness Settings window shows the
+installed layer and its coverage/status on a compatible host. It accelerates
+verified offshore checks while retaining applicable coastal, hazard and depth
+checks. It is separate from the passage GSHHG selection, the displayed basemap
+and the persistent detailed-tile cache.
+
 == Background
 
 Integration with the grib plugin allows for knowledge of weather
@@ -41,8 +75,10 @@ accessed as the computation proceeds. Once a computation is completed,
 the course and position of the boat as it sails along the computed route
 can be viewed during grib playback.
 
-Wind data is required; if no Current or Swell data is available, they
-are assumed to be zero.
+Wind data is required by the selected weather policy. Current and wave
+coverage are reported separately. Missing wave heights remain unknown; they
+do not mean calm seas. Review any permitted zero-current assumption or
+Climatology fallback in the finished report.
 
 == Configuration
 

@@ -185,7 +185,12 @@ public:
       : overlay_(overlay),
         configuration_(std::move(configuration)),
         methodStop_(std::move(methodStop)),
-        sharedCache_(shared ? std::move(shared) : SharedWeatherCacheFor(configuration_,overlay.AdditionalCalculationHelpersEnabled())) {}
+        sharedCache_(shared ? std::move(shared) : SharedWeatherCacheFor(configuration_,overlay.AdditionalCalculationHelpersEnabled())) {
+    // Weather queries need service settings, not boat performance tables or
+    // search headings. Preserve independent mutable per-query snapshots.
+    configuration_.boat.Polars.clear();
+    configuration_.DegreeSteps.clear();
+  }
 
   ~OpenCpnWeatherProvider() override {
     // Each lane owns its hot counters. Publish once to avoid a shared cache
@@ -815,7 +820,12 @@ public:
                       RouteMapConfiguration configuration,
                       std::shared_ptr<std::atomic_bool> methodStop = {})
       : overlay_(overlay), configuration_(std::move(configuration)),
-        methodStop_(std::move(methodStop)) {}
+        methodStop_(std::move(methodStop)) {
+    // The separate performance provider retains the full boat and polars.
+    // Land/depth queries only need settings and shared safety evidence.
+    configuration_.boat.Polars.clear();
+    configuration_.DegreeSteps.clear();
+  }
 
   bool pointForbidden(wr::GeoPoint point) const override {
     if (configuration_.IsOriginal() && configuration_.DetectLand &&
