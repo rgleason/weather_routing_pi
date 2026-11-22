@@ -20,6 +20,9 @@
 #include <utility>
 #include <vector>
 
+#include <json/json.h>
+#include <wx/ffile.h>
+#include <wx/filename.h>
 #include <wx/log.h>
 #include <wx/app.h>
 #include <wx/utils.h>
@@ -666,6 +669,87 @@ bool ClearPersistentCache() {
 bool HasOpenWaterLayerImport() {
   return g_host.available && g_host.import_open_water_layer &&
          g_host.remove_open_water_layer;
+}
+
+wxString DescribeOpenWaterLayer(const wxString& data_dir, bool* saved) {
+  wxFileName path(data_dir, "chart_open_water_layer.json");
+  path.AppendDir("weather_routing");
+  *saved = path.FileExists();
+  if (!*saved) return _("No starting layer installed.");
+
+  const wxString unreadable = _("Starting layer file found. Its details could not be read.");
+  const auto length = path.GetSize();
+  if (length == wxInvalidSize || !length.GetValue() ||
+      length.GetValue() > 4 * 1024 * 1024)
+    return unreadable;
+  wxFFile file(path.GetFullPath(), "rb");
+  std::string bytes(static_cast<size_t>(length.GetValue()), '\0');
+  if (!file.IsOpened() || file.Read(bytes.data(), bytes.size()) != bytes.size())
+    return unreadable;
+
+  Json::Value document;
+  Json::Reader reader;
+  if (!reader.parse(bytes, document, false) || !document.isObject() ||
+      !document["version"].isInt() || document["version"].asInt() != 1)
+    return unreadable;
+  const auto& rows = document["regions"];
+  if (!rows.isArray() || rows.empty() || rows.size() > 65536) return unreadable;
+
+  int south = 1400, north = -1400, west = 3600, east = -3600, proven = 0;
+  for (const auto& row : rows) {
+    if (!row.isArray() || row.size() != 5 || !row[0].isInt() ||
+        !row[1].isInt() || !row[2].isInt() || !row[3].isInt() ||
+        !row[4].isNumeric())
+      return unreadable;
+    const int size = row[0].asInt(), lat = row[1].asInt(), lon = row[2].asInt();
+    if ((size != 4 && size != 20) || lat < -1400 || lat >= 1400 ||
+        lon < -3600 || lon >= 3600 || lat % size || lon % size)
+      return unreadable;
+    south = std::min(south, lat);
+    north = std::max(north, lat + size);
+    west = std::min(west, lon);
+    east = std::max(east, lon + size);
+    const int source = row[3].asInt();
+    if (source != PI_SEGMENT_SAFETY_SOURCE_NONE &&
+        source != PI_SEGMENT_SAFETY_SOURCE_CM93 &&
+        source != PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART)
+      return unreadable;
+    proven += source != PI_SEGMENT_SAFETY_SOURCE_NONE;
+  }
+
+  const auto query_active =
+      Resolve<bool (*)()>("PlugIn_IsSegmentSafetyOpenWaterLayerActive");
+  const bool inactive = query_active && !query_active();
+  wxString text = _("Starting layer installed.");
+  if (query_active)
+    text = inactive ? _("Starting layer installed and inactive.")
+                    : _("Starting layer installed and active.");
+  const auto& name = document["name"];
+  if (name.isString() && !name.asString().empty())
+    text += "\n" + wxString::FromUTF8(name.asString().c_str()).Left(120);
+  const auto& release = document["release"];
+  const int version = document["version"].asInt();
+  if (release.isString() && !release.asString().empty())
+    text += "\n" + wxString::Format(_("Version %s (file format %d)"),
+        wxString::FromUTF8(release.asString().c_str()).Left(120), version);
+  else
+    text += "\n" + wxString::Format(_("File format %d"), version);
+
+  const int total = static_cast<int>(rows.size());
+  text += "\n" + wxString::Format(
+      inactive ? _("%d regions (%d verified at import, %d deferred)")
+               : _("%d regions (%d verified, %d use detailed checks)"),
+      total, proven, total - proven);
+  const auto angle = [](int value, bool latitude) {
+    if (value == 0) return wxString::Format(_("%.1f°"), 0.0);
+    const wxString format = latitude
+        ? (value < 0 ? _("%.1f° S") : _("%.1f° N"))
+        : (value < 0 ? _("%.1f° W") : _("%.1f° E"));
+    return wxString::Format(format, std::abs(value) * 0.05);
+  };
+  text += "\n" + wxString::Format(_("Bounds %s to %s, %s to %s"),
+      angle(south, true), angle(north, true), angle(west, false), angle(east, false));
+  return text;
 }
 
 bool ImportOpenWaterLayer(const wxString& path, wxString* message,

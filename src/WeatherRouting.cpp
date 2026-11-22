@@ -43,6 +43,7 @@
 #include <wx/progdlg.h>
 #include <wx/dir.h>
 #include <wx/spinctrl.h>
+#include <wx/scrolwin.h>
 
 #include <json/json.h>
 
@@ -8656,6 +8657,7 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
                   wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
   wxBoxSizer* top = new wxBoxSizer(wxVERTICAL);
 #ifdef __OCPN__ANDROID__
+  wxWindow* input_parent = &dialog;
   // wxQt does not expose the native dialog buttons reliably when the
   // content grows. Put the modal actions before the scrollable settings.
   wxBoxSizer* androidActions = new wxBoxSizer(wxHORIZONTAL);
@@ -8667,10 +8669,16 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
   androidActions->Add(new wxButton(&dialog, wxID_CANCEL, _("Cancel")),
                       0, wxALL, 5);
   top->Add(androidActions, 0, wxEXPAND);
+#else
+  auto* desktop_scroll = new wxScrolledWindow(
+      &dialog, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+      wxVSCROLL | wxTAB_TRAVERSAL);
+  desktop_scroll->SetScrollRate(0, dialog.FromDIP(12));
+  wxWindow* input_parent = desktop_scroll;
 #endif
 
   wxStaticText* capability = new wxStaticText(
-      &dialog, wxID_ANY,
+      input_parent, wxID_ANY,
       m_weather_routing_pi.HasEnhancedChartSafety()
           ? _("Full chart-aware safety is available and enabled by default. "
               "OpenCPN remains the chart-classification authority; this "
@@ -8685,14 +8693,15 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
   top->Add(capability, 0, wxALL | wxEXPAND, 10);
 
   wxCheckBox* persistent = new wxCheckBox(
-      &dialog, wxID_ANY, _("Keep authoritative chart-safety tiles on disk"));
+      input_parent, wxID_ANY, _("Keep authoritative chart-safety tiles on disk"));
   persistent->SetValue(m_weather_routing_pi.UsePersistentChartSafeCache());
   top->Add(persistent, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
+  const auto layer_position = top->GetItemCount();
 
   wxStaticBoxSizer* atlas_box = new wxStaticBoxSizer(
-      wxVERTICAL, &dialog, _("Optional prebuilt semantic atlas"));
+      wxVERTICAL, input_parent, _("Optional prebuilt semantic atlas"));
   wxCheckBox* atlas_enabled = new wxCheckBox(
-      &dialog, wxID_ANY,
+      input_parent, wxID_ANY,
       _("Prebuild selected charts when OpenCPN is idle"));
   atlas_enabled->SetValue(
       m_weather_routing_pi.ChartSafetyAtlasEnabled());
@@ -8703,10 +8712,10 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
 
   wxBoxSizer* quota_row = new wxBoxSizer(wxHORIZONTAL);
   quota_row->Add(new wxStaticText(
-                     &dialog, wxID_ANY,
+                     input_parent, wxID_ANY,
                      _("Maximum semantic tile cache / atlas (MiB):")),
                  0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
-  wxSpinCtrl* atlas_quota = new wxSpinCtrl(&dialog, wxID_ANY);
+  wxSpinCtrl* atlas_quota = new wxSpinCtrl(input_parent, wxID_ANY);
   atlas_quota->SetRange(256, 16384);
   atlas_quota->SetIncrement(256);
   atlas_quota->SetValue(
@@ -8723,7 +8732,7 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
   const std::set<std::string>& saved_atlas_paths =
       m_weather_routing_pi.ChartSafetyAtlasSelectedPaths();
   wxCheckBox* atlas_all = new wxCheckBox(
-      &dialog, wxID_ANY, _("Prebuild all applicable charts"));
+      input_parent, wxID_ANY, _("Prebuild all applicable charts"));
   atlas_all->SetValue(
       m_weather_routing_pi.ChartSafetyAtlasAllCharts());
   atlas_box->Add(atlas_all, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 5);
@@ -8735,7 +8744,7 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
         _("%s  (1:%d)"), filename.GetFullName(), chart.chart_scale));
   }
   wxCheckListBox* atlas_list = new wxCheckListBox(
-      &dialog, wxID_ANY, wxDefaultPosition, wxSize(540, 180), atlas_labels);
+      input_parent, wxID_ANY, wxDefaultPosition, wxSize(540, 180), atlas_labels);
   for (unsigned int index = 0; index < atlas_charts.size(); ++index) {
     const bool checked =
         m_weather_routing_pi.ChartSafetyAtlasAllCharts() ||
@@ -8747,11 +8756,11 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
 
   wxBoxSizer* atlas_actions = new wxBoxSizer(wxHORIZONTAL);
   wxButton* atlas_select_all =
-      new wxButton(&dialog, wxID_ANY, _("Select all"));
+      new wxButton(input_parent, wxID_ANY, _("Select all"));
   wxButton* atlas_select_none =
-      new wxButton(&dialog, wxID_ANY, _("Select none"));
+      new wxButton(input_parent, wxID_ANY, _("Select none"));
   wxButton* atlas_estimate =
-      new wxButton(&dialog, wxID_ANY, _("Estimate size"));
+      new wxButton(input_parent, wxID_ANY, _("Estimate size"));
   atlas_actions->Add(atlas_select_all, 0, wxRIGHT, 5);
   atlas_actions->Add(atlas_select_none, 0, wxRIGHT, 5);
   atlas_actions->AddStretchSpacer();
@@ -8760,11 +8769,11 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
                  5);
 
   wxStaticText* atlas_size = new wxStaticText(
-      &dialog, wxID_ANY, _("Size has not yet been estimated."));
+      input_parent, wxID_ANY, _("Size has not yet been estimated."));
   atlas_size->Wrap(520);
   atlas_box->Add(atlas_size, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 5);
   wxStaticText* atlas_note = new wxStaticText(
-      &dialog, wxID_ANY,
+      input_parent, wxID_ANY,
       _("Selection controls proactive generation only. A route outside the "
         "atlas remains eligible and requests authoritative tiles on demand. "
         "The estimate uses the charts' actual coverage polygons."));
@@ -8815,7 +8824,8 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
     WR_LayoutAndroidDetailSheet(&dialog);
     WR_FitAndroidSheet(&dialog);
 #else
-    dialog.Fit();
+    desktop_scroll->Layout();
+    desktop_scroll->FitInside();
 #endif
   };
 
@@ -8838,10 +8848,10 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
                        [=](wxCommandEvent&) { update_atlas_estimate(); });
 
   wxBoxSizer* ram_row = new wxBoxSizer(wxHORIZONTAL);
-  ram_row->Add(new wxStaticText(&dialog, wxID_ANY,
+  ram_row->Add(new wxStaticText(input_parent, wxID_ANY,
                                 _("Chart-safety RAM cache (MiB):")),
                0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
-  wxSpinCtrl* ram = new wxSpinCtrl(&dialog, wxID_ANY);
+  wxSpinCtrl* ram = new wxSpinCtrl(input_parent, wxID_ANY);
   ram->SetRange(0, 8192);
   ram->SetIncrement(256);
   ram->SetValue(m_weather_routing_pi.ChartSafetyRamCacheMiB());
@@ -8852,21 +8862,46 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
   top->Add(ram_row, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
 
   wxStaticText* effective = new wxStaticText(
-      &dialog, wxID_ANY,
+      input_parent, wxID_ANY,
       wxString::Format(_("Current effective RAM budget: %d MiB"),
                        m_weather_routing_pi
                            .EffectiveChartSafetyRamCacheMiB()));
   top->Add(effective, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
 
   if (weather_routing::chart_safety_host::HasOpenWaterLayerImport()) {
-    auto* layer = new wxStaticBoxSizer(wxHORIZONTAL, &dialog,
+    auto* layer = new wxStaticBoxSizer(wxVERTICAL, input_parent,
                                       _("Open-water starting layer"));
-    auto* import_layer = new wxButton(&dialog, wxID_ANY, _("Import..."));
-    auto* remove_layer = new wxButton(&dialog, wxID_ANY, _("Remove"));
-    layer->Add(import_layer, 1, wxALL | wxEXPAND, 5);
-    layer->Add(remove_layer, 1, wxALL | wxEXPAND, 5);
-    top->Add(layer, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
-    import_layer->Bind(wxEVT_BUTTON, [this, &dialog](wxCommandEvent&) {
+    auto* layer_status = new wxStaticText(input_parent, wxID_ANY, wxEmptyString);
+    layer->Add(layer_status, 0, wxALL | wxEXPAND, 5);
+    auto* actions = new wxBoxSizer(wxHORIZONTAL);
+    auto* import_layer = new wxButton(input_parent, wxID_ANY, _("Import..."));
+    auto* remove_layer = new wxButton(input_parent, wxID_ANY, _("Remove"));
+    actions->Add(import_layer, 1, wxALL | wxEXPAND, 5);
+    actions->Add(remove_layer, 1, wxALL | wxEXPAND, 5);
+    layer->Add(actions, 0, wxEXPAND);
+    top->Insert(layer_position, layer, 0,
+                wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
+    const auto update_status = [layer_status, remove_layer]() {
+      bool saved = false;
+      auto status = weather_routing::chart_safety_host::DescribeOpenWaterLayer(
+          *GetpPrivateApplicationDataLocation(), &saved);
+      status.Replace("&", "&&");
+      layer_status->SetLabel(status);
+      layer_status->Wrap(WR_FromDIP(layer_status, 420));
+      remove_layer->Enable(saved);
+    };
+    update_status();
+    const auto update_layer_layout = [&, update_status]() {
+      update_status();
+      dialog.Layout();
+#ifdef __OCPN__ANDROID__
+      WR_LayoutAndroidDetailSheet(&dialog);
+#else
+      desktop_scroll->Layout();
+    desktop_scroll->FitInside();
+#endif
+    };
+    import_layer->Bind(wxEVT_BUTTON, [this, &dialog, update_layer_layout](wxCommandEvent&) {
       if (!CanStartExternalPlanningScenario()) {
         WR_MessageBox(_("Wait for routing to finish before importing a layer."),
                       _("Open-water starting layer"), wxOK, &dialog);
@@ -8906,16 +8941,18 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
                   _("Verified %d of %d regions"), done, total));
             });
       }
+      if (ok) update_layer_layout();
       WR_MessageBox(message, _("Open-water starting layer"),
                     wxOK | (ok ? wxICON_INFORMATION : wxICON_WARNING), &dialog);
     });
-    remove_layer->Bind(wxEVT_BUTTON, [this, &dialog](wxCommandEvent&) {
+    remove_layer->Bind(wxEVT_BUTTON, [this, &dialog, update_layer_layout](wxCommandEvent&) {
       if (!CanStartExternalPlanningScenario()) {
         WR_MessageBox(_("Wait for routing to finish before removing the layer."),
                       _("Open-water starting layer"), wxOK, &dialog);
         return;
       }
       const bool ok = weather_routing::chart_safety_host::RemoveOpenWaterLayer();
+      if (ok) update_layer_layout();
       WR_MessageBox(ok ? _("Open-water starting layer removed.")
                        : _("Unable to remove the open-water starting layer."),
                     _("Open-water starting layer"), wxOK, &dialog);
@@ -8923,13 +8960,13 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
   }
 
   wxButton* clear = new wxButton(
-      &dialog, wxID_ANY, _("Clear Persistent Certified Safe-Area Cache"));
+      input_parent, wxID_ANY, _("Clear Persistent Certified Safe-Area Cache"));
   top->Add(clear, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
 
   const weather_routing::ChartSafetyCacheStats cache_stats =
       m_weather_routing_pi.ChartSafetyCacheStatistics();
   wxStaticText* stats = new wxStaticText(
-      &dialog, wxID_ANY,
+      input_parent, wxID_ANY,
       wxString::Format(
           _("Cache: %lu RAM tiles (%.1f MiB), %lu disk tiles "
             "(%.1f of %.0f MiB); hits RAM=%llu disk=%llu, misses=%llu"),
@@ -8945,7 +8982,7 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
   top->Add(stats, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
 
   wxStaticText* note = new wxStaticText(
-      &dialog, wxID_ANY,
+      input_parent, wxID_ANY,
       _("Disk caching retains permission-approved semantic hazard/depth "
         "tiles and areas proven safe for matching chart and safety "
         "settings. A chart update selectively rebuilds affected semantic "
@@ -8960,7 +8997,6 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
   buttons->AddButton(ok);
   buttons->AddButton(cancel);
   buttons->Realize();
-  top->Add(buttons, 0, wxALL | wxALIGN_RIGHT, 10);
 #endif
 
   clear->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
@@ -8972,9 +9008,9 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
         _("Chart Awareness Settings"), wxOK | wxICON_INFORMATION, this);
   });
 
+#ifdef __OCPN__ANDROID__
   dialog.SetSizerAndFit(top);
   update_atlas_estimate();
-#ifdef __OCPN__ANDROID__
   // Keep modal actions visible and scroll the content as one panel. The
   // desktop fitted form can otherwise extend beyond the Android canvas.
   dialog.SetSizer(nullptr, false);
@@ -9019,6 +9055,26 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
     WR_LayoutAndroidDetailSheet(&dialog);
     event.Skip();
   });
+#else
+  desktop_scroll->SetSizer(top);
+  auto* layout = new wxBoxSizer(wxVERTICAL);
+  layout->Add(desktop_scroll, 1, wxEXPAND);
+  layout->Add(buttons, 0, wxALL | wxALIGN_RIGHT, 10);
+  dialog.SetSizer(layout);
+  update_atlas_estimate();
+  const auto form_size = top->GetMinSize();
+  desktop_scroll->SetMinSize(
+      wxSize(form_size.x + dialog.FromDIP(24), dialog.FromDIP(180)));
+  const auto minimum = layout->GetMinSize();
+  const int maximum_height = std::max(
+      minimum.y, wxGetClientDisplayRect().height - dialog.FromDIP(64));
+  dialog.SetMinClientSize(minimum);
+  dialog.SetClientSize(minimum.x,
+      std::min(maximum_height,
+               minimum.y - desktop_scroll->GetMinHeight() + form_size.y));
+  dialog.Layout();
+  desktop_scroll->FitInside();
+  dialog.CentreOnScreen();
 #endif
   if (dialog.ShowModal() == wxID_OK) {
     m_weather_routing_pi.SetUsePersistentChartSafeCache(persistent->GetValue());
