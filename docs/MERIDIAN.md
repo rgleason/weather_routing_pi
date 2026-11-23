@@ -1,9 +1,10 @@
 # Meridian standalone routing engine
 
 Meridian is an additional experimental planner in Weather Routing 1.44.0 and
-xWeatherRouting 2.11.0. Select it as an individual method in Advanced. Existing
-search implementations, saved method IDs, Auto/All membership and defaults are
-preserved. See [the measured evaluation](MERIDIAN-EVALUATION-20261123.md).
+xWeatherRouting 2.11.0. Select it as an individual method in Advanced, or tick
+its Auto/All checkbox to include it after Atlas and before Standard. It is
+unticked by default; each mode remembers its choice. Existing solver
+implementations, saved bit positions and default selections are preserved. See [the measured evaluation](MERIDIAN-EVALUATION-20261123.md).
 
 ## Search model
 

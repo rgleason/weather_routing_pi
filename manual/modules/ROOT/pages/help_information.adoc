@@ -58,8 +58,10 @@ and the persistent detailed-tile cache.
 == Meridian experimental and live diagnostics
 
 The individual routing-method selector offers *Meridian (experimental)*.
-This standalone, bounded, time-dependent best-first search is excluded from
-Auto and All. It uses local coastline guidance, fine coastal steps and
+This bounded, time-dependent best-first search is available individually and
+as an opt-in checkbox for Auto and All. It runs after Atlas and before Standard.
+It is unticked by default; Auto and All selections are remembered independently.
+It uses local coastline guidance, fine coastal steps and
 reserved refinement, while retaining the shared sailing and safety checks.
 Its full-circle heading fan is independent of Max Search Angle; that control
 is disabled for this method and its saved value is preserved.

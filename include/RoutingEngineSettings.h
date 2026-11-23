@@ -24,21 +24,22 @@ enum class RoutingEngine { Main, Quick, Unsupported, Original, Auto, All, Quick2
 
 inline constexpr std::array kSequenceEngines{
     RoutingEngine::Original, RoutingEngine::Quick2, RoutingEngine::Quick,
-    RoutingEngine::Alternative, RoutingEngine::Main, RoutingEngine::Atlas};
+    RoutingEngine::Alternative, RoutingEngine::Main, RoutingEngine::Atlas, RoutingEngine::Meridian};
 // Execution/display order is independent of the historical saved bit positions.
 inline constexpr std::array kRoutingEngineOrder{
     RoutingEngine::Original, RoutingEngine::Quick2, RoutingEngine::Atlas,
-    RoutingEngine::Quick, RoutingEngine::Alternative, RoutingEngine::Main};
+    RoutingEngine::Meridian, RoutingEngine::Quick, RoutingEngine::Alternative, RoutingEngine::Main};
 inline constexpr std::array kEngineChoices{
     RoutingEngine::Auto, RoutingEngine::Original, RoutingEngine::Quick2,
     RoutingEngine::Atlas, RoutingEngine::Quick, RoutingEngine::Alternative,
     RoutingEngine::Main, RoutingEngine::All, RoutingEngine::Meridian};
-// Meridian is a standalone experiment. It has no Auto/All membership bit and
-// does not change the six existing methods or any first-install defaults.
-// Historical defaults remain unchanged. Atlas is available only by opt-in.
+// Saved membership bits are append-only: Meridian is bit 6, although shown
+// and executed after Atlas. It is opt-in for Auto and All. Preserve both
+// historical masks and the six-method first-install selection.
 inline constexpr unsigned kAllEnginesMask = 31;
 inline constexpr unsigned kAutoEnginesMask = 23;
-inline constexpr unsigned kSelectableEnginesMask = 63;
+inline constexpr unsigned kFirstInstallEnginesMask = 63;
+inline constexpr unsigned kSelectableEnginesMask = (1U << kSequenceEngines.size()) - 1;
 inline unsigned EngineBit(RoutingEngine engine) {
   for (unsigned i = 0; i < kSequenceEngines.size(); ++i)
     if (kSequenceEngines[i] == engine) return 1U << i;
@@ -172,8 +173,8 @@ inline void ApplyFirstUseEngineDefaults(RoutingEngineSettings& settings,
                                         bool hasSavedDefaults) {
   if (hasSavedDefaults) return;
   settings.engine = RoutingEngine::Auto;
-  settings.autoEngines = kSelectableEnginesMask;
-  settings.allEngines = kSelectableEnginesMask;
+  settings.autoEngines = kFirstInstallEnginesMask;
+  settings.allEngines = kFirstInstallEnginesMask;
   settings.mainPreset = {"balanced", kBalancedSearchPresetRevision};
 }
 

@@ -2,7 +2,7 @@
 
 Meridian is an additional standalone experimental engine in 1.44.0 / 2.11.0. It completed Gibraltar–Souda and 11 of the 13 saved real-weather cases. The established methods retained all 12 previously completed reference cases in both branches. The last Hanalei departure remains unresolved by these bounded reference runs.
 
-The current Auto sequence and default membership are unchanged. The data do not establish a universal speed ranking or justify putting Meridian first: it misses the second Hanalei departure that Standard completes, and some completed Meridian passages take longer at sea.
+Meridian can now be selected in Auto and All after Atlas and before Standard. It is unticked by default; existing enabled methods and their relative order are unchanged. The data do not establish a universal speed ranking or justify putting Meridian first: it misses the second Hanalei departure that Standard completes, and some completed Meridian passages take longer at sea.
 
 ## Saved real-GRIB controls
 
@@ -68,7 +68,7 @@ Cowboy requires the cached compatible Climatology 1.6.37 provider; it refuses Cl
 
 ## Validation and host controls
 
-- Complete final native suites: 730 production / 819 development enabled tests passed. Each suite intentionally disables its timing-only benchmark.
+- Complete native suites after the Auto/All integration: 736 production / 826 development enabled tests passed. Each suite intentionally disables its timing-only benchmark.
 - CI tooling unit tests: 89 production / 73 development passed. This is not a claim that remote CircleCI platform builds ran.
 - Actual modules: real external-GRIB suite in both branches, incorporated GRIB control in development, and successful chart-aware offshore controls with the 65,536-region qualified global starting layer.
 - Stock OpenCPN 5.14.2: Quick2 and Meridian complete ordinary shoreline controls in both branches. Enforced chart-depth requests report that the stock host lacks the required service.
@@ -80,7 +80,7 @@ The additional full chart-aware Atlantic run stopped at the proposal allowance a
 
 ## Auto ordering
 
-Keep the current order while Meridian remains experimental. Its speed on the Atlantic and Gibraltar is promising, but a complete order cannot be inferred from a table containing one selected established method per route. A ranking study must run each candidate method with its proposed Auto allowance on the same inputs, charge failures and service waits, compare modeled arrival quality, and include serial and opt-in parallel policies. A short Meridian trial after the quickest established method(s) is worth qualifying; unrestricted early placement would add its failed Hanalei search cost before Standard can solve that case.
+The selectable execution order is Quick → Quick2 → Atlas → Meridian → Standard → Alternative → Professional. Meridian remains experimental and opt-in in each mode. Its speed on the Atlantic and Gibraltar is promising, but a universal speed ranking cannot be inferred from a table containing one selected established method per route. A ranking study must run each candidate method with its proposed Auto allowance on the same inputs, charge failures and service waits, compare modeled arrival quality, and include serial and opt-in parallel policies. Placing the optional method after Atlas adds another way to solve passages without changing the existing engines. Enabling it can also add its unsuccessful Hanalei search cost before Standard runs; the recorded search and passage-quality limits still apply.
 
 ## Reproduction evidence
 

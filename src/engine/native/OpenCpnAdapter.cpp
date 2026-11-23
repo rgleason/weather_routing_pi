@@ -2115,7 +2115,7 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
     if (configuration.chart_safety_scout_preview) {
       for (const auto engine : {SequenceEngine::Original, SequenceEngine::Quick2,
                                SequenceEngine::Quick, SequenceEngine::Alternative,
-                               SequenceEngine::Atlas,
+                               SequenceEngine::Atlas, SequenceEngine::Meridian,
                                SequenceEngine::Main}) {
         if (!(configuration.EngineSettings.SelectedEngines() &
               weather_routing::EngineBit(weather_routing::native::SequenceRoutingEngine(engine))))

@@ -12,7 +12,7 @@
 #include "supercpn/weather_routing/Engine.h"
 
 namespace weather_routing::native {
-enum class SequenceEngine { Original, Quick2, Quick, Alternative, Main, Atlas };
+enum class SequenceEngine { Original, Quick2, Quick, Alternative, Main, Atlas, Meridian };
 inline RoutingEngine SequenceRoutingEngine(SequenceEngine engine) {
   switch (engine) {
     case SequenceEngine::Original: return RoutingEngine::Original;
@@ -21,6 +21,7 @@ inline RoutingEngine SequenceRoutingEngine(SequenceEngine engine) {
     case SequenceEngine::Alternative: return RoutingEngine::Alternative;
     case SequenceEngine::Main: return RoutingEngine::Main;
     case SequenceEngine::Atlas: return RoutingEngine::Atlas;
+    case SequenceEngine::Meridian: return RoutingEngine::Meridian;
   }
   return RoutingEngine::Unsupported;
 }
@@ -38,6 +39,8 @@ inline const char* SequenceEngineId(SequenceEngine engine) {
       return "main";
     case SequenceEngine::Atlas:
       return "atlas";
+    case SequenceEngine::Meridian:
+      return "meridian";
   }
   return "";
 }
@@ -55,6 +58,8 @@ inline const char* SequenceEngineTitle(SequenceEngine engine) {
       return "Professional";
     case SequenceEngine::Atlas:
       return "Atlas";
+    case SequenceEngine::Meridian:
+      return "Meridian (experimental)";
   }
   return "";
 }
@@ -112,7 +117,7 @@ supercpn::weather_routing::RoutingResult RunRoutingEngineSequence(
     return last;
   }
   constexpr std::array engines{SequenceEngine::Original, SequenceEngine::Quick2, SequenceEngine::Atlas,
-                               SequenceEngine::Quick, SequenceEngine::Alternative,
+                               SequenceEngine::Meridian, SequenceEngine::Quick, SequenceEngine::Alternative,
                                SequenceEngine::Main};
   for (const auto engine : engines) {
     if (!(enabled & EngineBit(SequenceRoutingEngine(engine)))) continue;
@@ -137,7 +142,9 @@ supercpn::weather_routing::RoutingResult RunRoutingEngineSequence(
         (engine == SequenceEngine::Original || engine == SequenceEngine::Quick2);
     if (cancel.cancelled() ||
         (last.status == wr::RoutingStatus::Cancelled && !competingFast)) {
-      last.status = wr::RoutingStatus::Cancelled;
+      // A stop applies to the whole calculation, even if the just-finished
+      // method returned a route. Preserve evidence, never delivered legs.
+      CancelRoutingResultKeepingDiagnostics(last);
       history.push_back({SequenceEngineTitle(engine), last.status, last.message + "\n" + work});
       last.message = "Routing engine sequence cancelled";
       last.attemptFailures = attempts;
