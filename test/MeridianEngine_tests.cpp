@@ -144,7 +144,8 @@ TEST(MeridianEngine, NarrowUpwindArrivalKeepsOriginalDepartureAndRequiresFullRep
   ASSERT_TRUE(result.validation.passed) << result.message << " remaining=" << result.diagnostics.closestApproachNm;
   ASSERT_FALSE(result.legs.empty());
   EXPECT_EQ(f.request.options.maximumSearchAngleDegrees, 10);
-  EXPECT_EQ(result.legs.front().startTime, f.request.departure);
+  EXPECT_EQ(result.legs.front().startTime.time_since_epoch().count(),
+            f.request.departure.time_since_epoch().count());
   EXPECT_LT(wr::distanceNm(result.legs.front().start, f.request.start), 1e-6);
   EXPECT_LT(wr::distanceNm(result.legs.back().end, f.request.destination), 1e-6);
   wr::PolarPerformanceModel performance(f.request.vessel);
@@ -178,8 +179,10 @@ TEST(MeridianEngine, RepeatedTidalSearchKeepsTheSameTimedTrack) {
   ASSERT_TRUE(b.validation.passed);
   ASSERT_EQ(a.legs.size(), b.legs.size());
   for (std::size_t i = 0; i < a.legs.size(); ++i) {
-    EXPECT_EQ(a.legs[i].startTime, b.legs[i].startTime);
-    EXPECT_EQ(a.legs[i].endTime, b.legs[i].endTime);
+    EXPECT_EQ(a.legs[i].startTime.time_since_epoch().count(),
+              b.legs[i].startTime.time_since_epoch().count());
+    EXPECT_EQ(a.legs[i].endTime.time_since_epoch().count(),
+              b.legs[i].endTime.time_since_epoch().count());
     EXPECT_LT(wr::distanceNm(a.legs[i].end, b.legs[i].end), 1e-9);
   }
   EXPECT_EQ(a.diagnostics.generatedStates, b.diagnostics.generatedStates);

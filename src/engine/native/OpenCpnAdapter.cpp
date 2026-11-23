@@ -2763,7 +2763,8 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
           std::chrono::steady_clock::now() - started)
           .count();
   const wxString status = wxString::FromUTF8(wr::toString(result.status).c_str());
-  const wxString solver = result.engineIdentity == "meridian" ? "meridian"
+  const wxString solver = result.engineIdentity == "meridian"
+      ? wxString("meridian")
       : wxString::FromUTF8(wr::toString(result.solverPath).c_str());
   wxLogMessage(
       "WR_MODERN_NATIVE_SUMMARY route=\"%s -> %s\" status=%s solver=%s "
