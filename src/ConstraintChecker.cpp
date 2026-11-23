@@ -290,10 +290,11 @@ bool GshhsSegmentSafetyHitsLand(RouteMapConfiguration* configuration,
       if (!configuration || !configuration->shoreline_dataset)
         throw std::runtime_error(
             "Required plugin shoreline data was not prepared");
-      if (configuration->IsOriginal())
-        return configuration->shoreline_dataset->WithinLandMargin(
-            a, b, c, d, safety_margin_nm);
-      return configuration->shoreline_dataset->CrossesLand(a, b, c, d);
+      // The entire buffered segment is authoritative for every method.
+      // Offset lines and diagonals leave holes between the probes and omit
+      // the rounded end caps. Endpoint access is handled separately below.
+      return configuration->shoreline_dataset->WithinLandMargin(
+          a, b, c, d, safety_margin_nm);
     } catch (const std::bad_alloc&) {
       throw;
     } catch (const std::exception& error) {
@@ -304,30 +305,7 @@ bool GshhsSegmentSafetyHitsLand(RouteMapConfiguration* configuration,
       return true;  // Missing/invalid data must never mean clear water.
     }
   };
-  if (crosses(lat1, lon1, lat2, lon2)) return true;
-  if (configuration && configuration->IsOriginal()) return false;
-
-  if (safety_margin_nm <= 0.0) return false;
-
-  double bearing = 0.0;
-  double dist_nm = 0.0;
-  ll_gc_ll_reverse(lat1, lon1, lat2, lon2, &bearing, &dist_nm);
-
-  double lat_up1, lon_up1, lat_up2, lon_up2;
-  double lat_down1, lon_down1, lat_down2, lon_down2;
-  ll_gc_ll(lat1, lon1, heading_resolve(bearing - 90.0), safety_margin_nm,
-           &lat_up1, &lon_up1);
-  ll_gc_ll(lat2, lon2, heading_resolve(bearing - 90.0), safety_margin_nm,
-           &lat_up2, &lon_up2);
-  ll_gc_ll(lat1, lon1, heading_resolve(bearing + 90.0), safety_margin_nm,
-           &lat_down1, &lon_down1);
-  ll_gc_ll(lat2, lon2, heading_resolve(bearing + 90.0), safety_margin_nm,
-           &lat_down2, &lon_down2);
-
-  return crosses(lat_up1, lon_up1, lat_up2, lon_up2) ||
-         crosses(lat_down1, lon_down1, lat_down2, lon_down2) ||
-         crosses(lat_up1, lon_up1, lat_down2, lon_down2) ||
-         crosses(lat_down1, lon_down1, lat_up2, lon_up2);
+  return crosses(lat1, lon1, lat2, lon2);
 }
 
 bool SegmentTouchesEndpointMarginZone(RouteMapConfiguration* configuration,

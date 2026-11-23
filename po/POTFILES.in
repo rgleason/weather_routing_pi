@@ -75,6 +75,7 @@ vendor/weather-routing-engine/src/Engine.cpp
 vendor/weather-routing-engine/src/QuickEngine.cpp
 vendor/weather-routing-engine/src/AlternativeEngine.cpp
 src/engine/adaptive/Quick2.cpp
+src/engine/meridian/Engine.cpp
 src/engine/adaptive/StandardRecovery.cpp
 vendor/quick2-routing-engine/src/Engine.cpp
 vendor/atlas-routing-engine/src/Engine.cpp

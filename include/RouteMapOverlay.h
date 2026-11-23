@@ -365,6 +365,7 @@ public:
       const supercpn::weather_routing::RoutingProgressUpdate& progress,
       std::uint64_t generation, const wxString& engineLabel = wxString());
   bool GetModernNativeProgress(wxString& stage, wxString& detail);
+  wxString DiagnosticReportText();
   std::uint64_t ModernProgressGeneration() const {
     return m_ModernProgress.Read().generation;
   }

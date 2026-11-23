@@ -24,6 +24,9 @@ inline bool CanSkipBundledDataUpdate(int installed, int major, int minor) {
   // The GRIB reader and diagnostic releases retain existing bundled data.
   if (major == 1 && minor == 43) return installed >= 138 && installed <= 142;
   if (major == 2 && minor == 10) return installed >= 205 && installed <= 209;
+  // The additional experimental method does not replace boats or polars.
+  if (major == 1 && minor == 44) return installed >= 138 && installed <= 143;
+  if (major == 2 && minor == 11) return installed >= 205 && installed <= 210;
   return installed >= 124 && installed <= 132 && major == 1 &&
          minor >= 25 && minor <= 33;
 }

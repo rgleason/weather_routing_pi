@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <array>
 #include "GribTimelineCachePolicy.h"
+#include "RoutingQualityPolicy.h"
 
 namespace weather_routing {
 constexpr int kBalancedSearchPresetRevision = 2;
@@ -19,23 +20,26 @@ constexpr int kDefaultMaxDivertedCourse = 120;
 
 // Serialized IDs remain stable: historical "quick" is Standard, while
 // "main" selects the current Professional implementation.
-enum class RoutingEngine { Main, Quick, Unsupported, Original, Auto, All, Quick2, Alternative, Atlas };
+enum class RoutingEngine { Main, Quick, Unsupported, Original, Auto, All, Quick2, Alternative, Atlas, Meridian };
 
 inline constexpr std::array kSequenceEngines{
     RoutingEngine::Original, RoutingEngine::Quick2, RoutingEngine::Quick,
-    RoutingEngine::Alternative, RoutingEngine::Main, RoutingEngine::Atlas};
+    RoutingEngine::Alternative, RoutingEngine::Main, RoutingEngine::Atlas, RoutingEngine::Meridian};
 // Execution/display order is independent of the historical saved bit positions.
 inline constexpr std::array kRoutingEngineOrder{
     RoutingEngine::Original, RoutingEngine::Quick2, RoutingEngine::Atlas,
-    RoutingEngine::Quick, RoutingEngine::Alternative, RoutingEngine::Main};
+    RoutingEngine::Meridian, RoutingEngine::Quick, RoutingEngine::Alternative, RoutingEngine::Main};
 inline constexpr std::array kEngineChoices{
     RoutingEngine::Auto, RoutingEngine::Original, RoutingEngine::Quick2,
     RoutingEngine::Atlas, RoutingEngine::Quick, RoutingEngine::Alternative,
-    RoutingEngine::Main, RoutingEngine::All};
-// Historical defaults remain unchanged. Atlas is available only by opt-in.
+    RoutingEngine::Main, RoutingEngine::All, RoutingEngine::Meridian};
+// Saved membership bits are append-only: Meridian is bit 6, although shown
+// and executed after Atlas. It is opt-in for Auto and All. Preserve both
+// historical masks and the six-method first-install selection.
 inline constexpr unsigned kAllEnginesMask = 31;
 inline constexpr unsigned kAutoEnginesMask = 23;
-inline constexpr unsigned kSelectableEnginesMask = 63;
+inline constexpr unsigned kFirstInstallEnginesMask = 63;
+inline constexpr unsigned kSelectableEnginesMask = (1U << kSequenceEngines.size()) - 1;
 inline unsigned EngineBit(RoutingEngine engine) {
   for (unsigned i = 0; i < kSequenceEngines.size(); ++i)
     if (kSequenceEngines[i] == engine) return 1U << i;
@@ -61,6 +65,7 @@ inline const char* EngineTitle(RoutingEngine engine) {
     case RoutingEngine::Quick2: return "Quick2";
     case RoutingEngine::Alternative: return "Alternative";
     case RoutingEngine::Atlas: return "Atlas";
+    case RoutingEngine::Meridian: return "Meridian";
     case RoutingEngine::Auto: return "Auto";
     case RoutingEngine::All: return "All (slow)";
     default: return "Unsupported";
@@ -129,6 +134,7 @@ struct RoutingEngineSettings {
       case RoutingEngine::Quick2: return "quick2";
       case RoutingEngine::Alternative: return "alternative";
       case RoutingEngine::Atlas: return "atlas";
+      case RoutingEngine::Meridian: return "meridian";
       default: return unsupportedId;
     }
   }
@@ -142,6 +148,7 @@ struct RoutingEngineSettings {
     else if (id == "quick2") engine = RoutingEngine::Quick2;
     else if (id == "alternative") engine = RoutingEngine::Alternative;
     else if (id == "atlas") engine = RoutingEngine::Atlas;
+    else if (id == "meridian") engine = RoutingEngine::Meridian;
     else {
       engine = RoutingEngine::Unsupported;
       unsupportedId = id;
@@ -166,8 +173,8 @@ inline void ApplyFirstUseEngineDefaults(RoutingEngineSettings& settings,
                                         bool hasSavedDefaults) {
   if (hasSavedDefaults) return;
   settings.engine = RoutingEngine::Auto;
-  settings.autoEngines = kSelectableEnginesMask;
-  settings.allEngines = kSelectableEnginesMask;
+  settings.autoEngines = kFirstInstallEnginesMask;
+  settings.allEngines = kFirstInstallEnginesMask;
   settings.mainPreset = {"balanced", kBalancedSearchPresetRevision};
 }
 
@@ -183,13 +190,15 @@ struct RoutingSearchSnapshot {
   int shorelineResolution{4};
   bool detectLand{false};
   std::string selectedEngine;
+  double configuredTimeStepSeconds{0};
+  bool timeStepManaged{false};
 
   template <typename Configuration>
   static RoutingSearchSnapshot Capture(const Configuration& c, bool native) {
     const bool quick = c.EngineSettings.engine == RoutingEngine::Quick ||
                        c.EngineSettings.engine == RoutingEngine::Original;
     const auto& fast = c.EngineSettings.FastSettings();
-    return {true, native ? c.EngineSettings.EngineId() : "legacy",
+    auto snapshot = RoutingSearchSnapshot{true, native ? c.EngineSettings.EngineId() : "legacy",
             quick ? fast.preset : c.EngineSettings.mainPreset,
             c.EngineSettings.engine == RoutingEngine::Original
                 ? static_cast<double>(QuickTimeStepSeconds(c.DeltaTime))
@@ -198,6 +207,21 @@ struct RoutingSearchSnapshot {
             quick ? fast.memoryBudgetMiB : 0,
             static_cast<int>(quick ? fast.maximumSearchAngle : c.MaxSearchAngle),
             quick ? 100 : c.RoutingEffortPercent, c.EffectiveShorelineResolution(), c.DetectLand};
+    snapshot.configuredTimeStepSeconds = snapshot.timeStepSeconds;
+    bool adaptive = false;
+    if constexpr (requires { c.AutomaticAdaptiveSettings; })
+      adaptive = c.AutomaticAdaptiveSettings;
+    const auto engine = c.EngineSettings.engine;
+    snapshot.timeStepManaged = native && (engine == RoutingEngine::Meridian ||
+        engine == RoutingEngine::Atlas || (adaptive &&
+        (engine == RoutingEngine::Original || engine == RoutingEngine::Quick2 ||
+         engine == RoutingEngine::Quick || IsCombinedEngine(engine))));
+    if (native && !quick && !snapshot.timeStepManaged)
+      snapshot.timeStepSeconds = SelectRoutingQualityPolicy(false, c.ByDegrees,
+          static_cast<std::int64_t>(std::llround(c.DeltaTime))).time_step_seconds;
+    if (native && engine == RoutingEngine::Quick2 && !snapshot.timeStepManaged)
+      snapshot.timeStepSeconds = std::min(snapshot.timeStepSeconds, 21600.0);
+    return snapshot;
   }
 };
 

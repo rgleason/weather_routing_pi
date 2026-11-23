@@ -44,6 +44,8 @@ include(${wxWidgets_USE_FILE})
 
 set(TEST_SRC
     AdaptiveController_tests.cpp
+    MeridianEngine_tests.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/src/engine/meridian/Engine.cpp
     AdaptiveHeaders_compile.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/engine/adaptive/Quick2.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/engine/adaptive/StandardRecovery.cpp

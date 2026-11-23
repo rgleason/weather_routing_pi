@@ -33,6 +33,8 @@ RouteDiagnosticReport DescribeRoutingResult(
     bool waveLimitEnabled = true);
 void AppendCancelledWorkerProgress(RouteDiagnosticReport& report,
     const wxString& stage, const wxString& detail);
+void AppendLiveWorkerProgress(RouteDiagnosticReport& report,
+    const wxString& stage, const wxString& detail);
 RouteDiagnosticReport CheckWindSourceSelection(bool useGrib,
     bool climatologySelected, bool climatologyProviderAvailable);
 RouteDiagnosticReport CheckForecastWindCoverage(

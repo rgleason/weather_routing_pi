@@ -8,6 +8,7 @@
 #pragma once
 
 #include <array>
+#include "RoutingEngineSettings.h"
 #include <wx/artprov.h>
 #include <wx/xrc/xmlres.h>
 #include <wx/intl.h>
@@ -463,7 +464,7 @@ protected:
   wxComboBox* m_cEnd;
   wxChoice* m_cRoutingEngine;
   wxChoice* m_cBasicRoutingMode;
-  std::array<wxCheckBox*, 6> m_cbAutoEngines{}, m_cbAllEngines{};
+  std::array<wxCheckBox*, weather_routing::kSequenceEngines.size()> m_cbAutoEngines{}, m_cbAllEngines{};
   wxStaticText* m_tRoutingEngineDescription;
   wxChoice* m_cEnginePreset;
   wxStaticText* m_tEnginePresetStatus;

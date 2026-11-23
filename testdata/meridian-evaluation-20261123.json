@@ -1,0 +1,1195 @@
+{
+  "schemaVersion": 1,
+  "generatedUTC": "2026-11-23T17:44:00.447619+00:00",
+  "scope": "GSHHG-only selected-method controls, not Auto portfolio timings; timings overlap other private tests/builds.",
+  "baselineVersions": {
+    "production": "1.43.0",
+    "development": "2.10.0"
+  },
+  "newVersions": {
+    "production": "1.44.0",
+    "development": "2.11.0"
+  },
+  "cases": [
+    {
+      "case": "farallon-pinole--06h",
+      "referenceMethod": "Quick",
+      "inputHashes": {
+        "forecast_sha256": "575b2a39c35171034d4067f154c5c5719fc8938f7ec91be2b2d348f6dae34a55",
+        "boat_sha256": "117392d4a310f1c677ad7ec310fabd00ea02007fd25cc1ba346ef669baacb0a0",
+        "polar_sha256": "7ad3cdd8b8a71116e70c0b3a62b3f937097000190fc499080b016b26252fbcf1",
+        "shoreline_sha256": "8d4d73897c82dd0e8df63f33e4dab9dd3aea7a26459b923bf404cb9299f1cf04",
+        "host_sha256": "756f57e5a0d542252ece9c9102eb46ef126a9615b2f0c8e05e852e682a3af33a"
+      },
+      "production": {
+        "before": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 2.164,
+          "validatedCandidates": 1,
+          "engine": "original",
+          "passageSeconds": 18856,
+          "distanceNm": 40.735745261135186,
+          "timedTrackSha256": "740acefd62196afeb36f8e4a05d5722a3fc483f86f5bf00354179aa417af09cb",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-production-before-farallon-pinole--06h/result.json"
+        },
+        "after": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 3.473,
+          "validatedCandidates": 1,
+          "engine": "original",
+          "passageSeconds": 18856,
+          "distanceNm": 40.735745261135186,
+          "timedTrackSha256": "740acefd62196afeb36f8e4a05d5722a3fc483f86f5bf00354179aa417af09cb",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-production-after-farallon-pinole--06h/result.json"
+        },
+        "meridian": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 2.652,
+          "validatedCandidates": 1,
+          "engine": "meridian",
+          "passageSeconds": 20455,
+          "distanceNm": 43.05323118691871,
+          "timedTrackSha256": "5516beca43d6a89c774ec4112115622fea36b49c43d5a6d8efbc048d62291047",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/meridian-v9-production-farallon-pinole--06h/result.json"
+        },
+        "sameTimedTrack": true
+      },
+      "development": {
+        "before": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 2.107,
+          "validatedCandidates": 1,
+          "engine": "original",
+          "passageSeconds": 18856,
+          "distanceNm": 40.735745261135186,
+          "timedTrackSha256": "740acefd62196afeb36f8e4a05d5722a3fc483f86f5bf00354179aa417af09cb",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-development-before-farallon-pinole--06h/result.json"
+        },
+        "after": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 2.215,
+          "validatedCandidates": 1,
+          "engine": "original",
+          "passageSeconds": 18856,
+          "distanceNm": 40.735745261135186,
+          "timedTrackSha256": "740acefd62196afeb36f8e4a05d5722a3fc483f86f5bf00354179aa417af09cb",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-development-after-farallon-pinole--06h/result.json"
+        },
+        "meridian": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 3.597,
+          "validatedCandidates": 1,
+          "engine": "meridian",
+          "passageSeconds": 20455,
+          "distanceNm": 43.05323118691871,
+          "timedTrackSha256": "5516beca43d6a89c774ec4112115622fea36b49c43d5a6d8efbc048d62291047",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/meridian-v9-development-farallon-pinole--06h/result.json"
+        }
+      },
+      "meridianPassageDeltaHours": 0.44416666666666665
+    },
+    {
+      "case": "farallon-pinole-+00h",
+      "referenceMethod": "Quick2",
+      "inputHashes": {
+        "forecast_sha256": "575b2a39c35171034d4067f154c5c5719fc8938f7ec91be2b2d348f6dae34a55",
+        "boat_sha256": "117392d4a310f1c677ad7ec310fabd00ea02007fd25cc1ba346ef669baacb0a0",
+        "polar_sha256": "7ad3cdd8b8a71116e70c0b3a62b3f937097000190fc499080b016b26252fbcf1",
+        "shoreline_sha256": "8d4d73897c82dd0e8df63f33e4dab9dd3aea7a26459b923bf404cb9299f1cf04",
+        "host_sha256": "756f57e5a0d542252ece9c9102eb46ef126a9615b2f0c8e05e852e682a3af33a"
+      },
+      "production": {
+        "before": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 6.349,
+          "validatedCandidates": 1,
+          "engine": "quick2-adaptive-v1",
+          "passageSeconds": 58437,
+          "distanceNm": 51.60017982215133,
+          "timedTrackSha256": "1ea915c60e0a1f4c60ec642802b36d7b5460b4d3c8d32a78f789d08ba12e45bd",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-production-before-farallon-pinole-+00h/result.json"
+        },
+        "after": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 5.681,
+          "validatedCandidates": 1,
+          "engine": "quick2-adaptive-v1",
+          "passageSeconds": 58437,
+          "distanceNm": 51.60017982215133,
+          "timedTrackSha256": "1ea915c60e0a1f4c60ec642802b36d7b5460b4d3c8d32a78f789d08ba12e45bd",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-production-after-farallon-pinole-+00h/result.json"
+        },
+        "meridian": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 3.075,
+          "validatedCandidates": 1,
+          "engine": "meridian",
+          "passageSeconds": 53137,
+          "distanceNm": 44.613742682220895,
+          "timedTrackSha256": "4a64fba49dc425c59b0b1609423b6a3db5b07cb985fd906506a702d60bfa2ba3",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/meridian-v9-production-farallon-pinole-+00h/result.json"
+        },
+        "sameTimedTrack": true
+      },
+      "development": {
+        "before": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 4.325,
+          "validatedCandidates": 1,
+          "engine": "quick2-adaptive-v1",
+          "passageSeconds": 58437,
+          "distanceNm": 51.60017982215133,
+          "timedTrackSha256": "1ea915c60e0a1f4c60ec642802b36d7b5460b4d3c8d32a78f789d08ba12e45bd",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-development-before-farallon-pinole-+00h/result.json"
+        },
+        "after": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 6.394,
+          "validatedCandidates": 1,
+          "engine": "quick2-adaptive-v1",
+          "passageSeconds": 58437,
+          "distanceNm": 51.60017982215133,
+          "timedTrackSha256": "1ea915c60e0a1f4c60ec642802b36d7b5460b4d3c8d32a78f789d08ba12e45bd",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-development-after-farallon-pinole-+00h/result.json"
+        },
+        "meridian": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 3.218,
+          "validatedCandidates": 1,
+          "engine": "meridian",
+          "passageSeconds": 53137,
+          "distanceNm": 44.613742682220895,
+          "timedTrackSha256": "4a64fba49dc425c59b0b1609423b6a3db5b07cb985fd906506a702d60bfa2ba3",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/meridian-v9-development-farallon-pinole-+00h/result.json"
+        }
+      },
+      "meridianPassageDeltaHours": -1.4722222222222223
+    },
+    {
+      "case": "farallon-pinole-+06h",
+      "referenceMethod": "Quick2",
+      "inputHashes": {
+        "forecast_sha256": "575b2a39c35171034d4067f154c5c5719fc8938f7ec91be2b2d348f6dae34a55",
+        "boat_sha256": "117392d4a310f1c677ad7ec310fabd00ea02007fd25cc1ba346ef669baacb0a0",
+        "polar_sha256": "7ad3cdd8b8a71116e70c0b3a62b3f937097000190fc499080b016b26252fbcf1",
+        "shoreline_sha256": "8d4d73897c82dd0e8df63f33e4dab9dd3aea7a26459b923bf404cb9299f1cf04",
+        "host_sha256": "756f57e5a0d542252ece9c9102eb46ef126a9615b2f0c8e05e852e682a3af33a"
+      },
+      "production": {
+        "before": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 4.376,
+          "validatedCandidates": 1,
+          "engine": "quick2-adaptive-v1",
+          "passageSeconds": 43905,
+          "distanceNm": 44.30901163668205,
+          "timedTrackSha256": "a58a4a4c684faa10d36aef20c5ab35e62584aec63fc78a77de444fab0ffa55bc",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-production-before-farallon-pinole-+06h/result.json"
+        },
+        "after": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 4.177,
+          "validatedCandidates": 1,
+          "engine": "quick2-adaptive-v1",
+          "passageSeconds": 43905,
+          "distanceNm": 44.30901163668205,
+          "timedTrackSha256": "a58a4a4c684faa10d36aef20c5ab35e62584aec63fc78a77de444fab0ffa55bc",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-production-after-farallon-pinole-+06h/result.json"
+        },
+        "meridian": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 2.898,
+          "validatedCandidates": 1,
+          "engine": "meridian",
+          "passageSeconds": 46023,
+          "distanceNm": 44.82937461556699,
+          "timedTrackSha256": "4165f4d2d4b9a580007fb60104ee65d808e7987c6636b21b5a90130838516404",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/meridian-v9-production-farallon-pinole-+06h/result.json"
+        },
+        "sameTimedTrack": true
+      },
+      "development": {
+        "before": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 5.195,
+          "validatedCandidates": 1,
+          "engine": "quick2-adaptive-v1",
+          "passageSeconds": 43905,
+          "distanceNm": 44.30901163668205,
+          "timedTrackSha256": "a58a4a4c684faa10d36aef20c5ab35e62584aec63fc78a77de444fab0ffa55bc",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-development-before-farallon-pinole-+06h/result.json"
+        },
+        "after": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 5.121,
+          "validatedCandidates": 1,
+          "engine": "quick2-adaptive-v1",
+          "passageSeconds": 43905,
+          "distanceNm": 44.30901163668205,
+          "timedTrackSha256": "a58a4a4c684faa10d36aef20c5ab35e62584aec63fc78a77de444fab0ffa55bc",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-development-after-farallon-pinole-+06h/result.json"
+        },
+        "meridian": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 2.959,
+          "validatedCandidates": 1,
+          "engine": "meridian",
+          "passageSeconds": 46023,
+          "distanceNm": 44.82937461556699,
+          "timedTrackSha256": "4165f4d2d4b9a580007fb60104ee65d808e7987c6636b21b5a90130838516404",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/meridian-v9-development-farallon-pinole-+06h/result.json"
+        }
+      },
+      "meridianPassageDeltaHours": 0.5883333333333334
+    },
+    {
+      "case": "hout-simonstown--06h",
+      "referenceMethod": "Quick",
+      "inputHashes": {
+        "forecast_sha256": "98269c0894b6200f662ffd975e559aeadbfff0ac6a4039b2337048d80d020057",
+        "boat_sha256": "117392d4a310f1c677ad7ec310fabd00ea02007fd25cc1ba346ef669baacb0a0",
+        "polar_sha256": "7ad3cdd8b8a71116e70c0b3a62b3f937097000190fc499080b016b26252fbcf1",
+        "shoreline_sha256": "8d4d73897c82dd0e8df63f33e4dab9dd3aea7a26459b923bf404cb9299f1cf04",
+        "host_sha256": "756f57e5a0d542252ece9c9102eb46ef126a9615b2f0c8e05e852e682a3af33a"
+      },
+      "production": {
+        "before": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 3.926,
+          "validatedCandidates": 1,
+          "engine": "original",
+          "passageSeconds": 29759,
+          "distanceNm": 40.36138637515344,
+          "timedTrackSha256": "323b827c55381bc67c4bdc3a8065aaa4685258c775104a239a54fcc0880ae493",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-production-before-hout-simonstown--06h/result.json"
+        },
+        "after": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 3.249,
+          "validatedCandidates": 1,
+          "engine": "original",
+          "passageSeconds": 29759,
+          "distanceNm": 40.36138637515344,
+          "timedTrackSha256": "323b827c55381bc67c4bdc3a8065aaa4685258c775104a239a54fcc0880ae493",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-production-after-hout-simonstown--06h/result.json"
+        },
+        "meridian": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 2.827,
+          "validatedCandidates": 1,
+          "engine": "meridian",
+          "passageSeconds": 34728,
+          "distanceNm": 48.427297329922084,
+          "timedTrackSha256": "45b592a3697068da5b4c5f10017312df9b09a4de3f1904d2ef5121a0fb161431",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/meridian-v9-production-hout-simonstown--06h/result.json"
+        },
+        "sameTimedTrack": true
+      },
+      "development": {
+        "before": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 6.708,
+          "validatedCandidates": 1,
+          "engine": "original",
+          "passageSeconds": 29759,
+          "distanceNm": 40.36138637515344,
+          "timedTrackSha256": "323b827c55381bc67c4bdc3a8065aaa4685258c775104a239a54fcc0880ae493",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-development-before-hout-simonstown--06h/result.json"
+        },
+        "after": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 7.115,
+          "validatedCandidates": 1,
+          "engine": "original",
+          "passageSeconds": 29759,
+          "distanceNm": 40.36138637515344,
+          "timedTrackSha256": "323b827c55381bc67c4bdc3a8065aaa4685258c775104a239a54fcc0880ae493",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-development-after-hout-simonstown--06h/result.json"
+        },
+        "meridian": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 2.766,
+          "validatedCandidates": 1,
+          "engine": "meridian",
+          "passageSeconds": 34728,
+          "distanceNm": 48.427297329922084,
+          "timedTrackSha256": "45b592a3697068da5b4c5f10017312df9b09a4de3f1904d2ef5121a0fb161431",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/meridian-v9-development-hout-simonstown--06h/result.json"
+        }
+      },
+      "meridianPassageDeltaHours": 1.3802777777777777
+    },
+    {
+      "case": "hout-simonstown-+00h",
+      "referenceMethod": "Quick",
+      "inputHashes": {
+        "forecast_sha256": "98269c0894b6200f662ffd975e559aeadbfff0ac6a4039b2337048d80d020057",
+        "boat_sha256": "117392d4a310f1c677ad7ec310fabd00ea02007fd25cc1ba346ef669baacb0a0",
+        "polar_sha256": "7ad3cdd8b8a71116e70c0b3a62b3f937097000190fc499080b016b26252fbcf1",
+        "shoreline_sha256": "8d4d73897c82dd0e8df63f33e4dab9dd3aea7a26459b923bf404cb9299f1cf04",
+        "host_sha256": "756f57e5a0d542252ece9c9102eb46ef126a9615b2f0c8e05e852e682a3af33a"
+      },
+      "production": {
+        "before": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 2.308,
+          "validatedCandidates": 1,
+          "engine": "original",
+          "passageSeconds": 18925,
+          "distanceNm": 38.6105392196164,
+          "timedTrackSha256": "dde1a65377ab762d3fe6e6d8d0d2ddc317f4ebb95fb6e03d41ee6f384531f120",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-production-before-hout-simonstown-+00h/result.json"
+        },
+        "after": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 2.241,
+          "validatedCandidates": 1,
+          "engine": "original",
+          "passageSeconds": 18925,
+          "distanceNm": 38.6105392196164,
+          "timedTrackSha256": "dde1a65377ab762d3fe6e6d8d0d2ddc317f4ebb95fb6e03d41ee6f384531f120",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-production-after-hout-simonstown-+00h/result.json"
+        },
+        "meridian": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 2.601,
+          "validatedCandidates": 1,
+          "engine": "meridian",
+          "passageSeconds": 21862,
+          "distanceNm": 45.67024078636769,
+          "timedTrackSha256": "e59dab4a9fc0ea1449e66e89d137d05104d8032a759db0ef2056dab58ea1deaa",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/meridian-v9-production-hout-simonstown-+00h/result.json"
+        },
+        "sameTimedTrack": true
+      },
+      "development": {
+        "before": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 4.475,
+          "validatedCandidates": 1,
+          "engine": "original",
+          "passageSeconds": 18925,
+          "distanceNm": 38.6105392196164,
+          "timedTrackSha256": "dde1a65377ab762d3fe6e6d8d0d2ddc317f4ebb95fb6e03d41ee6f384531f120",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-development-before-hout-simonstown-+00h/result.json"
+        },
+        "after": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 4.036,
+          "validatedCandidates": 1,
+          "engine": "original",
+          "passageSeconds": 18925,
+          "distanceNm": 38.6105392196164,
+          "timedTrackSha256": "dde1a65377ab762d3fe6e6d8d0d2ddc317f4ebb95fb6e03d41ee6f384531f120",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-development-after-hout-simonstown-+00h/result.json"
+        },
+        "meridian": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 2.638,
+          "validatedCandidates": 1,
+          "engine": "meridian",
+          "passageSeconds": 21862,
+          "distanceNm": 45.67024078636769,
+          "timedTrackSha256": "e59dab4a9fc0ea1449e66e89d137d05104d8032a759db0ef2056dab58ea1deaa",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/meridian-v9-development-hout-simonstown-+00h/result.json"
+        }
+      },
+      "meridianPassageDeltaHours": 0.8158333333333333
+    },
+    {
+      "case": "hout-simonstown-+06h",
+      "referenceMethod": "Quick",
+      "inputHashes": {
+        "forecast_sha256": "98269c0894b6200f662ffd975e559aeadbfff0ac6a4039b2337048d80d020057",
+        "boat_sha256": "117392d4a310f1c677ad7ec310fabd00ea02007fd25cc1ba346ef669baacb0a0",
+        "polar_sha256": "7ad3cdd8b8a71116e70c0b3a62b3f937097000190fc499080b016b26252fbcf1",
+        "shoreline_sha256": "8d4d73897c82dd0e8df63f33e4dab9dd3aea7a26459b923bf404cb9299f1cf04",
+        "host_sha256": "756f57e5a0d542252ece9c9102eb46ef126a9615b2f0c8e05e852e682a3af33a"
+      },
+      "production": {
+        "before": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 2.332,
+          "validatedCandidates": 1,
+          "engine": "original",
+          "passageSeconds": 17147,
+          "distanceNm": 37.6871273606852,
+          "timedTrackSha256": "e7c8e133edc1e6abdeb3f80ffac6058aa1d940abc46b8d7147e0cdfa0f8ffb9c",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-production-before-hout-simonstown-+06h/result.json"
+        },
+        "after": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 2.098,
+          "validatedCandidates": 1,
+          "engine": "original",
+          "passageSeconds": 17147,
+          "distanceNm": 37.6871273606852,
+          "timedTrackSha256": "e7c8e133edc1e6abdeb3f80ffac6058aa1d940abc46b8d7147e0cdfa0f8ffb9c",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-production-after-hout-simonstown-+06h/result.json"
+        },
+        "meridian": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 2.413,
+          "validatedCandidates": 1,
+          "engine": "meridian",
+          "passageSeconds": 21358,
+          "distanceNm": 46.186052177906696,
+          "timedTrackSha256": "437a8c628beec54be99941b3b3da656968424ff9531ce473a373815b8a2c0592",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/meridian-v9-production-hout-simonstown-+06h/result.json"
+        },
+        "sameTimedTrack": true
+      },
+      "development": {
+        "before": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 4.118,
+          "validatedCandidates": 1,
+          "engine": "original",
+          "passageSeconds": 17147,
+          "distanceNm": 37.6871273606852,
+          "timedTrackSha256": "e7c8e133edc1e6abdeb3f80ffac6058aa1d940abc46b8d7147e0cdfa0f8ffb9c",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-development-before-hout-simonstown-+06h/result.json"
+        },
+        "after": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 4.077,
+          "validatedCandidates": 1,
+          "engine": "original",
+          "passageSeconds": 17147,
+          "distanceNm": 37.6871273606852,
+          "timedTrackSha256": "e7c8e133edc1e6abdeb3f80ffac6058aa1d940abc46b8d7147e0cdfa0f8ffb9c",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-development-after-hout-simonstown-+06h/result.json"
+        },
+        "meridian": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 2.142,
+          "validatedCandidates": 1,
+          "engine": "meridian",
+          "passageSeconds": 21358,
+          "distanceNm": 46.186052177906696,
+          "timedTrackSha256": "437a8c628beec54be99941b3b3da656968424ff9531ce473a373815b8a2c0592",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/meridian-v9-development-hout-simonstown-+06h/result.json"
+        }
+      },
+      "meridianPassageDeltaHours": 1.1697222222222223
+    },
+    {
+      "case": "conwy-leenan--06h",
+      "referenceMethod": "Quick2",
+      "inputHashes": {
+        "forecast_sha256": "7e000be8a1a74f6c390da2ea2aae0ee4e0483defe22e9b338f3aeff0035f643f",
+        "boat_sha256": "14efdfdcc6ca9fd34ddecafa1f532251cda29b5dea4bebf812dc1f42e28db137",
+        "polar_sha256": "4fafd83d6d62a2b5c21e1c13d7e8cf9e11afb0136575cbb6e4c96592821c0d1f",
+        "shoreline_sha256": "8d4d73897c82dd0e8df63f33e4dab9dd3aea7a26459b923bf404cb9299f1cf04",
+        "host_sha256": "756f57e5a0d542252ece9c9102eb46ef126a9615b2f0c8e05e852e682a3af33a"
+      },
+      "production": {
+        "before": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 6.321,
+          "validatedCandidates": 1,
+          "engine": "quick2-adaptive-v1",
+          "passageSeconds": 147864,
+          "distanceNm": 204.09846282313092,
+          "timedTrackSha256": "effad4b5c39fa6f67ad57c45cbc70b6dec9b54aca585588edf1e498b0eab9e28",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-production-before-conwy-leenan--06h/result.json"
+        },
+        "after": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 5.416,
+          "validatedCandidates": 1,
+          "engine": "quick2-adaptive-v1",
+          "passageSeconds": 147864,
+          "distanceNm": 204.09846282313092,
+          "timedTrackSha256": "effad4b5c39fa6f67ad57c45cbc70b6dec9b54aca585588edf1e498b0eab9e28",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-production-after-conwy-leenan--06h/result.json"
+        },
+        "meridian": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 5.127,
+          "validatedCandidates": 1,
+          "engine": "meridian",
+          "passageSeconds": 154728,
+          "distanceNm": 207.1594275106015,
+          "timedTrackSha256": "413d0d826d79d9218e3171bf4fc67a3fb2e3f8f0d8caf90a2f402979bbf320f5",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/meridian-v9-production-conwy-leenan--06h/result.json"
+        },
+        "sameTimedTrack": true
+      },
+      "development": {
+        "before": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 14.15,
+          "validatedCandidates": 1,
+          "engine": "quick2-adaptive-v1",
+          "passageSeconds": 147864,
+          "distanceNm": 204.09846282313092,
+          "timedTrackSha256": "effad4b5c39fa6f67ad57c45cbc70b6dec9b54aca585588edf1e498b0eab9e28",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-development-before-conwy-leenan--06h/result.json"
+        },
+        "after": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 9.117,
+          "validatedCandidates": 1,
+          "engine": "quick2-adaptive-v1",
+          "passageSeconds": 147864,
+          "distanceNm": 204.09846282313092,
+          "timedTrackSha256": "effad4b5c39fa6f67ad57c45cbc70b6dec9b54aca585588edf1e498b0eab9e28",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-development-after-conwy-leenan--06h/result.json"
+        },
+        "meridian": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 5.22,
+          "validatedCandidates": 1,
+          "engine": "meridian",
+          "passageSeconds": 154728,
+          "distanceNm": 207.1594275106015,
+          "timedTrackSha256": "413d0d826d79d9218e3171bf4fc67a3fb2e3f8f0d8caf90a2f402979bbf320f5",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/meridian-v9-development-conwy-leenan--06h/result.json"
+        }
+      },
+      "meridianPassageDeltaHours": 1.9066666666666667
+    },
+    {
+      "case": "conwy-leenan-+00h",
+      "referenceMethod": "Quick2",
+      "inputHashes": {
+        "forecast_sha256": "7e000be8a1a74f6c390da2ea2aae0ee4e0483defe22e9b338f3aeff0035f643f",
+        "boat_sha256": "14efdfdcc6ca9fd34ddecafa1f532251cda29b5dea4bebf812dc1f42e28db137",
+        "polar_sha256": "4fafd83d6d62a2b5c21e1c13d7e8cf9e11afb0136575cbb6e4c96592821c0d1f",
+        "shoreline_sha256": "8d4d73897c82dd0e8df63f33e4dab9dd3aea7a26459b923bf404cb9299f1cf04",
+        "host_sha256": "756f57e5a0d542252ece9c9102eb46ef126a9615b2f0c8e05e852e682a3af33a"
+      },
+      "production": {
+        "before": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 6.243,
+          "validatedCandidates": 1,
+          "engine": "quick2-adaptive-v1",
+          "passageSeconds": 146373,
+          "distanceNm": 202.65390753123688,
+          "timedTrackSha256": "d5b0b491a7c33657da575406c5fa892c34cb587c8e8925157131c42441661e83",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-production-before-conwy-leenan-+00h/result.json"
+        },
+        "after": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 5.484,
+          "validatedCandidates": 1,
+          "engine": "quick2-adaptive-v1",
+          "passageSeconds": 143886,
+          "distanceNm": 200.46692813349952,
+          "timedTrackSha256": "bfb875934576d7d34324b63f012492f9b90771814b6c440e9df86fb69f18b24e",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-production-after-conwy-leenan-+00h/result.json"
+        },
+        "meridian": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 7.604,
+          "validatedCandidates": 1,
+          "engine": "meridian",
+          "passageSeconds": 150919,
+          "distanceNm": 205.89788193025373,
+          "timedTrackSha256": "a0f52417fe167ddecc88a232236dd06272dced2b80f085a2b63c24a1f7845cd0",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/meridian-v9-production-conwy-leenan-+00h/result.json"
+        },
+        "sameTimedTrack": false
+      },
+      "development": {
+        "before": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 12.791,
+          "validatedCandidates": 1,
+          "engine": "quick2-adaptive-v1",
+          "passageSeconds": 146373,
+          "distanceNm": 202.65390753123688,
+          "timedTrackSha256": "d5b0b491a7c33657da575406c5fa892c34cb587c8e8925157131c42441661e83",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-development-before-conwy-leenan-+00h/result.json"
+        },
+        "after": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 10.611,
+          "validatedCandidates": 1,
+          "engine": "quick2-adaptive-v1",
+          "passageSeconds": 143886,
+          "distanceNm": 200.46692813349952,
+          "timedTrackSha256": "bfb875934576d7d34324b63f012492f9b90771814b6c440e9df86fb69f18b24e",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-development-after-conwy-leenan-+00h/result.json"
+        },
+        "meridian": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 7.852,
+          "validatedCandidates": 1,
+          "engine": "meridian",
+          "passageSeconds": 150919,
+          "distanceNm": 205.89788193025373,
+          "timedTrackSha256": "a0f52417fe167ddecc88a232236dd06272dced2b80f085a2b63c24a1f7845cd0",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/meridian-v9-development-conwy-leenan-+00h/result.json"
+        }
+      },
+      "meridianPassageDeltaHours": 1.9536111111111112
+    },
+    {
+      "case": "conwy-leenan-+06h",
+      "referenceMethod": "Quick2",
+      "inputHashes": {
+        "forecast_sha256": "7e000be8a1a74f6c390da2ea2aae0ee4e0483defe22e9b338f3aeff0035f643f",
+        "boat_sha256": "14efdfdcc6ca9fd34ddecafa1f532251cda29b5dea4bebf812dc1f42e28db137",
+        "polar_sha256": "4fafd83d6d62a2b5c21e1c13d7e8cf9e11afb0136575cbb6e4c96592821c0d1f",
+        "shoreline_sha256": "8d4d73897c82dd0e8df63f33e4dab9dd3aea7a26459b923bf404cb9299f1cf04",
+        "host_sha256": "756f57e5a0d542252ece9c9102eb46ef126a9615b2f0c8e05e852e682a3af33a"
+      },
+      "production": {
+        "before": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 13.224,
+          "validatedCandidates": 1,
+          "engine": "quick2-adaptive-v1",
+          "passageSeconds": 142735,
+          "distanceNm": 196.10817915642969,
+          "timedTrackSha256": "437f488e7d6a47fac0da67be42ce99aca30cdb98904976163f5f633e29a414cc",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-production-before-conwy-leenan-+06h/result.json"
+        },
+        "after": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 12.768,
+          "validatedCandidates": 1,
+          "engine": "quick2-adaptive-v1",
+          "passageSeconds": 146443,
+          "distanceNm": 201.2212308570894,
+          "timedTrackSha256": "04233d6f93588d4e6e4bf2b64467dff353088457c4b7917b5706dd9be252dbd3",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-production-after-conwy-leenan-+06h/result.json"
+        },
+        "meridian": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 7.844,
+          "validatedCandidates": 1,
+          "engine": "meridian",
+          "passageSeconds": 151145,
+          "distanceNm": 204.9317980264082,
+          "timedTrackSha256": "378a2dec0864ad1b0bcc2f6992d5adf9d124e7a70883f6b69f6f3d125560f1d1",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/meridian-v9-production-conwy-leenan-+06h/result.json"
+        },
+        "sameTimedTrack": false
+      },
+      "development": {
+        "before": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 14.437,
+          "validatedCandidates": 1,
+          "engine": "quick2-adaptive-v1",
+          "passageSeconds": 142735,
+          "distanceNm": 196.10817915642969,
+          "timedTrackSha256": "437f488e7d6a47fac0da67be42ce99aca30cdb98904976163f5f633e29a414cc",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-development-before-conwy-leenan-+06h/result.json"
+        },
+        "after": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 13.854,
+          "validatedCandidates": 1,
+          "engine": "quick2-adaptive-v1",
+          "passageSeconds": 146443,
+          "distanceNm": 201.2212308570894,
+          "timedTrackSha256": "04233d6f93588d4e6e4bf2b64467dff353088457c4b7917b5706dd9be252dbd3",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-development-after-conwy-leenan-+06h/result.json"
+        },
+        "meridian": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 7.882,
+          "validatedCandidates": 1,
+          "engine": "meridian",
+          "passageSeconds": 151145,
+          "distanceNm": 204.9317980264082,
+          "timedTrackSha256": "378a2dec0864ad1b0bcc2f6992d5adf9d124e7a70883f6b69f6f3d125560f1d1",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/meridian-v9-development-conwy-leenan-+06h/result.json"
+        }
+      },
+      "meridianPassageDeltaHours": 1.306111111111111
+    },
+    {
+      "case": "hanalei-nuku-+00h",
+      "referenceMethod": "Quick2",
+      "inputHashes": {
+        "forecast_sha256": "bd3027183bec0f86e54d83e8980033bec96bd90cba948a2e5087e26cbccf4d41",
+        "boat_sha256": "117392d4a310f1c677ad7ec310fabd00ea02007fd25cc1ba346ef669baacb0a0",
+        "polar_sha256": "7ad3cdd8b8a71116e70c0b3a62b3f937097000190fc499080b016b26252fbcf1",
+        "shoreline_sha256": "8d4d73897c82dd0e8df63f33e4dab9dd3aea7a26459b923bf404cb9299f1cf04",
+        "host_sha256": "756f57e5a0d542252ece9c9102eb46ef126a9615b2f0c8e05e852e682a3af33a"
+      },
+      "production": {
+        "before": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 44.519,
+          "validatedCandidates": 1,
+          "engine": "quick2-adaptive-v1",
+          "passageSeconds": 1200628,
+          "distanceNm": 2335.5302626680036,
+          "timedTrackSha256": "09c954722ee9bb18d3e0eb61181368fd2165d8f2900f7a4e298ca833f09739b5",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-production-before-hanalei-nuku-+00h/result.json"
+        },
+        "after": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 29.967,
+          "validatedCandidates": 1,
+          "engine": "quick2-adaptive-v1",
+          "passageSeconds": 1201508,
+          "distanceNm": 2342.207323301961,
+          "timedTrackSha256": "3bb7f617541ab7954e11bb864e92f2e8faa48c3147f767d456f3f77fb33779f9",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-production-after-hanalei-nuku-+00h/result.json"
+        },
+        "meridian": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 15.525,
+          "validatedCandidates": 1,
+          "engine": "meridian",
+          "passageSeconds": 1219817,
+          "distanceNm": 2296.8967087081132,
+          "timedTrackSha256": "9c39b3577da1beadb483aa15609773c1b7caf8810b3d9764d430eb4b75ad1404",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/meridian-v9-production-hanalei-nuku-+00h/result.json"
+        },
+        "sameTimedTrack": false
+      },
+      "development": {
+        "before": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 24.331,
+          "validatedCandidates": 1,
+          "engine": "quick2-adaptive-v1",
+          "passageSeconds": 1200628,
+          "distanceNm": 2335.5302626680036,
+          "timedTrackSha256": "09c954722ee9bb18d3e0eb61181368fd2165d8f2900f7a4e298ca833f09739b5",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-development-before-hanalei-nuku-+00h/result.json"
+        },
+        "after": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 18.957,
+          "validatedCandidates": 1,
+          "engine": "quick2-adaptive-v1",
+          "passageSeconds": 1201508,
+          "distanceNm": 2342.207323301961,
+          "timedTrackSha256": "3bb7f617541ab7954e11bb864e92f2e8faa48c3147f767d456f3f77fb33779f9",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-development-after-hanalei-nuku-+00h/result.json"
+        },
+        "meridian": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 15.537,
+          "validatedCandidates": 1,
+          "engine": "meridian",
+          "passageSeconds": 1219817,
+          "distanceNm": 2296.8967087081132,
+          "timedTrackSha256": "9c39b3577da1beadb483aa15609773c1b7caf8810b3d9764d430eb4b75ad1404",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/meridian-v9-development-hanalei-nuku-+00h/result.json"
+        }
+      },
+      "meridianPassageDeltaHours": 5.085833333333333
+    },
+    {
+      "case": "hanalei-nuku-+12h",
+      "referenceMethod": "Standard",
+      "inputHashes": {
+        "forecast_sha256": "bd3027183bec0f86e54d83e8980033bec96bd90cba948a2e5087e26cbccf4d41",
+        "boat_sha256": "117392d4a310f1c677ad7ec310fabd00ea02007fd25cc1ba346ef669baacb0a0",
+        "polar_sha256": "7ad3cdd8b8a71116e70c0b3a62b3f937097000190fc499080b016b26252fbcf1",
+        "shoreline_sha256": "8d4d73897c82dd0e8df63f33e4dab9dd3aea7a26459b923bf404cb9299f1cf04",
+        "host_sha256": "756f57e5a0d542252ece9c9102eb46ef126a9615b2f0c8e05e852e682a3af33a"
+      },
+      "production": {
+        "before": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 176.26,
+          "validatedCandidates": 1,
+          "engine": "quick",
+          "passageSeconds": 1289621,
+          "distanceNm": 2363.776278545257,
+          "timedTrackSha256": "7ec7e281a9b26023ac08586f3719b4ae85e27983d73dbc54944eb5342ffbc1cd",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-production-before-hanalei-nuku-+12h/result.json"
+        },
+        "after": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 117.608,
+          "validatedCandidates": 1,
+          "engine": "quick",
+          "passageSeconds": 1289621,
+          "distanceNm": 2363.776278545257,
+          "timedTrackSha256": "7ec7e281a9b26023ac08586f3719b4ae85e27983d73dbc54944eb5342ffbc1cd",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-production-after-hanalei-nuku-+12h/result.json"
+        },
+        "meridian": {
+          "status": "failed",
+          "failureReason": "Usable wind data are required",
+          "calculationSeconds": 98.213,
+          "validatedCandidates": 0,
+          "engine": null,
+          "passageSeconds": null,
+          "distanceNm": null,
+          "timedTrackSha256": null,
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/meridian-v9-production-hanalei-nuku-+12h/result.json"
+        },
+        "sameTimedTrack": true
+      },
+      "development": {
+        "before": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 179.291,
+          "validatedCandidates": 1,
+          "engine": "quick",
+          "passageSeconds": 1289621,
+          "distanceNm": 2363.776278545257,
+          "timedTrackSha256": "7ec7e281a9b26023ac08586f3719b4ae85e27983d73dbc54944eb5342ffbc1cd",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-development-before-hanalei-nuku-+12h/result.json"
+        },
+        "after": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 128.241,
+          "validatedCandidates": 1,
+          "engine": "quick",
+          "passageSeconds": 1289621,
+          "distanceNm": 2363.776278545257,
+          "timedTrackSha256": "7ec7e281a9b26023ac08586f3719b4ae85e27983d73dbc54944eb5342ffbc1cd",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-development-after-hanalei-nuku-+12h/result.json"
+        },
+        "meridian": {
+          "status": "failed",
+          "failureReason": "Usable wind data are required",
+          "calculationSeconds": 68.824,
+          "validatedCandidates": 0,
+          "engine": null,
+          "passageSeconds": null,
+          "distanceNm": null,
+          "timedTrackSha256": null,
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/meridian-v9-development-hanalei-nuku-+12h/result.json"
+        }
+      },
+      "meridianPassageDeltaHours": null
+    },
+    {
+      "case": "lizard-provincetown",
+      "referenceMethod": "Quick2",
+      "inputHashes": {
+        "forecast_sha256": "4e64b5c70a0841d76de64edc0afac84e2e365dfb6a5bac4d702daca2bd995de0",
+        "boat_sha256": "ef544fa3df31fe4b37be9221f1c5e5698efb96c1c368beb0d7b4f27d8681b49e",
+        "polar_sha256": "4fafd83d6d62a2b5c21e1c13d7e8cf9e11afb0136575cbb6e4c96592821c0d1f",
+        "shoreline_sha256": "8d4d73897c82dd0e8df63f33e4dab9dd3aea7a26459b923bf404cb9299f1cf04",
+        "host_sha256": "756f57e5a0d542252ece9c9102eb46ef126a9615b2f0c8e05e852e682a3af33a"
+      },
+      "production": {
+        "before": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 93.893,
+          "validatedCandidates": 1,
+          "engine": "quick2-adaptive-v1",
+          "passageSeconds": 2174047,
+          "distanceNm": 3089.1064252914416,
+          "timedTrackSha256": "5544015528d944f345e1925ef79d3bf95c47b0043c3bea8e8e6e52ebf4c3ce9e",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-production-before-lizard-provincetown/result.json"
+        },
+        "after": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 73.055,
+          "validatedCandidates": 1,
+          "engine": "quick2-adaptive-v1",
+          "passageSeconds": 2176742,
+          "distanceNm": 3109.6706432635465,
+          "timedTrackSha256": "4d59f2d9383a8f82245ba634b6be8bff0867c48f4ed428d5f0cce686e4ea1266",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-production-after-lizard-provincetown/result.json"
+        },
+        "meridian": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 37.127,
+          "validatedCandidates": 1,
+          "engine": "meridian",
+          "passageSeconds": 2180223,
+          "distanceNm": 3106.232819339497,
+          "timedTrackSha256": "511edc74246f5ae2c2e84b2dd6347c9941a0209a27a931404fdd12b008bb94a5",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/meridian-v9-production-lizard-provincetown/result.json"
+        },
+        "sameTimedTrack": false
+      },
+      "development": {
+        "before": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 116.041,
+          "validatedCandidates": 1,
+          "engine": "quick2-adaptive-v1",
+          "passageSeconds": 2179515,
+          "distanceNm": 3107.311147800972,
+          "timedTrackSha256": "a96a2bda57e236dad1e1ecd4df1e79124093737aaeee670f574630609b6b4fd4",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-development-before-lizard-provincetown/result.json"
+        },
+        "after": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 77.034,
+          "validatedCandidates": 1,
+          "engine": "quick2-adaptive-v1",
+          "passageSeconds": 2178449,
+          "distanceNm": 3105.1363908021963,
+          "timedTrackSha256": "07fc9f50b62d26bc8a572d3006340f0cc9f7f247881ca48651f4d1b96d96bfb8",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-development-after-lizard-provincetown/result.json"
+        },
+        "meridian": {
+          "status": "complete",
+          "failureReason": null,
+          "calculationSeconds": 53.548,
+          "validatedCandidates": 1,
+          "engine": "meridian",
+          "passageSeconds": 2180527,
+          "distanceNm": 3112.4845713462905,
+          "timedTrackSha256": "e60c8a965c453c3aa5b925e0a1dc1407828e452b4c6c04cce5c4d03132e7d05d",
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/meridian-v9-development-lizard-provincetown/result.json"
+        }
+      },
+      "meridianPassageDeltaHours": 0.9669444444444445
+    },
+    {
+      "case": "hanalei-nuku-+24h",
+      "referenceMethod": "Quick2",
+      "inputHashes": {
+        "forecast_sha256": "bd3027183bec0f86e54d83e8980033bec96bd90cba948a2e5087e26cbccf4d41",
+        "boat_sha256": "117392d4a310f1c677ad7ec310fabd00ea02007fd25cc1ba346ef669baacb0a0",
+        "polar_sha256": "7ad3cdd8b8a71116e70c0b3a62b3f937097000190fc499080b016b26252fbcf1",
+        "shoreline_sha256": "8d4d73897c82dd0e8df63f33e4dab9dd3aea7a26459b923bf404cb9299f1cf04",
+        "host_sha256": "756f57e5a0d542252ece9c9102eb46ef126a9615b2f0c8e05e852e682a3af33a"
+      },
+      "production": {
+        "before": {
+          "status": "failed",
+          "failureReason": "Calculation allowance or memory limit reached",
+          "calculationSeconds": 52.552,
+          "validatedCandidates": 0,
+          "engine": null,
+          "passageSeconds": null,
+          "distanceNm": null,
+          "timedTrackSha256": null,
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-production-before-hanalei-nuku-+24h/result.json"
+        },
+        "after": {
+          "status": "failed",
+          "failureReason": "Search allowance reached",
+          "calculationSeconds": 49.486,
+          "validatedCandidates": 0,
+          "engine": null,
+          "passageSeconds": null,
+          "distanceNm": null,
+          "timedTrackSha256": null,
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-production-after-hanalei-nuku-+24h/result.json"
+        },
+        "meridian": {
+          "status": "failed",
+          "failureReason": "Usable wind data are required",
+          "calculationSeconds": 48.801,
+          "validatedCandidates": 0,
+          "engine": null,
+          "passageSeconds": null,
+          "distanceNm": null,
+          "timedTrackSha256": null,
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/meridian-v9-production-hanalei-nuku-+24h/result.json"
+        },
+        "sameTimedTrack": true
+      },
+      "development": {
+        "before": {
+          "status": "failed",
+          "failureReason": "Search allowance reached",
+          "calculationSeconds": 34.506,
+          "validatedCandidates": 0,
+          "engine": null,
+          "passageSeconds": null,
+          "distanceNm": null,
+          "timedTrackSha256": null,
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-development-before-hanalei-nuku-+24h/result.json"
+        },
+        "after": {
+          "status": "failed",
+          "failureReason": "Search allowance reached",
+          "calculationSeconds": 36.774,
+          "validatedCandidates": 0,
+          "engine": null,
+          "passageSeconds": null,
+          "distanceNm": null,
+          "timedTrackSha256": null,
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/shared-development-after-hanalei-nuku-+24h/result.json"
+        },
+        "meridian": {
+          "status": "failed",
+          "failureReason": "Usable wind data are required",
+          "calculationSeconds": 47.257,
+          "validatedCandidates": 0,
+          "engine": null,
+          "passageSeconds": null,
+          "distanceNm": null,
+          "timedTrackSha256": null,
+          "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/meridian-v9-development-hanalei-nuku-+24h/result.json"
+        }
+      },
+      "meridianPassageDeltaHours": null
+    }
+  ],
+  "fullChartAtlantic": {
+    "status": "failed",
+    "failureReason": "Search allowance reached",
+    "calculationSeconds": 299.553,
+    "validatedCandidates": 0,
+    "engine": null,
+    "passageSeconds": null,
+    "distanceNm": null,
+    "timedTrackSha256": null,
+    "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/final-meridian-chart-lizard-provincetown/result.json"
+  },
+  "stockHost": [
+    {
+      "branch": "production",
+      "name": "144-stock-quick2-gshhg",
+      "status": "complete",
+      "validated_candidates": 1,
+      "failure_reason": null,
+      "result": "workspace/output/routing-143-2100-coastal-20261123/runs/144-stock-quick2-gshhg/result.json"
+    },
+    {
+      "branch": "production",
+      "name": "144-stock-meridian-gshhg",
+      "status": "complete",
+      "validated_candidates": 1,
+      "failure_reason": null,
+      "result": "workspace/output/routing-143-2100-coastal-20261123/runs/144-stock-meridian-gshhg/result.json"
+    },
+    {
+      "branch": "production",
+      "name": "144-stock-meridian-chart-unavailable",
+      "status": "failed",
+      "validated_candidates": 0,
+      "failure_reason": "Minimum charted depth requires an OpenCPN build with the chart-safety service. This host provides shoreline checks only; it cannot enforce a charted depth limit.",
+      "result": "workspace/output/routing-143-2100-coastal-20261123/runs/144-stock-meridian-chart-unavailable/result.json"
+    },
+    {
+      "branch": "development",
+      "name": "2110-stock-quick2-gshhg",
+      "status": "complete",
+      "validated_candidates": 1,
+      "failure_reason": null,
+      "result": "workspace/output/routing-143-2100-coastal-20261123/runs/2110-stock-quick2-gshhg/result.json"
+    },
+    {
+      "branch": "development",
+      "name": "2110-stock-meridian-gshhg",
+      "status": "complete",
+      "validated_candidates": 1,
+      "failure_reason": null,
+      "result": "workspace/output/routing-143-2100-coastal-20261123/runs/2110-stock-meridian-gshhg/result.json"
+    },
+    {
+      "branch": "development",
+      "name": "2110-stock-meridian-chart-unavailable",
+      "status": "failed",
+      "validated_candidates": 0,
+      "failure_reason": "Minimum charted depth requires an OpenCPN build with the chart-safety service. This host provides shoreline checks only; it cannot enforce a charted depth limit.",
+      "result": "workspace/output/routing-143-2100-coastal-20261123/runs/2110-stock-meridian-chart-unavailable/result.json"
+    }
+  ],
+  "backendChartControls": [
+    {
+      "status": "complete",
+      "failureReason": null,
+      "calculationSeconds": 3.638,
+      "validatedCandidates": 1,
+      "engine": "meridian",
+      "passageSeconds": 54262,
+      "distanceNm": 44.67371179880942,
+      "timedTrackSha256": "01ec277b42456e5b3be9f548aafd6d4b70be553e031a2522440e30252fd85813",
+      "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/final-meridian-incorporated-grib/result.json"
+    },
+    {
+      "status": "complete",
+      "failureReason": null,
+      "calculationSeconds": 6.335,
+      "validatedCandidates": 1,
+      "engine": "meridian",
+      "passageSeconds": 7580,
+      "distanceNm": 9.792218425257976,
+      "timedTrackSha256": "ec4457070bc6f2d1f5f71b8dce2072e4c0dcdeee13d1621cbda643cc258a0660",
+      "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/final-meridian-chart-offshore-production/result.json"
+    },
+    {
+      "status": "complete",
+      "failureReason": null,
+      "calculationSeconds": 7.12,
+      "validatedCandidates": 1,
+      "engine": "meridian",
+      "passageSeconds": 7580,
+      "distanceNm": 9.792218425257976,
+      "timedTrackSha256": "ec4457070bc6f2d1f5f71b8dce2072e4c0dcdeee13d1621cbda643cc258a0660",
+      "resultArtifact": "output/routing-143-2100-coastal-20261123/runs/final-meridian-chart-offshore-development/result.json"
+    }
+  ],
+  "fullTestSuites": {
+    "production": 730,
+    "development": 819,
+    "disabledBenchmarksPerSuite": 1
+  }
+}

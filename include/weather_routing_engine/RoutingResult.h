@@ -50,6 +50,8 @@ struct RoutingCandidateResult {
   wxString searchPreset;
   int searchPresetRevision{0};
   double searchTimeStepSeconds{0};
+  double configuredTimeStepSeconds{0};
+  bool timeStepManaged{false};
   double searchHeadingStepDegrees{0};
   int searchMemoryBudgetMiB{0};
   int searchMaximumAngleDegrees{0};
