@@ -3,6 +3,7 @@
 #include "engine/meridian/Engine.h"
 #include "engine/meridian/StepPolicy.h"
 #include "engine/meridian/GeographyGuide.h"
+#include "engine/meridian/HierarchicalGuide.h"
 #include "engine/meridian/StateKey.h"
 #include <gtest/gtest.h>
 
@@ -190,4 +191,33 @@ TEST(MeridianEngine, CancellationDuringProgressCannotPublishACompleteRoute) {
   EXPECT_EQ(result.status, wr::RoutingStatus::Cancelled);
   EXPECT_FALSE(result.validation.passed);
   EXPECT_TRUE(result.legs.empty());
+}
+
+TEST(MeridianEngine, MediumCoastalGuideTargetsActualDestinationBeyondBlockingLand) {
+  auto f = quick2_fixtures::make("open");
+  f.request.start = {0, -.7};
+  f.request.destination = {0, .7};
+  f.request.constraints.landSafetyMarginNm = .4;
+  std::vector<std::vector<wr::GeoPoint>> rings{
+      {{-.35, -.05}, {-.35, .4}, {.35, .4}, {.35, -.05}}};
+  f.environment.landAndBoundaries = std::make_shared<wr::PolygonBoundaryProvider>(rings);
+  const auto direct = wr::distanceNm(f.request.start, f.request.destination);
+  ASSERT_GT(direct, 60.);
+  ASSERT_LT(direct, 160.);
+  const auto temporary = wr::destinationPoint(f.request.start,
+      wr::initialBearingDegrees(f.request.start, f.request.destination), 60);
+  ASSERT_TRUE(f.environment.landAndBoundaries->pointForbidden(temporary));
+  meridian_routing::HierarchicalGuide guide(f.request, f.environment.landAndBoundaries.get());
+  ASSERT_GT(guide.path().size(), 2U);
+  EXPECT_LT(wr::distanceNm(guide.path().front(), f.request.start), 1e-6);
+  EXPECT_LT(wr::distanceNm(guide.path().back(), f.request.destination), 1e-6);
+  EXPECT_GT(guide.estimate(f.request.start), direct);
+  for (std::size_t i = 1; i < guide.path().size(); ++i)
+    EXPECT_FALSE(f.environment.landAndBoundaries->segmentForbidden(
+        guide.path()[i-1], guide.path()[i], .4));
+  const auto result = meridian_routing::Engine{}.route(f.request, f.environment);
+  ASSERT_TRUE(result.validation.passed) << result.message;
+  wr::PolarPerformanceModel performance(f.request.vessel);
+  EXPECT_TRUE(wr::RouteValidator{}.validate(f.request, f.environment,
+                                           performance, result.legs).passed);
 }

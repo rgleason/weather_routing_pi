@@ -65,7 +65,7 @@ inline const char* EngineTitle(RoutingEngine engine) {
     case RoutingEngine::Quick2: return "Quick2";
     case RoutingEngine::Alternative: return "Alternative";
     case RoutingEngine::Atlas: return "Atlas";
-    case RoutingEngine::Meridian: return "Meridian (experimental)";
+    case RoutingEngine::Meridian: return "Meridian";
     case RoutingEngine::Auto: return "Auto";
     case RoutingEngine::All: return "All (slow)";
     default: return "Unsupported";

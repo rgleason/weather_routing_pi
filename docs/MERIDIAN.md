@@ -1,6 +1,6 @@
 # Meridian standalone routing engine
 
-Meridian is an additional experimental planner in Weather Routing 1.44.0 and
+Meridian is an additional planner in Weather Routing 1.44.0 and
 xWeatherRouting 2.11.0. Select it as an individual method in Advanced, or tick
 its Auto/All checkbox to include it after Atlas and before Standard. It is
 unticked by default; each mode remembers its choice. Existing solver
@@ -36,6 +36,9 @@ offshore connection, and a wider fallback for nearby endpoints separated by a
 long peninsula. It is advisory. Its vertices never become sailing legs without
 weather-dependent integration, and no candidate must follow the sketch.
 Continuous projection along the sketch avoids artificial cost pits at vertices.
+Medium coastal passages use the actual destination for their geographic guide;
+a truncated inland or inaccessible target must not erase a useful detour. See
+[the Donegal correction and matched replays](MERIDIAN-DONEGAL-20261123.md).
 
 The primary queue uses elapsed time plus a weighted estimate of remaining travel;
 periodic elapsed-time queue pops preserve some wider exploration. Pending work is
@@ -75,7 +78,7 @@ joined route must still pass fresh independent replay from the original start.
   near miss, the geographic sketch or a straight final chord cannot establish
   completion.
 - Comfort-alternative comparison and the other engines' effort/reverse/adaptive
-  controls are unavailable for this experimental method. Meridian currently
+  controls are unavailable for this method. Meridian currently
   accepts fastest-passage objectives with the existing safety constraints.
 - Cancellation discards delivered route legs and preserves diagnostic evidence.
   The new engine creates no additional worker threads of its own. Existing

@@ -340,7 +340,7 @@ wr::RoutingResult search(const wr::RoutingRequest& request,
             r.status = wr::RoutingStatus::Complete;
             d.closestApproachNm = 0;
             in::summariseRoute(r);
-            r.message = "Complete (Meridian experimental)";
+            r.message = "Complete (Meridian)";
             r.warnings.push_back({wr::RoutingWarningCode::SearchPruned,
                 "Meridian uses bounded lazy search and approximate state buckets; optimality and completeness are not established"});
             return r;

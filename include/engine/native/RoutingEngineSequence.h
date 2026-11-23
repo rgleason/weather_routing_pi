@@ -59,7 +59,7 @@ inline const char* SequenceEngineTitle(SequenceEngine engine) {
     case SequenceEngine::Atlas:
       return "Atlas";
     case SequenceEngine::Meridian:
-      return "Meridian (experimental)";
+      return "Meridian";
   }
   return "";
 }

@@ -1521,7 +1521,7 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
       options.attemptStarted = [&](unsigned attempt, wr::Duration coastal,
                                    wr::Duration offshore, std::uint64_t allowance) {
         overlay.AppendDiagnosticContext(wxString::Format(
-            "\nMeridian experimental attempt %u: full-circle heading fan; coastal step up to %lld s; offshore step up to %lld s; proposal allowance %llu",
+            "\nMeridian attempt %u: full-circle heading fan; coastal step up to %lld s; offshore step up to %lld s; proposal allowance %llu",
             attempt, static_cast<long long>(coastal.count()),
             static_cast<long long>(offshore.count()),
             static_cast<unsigned long long>(allowance)));
@@ -1529,7 +1529,7 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
       auto labeled = solveRequest;
       labeled.progress = [&overlay, generation = overlay.ModernProgressGeneration(),
           logged = std::chrono::steady_clock::time_point{}](const auto& progress) mutable {
-        overlay.SetModernNativeProgress(progress, generation, _("Meridian experimental"));
+        overlay.SetModernNativeProgress(progress, generation, _("Meridian"));
         const auto now = std::chrono::steady_clock::now();
         if (now - logged >= std::chrono::seconds(5)) {
           logged = now;

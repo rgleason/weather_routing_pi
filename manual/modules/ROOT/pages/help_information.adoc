@@ -55,9 +55,9 @@ verified offshore checks while retaining applicable coastal, hazard and depth
 checks. It is separate from the passage GSHHG selection, the displayed basemap
 and the persistent detailed-tile cache.
 
-== Meridian experimental and live diagnostics
+== Meridian and live diagnostics
 
-The individual routing-method selector offers *Meridian (experimental)*.
+The individual routing-method selector offers *Meridian*.
 This bounded, time-dependent best-first search is available individually and
 as an opt-in checkbox for Auto and All. It runs after Atlas and before Standard.
 It is unticked by default; Auto and All selections are remembered independently.

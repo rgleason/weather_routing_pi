@@ -1643,7 +1643,7 @@ void ConfigurationDialog::UpdateEngineControls() {
       : engine == weather_routing::RoutingEngine::All
       ? _("All (slow): compares every engine selected in Advanced and keeps the earliest validated arrival. Enable alternatives to compare passage time and comfort.")
       : meridian
-      ? _("Meridian experimental: standalone time-dependent best-first search with a full-circle heading fan, finer coastal steps and reserved refinement. Opt in to Auto or All to run it after Atlas. May miss feasible routes; uses the same weather and safety checks.")
+      ? _("Meridian: standalone time-dependent best-first search with a full-circle heading fan, finer coastal steps and reserved refinement. Opt in to Auto or All to run it after Atlas. May miss feasible routes; uses the same weather and safety checks.")
       : engine == weather_routing::RoutingEngine::Quick2
       ? _("Advanced selection: Quick2 CPU frontier. Bounded search may miss routes or return detours. Auto stops when it supplies the first validated route.")
       : engine == weather_routing::RoutingEngine::Alternative

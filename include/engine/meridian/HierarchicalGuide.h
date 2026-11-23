@@ -55,7 +55,14 @@ public:
         }
       }
     }
-    guide_ = GeographyGuide(request, geography);
+    // A medium passage needs guidance to its actual water destination.
+    // A point 60 NM along the direct bearing can be inland or inside a shore
+    // buffer/estuary that the real passage never needs to enter. Failure to
+    // reach that artificial target erased the detour guide and repeatedly
+    // favoured moves back toward the blocking land.
+    const auto reach = wr::distanceNm(request.start, request.destination) <= 160
+        ? double(INFINITY) : 60.;
+    guide_ = GeographyGuide(request, geography, reach);
   }
   double estimate(wr::GeoPoint point) const { return guide_.estimate(point); }
   const std::vector<wr::GeoPoint>& path() const { return guide_.path(); }
