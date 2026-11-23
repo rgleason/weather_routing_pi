@@ -429,6 +429,12 @@ TEST(RoutingEngineSettings, FeatureUpgradeDoesNotOfferToOverwritePersonalBoatsOr
 
 TEST(RoutingEngineSettings, ToolkitUpgradeRetains134DataWithoutSkippingOlderDataUpdates) {
   EXPECT_TRUE(wr::CanSkipBundledDataUpdate(138, 1, 39));
+  EXPECT_TRUE(wr::CanSkipBundledDataUpdate(142, 1, 43));
+  EXPECT_TRUE(wr::CanSkipBundledDataUpdate(138, 1, 43));
+  EXPECT_FALSE(wr::CanSkipBundledDataUpdate(137, 1, 43));
+  EXPECT_TRUE(wr::CanSkipBundledDataUpdate(209, 2, 10));
+  EXPECT_TRUE(wr::CanSkipBundledDataUpdate(205, 2, 10));
+  EXPECT_FALSE(wr::CanSkipBundledDataUpdate(204, 2, 10));
   EXPECT_TRUE(wr::CanSkipBundledDataUpdate(205, 2, 6));
   EXPECT_FALSE(wr::CanSkipBundledDataUpdate(0, 1, 39));
   EXPECT_FALSE(wr::CanSkipBundledDataUpdate(0, 2, 6));

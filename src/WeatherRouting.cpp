@@ -2828,6 +2828,16 @@ void WeatherRouting::OnRoutingProgressTimer(wxTimerEvent&) {
     details += wxString::Format(_("%s to %s: %s\n%s"),
                                configuration.Start, configuration.End,
                                stage, detail);
+    const auto report = route->GetDiagnostics();
+    for (const auto& item : report.items) {
+      if (item.severity == weather_routing::DiagnosticSeverity::Warning &&
+          (item.code == "coverage.wind_unavailable" ||
+           item.code == "coverage.start_outside_wind" ||
+           item.code == "coverage.departure_time")) {
+        details += "\n" + item.title + "\n" + item.action;
+        break;
+      }
+    }
   }
   if (m_RunningRouteMaps.size() > 6)
     details += _("\nMore active routes are listed in the routing table.");

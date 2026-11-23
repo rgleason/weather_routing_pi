@@ -118,6 +118,21 @@ TEST(RouteDiagnostics, MissingFrameDoesNotInventMissingParameterOrFileCause) {
   ASSERT_NE(cause, nullptr);
   EXPECT_NE(cause->detail.Find("does not identify"), wxNOT_FOUND);
 }
+TEST(RouteDiagnostics, MissingDepartureWindExplainsWhetherClimatologyCanBeTried) {
+  const auto required = weather_routing::CheckForecastWindCoverage(
+      {}, {55.45, -7.2}, {55.45, -7.4}, {}, false);
+  const auto fallback = weather_routing::CheckForecastWindCoverage(
+      {}, {55.45, -7.2}, {55.45, -7.4}, {}, true);
+  ASSERT_TRUE(required.HasErrors());
+  ASSERT_FALSE(fallback.HasErrors());
+  const auto* requiredWind = Find(required, "coverage.wind_unavailable");
+  const auto* fallbackWind = Find(fallback, "coverage.wind_unavailable");
+  ASSERT_NE(requiredWind, nullptr);
+  ASSERT_NE(fallbackWind, nullptr);
+  EXPECT_NE(requiredWind->detail.Find("unsupported packing"), wxNOT_FOUND);
+  EXPECT_EQ(requiredWind->action.Find("try Climatology"), wxNOT_FOUND);
+  EXPECT_NE(fallbackWind->action.Find("try Climatology"), wxNOT_FOUND);
+}
 TEST(RouteDiagnostics, CompleteForecastRouteHasNoFalseFallbackOrZeroCurrentWarning) {
   const auto report = weather_routing::DescribeRoutingResult(Completed());
   EXPECT_TRUE(report.complete);

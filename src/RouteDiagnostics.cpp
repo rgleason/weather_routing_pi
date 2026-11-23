@@ -313,15 +313,26 @@ RouteDiagnosticReport CheckForecastWindCoverage(
   RouteDiagnosticReport report;
   const auto severity = usableFallback ? DiagnosticSeverity::Warning
                                       : DiagnosticSeverity::Error;
+  const wxString forecastAction =
+      _("Load a GRIB that the active weather reader can open and that covers "
+        "the departure and passage with both wind components.");
+  const wxString departureAction = usableFallback
+      ? _("The calculation will try Climatology for departure wind. "
+          "Load a readable GRIB covering the departure to use forecast wind there.")
+      : forecastAction;
   const wxString next = usableFallback
-      ? _("Climatology may be needed. The finished result will report actual use. Obtain a forecast covering the passage if you want forecast wind throughout.")
-      : _("Load a wind forecast covering the departure, passage and approach, with room for detours, or deliberately configure an available climatology source.");
+      ? _("Climatology may be needed near the destination. "
+          "The finished result will report actual use.")
+      : forecastAction;
   if (!coverage.available) {
     report.Add({"coverage.wind_unavailable", severity,
         _("GRIB wind is unavailable at the requested departure time"),
         _("The provider did not supply a usable wind frame at ") +
-            DiagnosticTimeUtc(departure) + _(" UTC. This alone does not identify whether a file, time range, parameter or provider reply is missing."),
-        next, {}, true});
+            DiagnosticTimeUtc(departure) +
+            _(" UTC. This does not identify the cause. Check whether the "
+              "active reader can display wind at that time. An unreadable "
+              "file or unsupported packing can also cause this warning."),
+        departureAction, {}, true});
     return report;
   }
   const auto contains = [&](wr::GeoPoint point) {
@@ -341,13 +352,13 @@ RouteDiagnosticReport CheckForecastWindCoverage(
         PointText(point) + wxString::Format(
             _("; departure-frame wind bounds: latitude %.5f to %.5f, longitude %.5f to %.5f."),
             coverage.area.south, coverage.area.north, coverage.area.west, coverage.area.east),
-        next, {}, true});
+        isStart ? departureAction : next, {}, true});
   }
   if ((coverage.begins && departure < *coverage.begins) ||
       (coverage.ends && departure > *coverage.ends))
     report.Add({"coverage.departure_time", severity,
         _("Departure is outside the wind forecast time range"),
-        DiagnosticTimeUtc(departure) + " UTC", next, {}, true});
+        DiagnosticTimeUtc(departure) + " UTC", departureAction, {}, true});
   if (coverage.ends)
     report.Add({"coverage.forecast_end", DiagnosticSeverity::Notice,
         _("Wind forecast has a limited time range"),

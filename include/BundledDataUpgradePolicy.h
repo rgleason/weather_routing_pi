@@ -21,6 +21,9 @@ inline bool CanSkipBundledDataUpdate(int installed, int major, int minor) {
   // Query-copy and endpoint-preflight changes retain the preceding data.
   if (major == 1 && minor == 42) return installed >= 138 && installed <= 141;
   if (major == 2 && minor == 9) return installed >= 205 && installed <= 208;
+  // The GRIB reader and diagnostic releases retain existing bundled data.
+  if (major == 1 && minor == 43) return installed >= 138 && installed <= 142;
+  if (major == 2 && minor == 10) return installed >= 205 && installed <= 209;
   return installed >= 124 && installed <= 132 && major == 1 &&
          minor >= 25 && minor <= 33;
 }
