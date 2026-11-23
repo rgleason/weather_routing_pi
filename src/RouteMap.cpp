@@ -372,7 +372,8 @@ bool RouteMap::AcquireGribTimelineFrame(const wxDateTime& time,
     case Status::NoWind:
       AddDiagnostic({"provider.no_wind", weather_routing::DiagnosticSeverity::Warning,
           _("The requested forecast frame has no complete wind vector"),
-          _("At least one wind component is missing at the requested time."),
+          _("The frame is missing at least one wind component. ") +
+              requestedTime(),
           _("Load a forecast containing both wind components for the route and time.")});
       break;
     case Status::OutOfMemory:

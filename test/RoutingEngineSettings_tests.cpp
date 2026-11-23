@@ -49,16 +49,33 @@ TEST(RoutingEngineSettings, EightAdvancedTitlesKeepStableSavedIds) {
     EXPECT_EQ(settings.EngineId(), ids[i]);
   }
   EXPECT_EQ(wr::EngineFromSelection(-1), wr::RoutingEngine::Unsupported);
-  EXPECT_EQ(wr::EngineFromSelection(8), wr::RoutingEngine::Unsupported);
+  EXPECT_EQ(wr::EngineFromSelection(8), wr::RoutingEngine::Meridian);
+  EXPECT_EQ(wr::EngineFromSelection(9), wr::RoutingEngine::Unsupported);
   settings.SetEngineId("alternative");
   EXPECT_EQ(settings.engine, wr::RoutingEngine::Alternative);
+}
+TEST(RoutingEngineSettings, MeridianMembershipIsAppendOnlyAndOptIn) {
+  wr::RoutingEngineSettings settings;
+  settings.SetEngineId("meridian");
+  EXPECT_EQ(settings.engine, wr::RoutingEngine::Meridian);
+  EXPECT_EQ(settings.EngineId(), "meridian");
+  EXPECT_EQ(wr::EngineBit(settings.engine), 64U);
+  EXPECT_EQ(settings.autoEngines & 64U, 0U);
+  EXPECT_EQ(settings.allEngines & 64U, 0U);
+  settings.autoEngines |= 64U;
+  settings.allEngines = 64U;
+  EXPECT_EQ(wr::kSequenceEngines.size(), 7U);
+  const auto saved = settings;
+  TiXmlElement xml("Configuration");
+  wr::WriteRoutingEngineSettings(settings, xml);
+  EXPECT_EQ(wr::ReadRoutingEngineSettings(xml), saved);
 }
 TEST(RoutingEngineSettings, FirstInstallAutoButUpgradePreservesEveryExistingSelection) {
   wr::RoutingEngineSettings fresh;
   wr::ApplyFirstUseEngineDefaults(fresh, false);
   EXPECT_EQ(fresh.engine, wr::RoutingEngine::Auto);
-  EXPECT_EQ(fresh.autoEngines, wr::kSelectableEnginesMask);
-  EXPECT_EQ(fresh.allEngines, wr::kSelectableEnginesMask);
+  EXPECT_EQ(fresh.autoEngines, wr::kFirstInstallEnginesMask);
+  EXPECT_EQ(fresh.allEngines, wr::kFirstInstallEnginesMask);
   for (const char* id : {"original", "quick", "main", "auto", "all", "unknown"}) {
     TiXmlElement xml("Configuration");
     xml.SetAttribute("RoutingEngine", id);
@@ -83,8 +100,8 @@ TEST(RoutingEngineSettings, BundledFirstInstallExamplesSelectAuto) {
        element = element->NextSiblingElement("Configuration")) {
     const auto settings = wr::ReadRoutingEngineSettings(*element);
     EXPECT_EQ(settings.engine, wr::RoutingEngine::Auto);
-    EXPECT_EQ(settings.autoEngines, wr::kSelectableEnginesMask);
-    EXPECT_EQ(settings.allEngines, wr::kSelectableEnginesMask);
+    EXPECT_EQ(settings.autoEngines, wr::kFirstInstallEnginesMask);
+    EXPECT_EQ(settings.allEngines, wr::kFirstInstallEnginesMask);
     ++configurations;
   }
   EXPECT_GT(configurations, 0);
@@ -286,6 +303,20 @@ TEST(RoutingEngineSettings, QuickUsesConfiguredNominalStepDespiteSavedOffshoreVa
   c.EngineSettings.SetEngineId("quick");
   EXPECT_EQ(wr::RoutingSearchSnapshot::Capture(c, true).timeStepSeconds, 14400);
 }
+TEST(RoutingEngineSettings, EffectiveStepExposesQualityFloorWithoutChangingSavedValues) {
+  Configuration c;
+  c.EngineSettings.SetEngineId("quick2");
+  c.DeltaTime = 300;
+  const auto snapshot = wr::RoutingSearchSnapshot::Capture(c, true);
+  EXPECT_EQ(snapshot.configuredTimeStepSeconds, 300);
+  EXPECT_EQ(snapshot.timeStepSeconds, 900);
+  EXPECT_EQ(c.DeltaTime, 300);
+  EXPECT_FALSE(snapshot.timeStepManaged);
+  c.DeltaTime = 43200;
+  EXPECT_EQ(wr::RoutingSearchSnapshot::Capture(c, true).timeStepSeconds, 21600);
+  c.EngineSettings.SetEngineId("meridian");
+  EXPECT_TRUE(wr::RoutingSearchSnapshot::Capture(c, true).timeStepManaged);
+}
 
 TEST(RoutingEngineSettings, QuickPresetResetsNominalStepAndPreservesStandardAndSafety) {
   Configuration c;
@@ -429,6 +460,12 @@ TEST(RoutingEngineSettings, FeatureUpgradeDoesNotOfferToOverwritePersonalBoatsOr
 
 TEST(RoutingEngineSettings, ToolkitUpgradeRetains134DataWithoutSkippingOlderDataUpdates) {
   EXPECT_TRUE(wr::CanSkipBundledDataUpdate(138, 1, 39));
+  EXPECT_TRUE(wr::CanSkipBundledDataUpdate(142, 1, 43));
+  EXPECT_TRUE(wr::CanSkipBundledDataUpdate(138, 1, 43));
+  EXPECT_FALSE(wr::CanSkipBundledDataUpdate(137, 1, 43));
+  EXPECT_TRUE(wr::CanSkipBundledDataUpdate(209, 2, 10));
+  EXPECT_TRUE(wr::CanSkipBundledDataUpdate(205, 2, 10));
+  EXPECT_FALSE(wr::CanSkipBundledDataUpdate(204, 2, 10));
   EXPECT_TRUE(wr::CanSkipBundledDataUpdate(205, 2, 6));
   EXPECT_FALSE(wr::CanSkipBundledDataUpdate(0, 1, 39));
   EXPECT_FALSE(wr::CanSkipBundledDataUpdate(0, 2, 6));
@@ -521,4 +558,36 @@ TEST(BundledDataUpgradePolicy, QueryAndEndpointReleasePreservesPersonalData) {
   EXPECT_FALSE(weather_routing::CanSkipBundledDataUpdate(204, 2, 9));
   EXPECT_FALSE(weather_routing::CanSkipBundledDataUpdate(208, 1, 42));
   EXPECT_FALSE(weather_routing::CanSkipBundledDataUpdate(141, 2, 9));
+}
+
+TEST(RoutingEngineSettings, AdditionalEngineReleasePreservesExistingBundledData) {
+  for (int installed = 138; installed <= 143; ++installed)
+    EXPECT_TRUE(wr::CanSkipBundledDataUpdate(installed, 1, 44));
+  for (int installed = 205; installed <= 210; ++installed)
+    EXPECT_TRUE(wr::CanSkipBundledDataUpdate(installed, 2, 11));
+  EXPECT_FALSE(wr::CanSkipBundledDataUpdate(0, 1, 44));
+  EXPECT_FALSE(wr::CanSkipBundledDataUpdate(137, 1, 44));
+  EXPECT_FALSE(wr::CanSkipBundledDataUpdate(204, 2, 11));
+}
+
+TEST(RoutingEngineSettings, MeridianChoicePersistsWithoutEnablingItForNewOrOldUsers) {
+  const auto bit=wr::EngineBit(wr::RoutingEngine::Meridian);
+  ASSERT_EQ(bit,64U);
+  for (unsigned mask : {0U,23U,31U,63U,64U,96U,127U}) {
+    wr::RoutingEngineSettings selected;selected.engine=wr::RoutingEngine::Auto;
+    selected.autoEngines=mask;selected.allEngines=mask;
+    TiXmlElement xml("Configuration");wr::WriteRoutingEngineSettings(selected,xml);
+    EXPECT_EQ(wr::ReadRoutingEngineSettings(xml),selected);
+    wxStringInputStream input("");wxFileConfig profile(input);
+    wr::WriteRoutingEngineSettings(selected,profile);
+    EXPECT_EQ(wr::ReadRoutingEngineSettings(profile),selected);
+    wr::ApplyFirstUseEngineDefaults(selected,true);
+    EXPECT_EQ(selected.autoEngines,mask);EXPECT_EQ(selected.allEngines,mask);
+  }
+  wr::RoutingEngineSettings fresh;wr::ApplyFirstUseEngineDefaults(fresh,false);
+  EXPECT_EQ(fresh.autoEngines,63U);EXPECT_EQ(fresh.allEngines,63U);
+  EXPECT_EQ(fresh.autoEngines & bit,0U);EXPECT_EQ(fresh.allEngines & bit,0U);
+  const wr::RoutingEngine oldBits[]={wr::RoutingEngine::Original,wr::RoutingEngine::Quick2,
+      wr::RoutingEngine::Quick,wr::RoutingEngine::Alternative,wr::RoutingEngine::Main,wr::RoutingEngine::Atlas};
+  for(unsigned i=0;i<6;++i)EXPECT_EQ(wr::EngineBit(oldBits[i]),1U<<i);
 }

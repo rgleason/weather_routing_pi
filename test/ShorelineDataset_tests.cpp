@@ -32,7 +32,9 @@ void D64(std::ostream& out, double n) {
   U32(out, std::uint32_t(bits >> 32));
 }
 // One island in cell 0E,0N; all remaining cells share a water record.
-void Fixture(const fs::path& p) {
+void Fixture(const fs::path& p,
+             const std::vector<std::pair<double, double>>& ring =
+                 {{.2, .2}, {.8, .2}, {.8, .8}, {.2, .8}}) {
   std::ofstream out(p, std::ios::binary);
   for (auto n : {237, 1, 1, 0, -90, 360, 90, 1, 2, 3, 4, 5}) U32(out, n);
   const unsigned water = 48 + 64800 * 4, island = water + 16;
@@ -40,9 +42,8 @@ void Fixture(const fs::path& p) {
   for (int i = 0; i < 4; i++) U32(out, 0);
   U32(out, 1);
   U32(out, 0);
-  U32(out, 4);
-  for (auto v : std::vector<std::pair<double, double>>{
-           {.2, .2}, {.8, .2}, {.8, .8}, {.2, .8}}) {
+  U32(out, static_cast<std::uint32_t>(ring.size()));
+  for (auto v : ring) {
     D64(out, v.first);
     D64(out, v.second);
   }
@@ -97,6 +98,22 @@ TEST(ShorelineDataset, CompleteBufferChecksMarginSymmetrically) {
   EXPECT_TRUE(d.WithinLandMargin(.19, .5, .19, .5, .7));
   EXPECT_TRUE(d.WithinLandMargin(.5, -.5, .5, 1.5, 0));
   EXPECT_THROW(d.WithinLandMargin(.1, 0, .1, 1, -1), std::invalid_argument);
+}
+TEST(ShorelineDataset, BufferFindsSmallIslandBetweenOffsetLinesAndBeyondEndCap) {
+  Files f;
+  Fixture(f / "data", {{.23, .525}, {.24, .525}, {.24, .526}, {.23, .526}});
+  ShorelineDataset d(f / "data");
+  // The island is between the centreline, parallel offsets and diagonals.
+  EXPECT_FALSE(d.CrossesLand(.5, 0, .5, .9));
+  EXPECT_FALSE(d.CrossesLand(.5 + 2. / 60, 0, .5 + 2. / 60, .9));
+  EXPECT_FALSE(d.CrossesLand(.5 - 2. / 60, 0, .5 - 2. / 60, .9));
+  EXPECT_FALSE(d.CrossesLand(.5 + 2. / 60, 0, .5 - 2. / 60, .9));
+  EXPECT_FALSE(d.CrossesLand(.5 - 2. / 60, 0, .5 + 2. / 60, .9));
+  EXPECT_TRUE(d.WithinLandMargin(.5, 0, .5, .9, 2));
+  EXPECT_TRUE(d.WithinLandMargin(.5, .9, .5, 0, 2));
+  // The same island is beyond the segment's endpoint, inside its round cap.
+  EXPECT_TRUE(d.WithinLandMargin(.5, 0, .5, .21, 2));
+  EXPECT_FALSE(d.WithinLandMargin(.5, 0, .5, .21, 1));
 }
 TEST(ShorelineDataset, GridBoundariesAndZeroLength) {
   Files f;

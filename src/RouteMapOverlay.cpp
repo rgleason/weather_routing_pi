@@ -445,6 +445,20 @@ void RouteMapOverlay::SetModernNativeProgress(
   m_ModernProgress.Publish(generation, {stage, detail});
 }
 
+wxString RouteMapOverlay::DiagnosticReportText() {
+  auto report = GetDiagnostics();
+  if (Running()) {
+    wxString stage, detail;
+    if (!GetModernNativeProgress(stage, detail)) {
+      stage = NeedsChartSafetyData() ? _("Waiting for chart data")
+          : NeedsGrib() ? _("Waiting for weather data")
+                        : _("Preparing route");
+    }
+    weather_routing::AppendLiveWorkerProgress(report, stage, detail);
+  }
+  return report.Text();
+}
+
 bool RouteMapOverlay::GetModernNativeProgress(wxString& stage,
                                               wxString& detail) {
   const auto snapshot = m_ModernProgress.Read();
@@ -460,8 +474,11 @@ bool RouteMapOverlay::GetModernNativeProgress(wxString& stage,
                              static_cast<long long>(elapsed),
                              static_cast<long long>(age));
   if (ExploringMethods()) stage = _("Validated route available - comparing active methods");
-  else if (NeedsChartSafetyData()) stage = _("Waiting for chart data");
-  else if (NeedsGrib()) stage = _("Waiting for weather data");
+  else if (NeedsChartSafetyData() || NeedsGrib()) {
+    detail = _("Active worker: ") + stage + "\n" + detail;
+    stage = NeedsChartSafetyData() ? _("Waiting for chart data")
+                                  : _("Waiting for weather data");
+  }
   return true;
 }
 

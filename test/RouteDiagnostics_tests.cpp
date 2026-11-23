@@ -35,6 +35,22 @@ wr::ParameterCoverage Forecast() {
 }
 }  // namespace
 
+TEST(RouteDiagnostics, LiveSnapshotRefreshKeepsSetupAndReplacesOldProgress) {
+  RouteDiagnosticReport report;
+  report.context = "Named endpoints, coordinates and configured settings";
+  report.Add({"setup.note", DiagnosticSeverity::Notice, "Setup retained"});
+  weather_routing::AppendLiveWorkerProgress(report, "Quick2: Forward isochrone", "10 states");
+  weather_routing::AppendLiveWorkerProgress(report, "Professional: Graph recovery", "900 states; 20 NM remaining");
+  EXPECT_NE(report.Text().Find("Setup retained"), wxNOT_FOUND);
+  EXPECT_NE(report.Text().Find("Calculation is still running"), wxNOT_FOUND);
+  EXPECT_NE(report.Text().Find("900 states; 20 NM remaining"), wxNOT_FOUND);
+  EXPECT_EQ(report.Text().Find("10 states"), wxNOT_FOUND);
+  EXPECT_FALSE(report.hasResult);
+  EXPECT_FALSE(report.complete);
+  EXPECT_FALSE(report.cancelled);
+  EXPECT_EQ(report.items.size(), 2U);
+}
+
 TEST(RouteDiagnostics, RickGetsSelectionAndProviderCauseRatherThanGenericWind) {
   const auto report = weather_routing::CheckWindSourceSelection(false, true, false);
   ASSERT_TRUE(report.HasErrors());
@@ -117,6 +133,21 @@ TEST(RouteDiagnostics, MissingFrameDoesNotInventMissingParameterOrFileCause) {
   const auto* cause = Find(report, "coverage.wind_unavailable");
   ASSERT_NE(cause, nullptr);
   EXPECT_NE(cause->detail.Find("does not identify"), wxNOT_FOUND);
+}
+TEST(RouteDiagnostics, MissingDepartureWindExplainsWhetherClimatologyCanBeTried) {
+  const auto required = weather_routing::CheckForecastWindCoverage(
+      {}, {55.45, -7.2}, {55.45, -7.4}, {}, false);
+  const auto fallback = weather_routing::CheckForecastWindCoverage(
+      {}, {55.45, -7.2}, {55.45, -7.4}, {}, true);
+  ASSERT_TRUE(required.HasErrors());
+  ASSERT_FALSE(fallback.HasErrors());
+  const auto* requiredWind = Find(required, "coverage.wind_unavailable");
+  const auto* fallbackWind = Find(fallback, "coverage.wind_unavailable");
+  ASSERT_NE(requiredWind, nullptr);
+  ASSERT_NE(fallbackWind, nullptr);
+  EXPECT_NE(requiredWind->detail.Find("unsupported packing"), wxNOT_FOUND);
+  EXPECT_EQ(requiredWind->action.Find("try Climatology"), wxNOT_FOUND);
+  EXPECT_NE(fallbackWind->action.Find("try Climatology"), wxNOT_FOUND);
 }
 TEST(RouteDiagnostics, CompleteForecastRouteHasNoFalseFallbackOrZeroCurrentWarning) {
   const auto report = weather_routing::DescribeRoutingResult(Completed());
@@ -366,4 +397,16 @@ TEST(RouteDiagnostics, AllocationCancellationIsReportedAsMemoryRatherThanUserSto
   EXPECT_FALSE(report.cancelled);
   EXPECT_EQ(report.status, wr::RoutingStatus::ResourceLimitReached);
   EXPECT_EQ(report.Summary(), "Memory allocation failed");
+}
+
+TEST(RouteDiagnostics, MeridianWorkAllowanceDoesNotClaimAllocationFailure) {
+  wr::RoutingResult result;
+  result.status = wr::RoutingStatus::ResourceLimitReached;
+  result.message = "Meridian proposal allowance reached; feasibility is unresolved";
+  result.engineAttempts.push_back({"Meridian refinement", result.status,
+      result.message + "\nCoastal step up to 300 s; proposal allowance 40"});
+  const auto report = weather_routing::DescribeRoutingResult(result);
+  EXPECT_EQ(report.Summary(), "Search allowance reached");
+  EXPECT_NE(report.technical.Find("Meridian refinement: Search allowance reached"), wxNOT_FOUND);
+  EXPECT_EQ(report.technical.Find("Calculation allowance or memory limit reached"), wxNOT_FOUND);
 }

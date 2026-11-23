@@ -208,8 +208,7 @@ void ReportDialog::SetRouteMapOverlays(
   wxString page;
   for (std::list<RouteMapOverlay*>::iterator it = routemapoverlays.begin();
        it != routemapoverlays.end(); it++) {
-    const auto diagnosis = (*it)->GetDiagnostics();
-    const wxString diagnosticText = diagnosis.Text();
+    const wxString diagnosticText = (*it)->DiagnosticReportText();
     m_DiagnosticText += "\n----------------------------------------\n" + diagnosticText;
     wxString diagnosticHtml = diagnosticText;
     diagnosticHtml.Replace("&", "&amp;");
@@ -673,6 +672,24 @@ void ReportDialog::PollCycloneAssessment() {
 }
 
 void ReportDialog::CopyDiagnostics() {
+  // A route can be deleted while this modeless report remains open. Check
+  // ownership before dereferencing the selection retained by the dialog.
+  m_SelectedRoutes.remove_if([this](auto* route) {
+    return std::none_of(m_WeatherRouting.m_WeatherRoutes.begin(),
+        m_WeatherRouting.m_WeatherRoutes.end(), [route](auto* item) {
+          return item && item->routemapoverlay == route;
+        });
+  });
+  if (m_SelectedRoutes.empty()) {
+    m_CopyDiagnostics->Disable();
+    return;
+  }
+  // Search can advance while the report window stays open. Read every route
+  // again on the GUI thread rather than copying the text cached at opening.
+  m_DiagnosticText = _("Weather Routing diagnostic report\nIncludes the displayed route positions and settings; review before sharing.\n");
+  for (auto* route : m_SelectedRoutes)
+    m_DiagnosticText += "\n----------------------------------------\n" +
+                        route->DiagnosticReportText();
   if (m_DiagnosticText.empty()) return;
 #ifdef __OCPN__ANDROID__
   QApplication::clipboard()->setText(QString::fromUtf8(m_DiagnosticText.ToUTF8().data()));

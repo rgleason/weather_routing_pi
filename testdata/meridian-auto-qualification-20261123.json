@@ -1,0 +1,193 @@
+{
+  "schemaVersion": 1,
+  "versions": {
+    "production": "1.44.0",
+    "development": "2.11.0"
+  },
+  "executionOrder": [
+    "Quick",
+    "Quick2",
+    "Atlas",
+    "Meridian (experimental)",
+    "Standard",
+    "Alternative",
+    "Professional"
+  ],
+  "meridianMembershipBit": 64,
+  "firstInstallMask": 63,
+  "meridianEnabledByDefault": false,
+  "existingSearchAlgorithmsChanged": false,
+  "productionTestsPassed": 736,
+  "developmentTestsPassed": 826,
+  "ciToolingTests": {
+    "production": 89,
+    "development": 73
+  },
+  "guiContracts": {
+    "production": true,
+    "development": true
+  },
+  "routeInput": {
+    "start": [
+      35.916666666666664,
+      -5.616666666666667
+    ],
+    "end": [
+      35.53333333333333,
+      24.333333333333332
+    ],
+    "departureUTC": "2017-11-07T00:00:00Z",
+    "grib": false,
+    "climatology": "Most Likely",
+    "boat": "Boat-Climatology-Power.xml",
+    "shoreline": "GSHHG Full 2.3.7",
+    "shorelineSha256": "8d4d73897c82dd0e8df63f33e4dab9dd3aea7a26459b923bf404cb9299f1cf04",
+    "marginNm": 2
+  },
+  "routes": [
+    {
+      "run": "development-david-all-parallel-atlas-meridian",
+      "status": "complete",
+      "selectedEngine": "meridian",
+      "calculationSeconds": 9.763,
+      "modelledPassageSeconds": 844068,
+      "distanceNm": 1806.791211526681,
+      "attempts": [
+        "mode=all engine=Meridian (experimental) status=complete validated=1 elapsed_ms=2095 passage_s=844068",
+        "mode=all engine=Atlas status=search_incomplete validated=0 elapsed_ms=6016 passage_s=0"
+      ],
+      "endpoint": {
+        "latitudeDegrees": 35.53333333333333,
+        "longitudeDegrees": 24.333333333333332,
+        "timeUtc": "2017-11-16T18:27:48Z"
+      }
+    },
+    {
+      "run": "development-david-auto-meridian-current-off",
+      "status": "complete",
+      "selectedEngine": "meridian",
+      "calculationSeconds": 5.715,
+      "modelledPassageSeconds": 853505,
+      "distanceNm": 1811.204484257732,
+      "attempts": [
+        "mode=auto engine=Meridian (experimental) status=complete validated=1 elapsed_ms=2561 passage_s=853505"
+      ],
+      "endpoint": {
+        "latitudeDegrees": 35.53333333333333,
+        "longitudeDegrees": 24.333333333333332,
+        "timeUtc": "2017-11-16T21:05:05Z"
+      }
+    },
+    {
+      "run": "development-david-auto-meridian-current-on",
+      "status": "complete",
+      "selectedEngine": "meridian",
+      "calculationSeconds": 5.383,
+      "modelledPassageSeconds": 844068,
+      "distanceNm": 1806.791211526681,
+      "attempts": [
+        "mode=auto engine=Meridian (experimental) status=complete validated=1 elapsed_ms=1614 passage_s=844068"
+      ],
+      "endpoint": {
+        "latitudeDegrees": 35.53333333333333,
+        "longitudeDegrees": 24.333333333333332,
+        "timeUtc": "2017-11-16T18:27:48Z"
+      }
+    },
+    {
+      "run": "production-david-all-atlas-meridian",
+      "status": "complete",
+      "selectedEngine": "meridian",
+      "calculationSeconds": 9.694,
+      "modelledPassageSeconds": 837812,
+      "distanceNm": 1771.099269965206,
+      "attempts": [
+        "mode=all engine=Atlas status=search_incomplete validated=0 elapsed_ms=4387 passage_s=0",
+        "mode=all engine=Meridian (experimental) status=complete validated=1 elapsed_ms=911 passage_s=837812"
+      ],
+      "endpoint": {
+        "latitudeDegrees": 35.53333333333333,
+        "longitudeDegrees": 24.333333333333332,
+        "timeUtc": "2017-11-16T16:43:32Z"
+      }
+    },
+    {
+      "run": "production-david-all-parallel-atlas-meridian",
+      "status": "complete",
+      "selectedEngine": "meridian",
+      "calculationSeconds": 5.928,
+      "modelledPassageSeconds": 837812,
+      "distanceNm": 1771.099269965206,
+      "attempts": [
+        "mode=all engine=Meridian (experimental) status=complete validated=1 elapsed_ms=895 passage_s=837812",
+        "mode=all engine=Atlas status=search_incomplete validated=0 elapsed_ms=2800 passage_s=0"
+      ],
+      "endpoint": {
+        "latitudeDegrees": 35.53333333333333,
+        "longitudeDegrees": 24.333333333333332,
+        "timeUtc": "2017-11-16T16:43:32Z"
+      }
+    },
+    {
+      "run": "production-david-auto-atlas-meridian",
+      "status": "complete",
+      "selectedEngine": "meridian",
+      "calculationSeconds": 12.989,
+      "modelledPassageSeconds": 837812,
+      "distanceNm": 1771.099269965206,
+      "attempts": [
+        "mode=auto engine=Atlas status=search_incomplete validated=0 elapsed_ms=5803 passage_s=0",
+        "mode=auto engine=Meridian (experimental) status=complete validated=1 elapsed_ms=2486 passage_s=837812"
+      ],
+      "endpoint": {
+        "latitudeDegrees": 35.53333333333333,
+        "longitudeDegrees": 24.333333333333332,
+        "timeUtc": "2017-11-16T16:43:32Z"
+      }
+    },
+    {
+      "run": "production-david-auto-meridian-current-off",
+      "status": "complete",
+      "selectedEngine": "meridian",
+      "calculationSeconds": 6.018,
+      "modelledPassageSeconds": 853115,
+      "distanceNm": 1786.5187873260475,
+      "attempts": [
+        "mode=auto engine=Meridian (experimental) status=complete validated=1 elapsed_ms=1488 passage_s=853115"
+      ],
+      "endpoint": {
+        "latitudeDegrees": 35.53333333333333,
+        "longitudeDegrees": 24.333333333333332,
+        "timeUtc": "2017-11-16T20:58:35Z"
+      }
+    },
+    {
+      "run": "production-david-auto-meridian-current-on",
+      "status": "complete",
+      "selectedEngine": "meridian",
+      "calculationSeconds": 7.003,
+      "modelledPassageSeconds": 837812,
+      "distanceNm": 1771.099269965206,
+      "attempts": [
+        "mode=auto engine=Meridian (experimental) status=complete validated=1 elapsed_ms=1283 passage_s=837812"
+      ],
+      "endpoint": {
+        "latitudeDegrees": 35.53333333333333,
+        "longitudeDegrees": 24.333333333333332,
+        "timeUtc": "2017-11-16T16:43:32Z"
+      }
+    }
+  ],
+  "independentBufferAudit": [
+    "development-david-all-parallel-atlas-meridian segments=377 land=0 within_margin=0 outside_endpoint_access=0",
+    "development-david-auto-meridian-current-off segments=390 land=0 within_margin=0 outside_endpoint_access=0",
+    "development-david-auto-meridian-current-on segments=377 land=0 within_margin=0 outside_endpoint_access=0",
+    "production-david-all-atlas-meridian segments=326 land=0 within_margin=0 outside_endpoint_access=0",
+    "production-david-all-parallel-atlas-meridian segments=326 land=0 within_margin=0 outside_endpoint_access=0",
+    "production-david-auto-atlas-meridian segments=326 land=0 within_margin=0 outside_endpoint_access=0",
+    "production-david-auto-meridian-current-off segments=352 land=0 within_margin=0 outside_endpoint_access=0",
+    "production-david-auto-meridian-current-on segments=326 land=0 within_margin=0 outside_endpoint_access=0"
+  ],
+  "newUserReport": "https://github.com/pob220/xweather_routing_pi/issues/40#issuecomment-7104878319",
+  "developmentUserReport": "https://github.com/pob220/xweather_routing_pi/issues/40#issuecomment-7106850382"
+}

@@ -17,6 +17,48 @@ bool Complete(wr::RoutingStatus status) {
       status == wr::RoutingStatus::CompleteUsingFrontierRecovery ||
       status == wr::RoutingStatus::CompleteUsingGraphFallback;
 }
+wxString ResultStatusTitle(wr::RoutingStatus status, const std::string& details) {
+  const auto reason = details.substr(0, details.find('\n'));
+  if (status != wr::RoutingStatus::ResourceLimitReached)
+    return RoutingStatusTitle(status);
+  if (reason == "retained lineage limit" ||
+      reason == "Quick2 retained-state allowance exhausted before finding a validated route")
+    return _("Search-history limit reached");
+  if (reason == "memory allocation failed" || reason == "Frontier allocation failed" ||
+      reason == "Meridian allocation failed" ||
+      reason == "Atlas search memory allowance" ||
+      reason.starts_with("Quick allocation failed:"))
+    return _("Memory allocation failed");
+  if (reason == "geometry memory limit" || reason == "performance profile limit")
+    return _("Search-memory allowance reached");
+  if (reason == "contour nesting limit")
+    return _("Search-geometry limit reached");
+  if (reason == "wall-clock limit" || reason == "Comfort search time allowance reached")
+    return _("Calculation time allowance reached");
+  if (reason == "generated state limit" || reason == "geometry work limit" ||
+      reason == "weather query limit" ||
+      reason == "Quick2 search allowance exhausted before finding a validated route" ||
+      reason == "Quick attempted-motion allowance reached" ||
+      reason == "Quick weather-work allowance reached" ||
+      reason == "Meridian retained-state or motion allowance reached" ||
+      reason == "Meridian retained-state allowance reached" ||
+      reason == "Meridian proposal allowance reached; feasibility is unresolved" ||
+      reason == "Meridian has no search allowance")
+    return _("Search allowance reached");
+  return RoutingStatusTitle(status);
+}
+
+wxString ResultFailureTitle(const wr::RoutingResult& result,
+                            wr::RoutingStatus status) {
+  if (status != wr::RoutingStatus::ResourceLimitReached ||
+      result.attemptFailures.empty())
+    return ResultStatusTitle(status, result.message);
+  const auto title = ResultStatusTitle(status, result.attemptFailures.front().detail);
+  for (const auto& attempt : result.attemptFailures)
+    if (ResultStatusTitle(attempt.status, attempt.detail) != title)
+      return RoutingStatusTitle(status);
+  return title;
+}
 wxString DurationText(long long seconds) {
   return wxString::Format(_("%lld h %02lld min"), seconds / 3600,
                           (seconds % 3600) / 60);
@@ -171,6 +213,18 @@ void Usage(RouteDiagnosticReport& report, const wr::RoutingResult& result,
 }
 }  // namespace
 
+void AppendLiveWorkerProgress(RouteDiagnosticReport& report,
+    const wxString& stage, const wxString& detail) {
+  // This is a copy-time snapshot, never a stored result or a claim that the
+  // closest candidate is a validated route. Replacing permits refresh callers.
+  std::erase_if(report.items, [](const auto& item) {
+    return item.code == "worker.running";
+  });
+  report.Add({"worker.running", DiagnosticSeverity::Notice,
+      _("Calculation is still running"), stage + "\n" + detail,
+      _("Search progress does not establish a complete route or a finishing time.")});
+}
+
 wxString DiagnosticTimeUtc(wr::TimePoint time) {
   return wxDateTime(static_cast<time_t>(time.time_since_epoch().count()))
       .Format("%Y-%m-%d %H:%M:%S", wxDateTime::UTC);
@@ -313,15 +367,26 @@ RouteDiagnosticReport CheckForecastWindCoverage(
   RouteDiagnosticReport report;
   const auto severity = usableFallback ? DiagnosticSeverity::Warning
                                       : DiagnosticSeverity::Error;
+  const wxString forecastAction =
+      _("Load a GRIB that the active weather reader can open and that covers "
+        "the departure and passage with both wind components.");
+  const wxString departureAction = usableFallback
+      ? _("The calculation will try Climatology for departure wind. "
+          "Load a readable GRIB covering the departure to use forecast wind there.")
+      : forecastAction;
   const wxString next = usableFallback
-      ? _("Climatology may be needed. The finished result will report actual use. Obtain a forecast covering the passage if you want forecast wind throughout.")
-      : _("Load a wind forecast covering the departure, passage and approach, with room for detours, or deliberately configure an available climatology source.");
+      ? _("Climatology may be needed near the destination. "
+          "The finished result will report actual use.")
+      : forecastAction;
   if (!coverage.available) {
     report.Add({"coverage.wind_unavailable", severity,
         _("GRIB wind is unavailable at the requested departure time"),
         _("The provider did not supply a usable wind frame at ") +
-            DiagnosticTimeUtc(departure) + _(" UTC. This alone does not identify whether a file, time range, parameter or provider reply is missing."),
-        next, {}, true});
+            DiagnosticTimeUtc(departure) +
+            _(" UTC. This does not identify the cause. Check whether the "
+              "active reader can display wind at that time. An unreadable "
+              "file or unsupported packing can also cause this warning."),
+        departureAction, {}, true});
     return report;
   }
   const auto contains = [&](wr::GeoPoint point) {
@@ -341,13 +406,13 @@ RouteDiagnosticReport CheckForecastWindCoverage(
         PointText(point) + wxString::Format(
             _("; departure-frame wind bounds: latitude %.5f to %.5f, longitude %.5f to %.5f."),
             coverage.area.south, coverage.area.north, coverage.area.west, coverage.area.east),
-        next, {}, true});
+        isStart ? departureAction : next, {}, true});
   }
   if ((coverage.begins && departure < *coverage.begins) ||
       (coverage.ends && departure > *coverage.ends))
     report.Add({"coverage.departure_time", severity,
         _("Departure is outside the wind forecast time range"),
-        DiagnosticTimeUtc(departure) + " UTC", next, {}, true});
+        DiagnosticTimeUtc(departure) + " UTC", departureAction, {}, true});
   if (coverage.ends)
     report.Add({"coverage.forecast_end", DiagnosticSeverity::Notice,
         _("Wind forecast has a limited time range"),
@@ -389,7 +454,7 @@ RouteDiagnosticReport DescribeRoutingResult(const wr::RoutingResult& result,
         RequiredAction(report, action);
     if (!report.HasErrors())
       report.Add({"result." + wr::toString(report.status),
-          DiagnosticSeverity::Error, RoutingStatusTitle(report.status),
+          DiagnosticSeverity::Error, ResultFailureTitle(result, report.status),
           wxString::FromUTF8(result.message.c_str()), StatusAction(report.status)});
   }
   if (report.cancelled)
@@ -494,11 +559,15 @@ RouteDiagnosticReport DescribeRoutingResult(const wr::RoutingResult& result,
   if (!result.validation.failureReason.empty())
     report.technical += "\n" + _("Final check: ") +
         wxString::FromUTF8(result.validation.failureReason.c_str());
+  if (!report.complete && std::isfinite(result.diagnostics.closestApproachNm))
+    report.technical += wxString::Format(
+        _("\nClosest candidate reported by this result: %.3f NM remaining. This is search progress, not a validated arrival."),
+        result.diagnostics.closestApproachNm);
   const auto& attemptHistory = result.engineAttempts.empty()
       ? result.attemptFailures : result.engineAttempts;
   for (const auto& attempt : attemptHistory)
     report.technical += "\n" + wxString::FromUTF8(attempt.engine.c_str()) +
-        ": " + RoutingStatusTitle(attempt.status) + "\n" +
+        ": " + ResultStatusTitle(attempt.status, attempt.detail) + "\n" +
         wxString::FromUTF8(attempt.detail.c_str());
   for (const auto& reason : result.diagnostics.stageStopReasons)
     report.technical += "\n" + wxString::FromUTF8(reason.c_str());
