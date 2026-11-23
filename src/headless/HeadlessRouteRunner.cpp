@@ -50,6 +50,8 @@ weather_routing_engine::RoutingCandidateResult CandidateFromRoute(
   candidate.searchPreset = wxString::FromUTF8(search.preset.id.c_str());
   candidate.searchPresetRevision = search.preset.revision;
   candidate.searchTimeStepSeconds = search.timeStepSeconds;
+  candidate.configuredTimeStepSeconds = search.configuredTimeStepSeconds;
+  candidate.timeStepManaged = search.timeStepManaged;
   candidate.searchHeadingStepDegrees = search.headingStepDegrees;
   candidate.searchMemoryBudgetMiB = search.memoryBudgetMiB;
   candidate.searchMaximumAngleDegrees = search.maximumSearchAngle;

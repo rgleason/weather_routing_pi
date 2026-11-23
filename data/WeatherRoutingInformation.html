@@ -83,6 +83,34 @@ stay manual until enabled. Safety limits and user memory ceilings are unchanged.
 engines and admitted numerical alternatives. Effective nominal settings are
 recorded in route details; a count allowance is distinct from exhausted RAM.</p>
 
+<h3>Meridian experimental (1.44.0)</h3>
+<p>Choose <b>Meridian (experimental)</b> in the individual routing-method
+selector. It is an additional method, excluded from Auto and All. Existing
+methods, saved selections and defaults are preserved. Meridian ranks partial
+journeys in space and time, uses local coastline guidance to order detours,
+and checks promising motions with the shared wind, current, polar and safety
+providers. It uses short coastal steps and larger offshore steps, reserving
+work for a finer retry. Its queues and search work are bounded. It may miss
+feasible routes and does not establish a globally optimal route.</p>
+<p>The nominal time step is an offshore ceiling for Meridian; its actual steps
+are managed independently of Automatic adaptive settings. It searches a full-circle
+heading fan; Max Search Angle does not restrict this method. Heading separation,
+effort and reverse-recovery controls belonging to other methods do not tune
+this experiment. Comfort-alternative comparison is not available for Meridian.
+Every complete result still requires chronological replay and final safety checks.</p>
+<p><b>Copy diagnostic report</b> takes a fresh progress snapshot when clicked,
+including the active method, phase, elapsed time and available work counters.
+Closest approach describes search progress, not an accepted route. Configured
+and effective nominal steps are recorded separately. Some existing methods
+retain a fifteen-minute minimum nominal step even when a smaller value is
+saved; automatic and local reductions are identified as engine-managed.
+Search allowance exhaustion does not establish a shortage of RAM or an
+impossible passage.</p>
+<p>All methods use the complete GSHHG buffer around each segment, including
+small islands and segment end caps. Existing bounded access for water
+endpoints inside the margin remains available and is reported; actual land
+and other enforced hazards are never excused.</p>
+
 <h3>Atlas engine (1.33.0)</h3>
 <p>Atlas uses continuous physical connection solving, adaptive spatial decisions
 and time-dependent weather guidance. Every accepted route uses the original

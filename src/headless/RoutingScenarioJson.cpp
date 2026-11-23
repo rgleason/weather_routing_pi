@@ -211,8 +211,9 @@ bool LoadRoutingScenarioJson(const wxString& path,
           scenario.route.routingEngine != "quick" &&
           scenario.route.routingEngine != "original" && scenario.route.routingEngine != "auto" &&
           scenario.route.routingEngine != "all" && scenario.route.routingEngine != "quick2" &&
-          scenario.route.routingEngine != "alternative" && scenario.route.routingEngine != "atlas") {
-        error = "routingEngine must be auto, original (Quick), quick2, quick (Standard), alternative, main (Professional), atlas (experimental), or all";
+          scenario.route.routingEngine != "alternative" && scenario.route.routingEngine != "atlas" &&
+          scenario.route.routingEngine != "meridian") {
+        error = "routingEngine must be auto, original (Quick), quick2, quick (Standard), alternative, main (Professional), atlas, meridian (experimental), or all";
         return false;
       }
     }
@@ -466,6 +467,10 @@ bool SaveRoutingResultJson(const wxString& path,
     value["searchSettings"]["preset"] = candidate.searchPreset.ToStdString();
     value["searchSettings"]["presetRevision"] = candidate.searchPresetRevision;
     value["searchSettings"]["timeStepSeconds"] = candidate.searchTimeStepSeconds;
+    value["searchSettings"]["configuredTimeStepSeconds"] = candidate.configuredTimeStepSeconds;
+    value["searchSettings"]["timeStepManaged"] = candidate.timeStepManaged;
+    value["searchSettings"]["effectiveNominalTimeStepSeconds"] = candidate.timeStepManaged
+        ? Json::Value(Json::nullValue) : Json::Value(candidate.searchTimeStepSeconds);
     value["searchSettings"]["headingStepDegrees"] = candidate.searchHeadingStepDegrees;
     value["searchSettings"]["maximumSearchAngleDegrees"] = candidate.searchMaximumAngleDegrees;
     const auto& resolvedEngine = candidate.selectedEngine.IsEmpty() ? candidate.engine : candidate.selectedEngine;

@@ -49,9 +49,22 @@ TEST(RoutingEngineSettings, EightAdvancedTitlesKeepStableSavedIds) {
     EXPECT_EQ(settings.EngineId(), ids[i]);
   }
   EXPECT_EQ(wr::EngineFromSelection(-1), wr::RoutingEngine::Unsupported);
-  EXPECT_EQ(wr::EngineFromSelection(8), wr::RoutingEngine::Unsupported);
+  EXPECT_EQ(wr::EngineFromSelection(8), wr::RoutingEngine::Meridian);
+  EXPECT_EQ(wr::EngineFromSelection(9), wr::RoutingEngine::Unsupported);
   settings.SetEngineId("alternative");
   EXPECT_EQ(settings.engine, wr::RoutingEngine::Alternative);
+}
+TEST(RoutingEngineSettings, MeridianIsStandaloneAndDoesNotJoinExistingPortfolios) {
+  wr::RoutingEngineSettings settings;
+  settings.SetEngineId("meridian");
+  EXPECT_EQ(settings.engine, wr::RoutingEngine::Meridian);
+  EXPECT_EQ(settings.EngineId(), "meridian");
+  EXPECT_EQ(wr::EngineBit(settings.engine), 0U);
+  EXPECT_EQ(wr::kSequenceEngines.size(), 6U);
+  const auto saved = settings;
+  TiXmlElement xml("Configuration");
+  wr::WriteRoutingEngineSettings(settings, xml);
+  EXPECT_EQ(wr::ReadRoutingEngineSettings(xml), saved);
 }
 TEST(RoutingEngineSettings, FirstInstallAutoButUpgradePreservesEveryExistingSelection) {
   wr::RoutingEngineSettings fresh;
@@ -285,6 +298,20 @@ TEST(RoutingEngineSettings, QuickUsesConfiguredNominalStepDespiteSavedOffshoreVa
   }
   c.EngineSettings.SetEngineId("quick");
   EXPECT_EQ(wr::RoutingSearchSnapshot::Capture(c, true).timeStepSeconds, 14400);
+}
+TEST(RoutingEngineSettings, EffectiveStepExposesQualityFloorWithoutChangingSavedValues) {
+  Configuration c;
+  c.EngineSettings.SetEngineId("quick2");
+  c.DeltaTime = 300;
+  const auto snapshot = wr::RoutingSearchSnapshot::Capture(c, true);
+  EXPECT_EQ(snapshot.configuredTimeStepSeconds, 300);
+  EXPECT_EQ(snapshot.timeStepSeconds, 900);
+  EXPECT_EQ(c.DeltaTime, 300);
+  EXPECT_FALSE(snapshot.timeStepManaged);
+  c.DeltaTime = 43200;
+  EXPECT_EQ(wr::RoutingSearchSnapshot::Capture(c, true).timeStepSeconds, 21600);
+  c.EngineSettings.SetEngineId("meridian");
+  EXPECT_TRUE(wr::RoutingSearchSnapshot::Capture(c, true).timeStepManaged);
 }
 
 TEST(RoutingEngineSettings, QuickPresetResetsNominalStepAndPreservesStandardAndSafety) {
@@ -527,4 +554,14 @@ TEST(BundledDataUpgradePolicy, QueryAndEndpointReleasePreservesPersonalData) {
   EXPECT_FALSE(weather_routing::CanSkipBundledDataUpdate(204, 2, 9));
   EXPECT_FALSE(weather_routing::CanSkipBundledDataUpdate(208, 1, 42));
   EXPECT_FALSE(weather_routing::CanSkipBundledDataUpdate(141, 2, 9));
+}
+
+TEST(RoutingEngineSettings, AdditionalEngineReleasePreservesExistingBundledData) {
+  for (int installed = 138; installed <= 143; ++installed)
+    EXPECT_TRUE(wr::CanSkipBundledDataUpdate(installed, 1, 44));
+  for (int installed = 205; installed <= 210; ++installed)
+    EXPECT_TRUE(wr::CanSkipBundledDataUpdate(installed, 2, 11));
+  EXPECT_FALSE(wr::CanSkipBundledDataUpdate(0, 1, 44));
+  EXPECT_FALSE(wr::CanSkipBundledDataUpdate(137, 1, 44));
+  EXPECT_FALSE(wr::CanSkipBundledDataUpdate(204, 2, 11));
 }

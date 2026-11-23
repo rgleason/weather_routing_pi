@@ -43,6 +43,8 @@
 #include "engine/adaptive/AdvisoryWeather.h"
 #include "engine/adaptive/NativeFeedback.h"
 #include "engine/adaptive/Quick2.h"
+#include "engine/meridian/Engine.h"
+#include "engine/meridian/ShorelineHints.h"
 #include "engine/adaptive/StandardRecovery.h"
 #include "engine/native/RouteGust.h"
 #include "quick2_routing/Engine.h"
@@ -1512,6 +1514,33 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
   auto solveSingleImplementation = [&](const wr::RoutingRequest& solveRequest,
                          const wr::RoutingEnvironment& solveEnvironment,
                          const RouteMapConfiguration& selectedConfiguration) {
+    if (selectedConfiguration.EngineSettings.engine == weather_routing::RoutingEngine::Meridian) {
+      meridian_routing::Options options;
+      if (selectedConfiguration.DetectLand && selectedConfiguration.shoreline_dataset)
+        options.geography = std::make_shared<meridian_routing::ShorelineHints>(selectedConfiguration.shoreline_dataset);
+      options.attemptStarted = [&](unsigned attempt, wr::Duration coastal,
+                                   wr::Duration offshore, std::uint64_t allowance) {
+        overlay.AppendDiagnosticContext(wxString::Format(
+            "\nMeridian experimental attempt %u: full-circle heading fan; coastal step up to %lld s; offshore step up to %lld s; proposal allowance %llu",
+            attempt, static_cast<long long>(coastal.count()),
+            static_cast<long long>(offshore.count()),
+            static_cast<unsigned long long>(allowance)));
+      };
+      auto labeled = solveRequest;
+      labeled.progress = [&overlay, generation = overlay.ModernProgressGeneration(),
+          logged = std::chrono::steady_clock::time_point{}](const auto& progress) mutable {
+        overlay.SetModernNativeProgress(progress, generation, _("Meridian experimental"));
+        const auto now = std::chrono::steady_clock::now();
+        if (now - logged >= std::chrono::seconds(5)) {
+          logged = now;
+          wxLogMessage("WR_MERIDIAN_PROGRESS attempt=%u proposals=%llu retained=%llu land_checks=%llu closest_nm=%.3f",
+              progress.attempt, static_cast<unsigned long long>(progress.generatedStates),
+              static_cast<unsigned long long>(progress.retainedStates),
+              static_cast<unsigned long long>(progress.landChecks), progress.closestApproachNm);
+        }
+      };
+      return meridian_routing::Engine{}.route(labeled, solveEnvironment, options);
+    }
     if (selectedConfiguration.EngineSettings.engine == weather_routing::RoutingEngine::Atlas) {
       atlas_routing::Options options;
       if(AtlasUsesGeographyHints() && selectedConfiguration.DetectLand && selectedConfiguration.chart_safety_runtime_enforced &&
@@ -1722,6 +1751,22 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
   auto solveSingle = [&](const wr::RoutingRequest& solveRequest,
                          const wr::RoutingEnvironment& solveEnvironment,
                          const RouteMapConfiguration& selectedConfiguration) {
+    const auto selected = selectedConfiguration.EngineSettings.engine;
+    if (selected != weather_routing::RoutingEngine::Atlas &&
+        selected != weather_routing::RoutingEngine::Meridian) {
+      const auto nominal = selectedConfiguration.IsQuick()
+          ? selectedConfiguration.EngineSettings.quick.offshoreStepMinutes * 60LL
+          : solveRequest.options.timeStep.count();
+      const auto effective = selected == weather_routing::RoutingEngine::Quick2
+          ? std::min<long long>(nominal, 21600) : nominal;
+      overlay.AppendDiagnosticContext(wxString::Format(
+          "\n%s settings: configured nominal step %.0f s; effective nominal step %lld s; local reductions may apply",
+          wxGetTranslation(weather_routing::EngineTitle(selected)),
+          selectedConfiguration.IsQuick()
+              ? selectedConfiguration.EngineSettings.quick.offshoreStepMinutes * 60.0
+              : selectedConfiguration.DeltaTime,
+          static_cast<long long>(effective)));
+    }
     auto solved = solveSingleImplementation(solveRequest, solveEnvironment,
                                             selectedConfiguration);
     weather_routing::UseValidatedSourceReporting(solved);
@@ -1803,6 +1848,13 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
           if (onRepair && recipe.role == adaptive::Role::ReplayRecovery) onRepair();
           auto bounded = input;
           bounded.limits.maximumGeneratedStates = allowance;
+          overlay.AppendDiagnosticContext(wxString::Format(
+              "\nAutomatic %s attempt: nominal step %lld s; proposal/state allowance %llu; coastal reductions may apply",
+              wxGetTranslation(weather_routing::EngineTitle(selected)),
+              static_cast<long long>((selected == RoutingEngine::Quick
+                  ? (recipe.standardStep == wr::Duration{} ? options.standardStep : recipe.standardStep)
+                  : input.options.timeStep).count()),
+              static_cast<unsigned long long>(allowance)));
           adaptive::AttemptResult out;
           if (selected == RoutingEngine::Original) {
             original_routing::Options limits;
@@ -2421,7 +2473,7 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
   };
   try {
     if (!planArrival && !configuration.chart_safety_scout_preview &&
-        configuration.ExploreComfortAlternatives &&
+        configuration.ExploreComfortAlternatives && result.engineIdentity != "meridian" &&
         weather_routing::native::AcceptedRoute(result)) {
       auto selectedConfiguration = result.engineIdentity == "quick3" && recoveryConfiguration
           ? *recoveryConfiguration : configuration;
@@ -2711,7 +2763,8 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
           std::chrono::steady_clock::now() - started)
           .count();
   const wxString status = wxString::FromUTF8(wr::toString(result.status).c_str());
-  const wxString solver = wxString::FromUTF8(wr::toString(result.solverPath).c_str());
+  const wxString solver = result.engineIdentity == "meridian" ? "meridian"
+      : wxString::FromUTF8(wr::toString(result.solverPath).c_str());
   wxLogMessage(
       "WR_MODERN_NATIVE_SUMMARY route=\"%s -> %s\" status=%s solver=%s "
       "candidate_offset=%d departure=\"%s\" "

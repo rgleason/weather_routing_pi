@@ -55,6 +55,27 @@ verified offshore checks while retaining applicable coastal, hazard and depth
 checks. It is separate from the passage GSHHG selection, the displayed basemap
 and the persistent detailed-tile cache.
 
+== Meridian experimental and live diagnostics
+
+The individual routing-method selector offers *Meridian (experimental)*.
+This standalone, bounded, time-dependent best-first search is excluded from
+Auto and All. It uses local coastline guidance, fine coastal steps and
+reserved refinement, while retaining the shared sailing and safety checks.
+Its full-circle heading fan is independent of Max Search Angle; that control
+is disabled for this method and its saved value is preserved.
+It does not guarantee completion or global optimality. Existing methods and
+defaults are unchanged. Its nominal step is an offshore ceiling; it manages
+local steps independently. Comfort alternatives are unavailable for this method.
+
+*Copy diagnostic report* refreshes current progress when clicked. It includes
+the active phase, elapsed time and available counters, with configured and
+effective nominal steps identified separately. Closest approach is search
+progress, not a validated route. Existing methods' fifteen-minute nominal
+floor and engine-managed steps are disclosed without rewriting saved values.
+All methods enforce the complete GSHHG shore buffer, including small islands
+between probe lines and segment end caps, with existing bounded endpoint
+access retained.
+
 == Background
 
 Integration with the grib plugin allows for knowledge of weather
