@@ -53,6 +53,7 @@ set(TEST_SRC
     RoutingEndpointPreflight_tests.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/RouteWaypointValidation.cpp
     RouteDiagnostics_tests.cpp
+    ManeuverValidation_tests.cpp
     ValidatedRouteReporting_tests.cpp
     ForecastTimeBucket_tests.cpp
     QuickCompletion_tests.cpp
