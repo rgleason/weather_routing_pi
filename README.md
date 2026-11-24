@@ -1,20 +1,20 @@
 # Weather Routing production
 
 This repository's `master` branch is the **production 1.x line**, currently
-**1.44.1**. It retains the established Weather Routing interface and uses the
+**1.44.2**. It retains the established Weather Routing interface and uses the
 external GRIB or xGRIB plugin for forecast data, with the separate Climatology
 plugin when climatology is requested.
 
 | Line | Current version | Source |
 | --- | --- | --- |
-| Weather Routing production | **1.44.1** | [pob220/weather_routing_pi — master](https://github.com/pob220/weather_routing_pi/tree/master) |
+| Weather Routing production | **1.44.2** | [pob220/weather_routing_pi — master](https://github.com/pob220/weather_routing_pi/tree/master) |
 | xWeatherRouting improved UX development | **2.11.1** | [pob220/xweather_routing_pi — develop](https://github.com/pob220/xweather_routing_pi/tree/develop) |
 
 The 2.x line has the improved planning interface, incorporated GRIB loader and
 generator, bundled Climatology, and separate preferences and user data. See its
 [current developer test packages](https://github.com/pob220/xweather_routing_pi/releases/tag/developer-test-2.11.1-20261124).
 
-The production 1.44.1 change is present here; integration into Rick's `master`
+The production 1.44.2 change is present here; integration into Rick's `master`
 is tracked in [PR #740](https://github.com/rgleason/weather_routing_pi/pull/740).
 The version declared here does not mean the plugin catalogue has already updated.
 
