@@ -389,6 +389,7 @@ private:
 protected:
   wxNotebook* m_notebook7;
   wxPanel* m_pBasic;
+  wxStaticText* m_tCumulativeClimatologyWarning;
   /** Radio buttons for start selection */
   wxRadioButton* m_rbStartFromBoat;
   wxRadioButton* m_rbStartPositionSelection;

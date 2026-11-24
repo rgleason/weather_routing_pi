@@ -1856,10 +1856,20 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
                   wxALL | wxEXPAND | wxALIGN_CENTER_VERTICAL, 5);
 
   sbSizer34->Add(fgSizer961, 1, wxEXPAND | wxALL, 5);
-
   fgSizer59->Add(sbSizer34, 1, wxEXPAND | wxALL | wxALIGN_CENTER_VERTICAL, 5);
-
   fgSizer58->Add(fgSizer59, 1, wxEXPAND | wxALIGN_CENTER_VERTICAL, 5);
+
+  const wxString cumulativeClimatologyWarning = _(
+      "This route will use only the Legacy isochrones method. This overrides "
+      "your Routing engine selection for the entire route, including sections "
+      "covered by GRIB.");
+  m_tCumulativeClimatologyWarning = new wxStaticText(
+      sbData_Source->GetStaticBox(), wxID_ANY, cumulativeClimatologyWarning);
+  m_tCumulativeClimatologyWarning->SetFont(
+      m_tCumulativeClimatologyWarning->GetFont().Bold());
+  m_tCumulativeClimatologyWarning->Wrap(WR_FromDIP(this, 325));
+  fgSizer58->Add(m_tCumulativeClimatologyWarning, 0, wxEXPAND | wxALL, 5);
+  m_tCumulativeClimatologyWarning->Hide();
 
   m_cbAllowDataDeficient =
       new wxCheckBox(sbData_Source->GetStaticBox(), wxID_ANY,
@@ -1895,6 +1905,10 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
     m_tRoutingEngineDescription->Wrap(boxTextWidth(engineBox));
     safetyExplanation->SetLabel(safetyExplanationText);
     safetyExplanation->Wrap(boxTextWidth(sbOptions));
+    if (m_tCumulativeClimatologyWarning->IsShown()) {
+      m_tCumulativeClimatologyWarning->SetLabel(cumulativeClimatologyWarning);
+      m_tCumulativeClimatologyWarning->Wrap(boxTextWidth(sbData_Source));
+    }
     m_pBasic->Layout();
   };
 #ifndef __OCPN__ANDROID__
@@ -3057,6 +3071,16 @@ ConfigurationDialogBase::ConfigurationDialogBase(wxWindow* parent,
         wxMax(200, GetClientSize().x - 120));
     event.Skip();
   });
+  weatherPage->Bind(wxEVT_SIZE,
+      [this, weatherPage, cumulativeClimatologyWarning](wxSizeEvent& event) {
+        if (m_tCumulativeClimatologyWarning->IsShown()) {
+          WR_WrapAndroidText(m_tCumulativeClimatologyWarning,
+              cumulativeClimatologyWarning, wxMax(200, event.GetSize().x - 100));
+          weatherPage->Layout();
+          weatherPage->FitInside();
+        }
+        event.Skip();
+      });
   m_notebook7->SetSelection(0);
 #endif
 
