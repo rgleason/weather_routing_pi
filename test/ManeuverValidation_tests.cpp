@@ -217,7 +217,8 @@ TEST(ManeuverValidationLimits, BoundedSamplesStopBeforeTransitionProviderWork) {
   EXPECT_EQ(result.failureReason, "validation sample resource limit reached");
   EXPECT_LE(result.samples, f.request.limits.maximumValidationSamples);
   ASSERT_FALSE(f.weather->windQueries.empty());
-  EXPECT_LT(f.weather->windQueries.back(), f.weather->begins);
+  EXPECT_LT(f.weather->windQueries.back().time_since_epoch().count(),
+            f.weather->begins.time_since_epoch().count());
 }
 TEST(ManeuverValidationLimits, ChecksTimedExclusionsAndDepthAtManeuverPosition) {
   Fixture f;
