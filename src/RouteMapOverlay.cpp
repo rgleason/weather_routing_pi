@@ -72,9 +72,6 @@ void* RouteMapOverlayThread::Entry() {
 
       m_RouteMapOverlay.RouteAnalysis(proute);
     } else {
-      const bool cumulativeClimatology =
-          cf.ClimatologyType == RouteMapConfiguration::CUMULATIVE_MAP ||
-          cf.ClimatologyType == RouteMapConfiguration::CUMULATIVE_MINUS_CALMS;
       if (ModernNativeRouteEnabled(cf)) {
         wxString modernError;
         RunModernNativeRoute(m_RouteMapOverlay, modernError);
@@ -84,13 +81,16 @@ void* RouteMapOverlayThread::Entry() {
               cf.Start, cf.End, modernError);
         return nullptr;
       }
-      if (cumulativeClimatology)
+      if (cf.UsesCumulativeClimatology())
         wxLogMessage(
             "WR_MODERN_NATIVE_FALLBACK route=\"%s -> %s\" "
             "reason=\"cumulative climatology distribution requires legacy "
             "probabilistic semantics\"",
             cf.Start, cf.End);
       while (!TestDestroy() && !m_RouteMapOverlay.Finished()) {
+        m_RouteMapOverlay.AcquireLegacyGribFrame();
+        if (m_RouteMapOverlay.CancellationFlag()->load(std::memory_order_relaxed))
+          break;
         {
           RouteMapOverlay::DestinationUpdateGuard destination_update_guard(
               m_RouteMapOverlay);
@@ -185,7 +185,9 @@ bool RouteMapOverlay::Start(wxString& error) {
     return false;
   }
 
-  const RouteMapConfiguration configuration = GetConfiguration();
+  RouteMapConfiguration configuration = GetConfiguration();
+  const bool cumulativeRoute = configuration.RouteGUID.IsEmpty() &&
+                               configuration.UsesCumulativeClimatology();
   const bool climatologySelected =
       configuration.ClimatologyType > RouteMapConfiguration::CURRENTS_ONLY;
   const bool climatologyAvailable =
@@ -194,6 +196,14 @@ bool RouteMapOverlay::Start(wxString& error) {
           : ClimatologyWindAtlasData && WeatherDataProvider::CanInvokeClimatology(ClimatologyService::WindAtlas);
   auto sources = weather_routing::CheckWindSourceSelection(
       configuration.UseGrib, climatologySelected, climatologyAvailable);
+  if (cumulativeRoute && !climatologyAvailable) {
+    sources.items.clear();
+    sources.Add({"setup.cumulative_climatology_unavailable",
+        weather_routing::DiagnosticSeverity::Error,
+        _("Cumulative climatology needs the Climatology wind atlas"), {},
+        _("Enable a compatible Climatology provider with wind atlas data."),
+        {}, true});
+  }
   for (auto& item : sources.items) AddDiagnostic(std::move(item));
   const wxString boatError = LoadBoat();
   if (!boatError.empty())
@@ -216,8 +226,13 @@ bool RouteMapOverlay::Start(wxString& error) {
         wxString::FromUTF8(configuration.EngineSettings.EngineId().c_str());
     return false;
   }
-  if (!ModernNativeRouteEnabled(configuration)) {
+  const bool native = ModernNativeRouteEnabled(configuration);
+  if (!native && !cumulativeRoute) {
     error = _("The selected engine cannot analyse an existing route or use cumulative climatology. Review the routing mode and data-source settings.");
+    return false;
+  }
+  if (cumulativeRoute && configuration.RequireWaveCoverage) {
+    error = _("Required wave coverage needs native routing. Select Most Likely or Average to keep this requirement.");
     return false;
   }
   if (configuration.AvoidCycloneTracks && ClimatologyCycloneTrackCrossings &&
@@ -317,8 +332,19 @@ bool RouteMapOverlay::Start(wxString& error) {
   m_SelectedPartialCandidateId.clear();
   Unlock();
 
-  CaptureSearchSettings(configuration, ModernNativeRouteEnabled(configuration));
-  RequestedGrib();  // Native workers enqueue the forecast times they need.
+  if (cumulativeRoute) {
+    AddDiagnostic({"engine.cumulative_climatology",
+        weather_routing::DiagnosticSeverity::Notice,
+        _("Routing engine used: Legacy isochrones"),
+        _("Cumulative climatology weights the boat's sailing speed using the wind atlas."),
+        {}, {}, true});
+    // Report the nominal legacy search settings even if a fast engine was
+    // selected. The saved route configuration retains the selected engine.
+    configuration.EngineSettings.engine = weather_routing::RoutingEngine::Main;
+  }
+  CaptureSearchSettings(configuration, native);
+  if (native)
+    RequestedGrib();  // Native workers enqueue the forecast times they need.
   m_Thread = new RouteMapOverlayThread(*this);
   m_Thread->Run();
   return true;
