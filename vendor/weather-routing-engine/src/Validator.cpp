@@ -42,6 +42,99 @@ void addUsage(EnvironmentalSourceUsage& usage,
   if (environment.waves.available && environment.waves.nearbyHeightEstimate)
     usage.estimatedWaveDuration += duration;
 }
+
+// Transition penalties advance the clock at the leg's starting position.
+// Check that interval independently of the subsequent forward-motion replay:
+// a tack, gybe, sail change or propulsion change cannot hide missing weather
+// or a hard-limit violation. Keep the existing zero-progress penalty model;
+// sailing-angle and polar-speed requirements do not apply while manoeuvring.
+std::string validateTransitionWeather(
+    const RoutingRequest& request, const RoutingEnvironment& environment,
+    GeoPoint position, TimePoint begin, Duration duration, double marginNm,
+    RouteValidationResult& result,
+    std::optional<EnvironmentalSnapshot>& previousEnvironment,
+    RoutingDiagnostics* diagnostics) {
+  constexpr std::int64_t stepSeconds = 300;
+  const auto count = static_cast<std::uint64_t>(duration.count());
+  const auto slices = count / stepSeconds + (count % stepSeconds != 0);
+  // Initial boundary, then midpoint and end of every bounded slice. One-second
+  // slices reuse their initial sample, so this is a conservative upper bound.
+  const auto required = 2U * slices + 1U;
+  if (result.samples > request.limits.maximumValidationSamples ||
+      required > request.limits.maximumValidationSamples - result.samples)
+    return "validation sample resource limit reached";
+
+  EnvironmentalSnapshot snapshot;
+  const auto sample = [&](Duration offset) -> std::string {
+    const TimePoint time = begin + offset;
+    const auto resolved =
+        internal::resolveEnvironment(request, environment, position, time);
+    ++result.samples;
+    if (resolved.failureStatus != RoutingStatus::Complete)
+      return "environmental validation failed during manoeuvre: " +
+             resolved.failureReason;
+    snapshot = resolved.snapshot;
+    const double wind = vectorMagnitudeKnots(snapshot.wind.velocity);
+    if (!std::isfinite(wind) ||
+        !std::isfinite(snapshot.current.velocity.eastKnots) ||
+        !std::isfinite(snapshot.current.velocity.northKnots) ||
+        (snapshot.waves.available &&
+         !std::isfinite(snapshot.waves.significantHeightMetres)))
+      return "non-finite weather during manoeuvre";
+    if (request.constraints.maximumTrueWindKnots &&
+        wind > *request.constraints.maximumTrueWindKnots + 1e-9)
+      return "manoeuvre exceeds hard true-wind limit";
+    // The penalty has no forward vessel speed in the retained motion model.
+    if (request.constraints.maximumApparentWindKnots &&
+        wind > *request.constraints.maximumApparentWindKnots + 1e-9)
+      return "manoeuvre exceeds hard apparent-wind limit";
+    if (request.constraints.maximumOpposingWindCurrent) {
+      const double opposing =
+          -(snapshot.wind.velocity.eastKnots * snapshot.current.velocity.eastKnots +
+            snapshot.wind.velocity.northKnots * snapshot.current.velocity.northKnots);
+      if (opposing > *request.constraints.maximumOpposingWindCurrent + 1e-9)
+        return "manoeuvre exceeds hard wind-against-current limit";
+    }
+    if (request.constraints.maximumWaveHeightMetres && snapshot.waves.available &&
+        snapshot.waves.significantHeightMetres >
+            *request.constraints.maximumWaveHeightMetres + 1e-9)
+      return "manoeuvre exceeds hard wave-height limit";
+    if (request.constraints.minimumDepthMetres) {
+      if (!environment.landAndBoundaries)
+        return "minimum depth configured without depth provider";
+      const auto depth = environment.landAndBoundaries->depthMetres(position);
+      if (!depth || std::isnan(*depth) ||
+          *depth < *request.constraints.minimumDepthMetres)
+        return "manoeuvre violates hard minimum-depth limit";
+    }
+    if (environment.landAndBoundaries) {
+      if (diagnostics) ++diagnostics->landChecks;
+      if (environment.landAndBoundaries
+              ->validationSegmentFromKnownSafeForbiddenAt(
+                  position, position, time, marginNm))
+        return "manoeuvre intersects land or an exclusion zone";
+    }
+    internal::appendTransitions(
+        result.sourceTransitions,
+        previousEnvironment ? &*previousEnvironment : nullptr, snapshot,
+        position, time, request.environment);
+    previousEnvironment = snapshot;
+    return {};
+  };
+
+  if (auto error = sample(Duration{}); !error.empty()) return error;
+  for (Duration elapsed{}; elapsed < duration;) {
+    const Duration slice = std::min(Duration{stepSeconds}, duration - elapsed);
+    if (slice.count() > 1) {
+      if (auto error = sample(elapsed + Duration{slice.count() / 2});
+          !error.empty()) return error;
+    }
+    addUsage(result.environment, snapshot, slice);
+    elapsed += slice;
+    if (auto error = sample(elapsed); !error.empty()) return error;
+  }
+  return {};
+}
 }  // namespace
 
 RouteValidationResult validateRoute(const RoutingRequest& request,
@@ -126,6 +219,7 @@ RouteValidationResult validateRoute(const RoutingRequest& request,
       if (result.samples + samples > request.limits.maximumValidationSamples)
         return fail(std::move(result),
                     "validation sample resource limit reached");
+      Duration previousOffset{};
       for (unsigned sampleIndex = 0; sampleIndex < samples; ++sampleIndex) {
         const Duration offset{static_cast<std::int64_t>(
             duration.count() * (sampleIndex + 1) / samples)};
@@ -158,9 +252,8 @@ RouteValidationResult validateRoute(const RoutingRequest& request,
             return fail(std::move(result),
                         "stationary wait violates hard minimum-depth limit");
         }
-        addUsage(
-            result.environment, resolved.snapshot,
-            Duration{duration.count() / static_cast<std::int64_t>(samples)});
+        addUsage(result.environment, resolved.snapshot, offset - previousOffset);
+        previousOffset = offset;
         internal::appendTransitions(
             result.sourceTransitions,
             previousEnvironment ? &*previousEnvironment : nullptr,
@@ -249,10 +342,17 @@ RouteValidationResult validateRoute(const RoutingRequest& request,
           prior.sailPlan != leg.sailPlan)
         transition += request.vessel.sailPlanChangePenalty;
     }
-    if (transition >= duration)
+    if (transition < Duration::zero() || transition >= duration)
       return fail(std::move(result),
                   "route leg leaves no time for forward motion after "
                   "transition penalties");
+    if (transition > Duration::zero()) {
+      const auto error = validateTransitionWeather(
+          request, environment, leg.start, leg.startTime, transition,
+          departureEgress ? 0.0 : request.constraints.landSafetyMarginNm,
+          result, previousEnvironment, diagnostics);
+      if (!error.empty()) return fail(std::move(result), error);
+    }
     const Duration moving = duration - transition;
     const bool replaySearchCadence =
         leg.integrationMaximumSlice > Duration::zero();

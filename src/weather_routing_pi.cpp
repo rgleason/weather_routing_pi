@@ -508,9 +508,16 @@ void weather_routing_pi::SetPluginMessage(wxString& message_id,
     if (m_pWeather_Routing) {
       const wxString requestToken =
           wxString::FromUTF8(v["WeatherRoutingRequestToken"].asCString());
-      if (!requestToken.IsEmpty())
-        m_pWeather_Routing->HandleGribTimelineFrame(requestToken, gptr);
-      else
+      if (!requestToken.IsEmpty()) {
+        std::optional<std::int64_t> windForecastEnd;
+        wxLongLong_t end = 0;
+        if (v["WindForecastEndEpochSeconds"].isString() &&
+            wxString::FromUTF8(v["WindForecastEndEpochSeconds"].asCString())
+                .ToLongLong(&end) && end >= 0)
+          windForecastEnd = end;
+        m_pWeather_Routing->HandleGribTimelineFrame(requestToken, gptr,
+                                                    windForecastEnd);
+      } else
         wxLogWarning(
             "WR_GRIB_BROKER ignored timeline response without request token");
     }

@@ -433,6 +433,29 @@ void AppendCancelledWorkerProgress(RouteDiagnosticReport& report,
       "\n" + stage + "\n" + detail;
 }
 
+void RefineForecastWindFailure(RouteDiagnosticReport& report) {
+  if (report.complete || report.cancelled ||
+      report.status != wr::RoutingStatus::WindForecastRequired)
+    return;
+  const auto find = [&](const char* code) {
+    return std::find_if(report.items.begin(), report.items.end(),
+                       [code](const auto& item) { return item.code == code; });
+  };
+  const auto failure = find("result.wind_forecast_required");
+  if (failure == report.items.end()) return;
+
+  const auto ended = find("provider.forecast_ended");
+  const auto wind = ended != report.items.end() ? ended : find("provider.no_wind");
+  if (wind == report.items.end()) return;
+
+  failure->title = ended != report.items.end()
+      ? _("GRIB wind forecast ended before the route was completed")
+      : _("GRIB wind coverage is incomplete");
+  failure->detail = wind->detail;
+  failure->action = wind->action;
+  report.items.erase(wind);
+}
+
 RouteDiagnosticReport DescribeRoutingResult(const wr::RoutingResult& result,
                                            bool waveLimitEnabled) {
   RouteDiagnosticReport report;

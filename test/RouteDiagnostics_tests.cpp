@@ -410,3 +410,38 @@ TEST(RouteDiagnostics, MeridianWorkAllowanceDoesNotClaimAllocationFailure) {
   EXPECT_NE(report.technical.Find("Meridian refinement: Search allowance reached"), wxNOT_FOUND);
   EXPECT_EQ(report.technical.Find("Calculation allowance or memory limit reached"), wxNOT_FOUND);
 }
+
+TEST(RouteDiagnostics, ConfirmsForecastExpiryOnlyWithAReportedEnd) {
+  wr::RoutingResult failed;
+  failed.status = wr::RoutingStatus::WindForecastRequired;
+  auto report = weather_routing::DescribeRoutingResult(failed, false);
+  report.Add({"provider.no_wind", DiagnosticSeverity::Warning, "Missing wind",
+              "Requested time: 2026-12-09 20:52:30 UTC", "Check forecast coverage."});
+  auto legacy = report;
+  weather_routing::RefineForecastWindFailure(legacy);
+  EXPECT_EQ(legacy.Summary(), "GRIB wind coverage is incomplete");
+  const auto* legacyFailure = Find(legacy, "result.wind_forecast_required");
+  ASSERT_NE(legacyFailure, nullptr);
+  EXPECT_EQ(legacyFailure->detail, "Requested time: 2026-12-09 20:52:30 UTC");
+  report.Add({"provider.forecast_ended", DiagnosticSeverity::Warning,
+              "Search requested wind beyond the GRIB forecast",
+              "Wind forecast ends at 2026-12-09 18:00:00 UTC.",
+              "Load a longer forecast or enable Climatology fallback."});
+  weather_routing::RefineForecastWindFailure(report);
+  EXPECT_EQ(report.Summary(), "GRIB wind forecast ended before the route was completed");
+  const auto* failure = Find(report, "result.wind_forecast_required");
+  ASSERT_NE(failure, nullptr);
+  EXPECT_EQ(failure->detail, "Wind forecast ends at 2026-12-09 18:00:00 UTC.");
+  EXPECT_EQ(failure->action, "Load a longer forecast or enable Climatology fallback.");
+  EXPECT_FALSE(Find(report, "provider.forecast_ended"));
+}
+
+TEST(RouteDiagnostics, ForecastEndDoesNotInvalidateACompletedRoute) {
+  auto report = weather_routing::DescribeRoutingResult(Completed(), false);
+  report.Add({"provider.forecast_ended", DiagnosticSeverity::Warning,
+              "Search requested wind beyond the GRIB forecast"});
+  weather_routing::RefineForecastWindFailure(report);
+  EXPECT_TRUE(report.complete);
+  EXPECT_FALSE(report.HasErrors());
+  EXPECT_TRUE(Find(report, "provider.forecast_ended"));
+}
