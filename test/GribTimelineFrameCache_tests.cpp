@@ -222,3 +222,17 @@ TEST(GribTimelineFrameCache, NoSpeculativeRequestsWithoutOptIn) {
   EXPECT_EQ(future.get().status,Status::Available);
   EXPECT_FALSE(cache.TakePendingRequest(true));
 }
+
+TEST(GribTimelineFrameCache, PreservesConfirmedEndOnlyForLaterMissingWind) {
+  Cache cache;
+  cache.SetRequestWakeup([&] {
+    const auto request = cache.TakePendingRequest();
+    ASSERT_TRUE(request);
+    GribRecordSet empty(0);
+    cache.PublishFrame(*request, &empty, 200);
+  });
+  EXPECT_FALSE(cache.Acquire(199, 100, {}).windForecastEnd);
+  EXPECT_FALSE(cache.Acquire(200, 100, {}).windForecastEnd);
+  EXPECT_EQ(cache.Acquire(201, 100, {}).windForecastEnd, 200);
+  EXPECT_EQ(cache.Acquire(201, 100, {}).windForecastEnd, 200);
+}

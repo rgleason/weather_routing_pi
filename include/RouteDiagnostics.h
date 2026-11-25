@@ -28,6 +28,7 @@ struct RouteDiagnosticReport {
   wxString Text() const;
 };
 
+void RefineForecastWindFailure(RouteDiagnosticReport& report);
 RouteDiagnosticReport DescribeRoutingResult(
     const supercpn::weather_routing::RoutingResult& result,
     bool waveLimitEnabled = true);

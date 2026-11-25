@@ -1466,6 +1466,7 @@ private:
   std::condition_variable m_ChartServiceReady;
   std::shared_ptr<weather_routing::GribTimelineFrameCache>
       m_GribTimelineCache;
+  std::atomic_bool m_ReportedForecastEnd{false};
   std::shared_ptr<std::atomic_bool> m_CancellationFlag;
 };
 

@@ -150,11 +150,15 @@ bool GribTimelineFrameCache::Publish(const Request& request,
 }
 
 void GribTimelineFrameCache::PublishFrame(
-    const Request& request, const GribRecordSet* grib) {
+    const Request& request, const GribRecordSet* grib,
+    std::optional<std::int64_t> windForecastEnd) {
   if (!grib || !grib->m_GribRecordPtrArray[Idx_WIND_VX] ||
       !grib->m_GribRecordPtrArray[Idx_WIND_VY]) {
     if (cache_.DiscardUnusedPrefetch(request)) return;
-    Publish(request, {{}, grib ? Status::NoWind : Status::NoFrame});
+    if (windForecastEnd && request.key <= *windForecastEnd)
+      windForecastEnd.reset();
+    Publish(request, {{}, grib ? Status::NoWind : Status::NoFrame,
+                      windForecastEnd});
     return;
   }
 

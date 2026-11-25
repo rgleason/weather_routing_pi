@@ -34,6 +34,7 @@ public:
   struct Reply {
     Shared_GribRecordSet frame;
     Status status{Status::NoResult};
+    std::optional<std::int64_t> windForecastEnd{};
   };
 
   using Cache = KeyedRequestCache<std::int64_t, Reply>;
@@ -55,7 +56,8 @@ public:
   void SetAdditionalPrefetchEnabled(bool enabled) { prefetch_enabled_.store(enabled); }
   void SetRequestWakeup(std::function<void()> wakeup);
   bool TryResident(std::int64_t key, Shared_GribRecordSet* value) const;
-  void PublishFrame(const Request& request, const GribRecordSet* grib);
+  void PublishFrame(const Request& request, const GribRecordSet* grib,
+                    std::optional<std::int64_t> windForecastEnd = {});
   bool Publish(const Request& request, const Reply& reply);
   void PublishUnavailable(const Request& request);
   void PublishOutOfMemory(const Request& request);

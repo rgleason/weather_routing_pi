@@ -354,10 +354,23 @@ bool RouteMap::AcquireGribTimelineFrame(const wxDateTime& time,
       }, &cacheHit, &m_GribTimelineReaders);
   frame = std::move(reply.frame);
   if (reply.status == Status::Available) return true;
-  if (cacheHit) return false;
   const auto requestedTime = [&] {
     return _("Requested time: ") + time.Format("%Y-%m-%d %H:%M:%S", wxDateTime::UTC) + " UTC";
   };
+  if (reply.windForecastEnd) {
+    if (!m_ReportedForecastEnd.exchange(true, std::memory_order_relaxed)) {
+      const wxDateTime end(static_cast<time_t>(*reply.windForecastEnd));
+      AddDiagnostic({"provider.forecast_ended",
+          weather_routing::DiagnosticSeverity::Warning,
+          _("Search requested wind beyond the GRIB forecast"),
+          wxString::Format(_("Wind forecast ends at %s UTC."),
+                           end.Format("%Y-%m-%d %H:%M:%S", wxDateTime::UTC)) +
+              " " + requestedTime(),
+          _("Load a forecast covering the rest of the passage, or enable Climatology fallback.")});
+    }
+    return false;
+  }
+  if (cacheHit) return false;
   switch (reply.status) {
     case Status::NoReply:
       AddDiagnostic({"provider.no_reply", weather_routing::DiagnosticSeverity::Warning,
@@ -371,10 +384,10 @@ bool RouteMap::AcquireGribTimelineFrame(const wxDateTime& time,
       break;
     case Status::NoWind:
       AddDiagnostic({"provider.no_wind", weather_routing::DiagnosticSeverity::Warning,
-          _("The requested forecast frame has no complete wind vector"),
-          _("The frame is missing at least one wind component. ") +
+          _("No usable GRIB wind at a requested time"),
+          _("The provider supplied no complete wind vector. ") +
               requestedTime(),
-          _("Load a forecast containing both wind components for the route and time.")});
+          _("Check the last valid wind time in the loaded GRIB. If the passage extends beyond it, load a longer forecast or enable Climatology fallback.")});
       break;
     case Status::OutOfMemory:
       ReportResourceExhaustion(_("preparing a GRIB timeline frame"));
@@ -1161,6 +1174,7 @@ void RouteMap::InstallResultDiagnostics(
   for (const auto& item : m_Diagnostics.items)
     if (item.setup || item.code.rfind("provider.", 0) == 0) report.Add(item);
   for (auto& item : resultItems) report.Add(std::move(item));
+  weather_routing::RefineForecastWindFailure(report);
   m_Diagnostics = std::move(report);
 }
 
@@ -1172,6 +1186,7 @@ weather_routing::RouteDiagnosticReport RouteMap::GetDiagnostics() {
 
 void RouteMap::Reset() {
   m_CancellationFlag->store(false, std::memory_order_relaxed);
+  m_ReportedForecastEnd.store(false, std::memory_order_relaxed);
   Lock();
   Clear();
   m_ComputedSearchSettings = {};

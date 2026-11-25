@@ -340,7 +340,8 @@ public:
   std::list<RouteMapOverlay*> CurrentRouteMaps(bool messagedialog = false);
   RouteMapOverlay* FirstCurrentRouteMap();
   void HandleGribTimelineFrame(const wxString& requestToken,
-                               GribRecordSet* frame);
+                               GribRecordSet* frame,
+                               std::optional<std::int64_t> windForecastEnd);
   void OnGribRequestWakeup(wxThreadEvent& event);
 
   void RebuildList();

@@ -20,6 +20,8 @@ The version declared here does not mean the plugin catalogue has already updated
 
 1.44.3 fixes downloading the optional High and Full GSHHG datasets on a fresh profile.
 The plugin includes Crude, Low and Intermediate for offline installation.
+Forecast wind failures report the requested UTC time and the forecast end
+when the weather reader supplies it.
 
 Both lines include Meridian as an optional routing method. Ordinary GSHHG
 shoreline routing works on stock OpenCPN; chart-backed depth and hazard checks
