@@ -1,7 +1,10 @@
 version: 2.1
 
-# Validation is separate from publishing. Production and xWeatherRouting Alpha
-# have explicit identities/destinations and share a reviewable approval hold.
+# A push to master validates and then holds for one publication approval, with
+# production defaults and no trigger parameters. Production and xWeatherRouting
+# Alpha have explicit identities/destinations and share a reviewable approval
+# hold. The parameterised deploy workflows remain for rebuilds, re-publishing
+# an older validate run and the xweather-alpha channel.
 parameters:
   run_workflow_deploy:
     type: boolean
@@ -319,6 +322,31 @@ jobs:
       - store_artifacts:
           path: reviewed-publication
 
+  # Early catalogue check, before the publication approval: the same phase 1
+  # checks against OpenCPN/plugins as it is now, so a downgrade, an already
+  # catalogued version or a schema problem stops the release before anything
+  # reaches Cloudsmith. The tarball URLs aren't live yet, which only warns.
+  # Its output (catalogue-precheck/) is for review only; the PR job compares
+  # against the post-upload dry run, so a long wait at the hold is harmless.
+  catalogue-precheck:
+    docker:
+      - image: cimg/python:3.13
+    working_directory: ~/project
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - run:
+          name: Install catalogue schema validator
+          command: sudo apt-get update && sudo apt-get install -y libxml2-utils
+      - run:
+          name: Check the OpenCPN/plugins branch before approval (nothing pushed)
+          command: |
+            python3 ci/catalogue-pull-request.py prepare reviewed-publication catalogue-precheck \
+              --base "<< pipeline.parameters.catalogue_base >>" --url-wait 0
+      - store_artifacts:
+          path: catalogue-precheck
+
   # Phase 1: simulate the OpenCPN/plugins PR from the exact files just
   # published. No secrets; nothing is pushed. The XML files, patch and PR
   # text are kept as artifacts under catalogue-pr/.
@@ -564,6 +592,63 @@ workflows:
           name: android-arm64-api122
           api_headers: "1.22"
           filters: *validation-filters
+      # Release tail: master pushes only. The validate run reuses its own green
+      # builds (release_workflow_id stays empty, so stage-publication recovers
+      # from this workflow). A push that isn't meant as a release just stays
+      # on hold; leave it unapproved.
+      - publication-preflight:
+          filters: &release-filters pipeline.git.branch == "master"
+      - stage-publication:
+          requires: &validate-release-requires
+            - publication-contracts
+            - publication-preflight
+            - debian13-x86_64
+            - debian12-x86_64
+            - ubuntu22.04-x86_64
+            - ubuntu24.04-x86_64
+            - debian12-arm64
+            - flatpak25.08-x86_64
+            - flatpak25.08-aarch64
+            - windows-x86
+            - windows-x64
+            - windows-x64-wx329
+            - macos-universal
+            - android-arm64
+            - debian13-x86_64-api122
+            - debian12-x86_64-api122
+            - ubuntu22.04-x86_64-api122
+            - ubuntu24.04-x86_64-api122
+            - debian12-arm64-api122
+            - flatpak25.08-x86_64-api122
+            - flatpak25.08-aarch64-api122
+            - windows-x86-api122
+            - windows-x64-api122
+            - windows-x64-wx329-api122
+            - macos-universal-api122
+            - android-arm64-api122
+          filters: *release-filters
+      - catalogue-precheck:
+          requires: [stage-publication]
+          filters: *release-filters
+      - hold-for-publication-approval:
+          type: approval
+          requires: [stage-publication, catalogue-precheck]
+          filters: *release-filters
+      - publish-reviewed:
+          context: xgrib-deployment
+          requires: [hold-for-publication-approval]
+          filters: *release-filters
+      - catalogue-pr-dry-run:
+          requires: [publish-reviewed]
+          filters: *release-filters
+      # The same approval also opens the OpenCPN/plugins PR (phase 3), once the
+      # Cloudsmith upload and the dry run have both succeeded. No second hold.
+      - catalogue-pr-push:
+          name: catalogue-pr-auto
+          phase: upstream
+          context: opencpn-plugins-pr
+          requires: [catalogue-pr-dry-run]
+          filters: *release-filters
 
   validate_windows_only:
     when:
@@ -758,9 +843,11 @@ workflows:
             - windows-x64-wx329-api122
             - macos-universal-api122
             - android-arm64-api122
+      - catalogue-precheck:
+          requires: [stage-publication]
       - hold-for-publication-approval:
           type: approval
-          requires: [stage-publication]
+          requires: [stage-publication, catalogue-precheck]
       - publish-reviewed:
           context: xgrib-deployment
           requires: [hold-for-publication-approval]
@@ -784,9 +871,11 @@ workflows:
       - publication-preflight
       - stage-publication:
           requires: [publication-preflight]
+      - catalogue-precheck:
+          requires: [stage-publication]
       - hold-for-publication-approval:
           type: approval
-          requires: [stage-publication]
+          requires: [stage-publication, catalogue-precheck]
       - publish-reviewed:
           context: xgrib-deployment
           requires: [hold-for-publication-approval]

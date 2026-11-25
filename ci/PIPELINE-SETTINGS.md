@@ -13,11 +13,27 @@ the OpenCPN catalogue. `VERSION_TWEAK` doesn't count: the catalogue uses a three
 
 ## Scenarios
 
-### 1. Ordinary push
+### 1. Ordinary push (and the normal release)
 
-No parameters. The `validate` workflow runs on its own.
+No parameters. The `validate` workflow runs on its own. On any branch except master it
+only builds and tests.
 
-### 2. Release, with the PR as a separate step
+On **master** it also runs `publication-preflight` and `stage-publication` once every
+build has passed, then waits at `hold-for-publication-approval`. That is the release:
+check `reviewed-publication/publication.json` and `catalogue-precheck/SUMMARY.txt`, and approve. That one approval publishes to
+Cloudsmith (production), runs the phase 1 dry run, and then opens the phase 3 PR on
+OpenCPN/plugins (`catalogue-pr-auto`), all from the same workflow's builds. Every setting
+is the production default: `publication_channel=production`, `catalogue_base=master`,
+`catalogue_fork=rgleason/plugins`, phase `upstream`.
+
+A push you don't mean to release just stays on hold: leave it unapproved. If two master
+pushes are on hold, approve only the newest. A push without a version bump fails at the
+Cloudsmith check before anything is uploaded or any PR is opened. If the upload succeeds
+but the PR job fails, re-run it, or use step 2B with this validate workflow's ID.
+
+### 2. Release by manual trigger, with the PR as a separate step
+
+Only needed to rebuild fresh, to re-publish an older validate run, or for `xweather-alpha`.
 
 Two triggers, two approvals.
 
@@ -105,6 +121,9 @@ the long string after `/workflows/`, not the pipeline number.
 - **Before approving the publication:** in `stage-publication` → Artifacts →
   `reviewed-publication/publication.json`, check that `channel` is `production`, the upload
   names carry the new version, and `source_revision` is the release commit.
+  Then in `catalogue-precheck` → Artifacts → `catalogue-precheck/SUMMARY.txt`, check the
+  files removed and added. Besides the schema pin, expect a warning that the tarball URLs
+  aren't reachable yet: they only exist after the upload.
 - **After the dry run:** `catalogue-pr/SUMMARY.txt` lists the old version's files removed
   and the new version's added, one per platform (11 each). The only expected warning is
   that `ci/catalogue/ocpn-plugin.xsd` differs from upstream.

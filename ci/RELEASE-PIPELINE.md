@@ -9,8 +9,14 @@ in `.circleci/config.yml`. The tokens are kept in one CircleCI context.
 
 ## The flow
 
+A push to master is a release candidate: its `validate` workflow builds everything and
+then stops at the approval hold, with production settings and no parameters to enter.
+That single approval runs everything below, through opening the OpenCPN/plugins PR.
+The manual triggers below are for rebuilds, re-publishing an older run and xweather-alpha.
+
 ```
-your trigger → build all platforms → validate XML → hold: you approve
+push to master (or your trigger) → build all platforms → validate XML
+  → catalogue precheck against OpenCPN/plugins → hold: you approve
   → Cloudsmith upload (all or nothing) → Phase 1 dry run
   → Phase 3: push branch to rgleason/plugins and open PR on OpenCPN/plugins
   → upstream checks → maintainer merges
@@ -19,14 +25,22 @@ your trigger → build all platforms → validate XML → hold: you approve
 1. **Validate.** The build jobs and `stage-publication` check every XML and tarball pair.
    They check the plugin identity, the platforms, that the embedded and external XML match,
    and the XML schema.
-2. **Review.** At `hold-for-publication-approval` you look over `reviewed-publication` and approve.
-3. **Cloudsmith, all or nothing.** Before uploading anything, `publish-reviewed` checks all
+2. **Catalogue precheck.** `catalogue-precheck` runs the phase 1 checks below against
+   OpenCPN/plugins as it is now, before anything is uploaded, so a downgrade, an already
+   catalogued version or a schema problem stops the release here. The tarball URLs aren't
+   on Cloudsmith yet, so its only expected warnings are that they aren't reachable and the
+   `ocpn-plugin.xsd` pin. It uses no token, pushes nothing, and its output
+   (`catalogue-precheck/`) is for review only.
+3. **Review.** At `hold-for-publication-approval` you look over `reviewed-publication` and
+   `catalogue-precheck/SUMMARY.txt`, and approve. It's fine to approve later: the dry run
+   after the upload checks against upstream as it is then.
+4. **Cloudsmith, all or nothing.** Before uploading anything, `publish-reviewed` checks all
    22 files with Cloudsmith and confirms no earlier build of this plugin version is
    already published (any build of 1.36.5 blocks another 1.36.5). Each upload then waits
    until Cloudsmith has finished processing it. If any upload fails, every package from that
    run is deleted again, so a re-run starts clean. The job artifacts record what happened in
    `published.json` or `rollback.json`.
-4. **Phase 1, dry run.** `catalogue-pr-dry-run` runs automatically after every publish. It
+5. **Phase 1, dry run.** `catalogue-pr-dry-run` runs automatically after every publish. It
    uses no token and pushes nothing. It:
    - clones OpenCPN/plugins master;
    - makes branch `weather_routing_pi-<version>-build<N>`;
@@ -35,9 +49,9 @@ your trigger → build all platforms → validate XML → hold: you approve
    - runs upstream's own PR checks: both of its XML schemas, its link checker, and a whitespace check.
 
    The XML files, patch and PR text are kept as CircleCI artifacts under `catalogue-pr/`.
-5. **Phase 2, fork test (optional, rarely needed).** Pushes the branch to rgleason/plugins
+6. **Phase 2, fork test (optional, rarely needed).** Pushes the branch to rgleason/plugins
    and opens a draft PR *inside the fork*. OpenCPN/plugins is not touched.
-6. **Phase 3, upstream.** Opens the PR from `rgleason:<branch>` to `OpenCPN/plugins:master`.
+7. **Phase 3, upstream.** Opens the PR from `rgleason:<branch>` to `OpenCPN/plugins:master`.
    Upstream's checks run on it and an OpenCPN maintainer merges it.
 
 Phases 2 and 3 rebuild the branch from scratch. They refuse to push unless the result
@@ -78,6 +92,12 @@ The exact settings for each situation are in [`PIPELINE-SETTINGS.md`](PIPELINE-S
 - Environment variables (only the PR push jobs can read them; spell the names with "-UE"):
   - `CATALOGUE_GITHUB_TOKEN`: phase 3, the normal PR. Required.
   - `CATALOGUE_FORK_TOKEN`: phase 2, the fork test. Only while you need a fork test.
+
+**CircleCI, reading earlier builds:** Project Settings → API Permissions → Add API Token,
+scope **Read Only**. Then Project Settings → Environment Variables → add it as
+`CIRCLECI_READ_TOKEN`. `stage-publication` and the catalogue PR jobs need it to download
+artifacts from earlier workflows: CircleCI answers `404 Not Found` to anonymous requests for
+job artifacts, even on this public project.
 
 **GitHub:**
 

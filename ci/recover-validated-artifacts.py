@@ -33,7 +33,6 @@ def fetch_json(path):
     with urlopen("https://circleci.com" + path, timeout=30) as response:
         return json.load(response)
 
-
 def check_source(workflow, pipeline, jobs, channel):
     publication.profile_for(channel)
     vcs = pipeline.get("vcs")

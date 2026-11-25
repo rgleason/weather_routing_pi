@@ -474,8 +474,16 @@ def recover(workflow_id, output, job_name="publish-reviewed"):
     if len(matches) != 1 or matches[0]["status"] != "success":
         raise ValueError(f"{job_name} must have succeeded in workflow {workflow_id}")
     job = matches[0]
-    artifacts = fetch_json(f"https://circleci.com/api/v1.1/project/"
-                           f"{quote(job['project_slug'], safe='/')}/{job['job_number']}/artifacts")
+    # API v2, not v1.1: v1.1 answers 404 for GitHub App projects (circleci/<org>/<project>).
+    base = (f"https://circleci.com/api/v2/project/"
+            f"{quote(job['project_slug'], safe='/')}/{job['job_number']}/artifacts")
+    artifacts, token = [], None
+    while True:
+        page = fetch_json(base + (f"?page-token={quote(token, safe='')}" if token else ""))
+        artifacts.extend(page["items"])
+        token = page.get("next_page_token")
+        if not token:
+            break
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
     count = 0
