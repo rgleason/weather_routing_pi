@@ -29,6 +29,7 @@
 #include "ocpn_plugin.h"
 #include "georef.h"
 #include "DirectLegCourseSolver.h"
+#include "CumulativeClimatology.h"
 
 WeatherData::WeatherData(RoutePoint* position)
     : lat(position->lat),
@@ -156,33 +157,13 @@ bool BoatData::GetBoatSpeedForPolar(RouteMapConfiguration& configuration,
     estimated = estimated || sampleEstimated;
     return speed;
   };
-  if ((data_mask & Position::CLIMATOLOGY_WIND) &&
-      (configuration.ClimatologyType == RouteMapConfiguration::CUMULATIVE_MAP ||
-       configuration.ClimatologyType ==
-           RouteMapConfiguration::CUMULATIVE_MINUS_CALMS)) {
-    /* build map */
-    stw = 0;
-    int windatlas_count = 8;
-    for (int i = 0; i < windatlas_count; i++) {
-      // Calculate relative wind angle (difference between heading and wind
-      // direction).
-      double dir = twa - weather_data.twdOverWater + weather_data.atlas.W[i];
-      if (dir > 180) dir = 360 - dir;
-      double boatSpeed, mind = polar.MinDegreeStep();
-      // if tacking
-      if (fabs(dir) < mind)
-        boatSpeed = routingSpeed(mind, weather_data.atlas.VW[i]) *
-                    cos(deg2rad(mind)) / cos(deg2rad(dir));
-      else
-        boatSpeed = routingSpeed(dir, weather_data.atlas.VW[i]);
-      // Accumulate weighted boat speed based on probability of each wind
-      // direction
-      stw += weather_data.atlas.directions[i] * boatSpeed;
-    }
-
-    if (configuration.ClimatologyType ==
-        RouteMapConfiguration::CUMULATIVE_MINUS_CALMS)
-      stw *= 1 - weather_data.atlas.calm;
+  const bool cumulative = (data_mask & Position::CLIMATOLOGY_WIND) &&
+                          configuration.UsesCumulativeClimatology();
+  if (cumulative) {
+    stw = CumulativeSailingSpeed(configuration.boat.Polars, newpolar,
+        weather_data.atlas, ctw, configuration.OptimizeTacking,
+        configuration.ClimatologyType == RouteMapConfiguration::CUMULATIVE_MINUS_CALMS,
+        polar_status, estimated);
   } else {
     // Direct polar lookup - get boat speed from polar data for current heading
     // and wind speed.
@@ -236,7 +217,7 @@ bool BoatData::GetBoatSpeedForPolar(RouteMapConfiguration& configuration,
 
   // Calculate boat movement over ground by combining boat speed with current.
   if (!using_motor) {
-    stw = std::min(stw, polar.MaximumSpeed());
+    if (!cumulative) stw = std::min(stw, polar.MaximumSpeed());
     if (estimated) data_mask |= Position::POLAR_WIND_ESTIMATED;
   }
   WeatherDataProvider::TransformToGroundFrame(

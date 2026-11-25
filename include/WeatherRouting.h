@@ -340,7 +340,8 @@ public:
   std::list<RouteMapOverlay*> CurrentRouteMaps(bool messagedialog = false);
   RouteMapOverlay* FirstCurrentRouteMap();
   void HandleGribTimelineFrame(const wxString& requestToken,
-                               GribRecordSet* frame);
+                               GribRecordSet* frame,
+                               std::optional<std::int64_t> windForecastEnd);
   void OnGribRequestWakeup(wxThreadEvent& event);
 
   void RebuildList();
@@ -765,6 +766,10 @@ private:
   void PaintRoutingProgressNow();
   void RecordChartSafetyPreparationFailure(RouteMapOverlay* route,
                                            const wxString& reason);
+  std::map<wxString, bool> m_EndpointPreflightDecisions;
+  bool ValidateRoutingEndpoints(RouteMapOverlay* route,
+                                const RouteMapConfiguration& configuration,
+                                bool useChartSafety, bool enforceChartSafety);
   bool ValidateChartSafetyEndpoints(RouteMapOverlay* route,
                                     const RouteMapConfiguration& configuration,
                                     bool useChartSafety,

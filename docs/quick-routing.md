@@ -95,8 +95,8 @@ are approximate search previews, not validated navigable routes. Only a complete
 final route has passed acceptance. Quick has no Professional graph/reverse search
 or stationary-waiting strategy, and can miss feasible or faster routes.
 
-Quick and Standard reject existing-route analysis, cumulative climatology modes
-and forced legacy routing; use Professional for those configurations.
+Selecting **Cumulative Map** or **Cumulative - Calms** runs a new passage
+through the legacy isochrone engine, regardless of the native engine selection.
 Departure optimisation and planned-arrival routing use the selected engine, with
 bounded evaluation counts. Shared scheduling still limits concurrent workers.
 

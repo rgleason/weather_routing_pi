@@ -178,6 +178,7 @@ public:
 };
 
 class weather_routing_pi;
+namespace weather_routing { class OffshoreHazards; }
 
 /**
  * Represents a named geographic position that can be used as a start or end
@@ -227,6 +228,7 @@ struct RouteMapPosition {
  * position, timestamp, error flags, and intermediate calculation results.
  */
 struct RouteMapConfiguration {
+  std::shared_ptr<const weather_routing::OffshoreHazards> offshoreHazards;
   // GUI output validation after the calculation has released its frames.
   // Never enable host point requests for ordinary routing workers.
   bool output_grib_point_queries{false};
@@ -576,15 +578,11 @@ struct RouteMapConfiguration {
      */
     CURRENTS_ONLY,
     /**
-     * Uses the full probability distribution of winds from climatology data.
-     * This approach considers all possible wind scenarios weighted by their
-     * probability of occurrence.
+     * Weights sailing speeds by the frequencies of the wind atlas sectors.
      */
     CUMULATIVE_MAP,
     /**
-     * Similar to CUMULATIVE_MAP, but excludes calm conditions (no wind) from
-     * the calculation. This can provide more realistic routing in areas prone
-     * to periods of no wind.
+     * Includes the atlas's calm fraction as time with zero sailing speed.
      */
     CUMULATIVE_MINUS_CALMS,
     /** Uses only the most probable wind scenario from climatology. This is
@@ -599,6 +597,10 @@ struct RouteMapConfiguration {
     AVERAGE
   };
   enum ClimatologyDataType ClimatologyType;
+  bool UsesCumulativeClimatology() const {
+    return ClimatologyType == CUMULATIVE_MAP ||
+           ClimatologyType == CUMULATIVE_MINUS_CALMS;
+  }
   /**
    * Controls whether to use weather data outside its valid time range.
    *
@@ -1128,6 +1130,12 @@ public:
     m_bFinished = false;
     Unlock();
   }
+  void SetOffshoreHazards(
+      std::shared_ptr<const weather_routing::OffshoreHazards> snapshot) {
+    Lock();
+    m_Configuration.offshoreHazards = std::move(snapshot);
+    Unlock();
+  }
   void SetConfigurationPreserveResult(const RouteMapConfiguration& o) {
     Lock();
     m_Configuration = o;
@@ -1293,6 +1301,28 @@ public:
   wxString GetRoutingErrorInfo();
 
 protected:
+  void AcquireLegacyGribFrame() {
+    Lock();
+    if (!m_bNeedsGrib) {
+      Unlock();
+      return;
+    }
+    const auto time = m_NewTime;
+    Unlock();
+
+    // The main thread services this through the same bounded cache as native
+    // routing. An empty frame allows propagation to use the wind atlas.
+    Shared_GribRecordSet frame;
+    AcquireGribTimelineFrame(time, frame);
+    Lock();
+    if (!m_CancellationFlag->load(std::memory_order_relaxed)) {
+      m_SharedNewGrib = std::move(frame);
+      m_NewGrib = m_SharedNewGrib.GetGribRecordSet();
+      m_bNeedsGrib = false;
+    }
+    Unlock();
+  }
+
   void SetFinished(bool destination) {
     m_bReachedDestination = destination;
     m_bFinished = true;
@@ -1436,6 +1466,7 @@ private:
   std::condition_variable m_ChartServiceReady;
   std::shared_ptr<weather_routing::GribTimelineFrameCache>
       m_GribTimelineCache;
+  std::atomic_bool m_ReportedForecastEnd{false};
   std::shared_ptr<std::atomic_bool> m_CancellationFlag;
 };
 

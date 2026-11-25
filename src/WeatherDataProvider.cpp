@@ -454,12 +454,18 @@ bool WeatherDataProvider::ReadWindAndCurrents(
                CanInvokeClimatology(ClimatologyService::WindAtlas)) {
       int windatlas_count = 8;
       double speeds[8];
-      std::lock_guard<std::recursive_mutex> invocationLock(
-          ClimatologyThreadGuard::InvocationMutex());
-      if (RouteMap::ClimatologyWindAtlasData(
-              configuration.time, position->lat, position->lon,
-              windatlas_count, atlas.directions, speeds, atlas.storm,
-              atlas.calm)) {
+      bool available;
+      {
+        // Protect provider state only. The returned atlas and all vector
+        // calculations below belong to this invocation, so other workers
+        // need not wait for that arithmetic.
+        std::lock_guard<std::recursive_mutex> invocationLock(
+            ClimatologyThreadGuard::InvocationMutex());
+        available = RouteMap::ClimatologyWindAtlasData(
+            configuration.time, position->lat, position->lon,
+            windatlas_count, atlas.directions, speeds, atlas.storm, atlas.calm);
+      }
+      if (available) {
         /* compute wind speeds over water with the given current */
         for (int i = 0; i < windatlas_count; i++) {
           double twd = i * 360 / windatlas_count;

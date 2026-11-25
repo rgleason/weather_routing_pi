@@ -365,6 +365,7 @@ public:
       const supercpn::weather_routing::RoutingProgressUpdate& progress,
       std::uint64_t generation, const wxString& engineLabel = wxString());
   bool GetModernNativeProgress(wxString& stage, wxString& detail);
+  wxString DiagnosticReportText();
   std::uint64_t ModernProgressGeneration() const {
     return m_ModernProgress.Read().generation;
   }
@@ -387,10 +388,12 @@ public:
   std::shared_ptr<std::atomic_bool> ComfortStopFlag() const { return m_ComfortStop; }
   void AdmitRoutingWorker(
       std::shared_ptr<weather_routing::RoutingWorkerBudget> budget,
-      weather_routing::RoutingWorkerBudget::Slot slot, unsigned methodLimit) {
+      weather_routing::RoutingWorkerBudget::Slot slot, unsigned methodLimit,
+      bool additionalHelpers = false) {
     m_RoutingWorkerBudget = std::move(budget);
     m_RoutingWorkerSlot = std::move(slot);
     m_ParallelMethodLimit = methodLimit;
+    m_AdditionalCalculationHelpers = additionalHelpers;
   }
   void ReleaseRoutingWorker() {
     m_RoutingWorkerSlot.reset();
@@ -398,6 +401,7 @@ public:
     m_ParallelMethodLimit = 0;
   }
   unsigned ParallelMethodLimit() const { return m_ParallelMethodLimit; }
+  bool AdditionalCalculationHelpersEnabled() const { return m_AdditionalCalculationHelpers; }
   std::optional<weather_routing::RoutingWorkerBudget::Slot> TryAdmitMethodWorker() {
     return m_RoutingWorkerBudget ? m_RoutingWorkerBudget->TryAcquire() : std::nullopt;
   }
@@ -568,6 +572,7 @@ private:
   std::shared_ptr<weather_routing::RoutingWorkerBudget> m_RoutingWorkerBudget;
   std::optional<weather_routing::RoutingWorkerBudget::Slot> m_RoutingWorkerSlot;
   unsigned m_ParallelMethodLimit{};
+  bool m_AdditionalCalculationHelpers{false};
   using LivePreview = std::shared_ptr<const supercpn::weather_routing::RoutingPreview>;
   LivePreview m_ValidatedSearchRoute;
   std::atomic<bool> m_ValidatedRouteChanged{false};

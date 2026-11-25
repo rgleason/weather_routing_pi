@@ -445,3 +445,31 @@ TEST(RoutingScenarioJson, ComfortAlternativeBudgetsAreExplicitAndBounded) {
   }
   std::remove(path.mb_str());
 }
+
+TEST(RoutingScenarioJson, StandaloneMeridianDoesNotImplicitlySetAutoMembership) {
+  const auto path = wxFileName::CreateTempFileName("wr-meridian-");
+  {
+    std::ofstream output(path.mb_str());
+    output << R"({"schemaVersion":1,"start":{"lat":36,"lon":-5.6},
+      "end":{"lat":35.5,"lon":24.2},"route":{"routingEngine":"meridian"}})";
+  }
+  weather_routing_engine::RoutingScenario scenario;
+  wxString error;
+  EXPECT_TRUE(weather_routing_headless::LoadRoutingScenarioJson(path, scenario, error)) << error;
+  EXPECT_EQ(scenario.route.routingEngine, "meridian");
+  EXPECT_TRUE(scenario.route.hasRoutingEngine);
+  EXPECT_FALSE(scenario.route.hasAutoEngineMask);
+  std::remove(path.mb_str());
+}
+
+TEST(RoutingScenarioJson, MeridianIsSelectableInAutoAndAllMembership) {
+  const auto path=wxFileName::CreateTempFileName("wr-meridian-membership-");
+  {std::ofstream out(path.mb_str());out << R"({"schemaVersion":1,"start":{"lat":36,"lon":-5.6},
+    "end":{"lat":35.5,"lon":24.2},"route":{"routingEngine":"auto",
+    "autoEngines":["atlas","meridian"],"allEngines":["meridian"]}})";}
+  weather_routing_engine::RoutingScenario scenario;wxString error;
+  ASSERT_TRUE(weather_routing_headless::LoadRoutingScenarioJson(path,scenario,error)) << error;
+  EXPECT_TRUE(scenario.route.hasAutoEngineMask);EXPECT_TRUE(scenario.route.hasAllEngineMask);
+  EXPECT_EQ(scenario.route.autoEngineMask,96U);EXPECT_EQ(scenario.route.allEngineMask,64U);
+  std::remove(path.mb_str());
+}

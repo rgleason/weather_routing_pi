@@ -6,10 +6,11 @@ departure-time optimisation, multi-waypoint sequencing, chart-safety service,
 route analysis, overlays, reports and export paths remain the integration
 surface.
 
-The legacy engine remains available for cumulative climatology distributions,
-which have probabilistic semantics not represented by the deterministic
-engine. It can also be selected for diagnosis or rollback by launching OpenCPN
-with `WR_USE_LEGACY_ENGINE=1`.
+For new passages, **Cumulative Map** and **Cumulative - Calms** in the
+Climatology dropdown run the legacy isochrone engine. The route report shows
+the effective engine. With GRIB enabled, the calculation uses forecast wind
+where available and the selected cumulative mode when it uses Climatology
+wind. Choose a native mode for routes that require validated wave coverage.
 
 ## Solver pipeline
 

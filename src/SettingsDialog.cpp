@@ -38,6 +38,8 @@
 #include "AndroidDialogHeader.h"
 #include "DeviceMemoryPolicy.h"
 #include "SystemMemory.h"
+#include "CalculationHelperPolicy.h"
+#include "ChartSafetyHost.h"
 #ifdef __OCPN__ANDROID__
 #include <QAbstractSpinBox>
 #endif
@@ -95,6 +97,17 @@ SettingsDialog::SettingsDialog(wxWindow* parent)
 #endif
 #endif
 {
+  m_sConcurrentThreads->Bind(wxEVT_SPINCTRL, [this](wxSpinEvent& event) {
+    if (!m_loadingSettings) { SaveSettings(); GetOCPNConfigObject()->Flush(); }
+    event.Skip();
+  });
+  for (auto* checkbox : {m_cbAdditionalHelpers, m_cbParallelMethods})
+    checkbox->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent& event) {
+      if (!m_loadingSettings) {
+        SaveSettings(); GetOCPNConfigObject()->Flush();
+      }
+      event.Skip();
+    });
 #ifdef __WXMSW__
 
   wxLogMessage("SettingsDialog::Constructor - Windows-specific code starting");
@@ -408,6 +421,10 @@ SettingsDialog::~SettingsDialog() {
 }
 
 void SettingsDialog::LoadSettings() {
+  struct LoadingScope { bool& flag; bool previous;
+    explicit LoadingScope(bool& value) : flag(value), previous(value) { flag=true; }
+    ~LoadingScope() { flag=previous; }
+  } loading(m_loadingSettings);
   wxFileConfig* pConf = GetOCPNConfigObject();
   pConf->SetPath(_T( "/PlugIns/WeatherRouting" ));
 
@@ -477,9 +494,12 @@ void SettingsDialog::LoadSettings() {
       ConcurrentThreads, 0, weather_routing::AvailablePhysicalMemoryMiB());
   pConf->Read(_T("ConcurrentThreads"), &ConcurrentThreads, ConcurrentThreads);
   m_sConcurrentThreads->SetValue(ConcurrentThreads);
-  bool parallelMethods = false;
+  const auto helperPreferences = weather_routing::ReadCalculationHelperPreferences(*pConf);
+  const bool parallelMethods = helperPreferences.parallel_methods;
+  m_cbAdditionalHelpers->SetValue(helperPreferences.additional_helpers);
+  weather_routing::chart_safety_host::SetAdditionalHelpersEnabled(helperPreferences.additional_helpers,
+      static_cast<unsigned>(m_sConcurrentThreads->GetValue()));
   int parallelLimit = 2;
-  pConf->Read("ParallelRoutingMethods", &parallelMethods, false);
   pConf->Read("ParallelRoutingMethodLimit", &parallelLimit, 2);
   m_cbParallelMethods->SetValue(parallelMethods);
   m_sParallelMethods->SetValue(std::clamp(parallelLimit, 2, 6));
@@ -545,7 +565,10 @@ void SettingsDialog::LoadSettings() {
   auto* computation = new wxPanel(book, wxID_ANY);
   auto* computationLayout = new wxBoxSizer(wxVERTICAL);
   for (wxWindow* control : {static_cast<wxWindow*>(m_staticText115),
-                            static_cast<wxWindow*>(m_sConcurrentThreads)}) {
+                            static_cast<wxWindow*>(m_sConcurrentThreads),
+                            static_cast<wxWindow*>(m_cbParallelMethods),
+                            static_cast<wxWindow*>(m_sParallelMethods),
+                            static_cast<wxWindow*>(m_cbAdditionalHelpers)}) {
     control->GetContainingSizer()->Detach(control);
     control->Reparent(computation);
     control->Show();
@@ -694,7 +717,10 @@ void SettingsDialog::SaveSettings() {
   pConf->Write(_T("DisplayComfortOnRoute"), m_cbDisplayComfort->GetValue());
   pConf->Write(_T("DisplayCurrent"), m_cbDisplayCurrent->GetValue());
   pConf->Write(_T("ConcurrentThreads"), m_sConcurrentThreads->GetValue());
-  pConf->Write("ParallelRoutingMethods", m_cbParallelMethods->GetValue());
+  weather_routing::WriteCalculationHelperPreferences(*pConf,
+      {m_cbAdditionalHelpers->GetValue(),m_cbParallelMethods->GetValue()});
+  weather_routing::chart_safety_host::SetAdditionalHelpersEnabled(m_cbAdditionalHelpers->GetValue(),
+      static_cast<unsigned>(m_sConcurrentThreads->GetValue()));
   pConf->Write("ParallelRoutingMethodLimit", m_sParallelMethods->GetValue());
 
   for (int i = 0; i < WeatherRouting::NUM_COLS; i++)
@@ -846,6 +872,7 @@ void SettingsDialog::OnLogUsageChanged(wxCommandEvent& event) {
 // Platform-independent methods
 
 void SettingsDialog::OnUpdate() {
+  if (m_loadingSettings) return;
   WeatherRouting* weather_routing = dynamic_cast<WeatherRouting*>(GetParent());
   if (weather_routing) weather_routing->UpdateDisplaySettings();
 }
@@ -896,30 +923,32 @@ void SettingsDialog::OnHelp(wxCommandEvent& event) {
   wxSize sz = ::wxGetDisplaySize();
   SetSize(0, 0, sz.x, sz.y - 40);
 #endif
-  wxString mes =
-      _("\
-Cursor Route -- optimal route closest to the cursor\n\
-Destination Route -- optimal route to the desired destination\n\
-Route Thickness -- thickness to draw Cursor and Destination Routes\n\
-Iso Chron Thickness -- thickness for isochrones on map\n\
-Alternate Routes Thickness -- thickness for alternate routes\n");
-
-  mes +=
-      _("Note: All thicknesses can be set to 0 to disable their display\n\
-Alternates for all Isochrones -- display all alternate routes not only \
-the ones which reach the last isochrone\n\
-Squares At Sail Changes -- render squares along Routes whenever \
-a sail change is made\n");
-
-  mes +=
-      _("Filter Routes by Climatology -- This currently does nothing, \
-but I intended to make weather route maps which derive data \
-from grib and climatology clearly render which data was used where \n\\n\
-Number of Concurrent Threads -- if there are multiple configurations, \
-they can be computed in separate threads which allows a speedup \
-if there are multiple processors\n");
-
-  WR_MessageDialog mdlg(this, mes, _("Weather Routing"),
-                       wxOK | wxICON_INFORMATION);
-  mdlg.ShowModal();
+  const wxString message = _(
+      "Display\n"
+      "Cursor routes and isochrones are search previews. The destination route "
+      "is the delivered result; review its checks and warnings. Line thickness "
+      "controls affect display only; zero hides the corresponding lines. "
+      "Squares at sail changes mark changes along the displayed route.\n\n"
+      "Computation\n"
+      "Enable additional calculation helpers permits extra work within a "
+      "routing method and forecast/chart preparation. It is off on first use "
+      "and remembers your choice. Parallel routing methods is a separate "
+      "remembered option: Auto can overlap Quick and Quick2; other selected "
+      "methods remain fallbacks. All compares selected methods. Workers share "
+      "CPU and memory limits; more workers do not guarantee a shorter run.\n\n"
+      "Caches and starting layer\n"
+      "GRIB timeline and chart-safety caches have separate memory limits. "
+      "The Chart Awareness Settings window shows the installed open-water starting layer "
+      "and its coverage/status on a compatible host. This layer, detailed "
+      "persistent tiles, the passage shoreline and the displayed basemap "
+      "are separate. Applicable land, hazard and depth checks remain active.\n\n"
+      "Before Compute\n"
+      "With Detect Land enabled, every routing mode checks the start and "
+      "destination before search. A land endpoint stops with its name, "
+      "coordinates and data source. A water endpoint inside the shore margin "
+      "offers Continue or Cancel; existing coastal entry/exit handling and "
+      "final route validation still apply.");
+  WR_MessageDialog dialog(this, message, _("Weather Routing settings"),
+                           wxOK | wxICON_INFORMATION);
+  dialog.ShowModal();
 }

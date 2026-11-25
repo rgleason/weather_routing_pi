@@ -21,6 +21,7 @@
 
 #include "ConstraintChecker.h"
 #include "ChartSafetyHost.h"
+#include "OffshoreHazards.h"
 #include "ChartSafetyPolicy.h"
 #include "supercpn/weather_routing/CoastalEndpointPolicy.h"
 #include "WeatherDataProvider.h"
@@ -289,10 +290,11 @@ bool GshhsSegmentSafetyHitsLand(RouteMapConfiguration* configuration,
       if (!configuration || !configuration->shoreline_dataset)
         throw std::runtime_error(
             "Required plugin shoreline data was not prepared");
-      if (configuration->IsOriginal())
-        return configuration->shoreline_dataset->WithinLandMargin(
-            a, b, c, d, safety_margin_nm);
-      return configuration->shoreline_dataset->CrossesLand(a, b, c, d);
+      // The entire buffered segment is authoritative for every method.
+      // Offset lines and diagonals leave holes between the probes and omit
+      // the rounded end caps. Endpoint access is handled separately below.
+      return configuration->shoreline_dataset->WithinLandMargin(
+          a, b, c, d, safety_margin_nm);
     } catch (const std::bad_alloc&) {
       throw;
     } catch (const std::exception& error) {
@@ -303,30 +305,7 @@ bool GshhsSegmentSafetyHitsLand(RouteMapConfiguration* configuration,
       return true;  // Missing/invalid data must never mean clear water.
     }
   };
-  if (crosses(lat1, lon1, lat2, lon2)) return true;
-  if (configuration && configuration->IsOriginal()) return false;
-
-  if (safety_margin_nm <= 0.0) return false;
-
-  double bearing = 0.0;
-  double dist_nm = 0.0;
-  ll_gc_ll_reverse(lat1, lon1, lat2, lon2, &bearing, &dist_nm);
-
-  double lat_up1, lon_up1, lat_up2, lon_up2;
-  double lat_down1, lon_down1, lat_down2, lon_down2;
-  ll_gc_ll(lat1, lon1, heading_resolve(bearing - 90.0), safety_margin_nm,
-           &lat_up1, &lon_up1);
-  ll_gc_ll(lat2, lon2, heading_resolve(bearing - 90.0), safety_margin_nm,
-           &lat_up2, &lon_up2);
-  ll_gc_ll(lat1, lon1, heading_resolve(bearing + 90.0), safety_margin_nm,
-           &lat_down1, &lon_down1);
-  ll_gc_ll(lat2, lon2, heading_resolve(bearing + 90.0), safety_margin_nm,
-           &lat_down2, &lon_down2);
-
-  return crosses(lat_up1, lon_up1, lat_up2, lon_up2) ||
-         crosses(lat_down1, lon_down1, lat_down2, lon_down2) ||
-         crosses(lat_up1, lon_up1, lat_down2, lon_down2) ||
-         crosses(lat_down1, lon_down1, lat_up2, lon_up2);
+  return crosses(lat1, lon1, lat2, lon2);
 }
 
 bool SegmentTouchesEndpointMarginZone(RouteMapConfiguration* configuration,
@@ -452,7 +431,8 @@ bool EndpointMarginOnlyHitIsZeroMarginSafe(RouteMapConfiguration* configuration,
 bool SegmentSafetyRejectsLand(RouteMapConfiguration* configuration,
                               double lat1, double lon1, double lat2,
                               double lon2, double safety_margin_nm,
-                              bool allow_endpoint_margin_relaxation = true) {
+                              bool allow_endpoint_margin_relaxation,
+                              bool require_fine_chart) {
   if (!s_useExperimentalChartSafety || !configuration ||
       !configuration->UseChartSafetyForPropagation ||
       (s_forceGshhsForPerformance && !s_enforceExperimentalChartSafety)) {
@@ -475,6 +455,7 @@ bool SegmentSafetyRejectsLand(RouteMapConfiguration* configuration,
   options.struct_size = sizeof(options);
   options.safety_margin_nm = safety_margin_nm;
   options.check_land = true;
+  options.force_authoritative_fine_validation = require_fine_chart ? 1 : 0;
   weather_routing::ApplyMinimumDepthPolicy(options,
                                            configuration->MinimumDepthMeters);
   /*
@@ -907,7 +888,12 @@ bool ConstraintChecker::CheckMaxDivertedCourse(
 
 bool ConstraintChecker::CheckLandConstraint(
     RouteMapConfiguration& configuration, double lat, double lon, double dlat1,
-    double dlon1, double cog, bool allow_endpoint_margin_relaxation) {
+    double dlon1, double cog, bool allow_endpoint_margin_relaxation,
+    bool require_fine_chart) {
+  if (configuration.offshoreHazards &&
+      configuration.offshoreHazards->Intersect(
+          lat, lon, dlat1, dlon1, configuration.SafetyMarginLand))
+    return false;
   if (configuration.DetectLand) {
     double ndlon1 = dlon1;
 
@@ -917,7 +903,8 @@ bool ConstraintChecker::CheckLandConstraint(
     }
     if (SegmentSafetyRejectsLand(&configuration, lat, lon, dlat1, ndlon1,
                                  configuration.SafetyMarginLand,
-                                 allow_endpoint_margin_relaxation)) {
+                                 allow_endpoint_margin_relaxation,
+                                 require_fine_chart)) {
       return false;
     }
   }
@@ -928,6 +915,24 @@ bool ConstraintChecker::CheckFinalRouteLandConstraint(
     RouteMapConfiguration& configuration, double lat, double lon, double dlat1,
     double dlon1, double cog, wxString* failure_reason,
     bool coastal_departure_egress, bool coastal_destination_ingress) {
+  // Coastal chart-margin exceptions never waive a supplemental exclusion.
+  if (configuration.offshoreHazards) {
+    const auto check = configuration.offshoreHazards->Intersect(
+        lat, lon, dlat1, dlon1, configuration.SafetyMarginLand);
+    if (check.indeterminate) {
+      if (failure_reason)
+        *failure_reason = _("Unable to check offshore hazards for this leg");
+      return false;
+    }
+    if (const auto* hazard = check.hazard) {
+      if (failure_reason)
+        *failure_reason = wxString::Format(
+            _("Offshore hazard exclusion: %s (%s)"),
+            wxString::FromUTF8(hazard->id.c_str()),
+            wxString::FromUTF8(hazard->source.c_str()));
+      return false;
+    }
+  }
   if (configuration.DetectLand &&
       (coastal_departure_egress || coastal_destination_ingress) &&
       configuration.SafetyMarginLand > 0.0) {

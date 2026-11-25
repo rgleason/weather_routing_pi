@@ -34,6 +34,7 @@ public:
   struct Reply {
     Shared_GribRecordSet frame;
     Status status{Status::NoResult};
+    std::optional<std::int64_t> windForecastEnd{};
   };
 
   using Cache = KeyedRequestCache<std::int64_t, Reply>;
@@ -52,9 +53,11 @@ public:
   // of the first caller as long as another worker still needs the frame.
   std::optional<Request> TakePendingRequest(bool allowPrefetch = false);
   void WakeHost();
+  void SetAdditionalPrefetchEnabled(bool enabled) { prefetch_enabled_.store(enabled); }
   void SetRequestWakeup(std::function<void()> wakeup);
   bool TryResident(std::int64_t key, Shared_GribRecordSet* value) const;
-  void PublishFrame(const Request& request, const GribRecordSet* grib);
+  void PublishFrame(const Request& request, const GribRecordSet* grib,
+                    std::optional<std::int64_t> windForecastEnd = {});
   bool Publish(const Request& request, const Reply& reply);
   void PublishUnavailable(const Request& request);
   void PublishOutOfMemory(const Request& request);
@@ -83,7 +86,7 @@ private:
   Cache cache_;
   std::mutex queue_mutex_;
   std::deque<Request> requests_;
-  std::optional<Request> next_slice_;
+  std::deque<Request> next_slices_;
   std::function<void()> request_wakeup_;
   int requested_mib_{kMainGribTimelineCacheDefaultMiB};
   int effective_mib_{kMainGribTimelineCacheDefaultMiB};
@@ -92,6 +95,7 @@ private:
   std::uint64_t required_reserve_mib_{};
   bool runtime_guard_enabled_{};
   bool configured_{};
+  std::atomic_bool prefetch_enabled_{false};
   std::int64_t next_memory_check_milliseconds_{};
 };
 

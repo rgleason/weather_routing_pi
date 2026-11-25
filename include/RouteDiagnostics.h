@@ -28,10 +28,13 @@ struct RouteDiagnosticReport {
   wxString Text() const;
 };
 
+void RefineForecastWindFailure(RouteDiagnosticReport& report);
 RouteDiagnosticReport DescribeRoutingResult(
     const supercpn::weather_routing::RoutingResult& result,
     bool waveLimitEnabled = true);
 void AppendCancelledWorkerProgress(RouteDiagnosticReport& report,
+    const wxString& stage, const wxString& detail);
+void AppendLiveWorkerProgress(RouteDiagnosticReport& report,
     const wxString& stage, const wxString& detail);
 RouteDiagnosticReport CheckWindSourceSelection(bool useGrib,
     bool climatologySelected, bool climatologyProviderAvailable);

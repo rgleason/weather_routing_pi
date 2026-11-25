@@ -43,6 +43,7 @@
 #include <wx/progdlg.h>
 #include <wx/dir.h>
 #include <wx/spinctrl.h>
+#include <wx/scrolwin.h>
 
 #include <json/json.h>
 
@@ -62,6 +63,7 @@
 #include "MultiLegRouteOutput.h"
 #include "RouteWaypointExtractor.h"
 #include "RouteWaypointValidation.h"
+#include "RoutingEndpointPreflight.h"
 #include "weather_routing_pi.h"
 #include "WeatherRouting.h"
 #include "BundledDataUpgradePolicy.h"
@@ -1353,6 +1355,13 @@ WeatherRouting::WeatherRouting(wxWindow* parent, weather_routing_pi& plugin)
   m_mView->Bind(wxEVT_MENU, &WeatherRouting::OnShowRoutingStatus, this,
                progressItem->GetId());
 
+#ifndef __OCPN__ANDROID__
+  m_mView->AppendSeparator();
+  const auto* minimizeItem = m_mView->Append(wxID_ANY, _("Minimize to toolbar"));
+  m_mView->Bind(wxEVT_MENU, [this](wxCommandEvent&) { Iconize(true); },
+                minimizeItem->GetId());
+#endif
+
   wxIcon icon;
   icon.CopyFromBitmap(*_img_WeatherRouting);
   m_ConfigurationDialog.SetIcon(icon);
@@ -1873,8 +1882,9 @@ bool WeatherRouting::ServiceGribTimelineRequest(
   return true;
 }
 
-void WeatherRouting::HandleGribTimelineFrame(const wxString& requestToken,
-                                             GribRecordSet* frame) {
+void WeatherRouting::HandleGribTimelineFrame(
+    const wxString& requestToken, GribRecordSet* frame,
+    std::optional<std::int64_t> windForecastEnd) {
   std::optional<PendingGribRequest> pending;
   {
     std::lock_guard<std::mutex> lock(m_GribRequestMutex);
@@ -1888,7 +1898,7 @@ void WeatherRouting::HandleGribTimelineFrame(const wxString& requestToken,
     m_PendingGribRequests.erase(found);
   }
 
-  pending->cache->PublishFrame(pending->request, frame);
+  pending->cache->PublishFrame(pending->request, frame, windForecastEnd);
   wxLogMessage(
       "WR_GRIB_BROKER delivered token=%s timeline_key=%lld valid=%d",
       requestToken, static_cast<long long>(pending->request.key),
@@ -2819,6 +2829,16 @@ void WeatherRouting::OnRoutingProgressTimer(wxTimerEvent&) {
     details += wxString::Format(_("%s to %s: %s\n%s"),
                                configuration.Start, configuration.End,
                                stage, detail);
+    const auto report = route->GetDiagnostics();
+    for (const auto& item : report.items) {
+      if (item.severity == weather_routing::DiagnosticSeverity::Warning &&
+          (item.code == "coverage.wind_unavailable" ||
+           item.code == "coverage.start_outside_wind" ||
+           item.code == "coverage.departure_time")) {
+        details += "\n" + item.title + "\n" + item.action;
+        break;
+      }
+    }
   }
   if (m_RunningRouteMaps.size() > 6)
     details += _("\nMore active routes are listed in the routing table.");
@@ -2969,6 +2989,220 @@ void WeatherRouting::RecordChartSafetyPreparationFailure(
   }
   if (m_RoutingProgressDialog)
     UpdateRoutingProgress(_("Cannot compute route"), reason, -1, -1);
+}
+
+bool WeatherRouting::ValidateRoutingEndpoints(
+    RouteMapOverlay* route, const RouteMapConfiguration& configuration,
+    bool useChartSafety, bool enforceChartSafety) {
+  using weather_routing::EndpointSurface;
+  using weather_routing::RoutingEndpointProbe;
+  if (!route || configuration.chart_safety_scout_preview ||
+      !configuration.DetectLand)
+    return true;
+
+  auto endpoints = configuration;
+  if (endpoints.StartType == RouteMapConfiguration::START_FROM_BOAT) {
+    endpoints.Start = _("Boat");
+    endpoints.StartLat = m_weather_routing_pi.m_boat_lat;
+    endpoints.StartLon = m_weather_routing_pi.m_boat_lon;
+  }
+  if (!std::isfinite(endpoints.StartLat) || !std::isfinite(endpoints.StartLon) ||
+      !std::isfinite(endpoints.EndLat) || !std::isfinite(endpoints.EndLon) ||
+      std::abs(endpoints.StartLat) > 90 || std::abs(endpoints.EndLat) > 90) {
+    const wxString invalid = _("Endpoint checking requires valid start and destination coordinates.");
+    route->SetError(invalid);
+    RecordChartSafetyPreparationFailure(route, invalid);
+    return false;
+  }
+  const bool charts = useChartSafety && enforceChartSafety;
+  std::shared_ptr<weather_routing::ShorelineDataset> shoreline;
+  wxString shorelineSource, shorelineError;
+  if (charts) {
+    const double latitudes[] = {endpoints.StartLat, endpoints.EndLat};
+    const double longitudes[] = {endpoints.StartLon, endpoints.EndLon};
+    const int counts[] = {1, 1};
+    auto options = ChartSafetyRouteMaskOptions(endpoints);
+    options.safety_margin_nm = 0;
+    options.check_depth = 0;
+    options.minimum_depth_m = 0;
+    PlugInSegmentSafetyResult prepared = {};
+    prepared.struct_size = sizeof(prepared);
+    weather_routing::chart_safety_host::PrewarmRouteMaskForPolylinesWithTileHalo(
+        latitudes, longitudes, counts, 2, 0, 0, &options, &prepared,
+        [this](std::size_t done, std::size_t total) {
+          if (m_RoutingProgressDialog && m_RoutingProgressDialog->IsShown())
+            UpdateRoutingProgress(_("Checking route endpoints"),
+                _("Preparing chart evidence for the start and destination"),
+                static_cast<int>(done), static_cast<int>(total));
+        });
+  } else {
+    try {
+      const int resolution = endpoints.SelectedShorelineResolution();
+      shoreline = weather_routing::ShorelineManager::Prepare(resolution);
+      shorelineSource = weather_routing::ShorelineManager::Description(resolution);
+    } catch (const std::exception& error) {
+      shorelineSource = _("Selected GSHHG shoreline dataset");
+      shorelineError = wxString::FromUTF8(error.what());
+    }
+  }
+
+  wxString failures, warnings;
+  for (const bool isStart : {true, false}) {
+    const double latitude = isStart ? endpoints.StartLat : endpoints.EndLat;
+    const double longitude = weather_routing::CanonicalChartLongitude(
+        isStart ? endpoints.StartLon : endpoints.EndLon);
+    const wxString role = isStart ? _("Start") : _("Destination");
+    const wxString name = isStart ? endpoints.Start : endpoints.End;
+    const auto query = [&](double margin) -> RoutingEndpointProbe {
+      if (!std::isfinite(latitude) || !std::isfinite(longitude) ||
+          std::abs(latitude) > 90)
+        return {EndpointSurface::Unavailable, "", "Invalid endpoint coordinates"};
+      if (!charts) {
+        if (!shoreline)
+          return {EndpointSurface::Unavailable, shorelineSource.ToStdString(),
+                  shorelineError.ToStdString()};
+        try {
+          const bool hit = margin > 0
+              ? shoreline->WithinLandMargin(latitude, longitude, latitude,
+                                             longitude, margin)
+              : shoreline->CrossesLand(latitude, longitude, latitude, longitude);
+          return {hit ? EndpointSurface::Land : EndpointSurface::Water,
+                  shorelineSource.ToStdString(), ""};
+        } catch (const std::exception& error) {
+          return {EndpointSurface::Unavailable, shorelineSource.ToStdString(),
+                  error.what()};
+        }
+      }
+
+      auto options = ChartSafetyRouteMaskOptions(endpoints);
+      options.safety_margin_nm = margin;
+      // Classify the point separately from the existing minimum-depth gate.
+      options.check_depth = 0;
+      options.minimum_depth_m = 0;
+      PlugInSegmentSafetyResult result = {};
+      result.struct_size = sizeof(result);
+      bool queried = false;
+      for (int attempt = 0; attempt < 5; ++attempt) {
+        if (weather_routing::chart_safety_host::PrewarmCancellationRequested())
+          return {EndpointSurface::Unavailable, "chart-safety service", "Cancelled"};
+        result = {};
+        result.struct_size = sizeof(result);
+        queried = weather_routing::chart_safety_host::CheckSegment(
+            latitude, longitude, latitude, longitude, &options, &result);
+        if (!queried || result.status != PI_SEGMENT_SAFETY_PENDING_DATA) break;
+        PlugInSegmentSafetyRequestServiceResult service = {};
+        service.struct_size = sizeof(service);
+        weather_routing::chart_safety_host::ServicePendingRequests(8, 250, &service);
+      }
+      wxString source = result.source == PI_SEGMENT_SAFETY_SOURCE_CM93
+          ? _("CM93 chart")
+          : result.source == PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART
+          ? _("ENC/vector chart")
+          : result.source == PI_SEGMENT_SAFETY_SOURCE_PLUGIN_VECTOR
+          ? _("Plugin vector chart") : _("Chart-safety service");
+      if (result.chart_path[0])
+        source += "\n" + wxString::FromUTF8(result.chart_path);
+      EndpointSurface surface = EndpointSurface::Unavailable;
+      if (queried) {
+        switch (result.status) {
+          case PI_SEGMENT_SAFETY_SAFE: surface = EndpointSurface::Water; break;
+          case PI_SEGMENT_SAFETY_CROSSES_LAND: surface = EndpointSurface::Land; break;
+          case PI_SEGMENT_SAFETY_DRYING_AREA: surface = EndpointSurface::Drying; break;
+          case PI_SEGMENT_SAFETY_UNSAFE_AREA: surface = EndpointSurface::Unsafe; break;
+          case PI_SEGMENT_SAFETY_WITHIN_LAND_MARGIN: surface = EndpointSurface::Margin; break;
+          default: break;
+        }
+      }
+      return {surface, source.ToStdString(), result.message};
+    };
+    const auto assessment = weather_routing::AssessRoutingEndpoint(
+        endpoints.SafetyMarginLand, query);
+    const auto& evidence = assessment.Evidence();
+    const wxString source = wxString::FromUTF8(evidence.source.c_str());
+    wxString detail = wxString::Format(
+        _("%s \"%s\"\nPosition: %.6f, %.6f\nData source: %s"),
+        role, name, latitude, longitude, source);
+    if (!evidence.detail.empty())
+      detail += "\n" + wxString::FromUTF8(evidence.detail.c_str());
+    wxString title;
+    if (assessment.Blocked()) {
+      title = evidence.surface == EndpointSurface::Land
+          ? wxString::Format(_("%s is on land in the selected data"), role)
+          : evidence.surface == EndpointSurface::Drying
+          ? wxString::Format(_("%s is in a charted drying area"), role)
+          : evidence.surface == EndpointSurface::Unsafe
+          ? wxString::Format(_("%s is in a charted unsafe area"), role)
+          : wxString::Format(_("Could not complete the %s endpoint check"), role);
+      if (!failures.empty()) failures += "\n\n";
+      failures += title + "\n" + detail;
+      const char* code = evidence.surface == EndpointSurface::Land
+          ? (isStart ? "setup.start_land" : "setup.destination_land")
+          : (isStart ? "setup.start_endpoint" : "setup.destination_endpoint");
+      route->AddDiagnostic({code,
+          weather_routing::DiagnosticSeverity::Error, title, detail,
+          _("Review the data source and choose an appropriate offshore routing position, or load the required data."), {}, true});
+    } else if (assessment.WarnAboutMargin()) {
+      title = wxString::Format(
+          _("%s is in water but within the configured %.2f NM shore margin"),
+          role, endpoints.SafetyMarginLand);
+      if (!warnings.empty()) warnings += "\n\n";
+      warnings += title + "\n" + detail;
+      route->AddDiagnostic({isStart ? "setup.start_margin" : "setup.destination_margin",
+          weather_routing::DiagnosticSeverity::Warning, title, detail,
+          _("Review the endpoint. Existing coastal entry/exit handling and final route checks still apply."), {}, true});
+    }
+    wxLogMessage("WR_ENDPOINT_PREFLIGHT endpoint=%s name=\"%s\" lat=%.6f lon=%.6f "
+                 "point=%d blocked=%d margin_warning=%d source=\"%s\"",
+        role, name, latitude, longitude, static_cast<int>(assessment.point.surface),
+        assessment.Blocked() ? 1 : 0, assessment.WarnAboutMargin() ? 1 : 0, source);
+  }
+  const bool headless = !EnvString("WR_HEADLESS_ROUTE_TEST").empty();
+  if (weather_routing::chart_safety_host::PrewarmCancellationRequested()) {
+    failures = _("Endpoint checking was stopped.");
+  }
+  if (!failures.empty()) {
+    route->SetError(failures);
+    RecordChartSafetyPreparationFailure(route, failures);
+    if (!headless && m_EndpointPreflightDecisions.emplace(
+            "error:" + failures, false).second) {
+      WR_MessageDialog dialog(this, failures, _("Cannot compute route"),
+                               wxOK | wxICON_ERROR);
+      dialog.ShowModal();
+    }
+    return false;
+  }
+  if (!ValidateChartSafetyEndpoints(route, endpoints, useChartSafety,
+                                    enforceChartSafety))
+    return false;
+  if (!warnings.empty()) {
+    const auto key = "margin:" + warnings;
+    auto found = m_EndpointPreflightDecisions.find(key);
+    if (found == m_EndpointPreflightDecisions.end()) {
+      bool proceed;
+      if (headless) {
+        // Noninteractive callers retain the diagnostic and the established
+        // coastal policy. Tests can explicitly exercise cancellation.
+        proceed = EnvString("WR_HEADLESS_ENDPOINT_MARGIN_DECISION") != "cancel";
+      } else {
+        WR_MessageDialog dialog(this,
+            warnings + "\n\n" + _("Continue using the existing coastal entry/exit handling? Every delivered route will still be validated."),
+            _("Endpoint shore-margin warning"),
+            wxOK | wxCANCEL | wxCANCEL_DEFAULT | wxICON_WARNING);
+        dialog.SetOKLabel(_("Continue"));
+        proceed = dialog.ShowModal() == wxID_OK;
+      }
+      found = m_EndpointPreflightDecisions.emplace(key, proceed).first;
+      wxLogMessage("WR_ENDPOINT_MARGIN_DECISION route=\"%s -> %s\" proceed=%d noninteractive=%d",
+          endpoints.Start, endpoints.End, proceed ? 1 : 0, headless ? 1 : 0);
+    }
+    if (!found->second) {
+      const wxString cancelled = _("Calculation cancelled after the endpoint shore-margin warning.");
+      route->SetError(cancelled);
+      RecordChartSafetyPreparationFailure(route, cancelled);
+      return false;
+    }
+  }
+  return true;
 }
 
 bool WeatherRouting::ValidateChartSafetyEndpoints(
@@ -4670,6 +4904,21 @@ void WeatherRouting::RunHeadlessRouteTestFromEnv() {
   // autosave timer and display a modal error over the running benchmark.
   m_tAutoSaveXML.Stop();
   wxString mode = EnvString("WR_HEADLESS_ROUTE_TEST");
+  if (mode == "chart-tile-worker") {
+    const bool ok = weather_routing::chart_safety_host::RunTileWorker(
+        EnvString("OCPN_CHART_TILE_WORKER_DIR"));
+    FinishHeadlessRouteTestProcess(ok ? 0 : 2);
+    return;
+  }
+  if (mode == "open-water-import") {
+    wxString message;
+    const bool ok = weather_routing::chart_safety_host::ImportOpenWaterLayer(
+        EnvString("WR_HEADLESS_OPEN_WATER_LAYER"), &message);
+    wxLogMessage("WR_OPEN_WATER_LAYER headless_import=%d message=\"%s\"",
+                 ok ? 1 : 0, message);
+    FinishHeadlessRouteTestProcess(ok ? 0 : 2);
+    return;
+  }
   weather_routing_engine::RoutingScenario scenario;
   wxString scenario_path;
   wxString scenario_output_path;
@@ -7762,6 +8011,7 @@ bool WeatherRouting::ComputeDepartureTimeOptimization(
 }
 
 void WeatherRouting::StartCurrentRouteComputations() {
+  m_EndpointPreflightDecisions.clear();
   std::list<RouteMapOverlay*> currentroutemaps = CurrentRouteMaps();
   wxDateTime optimizationNominalStartTime;
   bool showOptimizationResults = false;
@@ -7797,6 +8047,7 @@ void WeatherRouting::StartCurrentRouteComputations() {
 }
 
 void WeatherRouting::StartAllRouteComputations() {
+  m_EndpointPreflightDecisions.clear();
   std::vector<RouteMapOverlay*> all_routes;
   for (int i = 0; i < m_panel->m_lWeatherRoutes->GetItemCount(); i++) {
     WeatherRoute* weatherroute = reinterpret_cast<WeatherRoute*>(
@@ -7855,6 +8106,7 @@ void WeatherRouting::OnCompute(wxCommandEvent& event) {
 }
 
 void WeatherRouting::OnComputeMultiLegSequence(wxCommandEvent& event) {
+  m_EndpointPreflightDecisions.clear();
   CancelMultiLegDepartureOptimization(true);
   RouteMapOverlay* selected = FirstCurrentRouteMap();
   if (!selected) {
@@ -8634,6 +8886,7 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
                   wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
   wxBoxSizer* top = new wxBoxSizer(wxVERTICAL);
 #ifdef __OCPN__ANDROID__
+  wxWindow* input_parent = &dialog;
   // wxQt does not expose the native dialog buttons reliably when the
   // content grows. Put the modal actions before the scrollable settings.
   wxBoxSizer* androidActions = new wxBoxSizer(wxHORIZONTAL);
@@ -8645,10 +8898,16 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
   androidActions->Add(new wxButton(&dialog, wxID_CANCEL, _("Cancel")),
                       0, wxALL, 5);
   top->Add(androidActions, 0, wxEXPAND);
+#else
+  auto* desktop_scroll = new wxScrolledWindow(
+      &dialog, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+      wxVSCROLL | wxTAB_TRAVERSAL);
+  desktop_scroll->SetScrollRate(0, dialog.FromDIP(12));
+  wxWindow* input_parent = desktop_scroll;
 #endif
 
   wxStaticText* capability = new wxStaticText(
-      &dialog, wxID_ANY,
+      input_parent, wxID_ANY,
       m_weather_routing_pi.HasEnhancedChartSafety()
           ? _("Full chart-aware safety is available and enabled by default. "
               "OpenCPN remains the chart-classification authority; this "
@@ -8663,14 +8922,15 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
   top->Add(capability, 0, wxALL | wxEXPAND, 10);
 
   wxCheckBox* persistent = new wxCheckBox(
-      &dialog, wxID_ANY, _("Keep authoritative chart-safety tiles on disk"));
+      input_parent, wxID_ANY, _("Keep authoritative chart-safety tiles on disk"));
   persistent->SetValue(m_weather_routing_pi.UsePersistentChartSafeCache());
   top->Add(persistent, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
+  const auto layer_position = top->GetItemCount();
 
   wxStaticBoxSizer* atlas_box = new wxStaticBoxSizer(
-      wxVERTICAL, &dialog, _("Optional prebuilt semantic atlas"));
+      wxVERTICAL, input_parent, _("Optional prebuilt semantic atlas"));
   wxCheckBox* atlas_enabled = new wxCheckBox(
-      &dialog, wxID_ANY,
+      input_parent, wxID_ANY,
       _("Prebuild selected charts when OpenCPN is idle"));
   atlas_enabled->SetValue(
       m_weather_routing_pi.ChartSafetyAtlasEnabled());
@@ -8681,10 +8941,10 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
 
   wxBoxSizer* quota_row = new wxBoxSizer(wxHORIZONTAL);
   quota_row->Add(new wxStaticText(
-                     &dialog, wxID_ANY,
+                     input_parent, wxID_ANY,
                      _("Maximum semantic tile cache / atlas (MiB):")),
                  0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
-  wxSpinCtrl* atlas_quota = new wxSpinCtrl(&dialog, wxID_ANY);
+  wxSpinCtrl* atlas_quota = new wxSpinCtrl(input_parent, wxID_ANY);
   atlas_quota->SetRange(256, 16384);
   atlas_quota->SetIncrement(256);
   atlas_quota->SetValue(
@@ -8701,7 +8961,7 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
   const std::set<std::string>& saved_atlas_paths =
       m_weather_routing_pi.ChartSafetyAtlasSelectedPaths();
   wxCheckBox* atlas_all = new wxCheckBox(
-      &dialog, wxID_ANY, _("Prebuild all applicable charts"));
+      input_parent, wxID_ANY, _("Prebuild all applicable charts"));
   atlas_all->SetValue(
       m_weather_routing_pi.ChartSafetyAtlasAllCharts());
   atlas_box->Add(atlas_all, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 5);
@@ -8713,7 +8973,7 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
         _("%s  (1:%d)"), filename.GetFullName(), chart.chart_scale));
   }
   wxCheckListBox* atlas_list = new wxCheckListBox(
-      &dialog, wxID_ANY, wxDefaultPosition, wxSize(540, 180), atlas_labels);
+      input_parent, wxID_ANY, wxDefaultPosition, wxSize(540, 180), atlas_labels);
   for (unsigned int index = 0; index < atlas_charts.size(); ++index) {
     const bool checked =
         m_weather_routing_pi.ChartSafetyAtlasAllCharts() ||
@@ -8725,11 +8985,11 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
 
   wxBoxSizer* atlas_actions = new wxBoxSizer(wxHORIZONTAL);
   wxButton* atlas_select_all =
-      new wxButton(&dialog, wxID_ANY, _("Select all"));
+      new wxButton(input_parent, wxID_ANY, _("Select all"));
   wxButton* atlas_select_none =
-      new wxButton(&dialog, wxID_ANY, _("Select none"));
+      new wxButton(input_parent, wxID_ANY, _("Select none"));
   wxButton* atlas_estimate =
-      new wxButton(&dialog, wxID_ANY, _("Estimate size"));
+      new wxButton(input_parent, wxID_ANY, _("Estimate size"));
   atlas_actions->Add(atlas_select_all, 0, wxRIGHT, 5);
   atlas_actions->Add(atlas_select_none, 0, wxRIGHT, 5);
   atlas_actions->AddStretchSpacer();
@@ -8738,11 +8998,11 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
                  5);
 
   wxStaticText* atlas_size = new wxStaticText(
-      &dialog, wxID_ANY, _("Size has not yet been estimated."));
+      input_parent, wxID_ANY, _("Size has not yet been estimated."));
   atlas_size->Wrap(520);
   atlas_box->Add(atlas_size, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 5);
   wxStaticText* atlas_note = new wxStaticText(
-      &dialog, wxID_ANY,
+      input_parent, wxID_ANY,
       _("Selection controls proactive generation only. A route outside the "
         "atlas remains eligible and requests authoritative tiles on demand. "
         "The estimate uses the charts' actual coverage polygons."));
@@ -8789,7 +9049,13 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
                    : _("Does not fit the configured quota.")));
     atlas_size->Wrap(520);
     dialog.Layout();
-    dialog.Fit();
+#ifdef __OCPN__ANDROID__
+    WR_LayoutAndroidDetailSheet(&dialog);
+    WR_FitAndroidSheet(&dialog);
+#else
+    desktop_scroll->Layout();
+    desktop_scroll->FitInside();
+#endif
   };
 
   atlas_all->Bind(wxEVT_CHECKBOX, [=](wxCommandEvent&) {
@@ -8811,10 +9077,10 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
                        [=](wxCommandEvent&) { update_atlas_estimate(); });
 
   wxBoxSizer* ram_row = new wxBoxSizer(wxHORIZONTAL);
-  ram_row->Add(new wxStaticText(&dialog, wxID_ANY,
+  ram_row->Add(new wxStaticText(input_parent, wxID_ANY,
                                 _("Chart-safety RAM cache (MiB):")),
                0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
-  wxSpinCtrl* ram = new wxSpinCtrl(&dialog, wxID_ANY);
+  wxSpinCtrl* ram = new wxSpinCtrl(input_parent, wxID_ANY);
   ram->SetRange(0, 8192);
   ram->SetIncrement(256);
   ram->SetValue(m_weather_routing_pi.ChartSafetyRamCacheMiB());
@@ -8825,20 +9091,111 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
   top->Add(ram_row, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
 
   wxStaticText* effective = new wxStaticText(
-      &dialog, wxID_ANY,
+      input_parent, wxID_ANY,
       wxString::Format(_("Current effective RAM budget: %d MiB"),
                        m_weather_routing_pi
                            .EffectiveChartSafetyRamCacheMiB()));
   top->Add(effective, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
 
+  if (weather_routing::chart_safety_host::HasOpenWaterLayerImport()) {
+    auto* layer = new wxStaticBoxSizer(wxVERTICAL, input_parent,
+                                      _("Open-water starting layer"));
+    auto* layer_status = new wxStaticText(input_parent, wxID_ANY, wxEmptyString);
+    layer->Add(layer_status, 0, wxALL | wxEXPAND, 5);
+    auto* actions = new wxBoxSizer(wxHORIZONTAL);
+    auto* import_layer = new wxButton(input_parent, wxID_ANY, _("Import..."));
+    auto* remove_layer = new wxButton(input_parent, wxID_ANY, _("Remove"));
+    actions->Add(import_layer, 1, wxALL | wxEXPAND, 5);
+    actions->Add(remove_layer, 1, wxALL | wxEXPAND, 5);
+    layer->Add(actions, 0, wxEXPAND);
+    top->Insert(layer_position, layer, 0,
+                wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
+    const auto update_status = [layer_status, remove_layer]() {
+      bool saved = false;
+      auto status = weather_routing::chart_safety_host::DescribeOpenWaterLayer(
+          *GetpPrivateApplicationDataLocation(), &saved);
+      status.Replace("&", "&&");
+      layer_status->SetLabel(status);
+      layer_status->Wrap(WR_FromDIP(layer_status, 420));
+      remove_layer->Enable(saved);
+    };
+    update_status();
+    const auto update_layer_layout = [&, update_status]() {
+      update_status();
+      dialog.Layout();
+#ifdef __OCPN__ANDROID__
+      WR_LayoutAndroidDetailSheet(&dialog);
+#else
+      desktop_scroll->Layout();
+    desktop_scroll->FitInside();
+#endif
+    };
+    import_layer->Bind(wxEVT_BUTTON, [this, &dialog, update_layer_layout](wxCommandEvent&) {
+      if (!CanStartExternalPlanningScenario()) {
+        WR_MessageBox(_("Wait for routing to finish before importing a layer."),
+                      _("Open-water starting layer"), wxOK, &dialog);
+        return;
+      }
+      wxString layer_path;
+#ifdef __OCPN__ANDROID__
+      // The SAF picker grants access to Downloads and copies the selected
+      // document into app-readable storage. A desktop path picker cannot
+      // grant that permission on scoped-storage Android installations.
+      if (PlatformFileSelectorDialog(nullptr, &layer_path,
+              _("Import open-water starting layer"), wxEmptyString,
+              wxEmptyString, "*.json") != wxID_OK) return;
+#else
+      wxFileDialog file(&dialog, _("Import open-water starting layer"),
+                        wxEmptyString, wxEmptyString,
+                        _("Open-water layer files (*.json)|*.json"),
+                        wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+      if (file.ShowModal() != wxID_OK) return;
+      layer_path = file.GetPath();
+#endif
+      if (!CanStartExternalPlanningScenario()) return;
+      wxString message;
+      bool ok;
+      {
+        wxProgressDialog progress(_("Open-water starting layer"),
+                                  _("Verifying regions against loaded charts"),
+                                  100, &dialog, wxPD_APP_MODAL | wxPD_CAN_ABORT);
+        int previous = -1;
+        ok = weather_routing::chart_safety_host::ImportOpenWaterLayer(
+            layer_path, &message, [&](int done, int total) {
+              const int percent = 100 * done / total;
+              if (!CanStartExternalPlanningScenario()) return false;
+              if (percent == previous) return true;
+              previous = percent;
+              return progress.Update(percent, wxString::Format(
+                  _("Verified %d of %d regions"), done, total));
+            });
+      }
+      if (ok) update_layer_layout();
+      WR_MessageBox(message, _("Open-water starting layer"),
+                    wxOK | (ok ? wxICON_INFORMATION : wxICON_WARNING), &dialog);
+    });
+    remove_layer->Bind(wxEVT_BUTTON, [this, &dialog, update_layer_layout](wxCommandEvent&) {
+      if (!CanStartExternalPlanningScenario()) {
+        WR_MessageBox(_("Wait for routing to finish before removing the layer."),
+                      _("Open-water starting layer"), wxOK, &dialog);
+        return;
+      }
+      const bool ok = weather_routing::chart_safety_host::RemoveOpenWaterLayer();
+      if (ok) update_layer_layout();
+      WR_MessageBox(ok ? _("Open-water starting layer removed.")
+                       : _("Unable to remove the open-water starting layer."),
+                    _("Open-water starting layer"), wxOK, &dialog);
+    });
+  }
+
   wxButton* clear = new wxButton(
-      &dialog, wxID_ANY, _("Clear Persistent Certified Safe-Area Cache"));
+      input_parent, wxID_ANY, _("Clear Persistent Certified Safe-Area Cache"));
   top->Add(clear, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
 
   const weather_routing::ChartSafetyCacheStats cache_stats =
       m_weather_routing_pi.ChartSafetyCacheStatistics();
   wxStaticText* stats = new wxStaticText(
-      &dialog, wxID_ANY,
+      input_parent, wxID_ANY,
       wxString::Format(
           _("Cache: %lu RAM tiles (%.1f MiB), %lu disk tiles "
             "(%.1f of %.0f MiB); hits RAM=%llu disk=%llu, misses=%llu"),
@@ -8854,7 +9211,7 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
   top->Add(stats, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
 
   wxStaticText* note = new wxStaticText(
-      &dialog, wxID_ANY,
+      input_parent, wxID_ANY,
       _("Disk caching retains permission-approved semantic hazard/depth "
         "tiles and areas proven safe for matching chart and safety "
         "settings. A chart update selectively rebuilds affected semantic "
@@ -8869,7 +9226,6 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
   buttons->AddButton(ok);
   buttons->AddButton(cancel);
   buttons->Realize();
-  top->Add(buttons, 0, wxALL | wxALIGN_RIGHT, 10);
 #endif
 
   clear->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
@@ -8881,8 +9237,74 @@ void WeatherRouting::OnChartAwarenessSettings(wxCommandEvent& event) {
         _("Chart Awareness Settings"), wxOK | wxICON_INFORMATION, this);
   });
 
+#ifdef __OCPN__ANDROID__
   dialog.SetSizerAndFit(top);
   update_atlas_estimate();
+  // Keep modal actions visible and scroll the content as one panel. The
+  // desktop fitted form can otherwise extend beyond the Android canvas.
+  dialog.SetSizer(nullptr, false);
+  top->Detach(androidActions);
+  std::vector<wxWindow*> original_children;
+  for (auto* child : dialog.GetChildren()) original_children.push_back(child);
+  auto* scroll = new wxScrolledWindow(&dialog, wxID_ANY);
+  scroll->SetScrollRate(0, 16);
+  auto* fields = new wxPanel(scroll, wxID_ANY);
+  fields->SetName("wr-detail-fields");
+  for (auto* child : original_children)
+    if (child->GetContainingSizer() != androidActions) child->Reparent(fields);
+  quota_row->SetOrientation(wxVERTICAL);
+  ram_row->SetOrientation(wxVERTICAL);
+  for (auto* row : {quota_row, ram_row})
+    for (auto* item : row->GetChildren()) {
+      item->SetFlag(wxEXPAND | wxALL);
+      item->SetBorder(8);
+      item->Show(true);
+    }
+  for (auto* item : androidActions->GetChildren())
+    if (auto* button = wxDynamicCast(item->GetWindow(), wxButton))
+      button->SetMinSize(wxSize(120, 72));
+  fields->SetSizer(top);
+  auto* content = new wxBoxSizer(wxVERTICAL);
+  content->Add(fields, 0, wxEXPAND | wxALL, 12);
+  content->AddSpacer(32);
+  scroll->SetSizer(content);
+  auto* root = new wxBoxSizer(wxVERTICAL);
+  root->Add(androidActions, 0, wxEXPAND);
+  root->Add(scroll, 1, wxEXPAND);
+  dialog.SetSizer(root);
+  WR_StyleAndroidControls(&dialog);
+  WR_InstallAndroidBack(&dialog, [&dialog]() { dialog.EndModal(wxID_CANCEL); });
+  new WR_AndroidSheetFitFilter(&dialog);
+  const wxSize canvas = GetCanvasByIndex(0)->GetClientSize();
+  dialog.SetMinSize(wxSize(0, 0));
+  dialog.SetSize(canvas.x - 24, canvas.y - 24);
+  dialog.CentreOnParent();
+  WR_LayoutAndroidDetailSheet(&dialog);
+  dialog.Bind(wxEVT_SIZE, [&dialog](wxSizeEvent& event) {
+    WR_LayoutAndroidDetailSheet(&dialog);
+    event.Skip();
+  });
+#else
+  desktop_scroll->SetSizer(top);
+  auto* layout = new wxBoxSizer(wxVERTICAL);
+  layout->Add(desktop_scroll, 1, wxEXPAND);
+  layout->Add(buttons, 0, wxALL | wxALIGN_RIGHT, 10);
+  dialog.SetSizer(layout);
+  update_atlas_estimate();
+  const auto form_size = top->GetMinSize();
+  desktop_scroll->SetMinSize(
+      wxSize(form_size.x + dialog.FromDIP(24), dialog.FromDIP(180)));
+  const auto minimum = layout->GetMinSize();
+  const int maximum_height = std::max(
+      minimum.y, wxGetClientDisplayRect().height - dialog.FromDIP(64));
+  dialog.SetMinClientSize(minimum);
+  dialog.SetClientSize(minimum.x,
+      std::min(maximum_height,
+               minimum.y - desktop_scroll->GetMinHeight() + form_size.y));
+  dialog.Layout();
+  desktop_scroll->FitInside();
+  dialog.CentreOnScreen();
+#endif
   if (dialog.ShowModal() == wxID_OK) {
     m_weather_routing_pi.SetUsePersistentChartSafeCache(persistent->GetValue());
     m_weather_routing_pi.SetChartSafetyRamCacheMiB(ram->GetValue());
@@ -9274,8 +9696,8 @@ void WeatherRouting::OnComputationTimer(wxTimerEvent&) {
       if (!chartSafetyServiceAttempted) {
         chartSafetyServiceAttempted = true;
         wxStopWatch chartRequestTimer;
-        weather_routing::chart_safety_host::ServicePendingRequests(
-            16, 50, &chartSafetyService);
+        weather_routing::chart_safety_host::ServiceInteractivePendingRequests(
+            &chartSafetyService);
         chartSafetyRequestMs += chartRequestTimer.Time();
         chartSafetyRequestsServiced += chartSafetyService.requests_serviced;
       }
@@ -9412,7 +9834,7 @@ void WeatherRouting::OnComputationTimer(wxTimerEvent&) {
         !ModernNativeRouteRequiresSerialHostServices(config)
         ? m_SettingsDialog.m_sParallelMethods->GetValue() : 0;
     routemapoverlay->AdmitRoutingWorker(m_RoutingWorkerBudget, std::move(*workerSlot),
-                                       parallelLimit);
+                                       parallelLimit, m_SettingsDialog.m_cbAdditionalHelpers->GetValue());
     wxString error;
     if (routemapoverlay->Start(error))
       m_RunningRouteMaps.push_back(routemapoverlay);
@@ -11239,7 +11661,7 @@ void WeatherRouting::PrepareChartSafetyScoutEnvelopes(
   } else {
     for (RouteMapOverlay* route : routemapoverlays) {
       if (!route) continue;
-      if (ValidateChartSafetyEndpoints(route, route->GetConfiguration(),
+      if (ValidateRoutingEndpoints(route, route->GetConfiguration(),
                                        use_chart_safety,
                                        enforce_chart_safety))
         eligible_routes.push_back(route);
@@ -12717,6 +13139,9 @@ void WeatherRouting::ExportRoute(RouteMapOverlay& routemapoverlay) {
 }
 
 void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
+  weather_routing::chart_safety_host::SetAdditionalHelpersEnabled(
+      m_SettingsDialog.m_cbAdditionalHelpers->GetValue(),
+      static_cast<unsigned>(m_SettingsDialog.m_sConcurrentThreads->GetValue()));
   if (!routemapoverlay || routemapoverlay->Running()) return;
   if (m_RoutePreparationDepth == 0)
     m_ChartSafetyPreparationCancelled.store(false,
@@ -13040,11 +13465,13 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
           configuration.RoutingEffortPercent),
       m_SettingsDialog.m_sConcurrentThreads->GetValue(),
       configuration.SelectedGribTimelineCacheMiB());
+  routeStartLog += wxString::Format(" additional_helpers=%d",
+      m_SettingsDialog.m_cbAdditionalHelpers->GetValue() ? 1 : 0);
   wxLogMessage("%s", routeStartLog);
 
   // Decide endpoint depth suitability before any potentially large chart
   // reachability/scout prewarm.
-  if (!ValidateChartSafetyEndpoints(routemapoverlay, configuration,
+  if (!ValidateRoutingEndpoints(routemapoverlay, configuration,
                                     use_chart_safety,
                                     enforce_chart_safety))
     return;
@@ -13167,21 +13594,6 @@ void WeatherRouting::Start(RouteMapOverlay* routemapoverlay) {
                 use_experimental_chart_safety && enforce_experimental_chart_safety),
             configuration.shoreline_description,
             _("View > Show selected passage shoreline displays the actual GSHHG outlines. The OpenCPN background map uses separate OSM data."), {}, true});
-        if (!combined && !use_experimental_chart_safety) {
-          for (const bool isStart : {true, false}) {
-            const double lat = isStart ? configuration.StartLat : configuration.EndLat;
-            const double lon = isStart ? configuration.StartLon : configuration.EndLon;
-            if (!configuration.shoreline_dataset->CrossesLand(lat, lon, lat, lon)) continue;
-            routemapoverlay->AddDiagnostic({isStart ? "setup.start_land" : "setup.destination_land",
-                weather_routing::DiagnosticSeverity::Error,
-                isStart ? _("Start is on land in the selected shoreline model")
-                        : _("Destination is on land in the selected shoreline model"),
-                wxString::Format("%s: %.6f, %.6f\n%s",
-                    isStart ? configuration.Start : configuration.End, lat, lon,
-                    configuration.shoreline_description),
-                _("Inspect the endpoint on the chart and choose an appropriate offshore routing position."), {}, true});
-          }
-        }
         routemapoverlay->SetConfiguration(configuration);
         wxLogMessage("WR_ROUTE_SHORELINE route=\"%s to %s\" %s",
                      configuration.Start, configuration.End,
@@ -13312,6 +13724,7 @@ void WeatherRouting::BeginGribTimelineCacheBatch(
     wxQueueEvent(this, new wxThreadEvent(wxEVT_WR_GRIB_REQUEST));
   });
   m_GribTimelineFrameCache->Clear();
+  m_GribTimelineFrameCache->SetAdditionalPrefetchEnabled(m_SettingsDialog.m_cbAdditionalHelpers->GetValue());
   const std::uint64_t availableMiB =
       weather_routing::AvailablePhysicalMemoryMiB();
   const auto admission = m_GribTimelineFrameCache->Configure(

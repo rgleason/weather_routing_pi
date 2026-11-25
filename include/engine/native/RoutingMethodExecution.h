@@ -25,7 +25,7 @@ using AdmitMethod = std::function<std::optional<RoutingWorkerBudget::Slot>()>;
 
 inline constexpr std::array kMethodOrder{
     SequenceEngine::Original, SequenceEngine::Quick2, SequenceEngine::Atlas,
-    SequenceEngine::Quick, SequenceEngine::Alternative, SequenceEngine::Main};
+    SequenceEngine::Meridian, SequenceEngine::Quick, SequenceEngine::Alternative, SequenceEngine::Main};
 
 // The route owns one worker slot. Extra lanes are admitted from the same
 // budget and process pending methods in order. Results are harvested by the
@@ -210,7 +210,14 @@ inline AutoFastResults RunStaggeredFastMethods(
         }
       }
 
-      if (finished(0) && (!quick2.joinable() || finished(1))) break;
+      if (finished(0) && (!quick2.joinable() || finished(1))) {
+        // publish() releases the mutex. A method can finish during that
+        // callback after its position in this delivery pass was visited.
+        // Drain that completion before returning the final results.
+        if (!jobs[0].delivered || (quick2.joinable() && !jobs[1].delivered))
+          continue;
+        break;
+      }
       if (incumbent && (keepResult.load(std::memory_order_relaxed) || now >= until))
         stopActive();
       if (!quick2.joinable() && !quick2Unavailable && !finished(0) && !incumbent &&

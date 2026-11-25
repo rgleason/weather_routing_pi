@@ -52,7 +52,7 @@ PROFILES = {
                             "https://github.com/rgleason/weather_routing_pi"},
     },
 }
-SUMMARY = "Weather routing with six engines, diagnostics and coverage warnings."
+SUMMARY = "Six routing methods plus Meridian and diagnostics."
 MULTI_POLAR_SUMMARY = "Weather routing with six engines and a clear multi-polar boat editor."
 PREVIOUS_SUMMARY = "Weather routing, passage planning and existing-route chart checks."
 OLDER_SUMMARY = "Advanced weather routing with departure and arrival planning."

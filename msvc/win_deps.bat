@@ -123,6 +123,24 @@ if not exist "%WXWIN%" (
       if errorlevel 1 exit /b !errorlevel!
   )
 )
+:: The Dev archive contains import libraries, not the host DLL runtime.
+:: Repair partial cached SDKs as well as fresh installations before CTest.
+if "%~1"=="wx32" (
+  if not exist "%wxWidgets_LIB_DIR%\wxmsw32u_core_vc14x.dll" (
+    curl.exe --fail --location --retry 5 --retry-delay 5 ^
+      --output wxMSW-3.2.1_vc14x_ReleaseDLL.7z ^
+      https://github.com/wxWidgets/wxWidgets/releases/download/v3.2.1/wxMSW-3.2.1_vc14x_ReleaseDLL.7z
+    if errorlevel 1 exit /b !errorlevel!
+    7z x -y "-o%WXWIN%" wxMSW-3.2.1_vc14x_ReleaseDLL.7z
+    if errorlevel 1 exit /b !errorlevel!
+  )
+  for %%F in (wxbase32u_vc14x.dll wxmsw32u_core_vc14x.dll wxmsw32u_adv_vc14x.dll wxmsw32u_gl_vc14x.dll) do (
+    if not exist "%wxWidgets_LIB_DIR%\%%F" (
+      echo Missing wxWidgets test runtime: %wxWidgets_LIB_DIR%\%%F
+      exit /b 1
+    )
+  )
+)
 dir cache
 type "%CONFIG_FILE%"
 refreshenv

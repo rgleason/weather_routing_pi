@@ -19,6 +19,7 @@
 
 #include <wx/wx.h>
 #include <wx/glcanvas.h>
+#include <wx/file.h>
 
 #include <algorithm>
 #include <array>
@@ -34,6 +35,8 @@
 #include "Utilities.h"
 #include "Boat.h"
 #include "ConstraintChecker.h"
+#include "OffshoreHazards.h"
+#include "weather_routing_pi.h"
 #include "WeatherDataProvider.h"
 #include "engine/native/RouteGust.h"
 #include "RouteMapOverlay.h"
@@ -69,9 +72,6 @@ void* RouteMapOverlayThread::Entry() {
 
       m_RouteMapOverlay.RouteAnalysis(proute);
     } else {
-      const bool cumulativeClimatology =
-          cf.ClimatologyType == RouteMapConfiguration::CUMULATIVE_MAP ||
-          cf.ClimatologyType == RouteMapConfiguration::CUMULATIVE_MINUS_CALMS;
       if (ModernNativeRouteEnabled(cf)) {
         wxString modernError;
         RunModernNativeRoute(m_RouteMapOverlay, modernError);
@@ -81,13 +81,16 @@ void* RouteMapOverlayThread::Entry() {
               cf.Start, cf.End, modernError);
         return nullptr;
       }
-      if (cumulativeClimatology)
+      if (cf.UsesCumulativeClimatology())
         wxLogMessage(
             "WR_MODERN_NATIVE_FALLBACK route=\"%s -> %s\" "
             "reason=\"cumulative climatology distribution requires legacy "
             "probabilistic semantics\"",
             cf.Start, cf.End);
       while (!TestDestroy() && !m_RouteMapOverlay.Finished()) {
+        m_RouteMapOverlay.AcquireLegacyGribFrame();
+        if (m_RouteMapOverlay.CancellationFlag()->load(std::memory_order_relaxed))
+          break;
         {
           RouteMapOverlay::DestinationUpdateGuard destination_update_guard(
               m_RouteMapOverlay);
@@ -182,7 +185,9 @@ bool RouteMapOverlay::Start(wxString& error) {
     return false;
   }
 
-  const RouteMapConfiguration configuration = GetConfiguration();
+  RouteMapConfiguration configuration = GetConfiguration();
+  const bool cumulativeRoute = configuration.RouteGUID.IsEmpty() &&
+                               configuration.UsesCumulativeClimatology();
   const bool climatologySelected =
       configuration.ClimatologyType > RouteMapConfiguration::CURRENTS_ONLY;
   const bool climatologyAvailable =
@@ -191,6 +196,14 @@ bool RouteMapOverlay::Start(wxString& error) {
           : ClimatologyWindAtlasData && WeatherDataProvider::CanInvokeClimatology(ClimatologyService::WindAtlas);
   auto sources = weather_routing::CheckWindSourceSelection(
       configuration.UseGrib, climatologySelected, climatologyAvailable);
+  if (cumulativeRoute && !climatologyAvailable) {
+    sources.items.clear();
+    sources.Add({"setup.cumulative_climatology_unavailable",
+        weather_routing::DiagnosticSeverity::Error,
+        _("Cumulative climatology needs the Climatology wind atlas"), {},
+        _("Enable a compatible Climatology provider with wind atlas data."),
+        {}, true});
+  }
   for (auto& item : sources.items) AddDiagnostic(std::move(item));
   const wxString boatError = LoadBoat();
   if (!boatError.empty())
@@ -213,8 +226,13 @@ bool RouteMapOverlay::Start(wxString& error) {
         wxString::FromUTF8(configuration.EngineSettings.EngineId().c_str());
     return false;
   }
-  if (!ModernNativeRouteEnabled(configuration)) {
+  const bool native = ModernNativeRouteEnabled(configuration);
+  if (!native && !cumulativeRoute) {
     error = _("The selected engine cannot analyse an existing route or use cumulative climatology. Review the routing mode and data-source settings.");
+    return false;
+  }
+  if (cumulativeRoute && configuration.RequireWaveCoverage) {
+    error = _("Required wave coverage needs native routing. Select Most Likely or Average to keep this requirement.");
     return false;
   }
   if (configuration.AvoidCycloneTracks && ClimatologyCycloneTrackCrossings &&
@@ -250,6 +268,48 @@ bool RouteMapOverlay::Start(wxString& error) {
     return false;
   }
 
+  std::shared_ptr<const weather_routing::OffshoreHazards> offshoreHazards;
+  if (configuration.DetectLand && !configuration.chart_safety_scout_preview) {
+    using weather_routing::OffshoreHazards;
+    const wxString path = weather_routing_pi::StandardPath() +
+                          wxString::FromUTF8(OffshoreHazards::kFilename);
+    if (wxFileExists(path)) {
+      try {
+        wxFile file(path);
+        const auto length = file.IsOpened() ? file.Length() : wxInvalidOffset;
+        if (length <= 0 || length > static_cast<wxFileOffset>(OffshoreHazards::kMaxFileBytes))
+          throw std::runtime_error("Unreadable or invalid-size offshore hazard file");
+        std::string contents(static_cast<std::size_t>(length), '\0');
+        if (file.Read(contents.data(), contents.size()) != length)
+          throw std::runtime_error("Unable to read offshore hazard file");
+        offshoreHazards = OffshoreHazards::Parse(contents);
+        const auto checkEndpoint = [&](double lat, double lon) {
+          const auto check = offshoreHazards->Intersect(
+              lat, lon, lat, lon, configuration.SafetyMarginLand);
+          if (check.indeterminate)
+            throw std::runtime_error("Unable to check an endpoint for offshore hazards");
+          if (const auto* hazard = check.hazard)
+            throw std::runtime_error("Route endpoint inside offshore hazard exclusion " +
+                                     hazard->id + " (" + hazard->source + ")");
+        };
+        checkEndpoint(configuration.StartLat, configuration.StartLon);
+        checkEndpoint(configuration.EndLat, configuration.EndLon);
+      } catch (const std::exception& failure) {
+        error = _("Unable to route with offshore hazard exclusions") + "\n" +
+                wxString::FromUTF8(failure.what());
+        SetError(error);
+        return false;
+      }
+      AddDiagnostic({"setup.offshore_hazards", weather_routing::DiagnosticSeverity::Notice,
+          _("Supplemental offshore hazard exclusions are active"),
+          wxString::Format(_("%s, revision %s. %u exclusions."),
+              wxString::FromUTF8(offshoreHazards->Name().c_str()),
+              wxString::FromUTF8(offshoreHazards->Revision().c_str()),
+              static_cast<unsigned>(offshoreHazards->Size())), {}, {}, true});
+    }
+  }
+
+  SetOffshoreHazards(std::move(offshoreHazards));
   Lock();
   m_ModernProgress.Begin();
   m_LivePreview.Begin();
@@ -272,8 +332,19 @@ bool RouteMapOverlay::Start(wxString& error) {
   m_SelectedPartialCandidateId.clear();
   Unlock();
 
-  CaptureSearchSettings(configuration, ModernNativeRouteEnabled(configuration));
-  RequestedGrib();  // Native workers enqueue the forecast times they need.
+  if (cumulativeRoute) {
+    AddDiagnostic({"engine.cumulative_climatology",
+        weather_routing::DiagnosticSeverity::Notice,
+        _("Routing engine used: Legacy isochrones"),
+        _("Cumulative climatology weights the boat's sailing speed using the wind atlas."),
+        {}, {}, true});
+    // Report the nominal legacy search settings even if a fast engine was
+    // selected. The saved route configuration retains the selected engine.
+    configuration.EngineSettings.engine = weather_routing::RoutingEngine::Main;
+  }
+  CaptureSearchSettings(configuration, native);
+  if (native)
+    RequestedGrib();  // Native workers enqueue the forecast times they need.
   m_Thread = new RouteMapOverlayThread(*this);
   m_Thread->Run();
   return true;
@@ -400,6 +471,20 @@ void RouteMapOverlay::SetModernNativeProgress(
   m_ModernProgress.Publish(generation, {stage, detail});
 }
 
+wxString RouteMapOverlay::DiagnosticReportText() {
+  auto report = GetDiagnostics();
+  if (Running()) {
+    wxString stage, detail;
+    if (!GetModernNativeProgress(stage, detail)) {
+      stage = NeedsChartSafetyData() ? _("Waiting for chart data")
+          : NeedsGrib() ? _("Waiting for weather data")
+                        : _("Preparing route");
+    }
+    weather_routing::AppendLiveWorkerProgress(report, stage, detail);
+  }
+  return report.Text();
+}
+
 bool RouteMapOverlay::GetModernNativeProgress(wxString& stage,
                                               wxString& detail) {
   const auto snapshot = m_ModernProgress.Read();
@@ -415,8 +500,11 @@ bool RouteMapOverlay::GetModernNativeProgress(wxString& stage,
                              static_cast<long long>(elapsed),
                              static_cast<long long>(age));
   if (ExploringMethods()) stage = _("Validated route available - comparing active methods");
-  else if (NeedsChartSafetyData()) stage = _("Waiting for chart data");
-  else if (NeedsGrib()) stage = _("Waiting for weather data");
+  else if (NeedsChartSafetyData() || NeedsGrib()) {
+    detail = _("Active worker: ") + stage + "\n" + detail;
+    stage = NeedsChartSafetyData() ? _("Waiting for chart data")
+                                  : _("Waiting for weather data");
+  }
   return true;
 }
 

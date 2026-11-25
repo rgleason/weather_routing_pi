@@ -192,7 +192,8 @@ public:
   static bool CheckLandConstraint(RouteMapConfiguration& configuration,
                                   double lat, double lon, double dlat,
                                   double dlon, double cog,
-                                  bool allow_endpoint_margin_relaxation = true);
+                                  bool allow_endpoint_margin_relaxation = true,
+                                  bool require_fine_chart = false);
 
   static bool CheckFinalRouteLandConstraint(RouteMapConfiguration& configuration,
                                             double lat, double lon,

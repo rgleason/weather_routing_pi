@@ -4,6 +4,7 @@
 #include <cmath>
 #include <random>
 #include <wx/filename.h>
+#include "CumulativeClimatology.h"
 #include "Polar.h"
 #include "original_routing/Engine.h"
 #include "supercpn/weather_routing/Engine.h"
@@ -29,6 +30,38 @@ TEST(PolarRoutingPolicy, DefaultBoatAcceptsQuintonsLightWindWithoutEditingPolar)
   EXPECT_TRUE(estimated);
   EXPECT_DOUBLE_EQ(PolarSpeedForRouting(polars, 0, 60, 60), 0);
   EXPECT_DOUBLE_EQ(PolarSpeedForRouting(polars, 0, 60, 70), 0);
+}
+
+TEST(PolarRoutingPolicy, CumulativeWindSectorsUseSupportedSailsAndAccountForCalms) {
+  std::vector<Polar> polars(2);
+  wxString message;
+  const wxString examples = wxString(WEATHER_ROUTING_SOURCE_DIR) + "/data/polars/Example/";
+  ASSERT_TRUE(polars[0].Open(examples + "Example-0-6-Power.pol", message)) << message;
+  ASSERT_TRUE(polars[1].Open(examples + "Example-6-24.pol", message)) << message;
+
+  climatology_wind_atlas atlas{};
+  atlas.W[0] = 40.0;
+  atlas.VW[0] = 12.0;
+  atlas.directions[0] = 0.75;
+  atlas.W[1] = 70.0;
+  atlas.VW[1] = 4.0;
+  atlas.directions[1] = 0.25;
+  atlas.VW[2] = NAN;
+  atlas.calm = 0.2;
+
+  const double expected = 0.75 * PolarSpeedForRouting(polars, 1, 90.0, 12.0) +
+                          0.25 * PolarSpeedForRouting(polars, 0, 60.0, 4.0);
+  PolarSpeedStatus status;
+  bool estimated = false;
+  EXPECT_NEAR(CumulativeSailingSpeed(polars, 1, atlas, 130.0, true, false,
+                                    status, estimated), expected, 1e-6);
+  EXPECT_EQ(status, POLAR_SPEED_SUCCESS);
+  EXPECT_NEAR(CumulativeSailingSpeed(polars, 1, atlas, 130.0, true, true,
+                                    status, estimated), 0.8 * expected, 1e-6);
+  atlas.VW[1] = 50.0;
+  EXPECT_TRUE(std::isnan(CumulativeSailingSpeed(polars, 1, atlas, 130.0, true,
+                                              false, status, estimated)));
+  EXPECT_EQ(status, POLAR_SPEED_WIND_TOO_STRONG);
 }
 
 TEST(PolarRoutingPolicy, LowAndHighPoliciesAreIndependentAndStrictIsAvailable) {

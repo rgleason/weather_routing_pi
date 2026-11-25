@@ -1,0 +1,220 @@
+{
+  "schemaVersion": 1,
+  "baselineCommits": {
+    "production": "a77f591",
+    "development": "0d12458"
+  },
+  "versions": [
+    "1.44.0",
+    "2.11.0"
+  ],
+  "weatherFilename": "environment_ukmo_ukv_mixed_wave_copernicus_nws_20261123_1453.grb",
+  "weatherSha256": "b080a54b766ae11ae4a50d7ec189e2b180167bd5a0ee213124226e378c24ff23",
+  "departure": "2026-11-23T12:12:38Z",
+  "start": [
+    54.517742,
+    -8.4952
+  ],
+  "destination": [
+    55.217783,
+    -6.847576
+  ],
+  "boat": "Nicholson 35 Mk1 cruising realistic",
+  "settings": {
+    "currents": true,
+    "windScale": 0.95,
+    "tackSeconds": 300,
+    "gybeSeconds": 300,
+    "sailPlanChangeSeconds": 600,
+    "landMarginNm": 0.4,
+    "effortPercent": 400,
+    "configuredStepSeconds": 3600,
+    "motor": false
+  },
+  "shorelineSha256": "8d4d73897c82dd0e8df63f33e4dab9dd3aea7a26459b923bf404cb9299f1cf04",
+  "geographyProbe": {
+    "directNm": 70.7593,
+    "baselineGuideVertices": 0,
+    "correctedGuideVertices": 21,
+    "guideLengthNm": 119.272,
+    "temporaryTargetOnLand": false,
+    "temporaryTargetWithinMargin": false
+  },
+  "runs": [
+    {
+      "run": "baseline-production",
+      "status": "failed",
+      "validated": false,
+      "calculationSeconds": 55.454,
+      "finalSearchSeconds": 50.798,
+      "cumulativeGenerated": 2000000,
+      "closestRemainingNm": 58.225,
+      "distanceNm": null,
+      "eta": null,
+      "points": 0,
+      "globalLayerAccepted": false,
+      "warnings": []
+    },
+    {
+      "run": "patched-production",
+      "status": "complete",
+      "validated": true,
+      "calculationSeconds": 4.058,
+      "finalSearchSeconds": 1.242,
+      "cumulativeGenerated": 9400,
+      "closestRemainingNm": 0.0,
+      "distanceNm": 119.10084914529023,
+      "eta": "2026-11-24T11:02:57Z",
+      "points": 88,
+      "globalLayerAccepted": false,
+      "warnings": [
+        "usage.climatology_current",
+        "usage.zero_current",
+        "usage.estimated_waves"
+      ]
+    },
+    {
+      "run": "baseline-development-matched",
+      "status": "failed",
+      "validated": false,
+      "calculationSeconds": 31.872,
+      "finalSearchSeconds": 30.084,
+      "cumulativeGenerated": 2000000,
+      "closestRemainingNm": 58.225,
+      "distanceNm": null,
+      "eta": null,
+      "points": 0,
+      "globalLayerAccepted": false,
+      "warnings": []
+    },
+    {
+      "run": "patched-development-matched",
+      "status": "complete",
+      "validated": true,
+      "calculationSeconds": 3.638,
+      "finalSearchSeconds": 1.276,
+      "cumulativeGenerated": 9400,
+      "closestRemainingNm": 0.0,
+      "distanceNm": 119.10084922464708,
+      "eta": "2026-11-24T11:02:57Z",
+      "points": 88,
+      "globalLayerAccepted": false,
+      "warnings": [
+        "usage.climatology_current",
+        "usage.zero_current",
+        "usage.estimated_waves"
+      ]
+    },
+    {
+      "run": "baseline-production-native-chart",
+      "status": "failed",
+      "validated": false,
+      "calculationSeconds": 25.501,
+      "finalSearchSeconds": 15.972,
+      "cumulativeGenerated": 2000000,
+      "closestRemainingNm": 61.162,
+      "distanceNm": null,
+      "eta": null,
+      "points": 0,
+      "globalLayerAccepted": true,
+      "warnings": []
+    },
+    {
+      "run": "patched-production-native-chart",
+      "status": "complete",
+      "validated": true,
+      "calculationSeconds": 15.516,
+      "finalSearchSeconds": 3.256,
+      "cumulativeGenerated": 10000,
+      "closestRemainingNm": 0.0,
+      "distanceNm": 119.36541434402088,
+      "eta": "2026-11-24T11:12:11Z",
+      "points": 88,
+      "globalLayerAccepted": true,
+      "warnings": [
+        "usage.climatology_current",
+        "usage.zero_current",
+        "usage.estimated_waves"
+      ]
+    },
+    {
+      "run": "patched-development-native-chart",
+      "status": "complete",
+      "validated": true,
+      "calculationSeconds": 13.437,
+      "finalSearchSeconds": 3.252,
+      "cumulativeGenerated": 10000,
+      "closestRemainingNm": 0.0,
+      "distanceNm": 119.36541442322275,
+      "eta": "2026-11-24T11:12:11Z",
+      "points": 88,
+      "globalLayerAccepted": true,
+      "warnings": [
+        "usage.climatology_current",
+        "usage.zero_current",
+        "usage.estimated_waves"
+      ]
+    }
+  ],
+  "tests": {
+    "productionEnabled": 737,
+    "developmentEnabled": 827,
+    "productionCI": 89,
+    "developmentCI": 73,
+    "meridianTestsEach": 13,
+    "disabledBenchmarksEach": 1,
+    "independentDonegalSegments": 348,
+    "landCrossings": 0,
+    "shoreBufferViolations": 0,
+    "qualifiedFrozenInputs": 196
+  },
+  "limitations": [
+    "One run per configuration; timings are observations, not benchmark averages. Baseline runs failed, so no solve-time speedup ratio is claimed.",
+    "GSHHG controls disable chart/depth checks; native chart controls enforce 3m depth with copied working chart catalogue and global layer.",
+    "Currents are enabled, with explicitly reported climatology and zero-current fallback where the forecast is missing; some wave heights are estimated.",
+    "The preliminary development smoke run used 100% wind with default penalties and is excluded; the matched run uses 95% wind and the recorded penalties.",
+    "Existing six search implementations and opt-in defaults are unchanged. This is not a rerun of the entire earlier objective-route timing table."
+  ],
+  "longPassageControls": [
+    {
+      "branch": "production",
+      "name": "meridian-donegal-control-production-lizard-provincetown",
+      "status": "complete",
+      "failure_reason": null,
+      "native_calculation_seconds": 24.217,
+      "validated_candidates": 1,
+      "engine_selected": [
+        "WR_ENGINE_SELECTED mode=meridian engine=meridian passage_s=2180223 validated=1"
+      ],
+      "engine_attempts": 0,
+      "native_summaries": 1,
+      "endpoint_lines": [
+        "20:33:21.469 MESSAGE WeatherRouting.cpp:3153 WR_ENDPOINT_PREFLIGHT endpoint=Start name=\"Lizard offshore\" lat=49.740000 lon=-5.125000 point=0 blocked=0 margin_warning=0 source=\"GSHHG 2.3.7 / Full / SHA256 8d4d73897c82dd0e8df63f33e4dab9dd3aea7a26459b923bf404cb9299f1cf04 / /home/paul/src/OpenCPN/output/routing-143-2100-coastal-20261123/runs/meridian-donegal-control-production-lizard-provincetown/shoreline/2.3.7/poly-f-1789407731137701996.dat\"",
+        "20:33:21.471 MESSAGE WeatherRouting.cpp:3153 WR_ENDPOINT_PREFLIGHT endpoint=Destination name=\"Provincetown offshore\" lat=42.130000 lon=-70.260000 point=0 blocked=0 margin_warning=0 source=\"GSHHG 2.3.7 / Full / SHA256 8d4d73897c82dd0e8df63f33e4dab9dd3aea7a26459b923bf404cb9299f1cf04 / /home/paul/src/OpenCPN/output/routing-143-2100-coastal-20261123/runs/meridian-donegal-control-production-lizard-provincetown/shoreline/2.3.7/poly-f-1789407731137701996.dat\""
+      ],
+      "margin_decisions": [],
+      "starting_layer_accepted": false,
+      "result": "/home/paul/src/OpenCPN/output/routing-143-2100-coastal-20261123/runs/meridian-donegal-control-production-lizard-provincetown/result.json"
+    },
+    {
+      "branch": "development",
+      "name": "meridian-donegal-control-development-lizard-provincetown",
+      "status": "complete",
+      "failure_reason": null,
+      "native_calculation_seconds": 24.276,
+      "validated_candidates": 1,
+      "engine_selected": [
+        "WR_ENGINE_SELECTED mode=meridian engine=meridian passage_s=2180527 validated=1"
+      ],
+      "engine_attempts": 0,
+      "native_summaries": 1,
+      "endpoint_lines": [
+        "20:34:17.234 MESSAGE WeatherRouting.cpp:3650 WR_ENDPOINT_PREFLIGHT endpoint=Start name=\"Lizard offshore\" lat=49.740000 lon=-5.125000 point=0 blocked=0 margin_warning=0 source=\"GSHHG 2.3.7 / Full / SHA256 8d4d73897c82dd0e8df63f33e4dab9dd3aea7a26459b923bf404cb9299f1cf04 / /home/paul/src/OpenCPN/output/routing-143-2100-coastal-20261123/runs/meridian-donegal-control-development-lizard-provincetown/shoreline/2.3.7/poly-f-1789407731137701996.dat\"",
+        "20:34:17.236 MESSAGE WeatherRouting.cpp:3650 WR_ENDPOINT_PREFLIGHT endpoint=Destination name=\"Provincetown offshore\" lat=42.130000 lon=-70.260000 point=0 blocked=0 margin_warning=0 source=\"GSHHG 2.3.7 / Full / SHA256 8d4d73897c82dd0e8df63f33e4dab9dd3aea7a26459b923bf404cb9299f1cf04 / /home/paul/src/OpenCPN/output/routing-143-2100-coastal-20261123/runs/meridian-donegal-control-development-lizard-provincetown/shoreline/2.3.7/poly-f-1789407731137701996.dat\""
+      ],
+      "margin_decisions": [],
+      "starting_layer_accepted": false,
+      "result": "/home/paul/src/OpenCPN/output/routing-143-2100-coastal-20261123/runs/meridian-donegal-control-development-lizard-provincetown/result.json"
+    }
+  ]
+}

@@ -1,19 +1,41 @@
-# Weather Routing integration branch
+# Weather Routing production
 
-See [the 1.29.1 integration summary](docs/integration-1.29.1.md),
-[1.29.1 changes](docs/release-1.29.1.md),
-[stock-host compatibility](docs/release-1.27.0.md) and
-[Quick, Standard and Professional settings](docs/quick-routing.md).
+This repository's `master` branch is the **production 1.x line**, currently
+**1.44.3**. It retains the established Weather Routing interface and uses the
+external GRIB or xGRIB plugin for forecast data, with the separate Climatology
+plugin when climatology is requested.
+
+| Line | Current version | Source |
+| --- | --- | --- |
+| Weather Routing production | **1.44.3** | [pob220/weather_routing_pi — master](https://github.com/pob220/weather_routing_pi/tree/master) |
+| xWeatherRouting improved UX development | **2.11.3** | [pob220/xweather_routing_pi — develop](https://github.com/pob220/xweather_routing_pi/tree/develop) |
+
+The 2.x line has the improved planning interface, incorporated GRIB loader and
+generator, bundled Climatology, and separate preferences and user data. See its
+[published 2.11.1 developer test packages](https://github.com/pob220/xweather_routing_pi/releases/tag/developer-test-2.11.1-20261124).
+
+The production 1.44.2 change is present here; integration into Rick's `master`
+is tracked in [PR #740](https://github.com/rgleason/weather_routing_pi/pull/740).
+The version declared here does not mean the plugin catalogue has already updated.
+
+1.44.3 fixes downloading the optional High and Full GSHHG datasets on a fresh profile.
+The plugin includes Crude, Low and Intermediate for offline installation.
+Forecast wind failures report the requested UTC time and the forecast end
+when the weather reader supplies it.
+
+Both lines include Meridian as an optional routing method. Ordinary GSHHG
+shoreline routing works on stock OpenCPN; chart-backed depth and hazard checks
+require a compatible chart-safety host. See [Meridian](docs/MERIDIAN.md),
+[routing settings](docs/quick-routing.md) and the retained
+[integration architecture](docs/integration-1.29.2.md).
 
 The optional hardened-OpenCPN planning-provider boundary is documented in
 [docs/external_control_provider_preview_b.md](docs/external_control_provider_preview_b.md).
 Stock OpenCPN remains supported through the unchanged plug-in API 1.21.
 
-This branch integrates the fully working xWeatherRouting developments back
-into the current standard OpenCPN Weather Routing plugin. It retains the
-standard plugin identity, settings, polar and GRIB integrations while adding
-the modern deterministic routing engine developed and qualified in the
-xWeatherRouting branch.
+The production branch uses the standard plugin identity, settings, polar and
+weather-provider integrations, with the modern routing methods developed and
+qualified across the production and development lines.
 
 The plugin currently provides:
 
@@ -78,13 +100,14 @@ For a clean standalone build against the vendored stock OpenCPN 1.21 API:
 cmake -S . -B build-release -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DWEATHER_ROUTING_STANDALONE_API=ON \
+  -DWEATHER_ROUTING_XWEATHER_IDENTITY=OFF \
   -DOCPN_BUILD_TEST=OFF
 cmake --build build-release --parallel
 cmake --build build-release --target package
 ```
 
-For the separate xWeatherRouting identity, also set
-`-DWEATHER_ROUTING_XWEATHER_IDENTITY=ON`.
+For the improved UX development frontend, use the 2.x source linked above.
+Changing the plugin identity alone does not select that frontend.
 
 Keep release packaging in a build directory where tests are disabled. This
 prevents test-only GoogleTest libraries from being included by older

@@ -44,12 +44,16 @@ include(${wxWidgets_USE_FILE})
 
 set(TEST_SRC
     AdaptiveController_tests.cpp
+    MeridianEngine_tests.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/src/engine/meridian/Engine.cpp
     AdaptiveHeaders_compile.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/engine/adaptive/Quick2.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/engine/adaptive/StandardRecovery.cpp
     RouteWaypointValidation_tests.cpp
+    RoutingEndpointPreflight_tests.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/RouteWaypointValidation.cpp
     RouteDiagnostics_tests.cpp
+    ManeuverValidation_tests.cpp
     ValidatedRouteReporting_tests.cpp
     ForecastTimeBucket_tests.cpp
     QuickCompletion_tests.cpp
@@ -62,6 +66,8 @@ set(TEST_SRC
     AppendOnlyCache_tests.cpp
     ChartSafetyCache_tests.cpp
     ChartSafetyHost_tests.cpp
+    OffshoreHazards_tests.cpp
+    ${WEATHER_ROUTING_SOURCE_DIR}/src/OffshoreHazards.cpp
     RouteSafetyCheck_tests.cpp
     ChartSafetyAtlas_tests.cpp
     ChartHazardEvaluator_tests.cpp
@@ -99,6 +105,7 @@ set(TEST_SRC
     DepartureScheduler_tests.cpp
     RoutingQualityPolicy_tests.cpp
     RoutingResourcePolicy_tests.cpp
+    CalculationHelperPolicy_tests.cpp
     RoutingFootprint_tests.cpp
     CycloneAssessment_tests.cpp
     ${WEATHER_ROUTING_SOURCE_DIR}/src/CycloneAssessment.cpp
@@ -112,6 +119,7 @@ set(TEST_SRC
     ${WEATHER_ROUTING_SOURCE_DIR}/src/navobj_util.cpp
     NearbyWaveHeight_tests.cpp
     RouteGust_tests.cpp
+    RoutingStepExecutor_tests.cpp
     ModernNativeEngine_tests.cpp
     ProfessionalSearchPolicy_tests.cpp
     OriginalEngine_tests.cpp

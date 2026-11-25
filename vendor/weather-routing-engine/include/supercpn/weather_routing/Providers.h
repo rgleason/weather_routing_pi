@@ -189,6 +189,14 @@ struct RoutingEnvironment {
   std::shared_ptr<const LandAndBoundaryProvider> landAndBoundaries;
   std::shared_ptr<const VesselPerformanceModel> performance;
   std::string memberIdentity{"deterministic"};
+  // Optional bounded execution supplied by the host adapter. Each task gets
+  // an independent provider context. Solvers retain ordered result reduction.
+  std::function<void(std::size_t,
+      const std::function<void(std::size_t, const RoutingEnvironment&)>&)>
+      parallelFor;
+  // If admission fails, retain ordinary serial evaluation without speculation.
+  std::function<bool()> canParallelize;
+
 };
 
 [[nodiscard]] bool sailingAngleAllowed(

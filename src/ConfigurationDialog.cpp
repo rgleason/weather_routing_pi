@@ -328,7 +328,9 @@ ConfigurationDialog::ConfigurationDialog(WeatherRouting& weatherrouting)
         "is off. Crude, Low and Intermediate are bundled; High and Full can be "
         "installed from Shoreline data. With both chart options "
         "enabled on a compatible host, loaded charts decide route land and "
-        "depth safety; GSHHG helps the initial search.");
+        "depth safety; GSHHG helps the initial search. Compute checks both "
+        "endpoints before search: land stops the calculation; water inside "
+        "the shore margin offers Continue with existing coastal access.");
   m_cbDetectLand->SetToolTip(detect_land_note);
   m_sSafetyMarginLand->SetToolTip(
       detect_land_note + _("\n\nSpecify a minimum distance in nautical miles "
@@ -1531,12 +1533,17 @@ void ConfigurationDialog::OnAdaptiveSettings(wxCommandEvent&) {
 void ConfigurationDialog::UpdateEngineControls() {
   const auto engine = weather_routing::EngineFromSelection(m_cRoutingEngine->GetSelection());
   const bool combined = weather_routing::IsCombinedEngine(engine);
+  const int climatology = m_cClimatologyType->GetSelection();
+  [[maybe_unused]] const bool warningChanged = m_tCumulativeClimatologyWarning->Show(
+      climatology == RouteMapConfiguration::CUMULATIVE_MAP ||
+      climatology == RouteMapConfiguration::CUMULATIVE_MINUS_CALMS);
 #ifdef __OCPN__ANDROID__
   // The tablet keeps both mode and individual settings on one Engine page.
   // An individual selection has no Auto/All item; avoid an empty picker.
   m_cBasicRoutingMode->Show(combined);
 #endif
   const bool atlas = engine == weather_routing::RoutingEngine::Atlas;
+  const bool meridian = engine == weather_routing::RoutingEngine::Meridian;
   bool nativeSettings = true;
   for (auto* route : m_WeatherRouting.CurrentRouteMaps(false)) {
     const auto c = route->GetConfiguration();
@@ -1548,7 +1555,7 @@ void ConfigurationDialog::UpdateEngineControls() {
       m_cbAutomaticAdaptiveSettings->Get3StateValue() == wxCHK_CHECKED;
   m_pMainEngine->Show(engine == weather_routing::RoutingEngine::Main || combined ||
       engine == weather_routing::RoutingEngine::Quick2 || engine == weather_routing::RoutingEngine::Alternative ||
-      engine == weather_routing::RoutingEngine::Atlas);
+      engine == weather_routing::RoutingEngine::Atlas || meridian);
   m_pQuickEngine->Show(engine == weather_routing::RoutingEngine::Original ||
                        engine == weather_routing::RoutingEngine::Quick ||
                        engine == weather_routing::RoutingEngine::Main);
@@ -1563,8 +1570,8 @@ void ConfigurationDialog::UpdateEngineControls() {
       ? _("Standard's nominal offshore step. Routes under 120 NM are capped at one hour; departure and destination search use smaller steps.")
       : _("Quick uses the configured nominal time step and reduces it near departure and destination. Larger steps must be selected explicitly."));
   m_bResetAdvanced->Enable(engine != weather_routing::RoutingEngine::Unsupported);
-  m_cEnginePreset->Enable(engine != weather_routing::RoutingEngine::Unsupported && !atlas);
-  if (atlas) m_bResetAdvanced->Enable(false);
+  m_cEnginePreset->Enable(engine != weather_routing::RoutingEngine::Unsupported && !atlas && !meridian);
+  if (atlas || meridian) m_bResetAdvanced->Enable(false);
   bool running = false;
   for (auto* route : m_WeatherRouting.CurrentRouteMaps(false)) running |= route->Running();
   m_cRoutingEngine->Enable(!running);
@@ -1574,10 +1581,10 @@ void ConfigurationDialog::UpdateEngineControls() {
     m_cbAllEngines[i]->Enable(!running);
   }
   const bool departureMode = m_rbRouteByDepartureTime->GetValue();
-  m_cbExploreComfortAlternatives->Enable(!running && departureMode);
-  m_sComfortAdditionalPercent->Enable(!running && departureMode &&
+  m_cbExploreComfortAlternatives->Enable(!running && departureMode && !meridian);
+  m_sComfortAdditionalPercent->Enable(!running && departureMode && !meridian &&
                                       m_cbExploreComfortAlternatives->IsChecked());
-  m_sComfortMaximumSeconds->Enable(!running && departureMode &&
+  m_sComfortMaximumSeconds->Enable(!running && departureMode && !meridian &&
                                    m_cbExploreComfortAlternatives->IsChecked());
   const bool chartAuthoritative = m_WeatherRouting.HasEnhancedChartSafety() &&
       m_cbUseExperimentalChartSafety->GetValue() && m_cbEnforceExperimentalChartSafety->GetValue();
@@ -1618,15 +1625,15 @@ void ConfigurationDialog::UpdateEngineControls() {
   const bool managedStep = automatic && nativeSettings && (combined ||
       engine == weather_routing::RoutingEngine::Original ||
       engine == weather_routing::RoutingEngine::Quick2);
-  m_cbAutomaticAdaptiveSettings->Enable(!running && nativeSettings);
+  m_cbAutomaticAdaptiveSettings->Enable(!running && nativeSettings && !meridian);
   m_sTimeStepHours->Enable(!running && !atlas && !managedStep);
   m_sTimeStepMinutes->Enable(!running && !atlas && !managedStep);
-  m_sMaxSearchAngle->Enable(!running && !atlas);
+  m_sMaxSearchAngle->Enable(!running && !atlas && !meridian);
   m_cRoutingEffortPercent->Enable(!running && engine != weather_routing::RoutingEngine::Auto &&
-                                 engine != weather_routing::RoutingEngine::Quick2 && !atlas);
-  m_sByDegrees->Enable(!running && engine != weather_routing::RoutingEngine::Quick2 && !atlas &&
+                                 engine != weather_routing::RoutingEngine::Quick2 && !atlas && !meridian);
+  m_sByDegrees->Enable(!running && engine != weather_routing::RoutingEngine::Quick2 && !atlas && !meridian &&
       !managedStep);
-  m_cbUseReverseReachabilityRecovery->Enable(!running && engine != weather_routing::RoutingEngine::Quick2 && !atlas);
+  m_cbUseReverseReachabilityRecovery->Enable(!running && engine != weather_routing::RoutingEngine::Quick2 && !atlas && !meridian);
   if (engine == weather_routing::RoutingEngine::Auto)
     m_cRoutingEffortPercent->SetSelection(RoutingEffortSelection(400));
   m_pQuickEngine->Enable(!running);
@@ -1639,6 +1646,8 @@ void ConfigurationDialog::UpdateEngineControls() {
       ? _("Auto: finds a validated route using the engines selected in Advanced. Enable alternatives to compare passage time and comfort.")
       : engine == weather_routing::RoutingEngine::All
       ? _("All (slow): compares every engine selected in Advanced and keeps the earliest validated arrival. Enable alternatives to compare passage time and comfort.")
+      : meridian
+      ? _("Meridian: standalone time-dependent best-first search with a full-circle heading fan, finer coastal steps and reserved refinement. Opt in to Auto or All to run it after Atlas. May miss feasible routes; uses the same weather and safety checks.")
       : engine == weather_routing::RoutingEngine::Quick2
       ? _("Advanced selection: Quick2 CPU frontier. Bounded search may miss routes or return detours. Auto stops when it supplies the first validated route.")
       : engine == weather_routing::RoutingEngine::Alternative
@@ -1687,6 +1696,8 @@ void ConfigurationDialog::UpdateEngineControls() {
       m_tRoutingEngineDescription->GetLabel(),
       wxMax(200, wxMax(page->GetClientSize().x, GetClientSize().x) - 100));
   FitTabletConfigurationPage(page);
+  if (warningChanged)
+    FitTabletConfigurationPage(static_cast<wxScrolledWindow*>(m_notebook7->GetPage(3)));
 #endif
 }
 
@@ -2271,6 +2282,26 @@ bool ConfigurationDialog::RunEngineHostContract() {
   passed &= routes.front()->GetConfiguration().EngineSettings.EngineId() == "atlas" &&
             (routes.front()->GetConfiguration().EngineSettings.autoEngines & 32U) &&
             !m_sByDegrees->IsEnabled() && !m_sTimeStepHours->IsEnabled();
+
+  const auto engineBeforeCumulative = routes.front()->GetConfiguration().EngineSettings;
+  choose(m_cClimatologyType, RouteMapConfiguration::MOST_LIKELY);
+  const bool mostLikelyHidden = !m_tCumulativeClimatologyWarning->IsShown();
+  choose(m_cClimatologyType, RouteMapConfiguration::CUMULATIVE_MAP);
+  const bool mapWarning = m_tCumulativeClimatologyWarning->IsShown();
+  choose(m_cClimatologyType, RouteMapConfiguration::CUMULATIVE_MINUS_CALMS);
+  const bool calmsWarning = m_tCumulativeClimatologyWarning->IsShown();
+  const auto cumulative = routes.front()->GetConfiguration();
+  choose(m_cClimatologyType, RouteMapConfiguration::AVERAGE);
+  const bool averageHidden = !m_tCumulativeClimatologyWarning->IsShown();
+  SetConfigurations({cumulative});
+  const bool savedWarning = m_tCumulativeClimatologyWarning->IsShown();
+  const bool cumulativePassed = mostLikelyHidden && mapWarning && calmsWarning &&
+      averageHidden && savedWarning && cumulative.UsesCumulativeClimatology() &&
+      cumulative.EngineSettings == engineBeforeCumulative &&
+      routes.front()->GetConfiguration().EngineSettings == engineBeforeCumulative;
+  passed &= cumulativePassed;
+  wxLogMessage("WR_CUMULATIVE_CLIMATOLOGY_WARNING_CONTRACT passed=%d",
+               cumulativePassed ? 1 : 0);
   routes.front()->SetConfiguration(saved);
   m_WeatherRouting.SaveLastUsedConfigurationDefaults(saved);
   SetConfigurations({saved});
