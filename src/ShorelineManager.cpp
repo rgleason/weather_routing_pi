@@ -264,6 +264,8 @@ void InstallOptional(const Spec& s, wxWindow* parent) {
   } catch (const std::exception&) {
   }
   const auto destination = Destination(s);
+  // The downloader needs the destination directory before installation starts.
+  std::filesystem::create_directories(destination.parent_path());
   auto archive = destination;
   archive += ".download.gz";
   DownloadShorelineMirrors(
