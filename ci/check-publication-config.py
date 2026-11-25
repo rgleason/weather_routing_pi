@@ -31,7 +31,8 @@ def check(path):
             assert options.get("sdk_pin", "ci/windows64-sdk.json") == (
                 "ci/windows64-wx329-sdk.json" if legacy else "ci/windows64-sdk.json")
             assert options.get("artifact_root", "artifacts") == ("compatibility" if legacy else "artifacts")
-    for name in ("build_and_publish_reviewed", "publish_validated_artifacts"):
+    master_only = 'pipeline.git.branch == "master"'
+    for name in ("validate", "build_and_publish_reviewed", "publish_validated_artifacts"):
         workflow = config["workflows"][name]
         jobs = {}
         for entry in workflow["jobs"]:
@@ -40,7 +41,12 @@ def check(path):
             else:
                 job, options = next(iter(entry.items()))
                 jobs[options.get("name", job)] = dict(options, job=job)
-        assert jobs["hold-for-publication-approval"]["requires"] == ["stage-publication"]
+        # The catalogue is checked before the approval too, without a token,
+        # so a catalogue problem stops the release before the upload.
+        assert jobs["catalogue-precheck"]["requires"] == ["stage-publication"]
+        assert "context" not in jobs["catalogue-precheck"]
+        assert jobs["hold-for-publication-approval"]["requires"] == [
+            "stage-publication", "catalogue-precheck"]
         assert jobs["publish-reviewed"]["requires"] == ["hold-for-publication-approval"]
         assert "context" in jobs["publish-reviewed"]
         assert "context" not in jobs["stage-publication"]
@@ -49,12 +55,32 @@ def check(path):
         assert "context" not in jobs["catalogue-pr-dry-run"]
         # Single-trigger mode: skipped unless explicitly enabled, and only
         # after the Cloudsmith publish and dry run have both succeeded.
+        # On master's validate run the one publication approval also covers
+        # the upstream PR; the manual deploys keep it opt-in.
+        if name == "validate":
+            phase, auto_filter = "upstream", master_only
+        else:
+            phase = "<< pipeline.parameters.catalogue_auto_pr >>"
+            auto_filter = 'pipeline.parameters.catalogue_auto_pr != "off"'
         assert jobs["catalogue-pr-auto"] == {
             "job": "catalogue-pr-push", "name": "catalogue-pr-auto",
-            "phase": "<< pipeline.parameters.catalogue_auto_pr >>",
+            "phase": phase,
             "context": "opencpn-plugins-pr", "requires": ["catalogue-pr-dry-run"],
-            "filters": 'pipeline.parameters.catalogue_auto_pr != "off"'}
-        if name == "build_and_publish_reviewed":
+            "filters": auto_filter}
+        if name == "validate":
+            # The release tail of an ordinary push runs on master only, and
+            # stages only after both full API matrices and the contracts pass.
+            for job in ("publication-preflight", "stage-publication", "catalogue-precheck",
+                        "hold-for-publication-approval", "publish-reviewed",
+                        "catalogue-pr-dry-run"):
+                assert jobs[job]["filters"] == master_only, job
+            builds = {job for job, options in jobs.items() if options.get("job") in (
+                "linux-catalogue", "flatpak", "windows-x86", "windows-x64",
+                "macos-universal", "android-arm64")}
+            assert len(builds) == 24
+            assert set(jobs["stage-publication"]["requires"]) == builds | {
+                "publication-contracts", "publication-preflight"}
+        elif name == "build_and_publish_reviewed":
             builds = {job for job, options in jobs.items() if options.get("job") in (
                 "linux-catalogue", "flatpak", "windows-x86", "windows-x64",
                 "macos-universal", "android-arm64")}
@@ -66,7 +92,7 @@ def check(path):
             assert set(jobs["stage-publication"]["requires"]) == builds
             assert all(jobs[job]["requires"] == ["publication-preflight"] for job in builds)
         else:
-            assert set(jobs) == {"publication-preflight", "stage-publication",
+            assert set(jobs) == {"publication-preflight", "stage-publication", "catalogue-precheck",
                                  "hold-for-publication-approval", "publish-reviewed",
                                  "catalogue-pr-dry-run", "catalogue-pr-auto"}
     # Phases 2/3 run only in their own explicitly triggered workflow, and only
@@ -89,6 +115,10 @@ def check(path):
         "context": "opencpn-plugins-pr", "requires": ["hold-for-catalogue-pr-approval"]}
     assert "context" not in config["jobs"]["publication-preflight"]
     assert "context" not in config["jobs"]["stage-publication"]
+    assert "context" not in config["jobs"]["catalogue-precheck"]
+    # The precheck must not replace the reviewed dry run the PR push compares to.
+    assert not any("persist_to_workspace" in step for step in config["jobs"]["catalogue-precheck"]["steps"]
+                   if isinstance(step, dict))
     print("Publication identity, wx334 catalogue/wx329 compatibility, both API matrices, approval and catalogue PR gates verified")
 
 
