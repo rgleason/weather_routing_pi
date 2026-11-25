@@ -33,6 +33,21 @@ def fetch_json(path):
         return json.load(response)
 
 
+def job_artifacts(project_slug, job_number):
+    # API v1.1 has no route for GitHub App projects (circleci/<org>/<project>)
+    # and answers 404, so list artifacts through API v2, which serves both.
+    if job_number is None:
+        raise ValueError("Source job has no job number")
+    path = f"/api/v2/project/{quote(project_slug, safe='/')}/{job_number}/artifacts"
+    items, token = [], None
+    while True:
+        page = fetch_json(path + (f"?page-token={quote(token, safe='')}" if token else ""))
+        items.extend(page["items"])
+        token = page.get("next_page_token")
+        if not token:
+            return items
+
+
 def check_source(workflow, pipeline, jobs, channel):
     publication.profile_for(channel)
     vcs = pipeline.get("vcs")
@@ -120,8 +135,7 @@ def recover(workflow_id, output, channel):
     packages, runtime = [], []
     for job_name, target in TARGETS.items():
         job = jobs[job_name]
-        project = quote(job["project_slug"], safe="/")
-        artifacts = fetch_json(f"/api/v1.1/project/{project}/{job['job_number']}/artifacts")
+        artifacts = job_artifacts(job["project_slug"], job.get("job_number"))
         prefix = PurePosixPath("artifacts", target, "package")
         # Unix retention also includes the stock host's source archive,
         # appdata XML and test reports. Only the selected plugin is a pair.

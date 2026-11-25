@@ -79,6 +79,12 @@ The exact settings for each situation are in [`PIPELINE-SETTINGS.md`](PIPELINE-S
   - `CATALOGUE_GITHUB_TOKEN`: phase 3, the normal PR. Required.
   - `CATALOGUE_FORK_TOKEN`: phase 2, the fork test. Only while you need a fork test.
 
+**CircleCI, reading earlier builds:** Project Settings → API Permissions → Add API Token,
+scope **Read Only**. Then Project Settings → Environment Variables → add it as
+`CIRCLECI_READ_TOKEN`. `stage-publication` and the catalogue PR jobs need it to download
+artifacts from earlier workflows: CircleCI answers `404 Not Found` to anonymous requests for
+job artifacts, even on this public project.
+
 **GitHub:**
 
 - `rgleason/plugins` is the fork of OpenCPN/plugins that the PRs come from.
