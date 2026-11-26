@@ -6,8 +6,7 @@ export DEBIAN_FRONTEND=noninteractive
 # Retry downloads up to 3 times to handle transient PPA 503 errors
 echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries
 
-apt-get update
-apt-get install -y --no-install-recommends \
+set -- \
   binutils \
   build-essential \
   ca-certificates \
@@ -45,5 +44,13 @@ apt-get install -y --no-install-recommends \
   rapidjson-dev \
   libwxgtk3.2-dev \
   zlib1g-dev
+
+apt-get update
+if ! apt-get install -y --no-install-recommends "$@"; then
+  # A mirror can replace a package between the index refresh and the download.
+  # Refresh the indexes before retrying so apt can select the current version.
+  apt-get -o Acquire::http::No-Cache=true -o Acquire::https::No-Cache=true update
+  apt-get install -y --no-install-recommends "$@"
+fi
 
 rm -rf /var/lib/apt/lists/*
