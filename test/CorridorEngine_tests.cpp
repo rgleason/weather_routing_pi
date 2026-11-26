@@ -1,10 +1,33 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "Quick2Fixtures.h"
+#include "../src/engine/corridor/ArrivalGuide.h"
 #include "engine/corridor/Engine.h"
 
 #include <gtest/gtest.h>
 
 namespace wr = supercpn::weather_routing;
+
+TEST(CorridorEngine, ArrivalGuideFavoursTheClearApproach) {
+  auto fixture = quick2_fixtures::make("open");
+  const auto target = fixture.request.destination;
+  const auto at = [&](double bearing, double distance) {
+    return wr::destinationPoint(target, bearing, distance);
+  };
+  const auto nearEdge = at(0, 4), farEdge = at(0, 8);
+  const wr::PolygonBoundaryProvider land({{
+      wr::destinationPoint(nearEdge, 90, 4), wr::destinationPoint(farEdge, 90, 4),
+      wr::destinationPoint(farEdge, 270, 4), wr::destinationPoint(nearEdge, 270, 4),
+  }});
+  fixture.request.constraints.landSafetyMarginNm = 0.25;
+  const corridor_routing::ArrivalGuide guide(fixture.request, land);
+  ASSERT_TRUE(guide.available());
+  ASSERT_FALSE(land.pointForbidden(at(0, 12)));
+  ASSERT_TRUE(land.segmentForbidden(at(0, 12), target, 0.25));
+  ASSERT_FALSE(land.segmentForbidden(at(180, 12), target, 0.25));
+  EXPECT_GT(guide.estimate(at(0, 12), 12, 12),
+            guide.estimate(at(180, 12), 12, 12));
+  EXPECT_DOUBLE_EQ(guide.estimate(at(0, 90), 90, 97), 97);
+}
 
 TEST(CorridorEngine, ValidatedTracksEndAtTheRequestedDestination) {
   for (const auto name : {"short", "open", "island", "dateline", "tidal"}) {

@@ -46,6 +46,7 @@ struct SearchResult {
   std::optional<double> weatherSearchClosestNm;
   std::optional<double> firstValidSeconds;
   std::optional<wr::Duration> firstPassage;
+  std::optional<wr::GeoPoint> closestPosition;
 };
 
 SearchResult search(const wr::RoutingRequest&, const wr::RoutingEnvironment&,

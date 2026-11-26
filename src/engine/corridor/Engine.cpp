@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "engine/corridor/Engine.h"
+#include "ArrivalGuide.h"
 #include "Geography.h"
 #include "MotionKernel.h"
 #include "RoutingInternal.h"
@@ -155,7 +156,8 @@ bool lessResources(const in::MotionState& previous, const in::MotionState& next)
 SearchResult searchPass(const wr::RoutingRequest& request,
                         const wr::RoutingEnvironment& environment,
                         const Options& options,
-                        const WeatherGuide* weatherGuide = nullptr) {
+                        const WeatherGuide* weatherGuide = nullptr,
+                        const ArrivalGuide* arrivalGuide = nullptr) {
   SearchResult result;
   auto& route = result.route;
   auto& diagnostics = route.diagnostics;
@@ -166,6 +168,7 @@ SearchResult searchPass(const wr::RoutingRequest& request,
       route.message = message;
     } else {
       diagnostics.closestApproachNm = 0.;
+      result.closestPosition = request.destination;
       in::summariseRoute(route);
     }
     return std::move(result);
@@ -208,7 +211,7 @@ SearchResult searchPass(const wr::RoutingRequest& request,
   const auto lineBearing = wr::initialBearingDegrees(request.start, request.destination);
   const auto spread = std::clamp(direct * 0.025, 0.12, 4.);
   const Geography guide(request, hints, options.refineCoastalGeography, options.discoverChannels);
-  result.guideQueries = guide.queries();
+  result.guideQueries = guide.queries() + (arrivalGuide ? arrivalGuide->queries() : 0);
   result.fineGeographicGuide = guide.refined();
   result.wideGeographicGuide = guide.wide();
   result.channelQueries = guide.channelQueries();
@@ -235,6 +238,7 @@ SearchResult searchPass(const wr::RoutingRequest& request,
   nodes.push_back({start, noParent, {}});
   diagnostics.retainedStates = 1;
   diagnostics.closestApproachNm = direct;
+  result.closestPosition = request.start;
   auto lastFailure = wr::RoutingStatus::SearchIncomplete;
   std::uint64_t stopAfter = budget;
   auto bestPassage = request.limits.maximumRouteDuration;
@@ -251,8 +255,12 @@ SearchResult searchPass(const wr::RoutingRequest& request,
         elapsed > bestPassage) return;
     const auto side = options.diversifyApproaches
         ? approach(request.start, lineBearing, estimate, spread) : 0u;
-    const auto detour = guide.estimate(estimate, remaining, !useBothGuides);
-    const auto fineDetour = useBothGuides ? guide.estimate(estimate, remaining, true) : detour;
+    const auto estimateDetour = [&](bool preferFine) {
+      const auto offshore = guide.estimate(estimate, remaining, preferFine);
+      return arrivalGuide ? arrivalGuide->estimate(estimate, remaining, offshore) : offshore;
+    };
+    const auto detour = estimateDetour(!useBothGuides);
+    const auto fineDetour = useBothGuides ? estimateDetour(true) : detour;
     double ordering = 1.75 * detour * 3600. / referenceSpeed;
     double progress = guide.channelAvailable() ? fineDetour : detour;
     if (weatherGuide && (!guide.available() ||
@@ -424,6 +432,7 @@ SearchResult searchPass(const wr::RoutingRequest& request,
       if (remaining < diagnostics.closestApproachNm) {
         diagnostics.closestApproachNm = remaining;
         closest = at;
+        result.closestPosition = nodes.back().state.position;
       }
       tryArrival(at);
       if (!validationEscalation.empty())
@@ -466,7 +475,10 @@ void combineWork(SearchResult& selected, const SearchResult& other) {
   const auto& work = other.route.diagnostics;
   total.generatedStates += work.generatedStates;
   total.retainedStates = std::max(total.retainedStates, work.retainedStates);
-  total.closestApproachNm = std::min(total.closestApproachNm, work.closestApproachNm);
+  if (work.closestApproachNm < total.closestApproachNm) {
+    total.closestApproachNm = work.closestApproachNm;
+    selected.closestPosition = other.closestPosition;
+  }
   total.weatherSamples += work.weatherSamples;
   total.landChecks += work.landChecks;
   total.landRejections += work.landRejections;
@@ -490,6 +502,62 @@ void chargeWork(wr::RoutingRequest& request, const SearchResult& result) {
       std::min(work.generatedStates, request.limits.maximumGeneratedStates);
   request.limits.maximumValidationSamples -=
       std::min(work.validationSamples, request.limits.maximumValidationSamples);
+}
+
+bool recoverArrival(const wr::RoutingRequest& request,
+                    const wr::RoutingEnvironment& environment,
+                    const Options& options, Clock::time_point started,
+                    SearchResult& baseline) {
+  const auto status = baseline.route.status;
+  if (!options.recoverCoastal || baseline.route.validation.passed ||
+      (status != wr::RoutingStatus::ResourceLimitReached &&
+       status != wr::RoutingStatus::SearchIncomplete &&
+       status != wr::RoutingStatus::NoFeasibleRoute) ||
+      !baseline.closestPosition || baseline.route.diagnostics.closestApproachNm > 30. ||
+      wr::distanceNm(request.start, request.destination) <= 105. ||
+      !hasRecoveryBudget(request, baseline))
+    return false;
+  const auto* land = options.geography ? options.geography.get()
+                                       : environment.landAndBoundaries.get();
+  if (!land || !land->segmentForbidden(*baseline.closestPosition, request.destination,
+                                       request.constraints.landSafetyMarginNm))
+    return false;
+
+  auto retry = request;
+  chargeWork(retry, baseline);
+  retry.limits.maximumGeneratedStates =
+      std::min<std::uint64_t>(retry.limits.maximumGeneratedStates, 200000);
+  retry.limits.maximumRetainedStates =
+      std::min<std::uint64_t>(retry.limits.maximumRetainedStates, 4096);
+  retry.cancellation = request.cancellation.bounded(
+      Clock::now() + std::chrono::seconds{4}, {});
+  const ArrivalGuide guide(retry, *land);
+
+  if (guide.available() && !retry.cancellation.cancelled()) {
+    // Approach-side alternatives can diverge well before the closest point.
+    // Re-run within the remaining budget using the reverse shoreline estimate.
+    auto recoveryOptions = options;
+    recoveryOptions.additionalMotions = 0;
+    if (request.environment.useCurrent) recoveryOptions.refineCoastalGeography = false;
+    const auto offset = std::chrono::duration<double>(Clock::now() - started).count();
+    auto recovered = searchPass(retry, environment, recoveryOptions, nullptr, &guide);
+    recovered.route.diagnostics.stageStopReasons.emplace_back(
+        "Coastal arrival recovery used a reverse shoreline field");
+    if (recovered.route.validation.passed && !request.cancellation.cancelled()) {
+      if (recovered.firstValidSeconds) *recovered.firstValidSeconds += offset;
+      combineWork(recovered, baseline);
+      baseline = std::move(recovered);
+      return true;
+    }
+    combineWork(baseline, recovered);
+  } else {
+    baseline.guideQueries += guide.queries();
+  }
+  if (request.cancellation.cancelled()) {
+    baseline.route.status = wr::RoutingStatus::Cancelled;
+    baseline.route.message = "Search cancelled";
+  }
+  return false;
 }
 
 SearchResult recoverCoastal(const wr::RoutingRequest& request,
@@ -596,7 +664,9 @@ SearchResult searchBase(const wr::RoutingRequest& request,
 SearchResult search(const wr::RoutingRequest& request,
                     const wr::RoutingEnvironment& environment,
                     const Options& options) {
+  const auto started = Clock::now();
   auto incumbent = searchBase(request, environment, options);
+  if (recoverArrival(request, environment, options, started, incumbent)) return incumbent;
   // Keep the existing policy on short passages. This experiment compares
   // additional searching on offshore-scale routes that already have an arrival.
   if (!options.exploreWeatherCorridors || !incumbent.route.validation.passed ||

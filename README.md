@@ -1,13 +1,13 @@
 # Weather Routing production
 
 This repository's `master` branch is the **production 1.x line**, currently
-**1.45.0**. It retains the established Weather Routing interface and uses the
+**1.45.1**. It retains the established Weather Routing interface and uses the
 external GRIB or xGRIB plugin for forecast data, with the separate Climatology
 plugin when climatology is requested.
 
 | Line | Current version | Source |
 | --- | --- | --- |
-| Weather Routing production | **1.45.0** | [pob220/weather_routing_pi — master](https://github.com/pob220/weather_routing_pi/tree/master) |
+| Weather Routing production | **1.45.1** | [pob220/weather_routing_pi — master](https://github.com/pob220/weather_routing_pi/tree/master) |
 | xWeatherRouting improved UX development preview | **2.13.0** | [xWeatherRouting developer test release](https://github.com/pob220/xweather_routing_pi/releases/tag/developer-test-2.13.0-20261125) |
 
 The 2.x line has the improved planning interface, incorporated GRIB loader and
@@ -22,6 +22,10 @@ The version declared here does not mean the plugin catalogue has already updated
 The plugin includes Crude, Low and Intermediate for offline installation.
 Forecast wind failures report the requested UTC time and the forecast end
 when the weather reader supplies it.
+
+1.45.1 adds a bounded Corridor retry when a search stops near its destination
+and land blocks the direct approach. Corridor uses a reverse shoreline map to
+guide the approach and validates the resulting route forward.
 
 Weather Routing 1.45.0 adds Corridor for blocked coastal passages and offshore
 forecast refinement. Select it as an individual method or include it in Auto
