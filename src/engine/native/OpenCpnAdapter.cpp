@@ -43,6 +43,7 @@
 #include "engine/adaptive/AdvisoryWeather.h"
 #include "engine/adaptive/NativeFeedback.h"
 #include "engine/adaptive/Quick2.h"
+#include "engine/corridor/Engine.h"
 #include "engine/meridian/Engine.h"
 #include "engine/meridian/ShorelineHints.h"
 #include "engine/adaptive/StandardRecovery.h"
@@ -1511,9 +1512,26 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
   std::atomic<std::uint64_t> originalGenerated{0};
   std::uint64_t quick2Generated = 0;
   std::uint64_t atlasGenerated = 0;
+  const auto corridorOptions = [](const RouteMapConfiguration& selected, bool refine) {
+    corridor_routing::Options options;
+    options.recoverCoastal = true;
+    options.exploreWeatherCorridors = refine;
+    if (selected.DetectLand && selected.shoreline_dataset)
+      options.geography = std::make_shared<meridian_routing::ShorelineHints>(selected.shoreline_dataset);
+    return options;
+  };
   auto solveSingleImplementation = [&](const wr::RoutingRequest& solveRequest,
                          const wr::RoutingEnvironment& solveEnvironment,
                          const RouteMapConfiguration& selectedConfiguration) {
+    if (selectedConfiguration.EngineSettings.engine == weather_routing::RoutingEngine::Corridor) {
+      auto labeled = solveRequest;
+      labeled.progress = [&overlay, generation = overlay.ModernProgressGeneration()](const auto& progress) {
+        overlay.SetModernNativeProgress(progress, generation, _("Corridor"));
+      };
+      auto found = corridor_routing::search(labeled, solveEnvironment,
+          corridorOptions(selectedConfiguration, !selectedConfiguration.chart_safety_scout_preview));
+      return std::move(found.route);
+    }
     if (selectedConfiguration.EngineSettings.engine == weather_routing::RoutingEngine::Meridian) {
       meridian_routing::Options options;
       if (selectedConfiguration.DetectLand && selectedConfiguration.shoreline_dataset)
@@ -1757,7 +1775,9 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
       const auto nominal = selectedConfiguration.IsQuick()
           ? selectedConfiguration.EngineSettings.quick.offshoreStepMinutes * 60LL
           : solveRequest.options.timeStep.count();
-      const auto effective = selected == weather_routing::RoutingEngine::Quick2
+      const auto effective = selected == weather_routing::RoutingEngine::Corridor
+          ? std::clamp<long long>(nominal, 60, 21600)
+          : selected == weather_routing::RoutingEngine::Quick2
           ? std::min<long long>(nominal, 21600) : nominal;
       overlay.AppendDiagnosticContext(wxString::Format(
           "\n%s settings: configured nominal step %.0f s; effective nominal step %lld s; local reductions may apply",
@@ -2114,8 +2134,9 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
     // A prewarm scout is only a geometry probe, not the All comparison itself.
     if (configuration.chart_safety_scout_preview) {
       for (const auto engine : {SequenceEngine::Original, SequenceEngine::Quick2,
-                               SequenceEngine::Quick, SequenceEngine::Alternative,
-                               SequenceEngine::Atlas, SequenceEngine::Meridian,
+                               SequenceEngine::Quick, SequenceEngine::Corridor,
+                               SequenceEngine::Alternative, SequenceEngine::Atlas,
+                               SequenceEngine::Meridian,
                                SequenceEngine::Main}) {
         if (!(configuration.EngineSettings.SelectedEngines() &
               weather_routing::EngineBit(weather_routing::native::SequenceRoutingEngine(engine))))
@@ -2558,6 +2579,8 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
               limits.maximumEdgeAttempts = std::min<std::uint64_t>(limits.maximumEdgeAttempts, options.maximumGeneratedStates);
               limits.maximumWeatherQueries = options.maximumWeatherCalls;
               results.push_back(atlas_routing::Engine{}.route(r, e, limits).route);
+            } else if (c.EngineSettings.engine == weather_routing::RoutingEngine::Corridor) {
+              results.push_back(corridor_routing::search(r, e, corridorOptions(c, false)).route);
             } else if (base.result->engineIdentity == "alternative") {
               results.push_back(wr::AlternativeRoutingEngine{}.route(r, e).route);
             } else if (c.EngineSettings.engine == weather_routing::RoutingEngine::Original) {
@@ -2763,8 +2786,8 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
           std::chrono::steady_clock::now() - started)
           .count();
   const wxString status = wxString::FromUTF8(wr::toString(result.status).c_str());
-  const wxString solver = result.engineIdentity == "meridian"
-      ? wxString("meridian")
+  const wxString solver = result.engineIdentity == "meridian" || result.engineIdentity == "corridor"
+      ? wxString::FromUTF8(result.engineIdentity)
       : wxString::FromUTF8(wr::toString(result.solverPath).c_str());
   wxLogMessage(
       "WR_MODERN_NATIVE_SUMMARY route=\"%s -> %s\" status=%s solver=%s "

@@ -20,25 +20,27 @@ constexpr int kDefaultMaxDivertedCourse = 120;
 
 // Serialized IDs remain stable: historical "quick" is Standard, while
 // "main" selects the current Professional implementation.
-enum class RoutingEngine { Main, Quick, Unsupported, Original, Auto, All, Quick2, Alternative, Atlas, Meridian };
+enum class RoutingEngine { Main, Quick, Unsupported, Original, Auto, All, Quick2, Alternative, Atlas, Meridian, Corridor };
 
 inline constexpr std::array kSequenceEngines{
     RoutingEngine::Original, RoutingEngine::Quick2, RoutingEngine::Quick,
-    RoutingEngine::Alternative, RoutingEngine::Main, RoutingEngine::Atlas, RoutingEngine::Meridian};
+    RoutingEngine::Alternative, RoutingEngine::Main, RoutingEngine::Atlas,
+    RoutingEngine::Meridian, RoutingEngine::Corridor};
 // Execution/display order is independent of the historical saved bit positions.
 inline constexpr std::array kRoutingEngineOrder{
     RoutingEngine::Original, RoutingEngine::Quick2, RoutingEngine::Atlas,
-    RoutingEngine::Meridian, RoutingEngine::Quick, RoutingEngine::Alternative, RoutingEngine::Main};
+    RoutingEngine::Meridian, RoutingEngine::Quick, RoutingEngine::Corridor,
+    RoutingEngine::Alternative, RoutingEngine::Main};
 inline constexpr std::array kEngineChoices{
     RoutingEngine::Auto, RoutingEngine::Original, RoutingEngine::Quick2,
     RoutingEngine::Atlas, RoutingEngine::Quick, RoutingEngine::Alternative,
-    RoutingEngine::Main, RoutingEngine::All, RoutingEngine::Meridian};
-// Saved membership bits are append-only: Meridian is bit 6, although shown
-// and executed after Atlas. It is opt-in for Auto and All. Preserve both
-// historical masks and the six-method first-install selection.
+    RoutingEngine::Main, RoutingEngine::All, RoutingEngine::Meridian, RoutingEngine::Corridor};
+// Saved membership bits are append-only. Preserve the historical masks for
+// existing profiles. New profiles enable Meridian (bit 6) and leave Corridor
+// (bit 7) unchecked in Auto and All.
 inline constexpr unsigned kAllEnginesMask = 31;
 inline constexpr unsigned kAutoEnginesMask = 23;
-inline constexpr unsigned kFirstInstallEnginesMask = 63;
+inline constexpr unsigned kFirstInstallEnginesMask = 127;
 inline constexpr unsigned kSelectableEnginesMask = (1U << kSequenceEngines.size()) - 1;
 inline unsigned EngineBit(RoutingEngine engine) {
   for (unsigned i = 0; i < kSequenceEngines.size(); ++i)
@@ -66,6 +68,7 @@ inline const char* EngineTitle(RoutingEngine engine) {
     case RoutingEngine::Alternative: return "Alternative";
     case RoutingEngine::Atlas: return "Atlas";
     case RoutingEngine::Meridian: return "Meridian";
+    case RoutingEngine::Corridor: return "Corridor";
     case RoutingEngine::Auto: return "Auto";
     case RoutingEngine::All: return "All (slow)";
     default: return "Unsupported";
@@ -135,6 +138,7 @@ struct RoutingEngineSettings {
       case RoutingEngine::Alternative: return "alternative";
       case RoutingEngine::Atlas: return "atlas";
       case RoutingEngine::Meridian: return "meridian";
+      case RoutingEngine::Corridor: return "corridor";
       default: return unsupportedId;
     }
   }
@@ -149,6 +153,7 @@ struct RoutingEngineSettings {
     else if (id == "alternative") engine = RoutingEngine::Alternative;
     else if (id == "atlas") engine = RoutingEngine::Atlas;
     else if (id == "meridian") engine = RoutingEngine::Meridian;
+    else if (id == "corridor") engine = RoutingEngine::Corridor;
     else {
       engine = RoutingEngine::Unsupported;
       unsupportedId = id;
@@ -213,7 +218,7 @@ struct RoutingSearchSnapshot {
       adaptive = c.AutomaticAdaptiveSettings;
     const auto engine = c.EngineSettings.engine;
     snapshot.timeStepManaged = native && (engine == RoutingEngine::Meridian ||
-        engine == RoutingEngine::Atlas || (adaptive &&
+        engine == RoutingEngine::Atlas || engine == RoutingEngine::Corridor || (adaptive &&
         (engine == RoutingEngine::Original || engine == RoutingEngine::Quick2 ||
          engine == RoutingEngine::Quick || IsCombinedEngine(engine))));
     if (native && !quick && !snapshot.timeStepManaged)

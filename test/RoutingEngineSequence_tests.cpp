@@ -82,8 +82,8 @@ TEST(RoutingEngineSequence, AllRetainsRecoveryAndContinuesItsComparison) {
       []() -> std::optional<wr::RoutingResult> { return Success(200); });
   EXPECT_TRUE(native::AcceptedRoute(result));
   EXPECT_EQ(result.engineIdentity,"main");
-  EXPECT_EQ(calls,7U);
-  EXPECT_EQ(result.engineAttempts.size(),8U);
+  EXPECT_EQ(calls, native::kMethodOrder.size());
+  EXPECT_EQ(result.engineAttempts.size(), native::kMethodOrder.size() + 1);
 }
 TEST(RoutingEngineSequence, FailedRecoveryDoesNotHideACompletedAllResult) {
   auto result=native::RunRoutingEngineSequence(RoutingEngine::All,{},
@@ -168,10 +168,11 @@ TEST(RoutingEngineSequence, AllCanSelectAtlasForQualityAndRejectItsInvalidRoute)
           return Success(engine == SequenceEngine::Atlas ? 90 : 100,
                          engine != SequenceEngine::Atlas || validated);
         }, {}, weather_routing::kSelectableEnginesMask);
-    EXPECT_EQ(calls.size(), 7U);
+    ASSERT_EQ(calls.size(), 8U);
     EXPECT_EQ(calls, (std::vector{SequenceEngine::Original, SequenceEngine::Quick2,
-        SequenceEngine::Atlas, SequenceEngine::Meridian, SequenceEngine::Quick, SequenceEngine::Alternative, SequenceEngine::Main}));
-    EXPECT_EQ(calls[6], SequenceEngine::Main);
+        SequenceEngine::Atlas, SequenceEngine::Meridian, SequenceEngine::Quick,
+        SequenceEngine::Corridor, SequenceEngine::Alternative, SequenceEngine::Main}));
+    EXPECT_EQ(calls.back(), SequenceEngine::Main);
     EXPECT_EQ(result.engineIdentity, validated ? "atlas" : "original");
   }
 }
@@ -549,7 +550,7 @@ TEST(RoutingMethodExecution, ParallelAllPreservesStableComparisonAndBudgets) {
   const auto result = native::RunRoutingEngineSequence(
       RoutingEngine::All, {}, [&](auto engine) { return batch.Take(engine); }, {}, selected);
   EXPECT_EQ(result.engineIdentity, "original");
-  EXPECT_EQ(result.engineAttempts.size(), 7u);
+  EXPECT_EQ(result.engineAttempts.size(), native::kMethodOrder.size());
   for (const auto& count : calls) EXPECT_EQ(count.load(), 1u);
 }
 
@@ -698,5 +699,30 @@ TEST(RoutingMethodExecution, DisplayAndParallelOrdersMatchSerialMembership) {
   for (std::size_t i=0;i<native::kMethodOrder.size();++i)
     EXPECT_EQ(native::SequenceRoutingEngine(native::kMethodOrder[i]),weather_routing::kRoutingEngineOrder[i]);
   EXPECT_EQ(native::kMethodOrder[2],SequenceEngine::Atlas);
-  EXPECT_EQ(native::kMethodOrder[3],SequenceEngine::Meridian);
+  EXPECT_EQ(native::kMethodOrder[3], SequenceEngine::Meridian);
+  EXPECT_EQ(native::kMethodOrder[4], SequenceEngine::Quick);
+  EXPECT_EQ(native::kMethodOrder[5], SequenceEngine::Corridor);
+  EXPECT_EQ(native::kMethodOrder[6], SequenceEngine::Alternative);
+}
+
+TEST(RoutingEngineSequence, CorridorFollowsStandardAndCanWinAutoOrAll) {
+  const auto selected = weather_routing::EngineBit(RoutingEngine::Quick) |
+      weather_routing::EngineBit(RoutingEngine::Corridor) |
+      weather_routing::EngineBit(RoutingEngine::Alternative) |
+      weather_routing::EngineBit(RoutingEngine::Main);
+  for (const auto mode : {RoutingEngine::Auto, RoutingEngine::All}) {
+    std::vector<SequenceEngine> calls;
+    const auto result = native::RunRoutingEngineSequence(mode, {}, [&](auto engine) {
+      calls.push_back(engine);
+      if (engine == SequenceEngine::Quick) return Failure();
+      return Success(engine == SequenceEngine::Corridor ? 90 : 100);
+    }, {}, selected);
+    if (mode == RoutingEngine::Auto)
+      EXPECT_EQ(calls, (std::vector{SequenceEngine::Quick, SequenceEngine::Corridor}));
+    else
+      EXPECT_EQ(calls, (std::vector{SequenceEngine::Quick, SequenceEngine::Corridor,
+                                  SequenceEngine::Alternative, SequenceEngine::Main}));
+    EXPECT_EQ(result.engineIdentity, "corridor");
+    EXPECT_TRUE(native::AcceptedRoute(result));
+  }
 }

@@ -50,11 +50,12 @@ TEST(RoutingEngineSettings, EightAdvancedTitlesKeepStableSavedIds) {
   }
   EXPECT_EQ(wr::EngineFromSelection(-1), wr::RoutingEngine::Unsupported);
   EXPECT_EQ(wr::EngineFromSelection(8), wr::RoutingEngine::Meridian);
-  EXPECT_EQ(wr::EngineFromSelection(9), wr::RoutingEngine::Unsupported);
+  EXPECT_EQ(wr::EngineFromSelection(9), wr::RoutingEngine::Corridor);
+  EXPECT_EQ(wr::EngineFromSelection(10), wr::RoutingEngine::Unsupported);
   settings.SetEngineId("alternative");
   EXPECT_EQ(settings.engine, wr::RoutingEngine::Alternative);
 }
-TEST(RoutingEngineSettings, MeridianMembershipIsAppendOnlyAndOptIn) {
+TEST(RoutingEngineSettings, SavedEngineBitsAppendCorridor) {
   wr::RoutingEngineSettings settings;
   settings.SetEngineId("meridian");
   EXPECT_EQ(settings.engine, wr::RoutingEngine::Meridian);
@@ -64,7 +65,12 @@ TEST(RoutingEngineSettings, MeridianMembershipIsAppendOnlyAndOptIn) {
   EXPECT_EQ(settings.allEngines & 64U, 0U);
   settings.autoEngines |= 64U;
   settings.allEngines = 64U;
-  EXPECT_EQ(wr::kSequenceEngines.size(), 7U);
+  EXPECT_EQ(wr::kSequenceEngines.size(), 8U);
+  settings.SetEngineId("corridor");
+  EXPECT_EQ(settings.engine, wr::RoutingEngine::Corridor);
+  EXPECT_EQ(settings.EngineId(), "corridor");
+  EXPECT_EQ(wr::EngineBit(settings.engine), 128U);
+  settings.allEngines |= 128U;
   const auto saved = settings;
   TiXmlElement xml("Configuration");
   wr::WriteRoutingEngineSettings(settings, xml);
@@ -570,10 +576,10 @@ TEST(RoutingEngineSettings, AdditionalEngineReleasePreservesExistingBundledData)
   EXPECT_FALSE(wr::CanSkipBundledDataUpdate(204, 2, 11));
 }
 
-TEST(RoutingEngineSettings, MeridianChoicePersistsWithoutEnablingItForNewOrOldUsers) {
+TEST(RoutingEngineSettings, ExistingMembershipIsPreservedWithBothNewBits) {
   const auto bit=wr::EngineBit(wr::RoutingEngine::Meridian);
   ASSERT_EQ(bit,64U);
-  for (unsigned mask : {0U,23U,31U,63U,64U,96U,127U}) {
+  for (unsigned mask : {0U,23U,31U,63U,64U,96U,127U,128U,255U}) {
     wr::RoutingEngineSettings selected;selected.engine=wr::RoutingEngine::Auto;
     selected.autoEngines=mask;selected.allEngines=mask;
     TiXmlElement xml("Configuration");wr::WriteRoutingEngineSettings(selected,xml);
@@ -585,9 +591,18 @@ TEST(RoutingEngineSettings, MeridianChoicePersistsWithoutEnablingItForNewOrOldUs
     EXPECT_EQ(selected.autoEngines,mask);EXPECT_EQ(selected.allEngines,mask);
   }
   wr::RoutingEngineSettings fresh;wr::ApplyFirstUseEngineDefaults(fresh,false);
-  EXPECT_EQ(fresh.autoEngines,63U);EXPECT_EQ(fresh.allEngines,63U);
-  EXPECT_EQ(fresh.autoEngines & bit,0U);EXPECT_EQ(fresh.allEngines & bit,0U);
+  EXPECT_EQ(fresh.autoEngines, 127U);
+  EXPECT_EQ(fresh.allEngines, 127U);
+  EXPECT_NE(fresh.autoEngines & bit, 0U);
+  EXPECT_NE(fresh.allEngines & bit, 0U);
   const wr::RoutingEngine oldBits[]={wr::RoutingEngine::Original,wr::RoutingEngine::Quick2,
       wr::RoutingEngine::Quick,wr::RoutingEngine::Alternative,wr::RoutingEngine::Main,wr::RoutingEngine::Atlas};
   for(unsigned i=0;i<6;++i)EXPECT_EQ(wr::EngineBit(oldBits[i]),1U<<i);
+}
+
+TEST(RoutingEngineSettings, CorridorUpgradeKeepsInstalledDataAndExamples) {
+  EXPECT_TRUE(wr::CanSkipBundledDataUpdate(144, 1, 45));
+  EXPECT_TRUE(wr::CanSkipBundledDataUpdate(211, 2, 12));
+  EXPECT_FALSE(wr::CanSkipBundledDataUpdate(0, 1, 45));
+  EXPECT_FALSE(wr::CanSkipBundledDataUpdate(0, 2, 12));
 }
