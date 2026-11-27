@@ -66,7 +66,8 @@ TEST(CorridorEngine, RecoveryPreservesAnAlreadyValidatedOffshoreRoute) {
     const auto& after = result.route.legs[i];
     EXPECT_DOUBLE_EQ(after.end.latitude, before.end.latitude);
     EXPECT_DOUBLE_EQ(after.end.longitude, before.end.longitude);
-    EXPECT_EQ(after.endTime, before.endTime);
+    EXPECT_EQ(after.endTime.time_since_epoch().count(),
+              before.endTime.time_since_epoch().count());
   }
   EXPECT_EQ(result.route.diagnostics.generatedStates, baseline.route.diagnostics.generatedStates);
 }
