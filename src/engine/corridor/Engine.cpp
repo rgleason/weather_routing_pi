@@ -601,10 +601,11 @@ bool recoverArrival(const wr::RoutingRequest& request,
                     const Options& options, Clock::time_point started,
                     SearchResult& baseline) {
   const bool wider = baseline.route.diagnostics.closestApproachNm > 30.;
+  const auto distance = wr::distanceNm(request.start, request.destination);
   if (!options.recoverCoastal || (wider && !options.recoverPassage) ||
       !recoverableStop(baseline) ||
       !baseline.closestPosition || baseline.route.diagnostics.closestApproachNm > 125. ||
-      wr::distanceNm(request.start, request.destination) <= 105. ||
+      distance <= 105. ||
       !hasRecoveryBudget(request, baseline))
     return false;
   const auto* land = options.geography ? options.geography.get()
@@ -619,8 +620,10 @@ bool recoverArrival(const wr::RoutingRequest& request,
       std::min<std::uint64_t>(retry.limits.maximumGeneratedStates, 200000);
   retry.limits.maximumRetainedStates =
       std::min<std::uint64_t>(retry.limits.maximumRetainedStates, 4096);
-  retry.cancellation = request.cancellation.bounded(
-      Clock::now() + std::chrono::seconds{4}, {});
+  // The guided pass starts from departure. On longer passages, a short wall
+  // limit can stop it before it reaches the coast, even on the same inputs.
+  const auto timeLimit = std::chrono::seconds{distance >= 180. ? 20 : 4};
+  retry.cancellation = request.cancellation.bounded(Clock::now() + timeLimit, {});
   const ArrivalGuide guide(retry, *land, wider ? 4. : 1.5);
 
   if (guide.available() && !retry.cancellation.cancelled()) {
@@ -647,6 +650,9 @@ bool recoverArrival(const wr::RoutingRequest& request,
   if (request.cancellation.cancelled()) {
     baseline.route.status = wr::RoutingStatus::Cancelled;
     baseline.route.message = "Search cancelled";
+  } else if (retry.cancellation.cancelled()) {
+    baseline.route.diagnostics.stageStopReasons.emplace_back(
+        "Coastal arrival recovery reached its time limit");
   }
   return false;
 }
