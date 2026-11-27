@@ -3,6 +3,7 @@
 
 #include "supercpn/weather_routing/Engine.h"
 #include <array>
+#include <functional>
 
 namespace corridor_routing {
 namespace wr = supercpn::weather_routing;
@@ -16,10 +17,17 @@ struct Options {
   bool discoverChannels{true};
   bool exploreWeatherCorridors{};
   bool recoverCoastal{};
+  bool recoverPassage{};
+  // The host can offer a longer search horizon on a failed ocean passage.
+  // It applies only to a separate recovery request.
+  std::optional<wr::Duration> oceanRecoveryHorizon;
   unsigned additionalMotions{1024};
   // Cheap shoreline guidance may be supplied separately from authoritative
   // motion, chart, depth and final validation providers.
   std::shared_ptr<const wr::LandAndBoundaryProvider> geography;
+  // Optional host provider for a blocked departure. It can widen the
+  // default course search while retaining the physical safety checks.
+  std::function<std::shared_ptr<const wr::LandAndBoundaryProvider>()> departureRecoveryProvider;
 };
 
 struct SearchResult {

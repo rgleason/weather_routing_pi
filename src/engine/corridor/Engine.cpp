@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "engine/corridor/Engine.h"
 #include "ArrivalGuide.h"
+#include "ConnectedWaterGuide.h"
 #include "Geography.h"
 #include "MotionKernel.h"
 #include "RoutingInternal.h"
@@ -27,6 +28,11 @@ struct Node {
   in::MotionState state;
   std::size_t parent{noParent};
   wr::RouteLeg leg;
+};
+
+struct CheckedPrefix {
+  std::vector<wr::RouteLeg> legs;
+  in::MotionState arrival;
 };
 
 struct Move {
@@ -157,12 +163,23 @@ SearchResult searchPass(const wr::RoutingRequest& request,
                         const wr::RoutingEnvironment& environment,
                         const Options& options,
                         const WeatherGuide* weatherGuide = nullptr,
-                        const ArrivalGuide* arrivalGuide = nullptr) {
+                        const ArrivalGuide* arrivalGuide = nullptr,
+                        const ConnectedWaterGuide* waterGuide = nullptr,
+                        const CheckedPrefix* prefix = nullptr,
+                        in::MotionState* arrivalState = nullptr) {
   SearchResult result;
   auto& route = result.route;
   auto& diagnostics = route.diagnostics;
   const auto started = Clock::now();
+  std::size_t waterStage = 0;
+  auto checkpoints = waterGuide ? waterGuide->route() : std::vector<wr::GeoPoint>{};
+  unsigned checkpointsReached = 0;
+  wr::Duration closestElapsed{};
   const auto finish = [&](wr::RoutingStatus status, const char* message) {
+    if (waterGuide)
+      diagnostics.stageStopReasons.emplace_back("Connected-water recovery reached " +
+          std::to_string(checkpointsReached) + " checkpoints. Closest approach at sailing hour " +
+          std::to_string(std::chrono::duration_cast<std::chrono::hours>(closestElapsed).count()));
     if (route.legs.empty()) {
       route.status = status;
       route.message = message;
@@ -205,13 +222,16 @@ SearchResult searchPass(const wr::RoutingRequest& request,
   const auto& performance = environment.performance ? *environment.performance : fallback;
   const auto horizon = request.departure + request.limits.maximumRouteDuration;
   const auto nominal = std::clamp(request.options.timeStep, wr::Duration{60}, wr::Duration{21600});
-  meridian_routing::StepPolicy steps(hints, std::min(nominal, wr::Duration{900}),
-                                    nominal, request.constraints.landSafetyMarginNm);
   const auto direct = wr::distanceNm(request.start, request.destination);
+  const auto offshore = waterGuide && direct > 900.
+      ? std::max(nominal, wr::Duration{10800}) : nominal;
+  meridian_routing::StepPolicy steps(hints, std::min(nominal, wr::Duration{900}),
+                                    offshore, request.constraints.landSafetyMarginNm);
   const auto lineBearing = wr::initialBearingDegrees(request.start, request.destination);
   const auto spread = std::clamp(direct * 0.025, 0.12, 4.);
   const Geography guide(request, hints, options.refineCoastalGeography, options.discoverChannels);
-  result.guideQueries = guide.queries() + (arrivalGuide ? arrivalGuide->queries() : 0);
+  result.guideQueries = guide.queries() + (arrivalGuide ? arrivalGuide->queries() : 0) +
+                        (waterGuide ? waterGuide->queries() : 0);
   result.fineGeographicGuide = guide.refined();
   result.wideGeographicGuide = guide.wide();
   result.channelQueries = guide.channelQueries();
@@ -236,15 +256,49 @@ SearchResult searchPass(const wr::RoutingRequest& request,
   start.departureEgressActive = geography && request.constraints.landSafetyMarginNm > 0 &&
       geography->distanceToForbiddenNm(start.position) < request.constraints.landSafetyMarginNm;
   nodes.push_back({start, noParent, {}});
-  diagnostics.retainedStates = 1;
-  diagnostics.closestApproachNm = direct;
-  result.closestPosition = request.start;
+  if (prefix) {
+    for (const auto& leg : prefix->legs) {
+      auto state = in::MotionState{};
+      state.position = leg.end;
+      state.time = leg.endTime;
+      nodes.push_back({std::move(state), nodes.size() - 1, leg});
+    }
+    nodes.back().state = prefix->arrival;
+  }
+  const auto seed = nodes.size() - 1;
+  diagnostics.retainedStates = nodes.size();
+  diagnostics.closestApproachNm = wr::distanceNm(nodes.back().state.position, request.destination);
+  result.closestPosition = nodes.back().state.position;
   auto lastFailure = wr::RoutingStatus::SearchIncomplete;
   std::uint64_t stopAfter = budget;
   auto bestPassage = request.limits.maximumRouteDuration;
-  std::size_t closest = 0;
+  std::size_t closest = seed;
   std::string validationEscalation;
   wr::RoutingPreviewPublisher preview(request);
+  const auto margin = request.constraints.landSafetyMarginNm;
+  const auto checkpoint = [&]() -> std::optional<wr::GeoPoint> {
+    if (waterStage + 1 < checkpoints.size()) return checkpoints[waterStage];
+    return {};
+  };
+  std::optional<ArrivalGuide> checkpointGuide;
+  const auto prepareCheckpoint = [&](wr::GeoPoint from) {
+    if (!waterGuide) return;
+    checkpointGuide.reset();
+    const auto gate = checkpoint();
+    if (!gate || !hints->segmentForbidden(from, *gate, request.constraints.landSafetyMarginNm))
+      return;
+    auto local = request;
+    local.destination = *gate;
+    const auto spacing = std::clamp(wr::distanceNm(from, *gate) / 25., .5, 3.);
+    checkpointGuide.emplace(local, *hints, spacing);
+    result.guideQueries += checkpointGuide->queries();
+  };
+  prepareCheckpoint(nodes.back().state.position);
+  const auto advanceCheckpoint = [&](wr::GeoPoint position) {
+    ++checkpointsReached;
+    ++waterStage;
+    prepareCheckpoint(position);
+  };
 
   const auto enqueue = [&](std::size_t node, double heading, wr::Duration duration,
                            wr::GeoPoint estimate, bool wait) {
@@ -257,12 +311,18 @@ SearchResult searchPass(const wr::RoutingRequest& request,
         ? approach(request.start, lineBearing, estimate, spread) : 0u;
     const auto estimateDetour = [&](bool preferFine) {
       const auto offshore = guide.estimate(estimate, remaining, preferFine);
-      return arrivalGuide ? arrivalGuide->estimate(estimate, remaining, offshore) : offshore;
+      if (arrivalGuide) return arrivalGuide->estimate(estimate, remaining, offshore);
+      return waterGuide ? waterGuide->estimate(estimate, remaining, offshore) : offshore;
     };
     const auto detour = estimateDetour(!useBothGuides);
     const auto fineDetour = useBothGuides ? estimateDetour(true) : detour;
-    double ordering = 1.75 * detour * 3600. / referenceSpeed;
-    double progress = guide.channelAvailable() ? fineDetour : detour;
+    const auto progressWeight = waterGuide ? 3.5 : 1.75;
+    const auto gate = checkpoint();
+    double progress = gate ? wr::distanceNm(estimate, *gate)
+                           : (guide.channelAvailable() ? fineDetour : detour);
+    if (checkpointGuide && checkpointGuide->available())
+      progress = checkpointGuide->estimate(estimate, progress, progress);
+    double ordering = progressWeight * (gate ? progress : detour) * 3600. / referenceSpeed;
     if (weatherGuide && (!guide.available() ||
         (remaining > 40. && wr::distanceNm(request.start, estimate) > 40.))) {
       const auto [weatherSeconds, lateralNm] = weatherGuide->costs(estimate);
@@ -272,7 +332,7 @@ SearchResult searchPass(const wr::RoutingRequest& request,
       progress = detour + .7 * lateralNm;
     }
     const auto rank = elapsed.count() + ordering;
-    const auto finePriority = elapsed.count() + 1.75 * fineDetour * 3600. / referenceSpeed;
+    const auto finePriority = elapsed.count() + progressWeight * fineDetour * 3600. / referenceSpeed;
     open.add({rank, progress,
               finePriority, diagnostics.generatedStates++,
               node, heading, duration, wait, side});
@@ -282,6 +342,9 @@ SearchResult searchPass(const wr::RoutingRequest& request,
     const auto& state = nodes[node].state;
     if (state.time >= horizon || request.cancellation.cancelled()) return;
     auto duration = std::min(steps(state.position), horizon - state.time);
+    const auto gate = checkpoint();
+    if (gate && wr::distanceNm(state.position, *gate) < 22.)
+      duration = std::min(duration, wr::Duration{3600});
     const auto remaining = wr::distanceNm(state.position, request.destination);
     if (remaining < 3.) duration = std::min(duration, wr::Duration{300});
     if (remaining < 1.) duration = std::min(duration, wr::Duration{120});
@@ -293,7 +356,8 @@ SearchResult searchPass(const wr::RoutingRequest& request,
     }
     const auto& wind = weather.snapshot.wind.velocity;
     const auto& current = weather.snapshot.current.velocity;
-    const auto destination = wr::initialBearingDegrees(state.position, request.destination);
+    const auto destination = wr::initialBearingDegrees(
+        state.position, gate.value_or(request.destination));
     const auto tws = wr::vectorMagnitudeKnots(wind);
     const auto channelHeading = guide.channelHeading(state.position);
     const auto headings = channelHeading ? 51u : 50u;
@@ -357,6 +421,7 @@ SearchResult searchPass(const wr::RoutingRequest& request,
       return;
     }
     route.legs = std::move(legs);
+    if (arrivalState) *arrivalState = connection->state;
     route.validation = std::move(validation);
     route.status = wr::RoutingStatus::Complete;
     route.message = "Independently validated arrival";
@@ -371,10 +436,10 @@ SearchResult searchPass(const wr::RoutingRequest& request,
     }
   };
 
-  tryArrival(0);
+  tryArrival(seed);
   if (!validationEscalation.empty())
     return finish(wr::RoutingStatus::ValidationFailure, validationEscalation.c_str());
-  if (result.checkedMotions < stopAfter) expand(0);
+  if (result.checkedMotions < stopAfter) expand(seed);
   while (result.checkedMotions < stopAfter && nodes.size() < nodeLimit) {
     if (request.cancellation.cancelled())
       return finish(wr::RoutingStatus::Cancelled, "Search reached its deadline or was cancelled");
@@ -427,17 +492,36 @@ SearchResult searchPass(const wr::RoutingRequest& request,
           [&](auto other, auto time) { return nodes[other].state.time < time; });
       alternatives.insert(before, at);
       nodes.push_back({std::move(motion.state), move.parent, std::move(motion.leg)});
-      diagnostics.retainedStates = nodes.size();
+      diagnostics.retainedStates = std::max<std::uint64_t>(diagnostics.retainedStates, nodes.size());
       const auto remaining = wr::distanceNm(nodes.back().state.position, request.destination);
       if (remaining < diagnostics.closestApproachNm) {
         diagnostics.closestApproachNm = remaining;
         closest = at;
         result.closestPosition = nodes.back().state.position;
+        closestElapsed = nodes.back().state.time - request.departure;
       }
       tryArrival(at);
       if (!validationEscalation.empty())
         return finish(wr::RoutingStatus::ValidationFailure, validationEscalation.c_str());
       if (result.firstValidSeconds && !options.additionalMotions) break;
+      if (const auto gate = checkpoint(); gate &&
+          wr::distanceNm(nodes[at].state.position, *gate) <= 8. &&
+          !hints->segmentForbidden(nodes[at].state.position, *gate,
+                                   request.constraints.landSafetyMarginNm)) {
+        advanceCheckpoint(nodes[at].state.position);
+        std::vector<Node> prefix;
+        for (auto parent = at; parent != noParent; parent = nodes[parent].parent)
+          prefix.push_back(std::move(nodes[parent]));
+        std::reverse(prefix.begin(), prefix.end());
+        for (std::size_t i = 1; i < prefix.size(); ++i) prefix[i].parent = i - 1;
+        nodes = std::move(prefix);
+        nodes.reserve(nodeLimit);
+        open = Approaches(options.diversifyApproaches, useBothGuides);
+        seen.clear();
+        closest = nodes.size() - 1;
+        expand(closest);
+        break;
+      }
       if (result.checkedMotions < stopAfter) expand(at);
     }
     if (result.checkedMotions % 256 == 0) {
@@ -496,6 +580,14 @@ bool hasRecoveryBudget(const wr::RoutingRequest& request, const SearchResult& re
          work.validationSamples < request.limits.maximumValidationSamples;
 }
 
+bool recoverableStop(const SearchResult& result) {
+  const auto status = result.route.status;
+  return !result.route.validation.passed &&
+         (status == wr::RoutingStatus::ResourceLimitReached ||
+          status == wr::RoutingStatus::SearchIncomplete ||
+          status == wr::RoutingStatus::NoFeasibleRoute);
+}
+
 void chargeWork(wr::RoutingRequest& request, const SearchResult& result) {
   const auto& work = result.route.diagnostics;
   request.limits.maximumGeneratedStates -=
@@ -508,12 +600,10 @@ bool recoverArrival(const wr::RoutingRequest& request,
                     const wr::RoutingEnvironment& environment,
                     const Options& options, Clock::time_point started,
                     SearchResult& baseline) {
-  const auto status = baseline.route.status;
-  if (!options.recoverCoastal || baseline.route.validation.passed ||
-      (status != wr::RoutingStatus::ResourceLimitReached &&
-       status != wr::RoutingStatus::SearchIncomplete &&
-       status != wr::RoutingStatus::NoFeasibleRoute) ||
-      !baseline.closestPosition || baseline.route.diagnostics.closestApproachNm > 30. ||
+  const bool wider = baseline.route.diagnostics.closestApproachNm > 30.;
+  if (!options.recoverCoastal || (wider && !options.recoverPassage) ||
+      !recoverableStop(baseline) ||
+      !baseline.closestPosition || baseline.route.diagnostics.closestApproachNm > 125. ||
       wr::distanceNm(request.start, request.destination) <= 105. ||
       !hasRecoveryBudget(request, baseline))
     return false;
@@ -531,7 +621,7 @@ bool recoverArrival(const wr::RoutingRequest& request,
       std::min<std::uint64_t>(retry.limits.maximumRetainedStates, 4096);
   retry.cancellation = request.cancellation.bounded(
       Clock::now() + std::chrono::seconds{4}, {});
-  const ArrivalGuide guide(retry, *land);
+  const ArrivalGuide guide(retry, *land, wider ? 4. : 1.5);
 
   if (guide.available() && !retry.cancellation.cancelled()) {
     // Approach-side alternatives can diverge well before the closest point.
@@ -542,7 +632,8 @@ bool recoverArrival(const wr::RoutingRequest& request,
     const auto offset = std::chrono::duration<double>(Clock::now() - started).count();
     auto recovered = searchPass(retry, environment, recoveryOptions, nullptr, &guide);
     recovered.route.diagnostics.stageStopReasons.emplace_back(
-        "Coastal arrival recovery used a reverse shoreline field");
+        wider ? "Coastal arrival recovery used a wider reverse shoreline field"
+              : "Coastal arrival recovery used a reverse shoreline field");
     if (recovered.route.validation.passed && !request.cancellation.cancelled()) {
       if (recovered.firstValidSeconds) *recovered.firstValidSeconds += offset;
       combineWork(recovered, baseline);
@@ -558,6 +649,130 @@ bool recoverArrival(const wr::RoutingRequest& request,
     baseline.route.message = "Search cancelled";
   }
   return false;
+}
+
+std::optional<CheckedPrefix> findDepartureExit(wr::RoutingRequest& retry,
+    const wr::RoutingEnvironment& environment, const Options& options,
+    const wr::LandAndBoundaryProvider& land, SearchResult& baseline) {
+  const auto margin = retry.constraints.landSafetyMarginNm;
+  std::vector<wr::GeoPoint> exits;
+  for (int direction = 0; direction < 360 && !retry.cancellation.cancelled(); direction += 15) {
+    const auto exit = wr::destinationPoint(retry.start, direction, 22.);
+    if (!land.segmentForbidden(exit, exit, margin + 8.) &&
+        !land.segmentForbidden(retry.start, exit, margin))
+      exits.push_back(exit);
+  }
+  if (exits.empty()) return {};
+
+  auto exitOptions = options;
+  exitOptions.additionalMotions = 0;
+  std::optional<CheckedPrefix> best;
+  // Sample different clear departure bearings, including departures away from
+  // the destination. Reuse the actual arrival state of the fastest exit.
+  const auto count = std::min<std::size_t>(3, exits.size());
+  for (std::size_t i = 0; i < count; ++i) {
+    if (retry.cancellation.cancelled() || !retry.limits.maximumGeneratedStates ||
+        !retry.limits.maximumValidationSamples)
+      break;
+    auto local = retry;
+    const auto exit = count == 1 ? 0 : i * (exits.size() - 1) / (count - 1);
+    local.destination = exits[exit];
+    local.limits.maximumGeneratedStates = std::min<std::uint64_t>(30000, retry.limits.maximumGeneratedStates);
+    local.limits.maximumRetainedStates = std::min<std::uint64_t>(1024, retry.limits.maximumRetainedStates);
+    local.limits.maximumValidationSamples = std::min<std::uint64_t>(4096, retry.limits.maximumValidationSamples / 4);
+    local.cancellation = retry.cancellation.bounded(Clock::now() + std::chrono::seconds{4}, {});
+    in::MotionState arrival;
+    auto result = searchPass(local, environment, exitOptions, nullptr, nullptr, nullptr, nullptr, &arrival);
+    chargeWork(retry, result);
+    if (result.route.validation.passed && (!best || arrival.time < best->arrival.time) &&
+        result.route.legs.size() + 1 < retry.limits.maximumRetainedStates)
+      best = CheckedPrefix{std::move(result.route.legs), std::move(arrival)};
+    // The local destination is not the passage destination.
+    result.route.diagnostics.closestApproachNm = std::numeric_limits<double>::infinity();
+    result.closestPosition.reset();
+    result.acceptedArrivals = 0;
+    if (!result.route.validation.passed)
+      result.route.diagnostics.stageStopReasons.emplace_back("Could not validate a local departure exit. " + result.route.message);
+    combineWork(baseline, result);
+  }
+  return best;
+}
+
+void recoverConnectedWater(const wr::RoutingRequest& request,
+                           const wr::RoutingEnvironment& environment,
+                           const Options& options, Clock::time_point started,
+                           SearchResult& baseline) {
+  const auto distance = wr::distanceNm(request.start, request.destination);
+  if (!options.recoverPassage || !recoverableStop(baseline) || distance <= 105. ||
+      !hasRecoveryBudget(request, baseline))
+    return;
+
+  const auto* land = options.geography ? options.geography.get()
+                                       : environment.landAndBoundaries.get();
+  if (!land || !land->segmentForbidden(request.start, request.destination,
+                                       request.constraints.landSafetyMarginNm))
+    return;
+
+  auto retry = request;
+  chargeWork(retry, baseline);
+  retry.limits.maximumGeneratedStates =
+      std::min<std::uint64_t>(retry.limits.maximumGeneratedStates, 1800000);
+  retry.cancellation = request.cancellation.bounded(
+      Clock::now() + std::chrono::seconds{35}, {});
+  if (distance > 3000. && options.oceanRecoveryHorizon &&
+      request.environment.climatology != wr::ClimatologyFallbackPolicy::Disallow) {
+    retry.limits.maximumRouteDuration = std::max(retry.limits.maximumRouteDuration,
+                                                *options.oceanRecoveryHorizon);
+  }
+  const auto bearing = wr::initialBearingDegrees(retry.start, retry.destination);
+  const bool departureBlocked = land->segmentForbidden(retry.start,
+      wr::destinationPoint(retry.start, bearing, 20.), retry.constraints.landSafetyMarginNm);
+  auto recoveryEnvironment = environment;
+  bool widerDeparture = false;
+  if (departureBlocked && options.departureRecoveryProvider) {
+    if (auto provider = options.departureRecoveryProvider()) {
+      recoveryEnvironment.landAndBoundaries = std::move(provider);
+      widerDeparture = true;
+    }
+  }
+  const auto prefix = departureBlocked
+      ? findDepartureExit(retry, recoveryEnvironment, options, *land, baseline) : std::nullopt;
+  auto guidance = retry;
+  if (prefix) guidance.start = prefix->arrival.position;
+  const ConnectedWaterGuide guide(guidance, *land);
+  if (!guide.available() || retry.cancellation.cancelled()) {
+    baseline.guideQueries += guide.queries();
+    if (request.cancellation.cancelled()) {
+      baseline.route.status = wr::RoutingStatus::Cancelled;
+      baseline.route.message = "Search cancelled";
+    }
+    return;
+  }
+
+  auto recoveryOptions = options;
+  recoveryOptions.additionalMotions = 0;
+  const auto offset = std::chrono::duration<double>(Clock::now() - started).count();
+  auto recovered = searchPass(retry, recoveryEnvironment, recoveryOptions, nullptr, nullptr, &guide,
+                              prefix ? &*prefix : nullptr);
+  recovered.route.diagnostics.stageStopReasons.emplace_back(
+      "Coastal recovery used a connected-water distance field");
+  if (prefix)
+    recovered.route.diagnostics.stageStopReasons.emplace_back("Connected-water recovery replayed a checked departure exit");
+  if (widerDeparture)
+    recovered.route.diagnostics.stageStopReasons.emplace_back("Connected-water recovery widened the default diverted course for a blocked departure");
+  if (retry.limits.maximumRouteDuration > request.limits.maximumRouteDuration)
+    recovered.route.diagnostics.stageStopReasons.emplace_back("Connected-water recovery used an extended ocean search horizon");
+  if (recovered.route.validation.passed && !request.cancellation.cancelled()) {
+    if (recovered.firstValidSeconds) *recovered.firstValidSeconds += offset;
+    combineWork(recovered, baseline);
+    baseline = std::move(recovered);
+  } else {
+    combineWork(baseline, recovered);
+  }
+  if (request.cancellation.cancelled()) {
+    baseline.route.status = wr::RoutingStatus::Cancelled;
+    baseline.route.message = "Search cancelled";
+  }
 }
 
 SearchResult recoverCoastal(const wr::RoutingRequest& request,
@@ -667,6 +882,10 @@ SearchResult search(const wr::RoutingRequest& request,
   const auto started = Clock::now();
   auto incumbent = searchBase(request, environment, options);
   if (recoverArrival(request, environment, options, started, incumbent)) return incumbent;
+  if (!incumbent.route.validation.passed) {
+    recoverConnectedWater(request, environment, options, started, incumbent);
+    return incumbent;
+  }
   // Keep the existing policy on short passages. This experiment compares
   // additional searching on offshore-scale routes that already have an arrival.
   if (!options.exploreWeatherCorridors || !incumbent.route.validation.passed ||

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "supercpn/weather_routing/Engine.h"
 #include "supercpn/weather_routing/Providers.h"
 
 #include <algorithm>
@@ -20,8 +21,8 @@ namespace wr = supercpn::weather_routing;
 class ArrivalGuide {
   static constexpr int halfWidth = 40;
   static constexpr int width = 2 * halfWidth + 1;
-  static constexpr double step = 1.5;
-  static constexpr double edge = halfWidth * step;
+  const double step_;
+  const double edge_;
   static constexpr double radians = std::numbers::pi / 180.;
   static constexpr double infinity = std::numeric_limits<double>::infinity();
   static constexpr std::uint64_t queryLimit = 48000;
@@ -34,14 +35,15 @@ class ArrivalGuide {
 
 public:
   ArrivalGuide(const wr::RoutingRequest& request,
-               const wr::LandAndBoundaryProvider& land)
-      : destination_(request.destination), costs_(width * width, infinity) {
+               const wr::LandAndBoundaryProvider& land, double spacing = 1.5)
+      : step_(spacing), edge_(halfWidth * spacing), destination_(request.destination),
+        costs_(width * width, infinity) {
     std::vector<wr::GeoPoint> points(width * width);
     for (int y = 0; y < width; ++y) {
       if (request.cancellation.cancelled()) return;
       for (int x = 0; x < width; ++x) {
-        const auto east = (x - halfWidth) * step;
-        const auto north = (y - halfWidth) * step;
+        const auto east = (x - halfWidth) * step_;
+        const auto north = (y - halfWidth) * step_;
         points[index(x, y)] = wr::destinationPoint(
             destination_, std::atan2(east, north) / radians, std::hypot(east, north));
       }
@@ -62,7 +64,7 @@ public:
       for (int row = std::max(0, y - 1); row <= std::min(width - 1, y + 1); ++row) {
         for (int col = std::max(0, x - 1); col <= std::min(width - 1, x + 1); ++col) {
           const auto to = index(col, row);
-          const auto candidate = distance + std::hypot(col - x, row - y) * step;
+          const auto candidate = distance + std::hypot(col - x, row - y) * step_;
           if (candidate >= costs_[to] || queries_ >= queryLimit) continue;
           // The marked destination can be inside the margin. Apply its local
           // access allowance only to the first advisory edge out of the mark.
@@ -81,14 +83,14 @@ public:
   std::uint64_t queries() const { return queries_; }
 
   double estimate(wr::GeoPoint point, double direct, double offshoreEstimate) const {
-    if (direct >= edge * std::numbers::sqrt2) return offshoreEstimate;
+    if (direct >= edge_ * std::numbers::sqrt2) return offshoreEstimate;
     const auto bearing = wr::initialBearingDegrees(destination_, point) * radians;
     const auto east = std::sin(bearing) * direct;
     const auto north = std::cos(bearing) * direct;
-    const auto edgeDistance = edge - std::max(std::abs(east), std::abs(north));
+    const auto edgeDistance = edge_ - std::max(std::abs(east), std::abs(north));
     if (edgeDistance <= 0.) return offshoreEstimate;
-    const auto x = halfWidth + east / step;
-    const auto y = halfWidth + north / step;
+    const auto x = halfWidth + east / step_;
+    const auto y = halfWidth + north / step_;
     const auto ix = static_cast<int>(std::floor(x)), iy = static_cast<int>(std::floor(y));
     if (ix < 0 || iy < 0 || ix >= width - 1 || iy >= width - 1)
       return offshoreEstimate;
@@ -96,11 +98,11 @@ public:
     for (int row = iy; row <= iy + 1; ++row)
       for (int col = ix; col <= ix + 1; ++col)
         distance = std::min(distance, costs_[index(col, row)] +
-                                          std::hypot(x - col, y - row) * step);
-    if (!std::isfinite(distance)) distance = direct + 2 * edge;
+                                          std::hypot(x - col, y - row) * step_);
+    if (!std::isfinite(distance)) distance = direct + 2 * edge_;
     // Blend into the passage-wide estimate at the local field's perimeter.
     return std::lerp(offshoreEstimate, std::max(direct, distance),
-                     std::min(1., edgeDistance / 12.));
+                     std::min(1., edgeDistance / (8. * step_)));
   }
 };
 }  // namespace corridor_routing

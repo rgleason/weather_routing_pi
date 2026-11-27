@@ -830,6 +830,12 @@ public:
     configuration_.DegreeSteps.clear();
   }
 
+  std::shared_ptr<const OpenCpnLandProvider> WithFullDivertedCourse() const {
+    auto recovery = configuration_;
+    recovery.MaxDivertedCourse = 180;
+    return std::make_shared<OpenCpnLandProvider>(overlay_, std::move(recovery), methodStop_);
+  }
+
   bool pointForbidden(wr::GeoPoint point) const override {
     if (configuration_.IsOriginal() && configuration_.DetectLand &&
         !configuration_.UseChartSafetyForPropagation && configuration_.shoreline_dataset)
@@ -1516,6 +1522,9 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
     corridor_routing::Options options;
     options.recoverCoastal = true;
     options.exploreWeatherCorridors = refine;
+    options.recoverPassage = refine;
+    if (refine && selected.ClimatologyType > RouteMapConfiguration::CURRENTS_ONLY)
+      options.oceanRecoveryHorizon = wr::Duration{40 * 24 * 3600};
     if (selected.DetectLand && selected.shoreline_dataset)
       options.geography = std::make_shared<meridian_routing::ShorelineHints>(selected.shoreline_dataset);
     return options;
@@ -1528,8 +1537,14 @@ bool RunModernNativeRoute(RouteMapOverlay& overlay, wxString& error) {
       labeled.progress = [&overlay, generation = overlay.ModernProgressGeneration()](const auto& progress) {
         overlay.SetModernNativeProgress(progress, generation, _("Corridor"));
       };
-      auto found = corridor_routing::search(labeled, solveEnvironment,
-          corridorOptions(selectedConfiguration, !selectedConfiguration.chart_safety_scout_preview));
+      auto options = corridorOptions(selectedConfiguration, !selectedConfiguration.chart_safety_scout_preview);
+      if (options.recoverPassage && selectedConfiguration.MaxDivertedCourse ==
+              weather_routing::kDefaultMaxDivertedCourse) {
+        if (const auto native = std::dynamic_pointer_cast<const OpenCpnLandProvider>(
+                solveEnvironment.landAndBoundaries))
+          options.departureRecoveryProvider = [native] { return native->WithFullDivertedCourse(); };
+      }
+      auto found = corridor_routing::search(labeled, solveEnvironment, options);
       return std::move(found.route);
     }
     if (selectedConfiguration.EngineSettings.engine == weather_routing::RoutingEngine::Meridian) {
