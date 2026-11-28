@@ -23,10 +23,6 @@ using SolveMethod = std::function<MethodResult(
     SequenceEngine, const MethodStop&, const std::function<void()>&)>;
 using AdmitMethod = std::function<std::optional<RoutingWorkerBudget::Slot>()>;
 
-inline constexpr std::array kMethodOrder{
-    SequenceEngine::Original, SequenceEngine::Quick2, SequenceEngine::Atlas,
-    SequenceEngine::Meridian, SequenceEngine::Quick, SequenceEngine::Alternative, SequenceEngine::Main};
-
 // The route owns one worker slot. Extra lanes are admitted from the same
 // budget and process pending methods in order. Results are harvested by the
 // ordinary sequence so All retains its stable comparison and Quick3 stage.

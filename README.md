@@ -1,14 +1,14 @@
 # Weather Routing production
 
 This repository's `master` branch is the **production 1.x line**, currently
-**1.44.3**. It retains the established Weather Routing interface and uses the
+**1.45.1**. It retains the established Weather Routing interface and uses the
 external GRIB or xGRIB plugin for forecast data, with the separate Climatology
 plugin when climatology is requested.
 
 | Line | Current version | Source |
 | --- | --- | --- |
-| Weather Routing production | **1.44.3** | [pob220/weather_routing_pi — master](https://github.com/pob220/weather_routing_pi/tree/master) |
-| xWeatherRouting improved UX development | **2.11.3** | [pob220/xweather_routing_pi — develop](https://github.com/pob220/xweather_routing_pi/tree/develop) |
+| Weather Routing production | **1.45.1** | [pob220/weather_routing_pi — master](https://github.com/pob220/weather_routing_pi/tree/master) |
+| xWeatherRouting improved UX development preview | **2.13.0** | [xWeatherRouting developer test release](https://github.com/pob220/xweather_routing_pi/releases/tag/developer-test-2.13.0-20261125) |
 
 The 2.x line has the improved planning interface, incorporated GRIB loader and
 generator, bundled Climatology, and separate preferences and user data. See its
@@ -23,8 +23,17 @@ The plugin includes Crude, Low and Intermediate for offline installation.
 Forecast wind failures report the requested UTC time and the forecast end
 when the weather reader supplies it.
 
-Both lines include Meridian as an optional routing method. Ordinary GSHHG
-shoreline routing works on stock OpenCPN; chart-backed depth and hazard checks
+1.45.1 adds a bounded Corridor retry when a search stops near its destination
+and land blocks the direct approach. Corridor uses a reverse shoreline map to
+guide the approach and validates the resulting route forward.
+
+Weather Routing 1.45.0 adds Corridor for blocked coastal passages and offshore
+forecast refinement. Select it as an individual method or include it in Auto
+or All after Standard and before Alternative. On a fresh profile, Auto and
+All include Meridian and the six established methods, with Corridor unchecked.
+Saved selections are kept on upgrade.
+
+Ordinary GSHHG shoreline routing works on stock OpenCPN. Chart-backed depth and hazard checks
 require a compatible chart-safety host. See [Meridian](docs/MERIDIAN.md),
 [routing settings](docs/quick-routing.md) and the retained
 [integration architecture](docs/integration-1.29.2.md).

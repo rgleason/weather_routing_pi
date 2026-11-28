@@ -52,7 +52,8 @@ PROFILES = {
                             "https://github.com/rgleason/weather_routing_pi"},
     },
 }
-SUMMARY = "Six routing methods plus Meridian and diagnostics."
+SUMMARY = "Eight routing methods, including Meridian and Corridor."
+MERIDIAN_SUMMARY = "Six routing methods plus Meridian and diagnostics."
 MULTI_POLAR_SUMMARY = "Weather routing with six engines and a clear multi-polar boat editor."
 PREVIOUS_SUMMARY = "Weather routing, passage planning and existing-route chart checks."
 OLDER_SUMMARY = "Advanced weather routing with departure and arrival planning."
@@ -92,7 +93,8 @@ def inspect_pair(directory, channel="xweather-alpha"):
     if root.tag != "plugin" or value(root, "name") != profile["name"]:
         raise ValueError(f"Wrong plugin name: {metadata}")
     summary = value(root, "summary")
-    if summary not in {SUMMARY, MULTI_POLAR_SUMMARY, PREVIOUS_SUMMARY, OLDER_SUMMARY, LEGACY_SUMMARY}:
+    if summary not in {SUMMARY, MERIDIAN_SUMMARY, MULTI_POLAR_SUMMARY,
+                       PREVIOUS_SUMMARY, OLDER_SUMMARY, LEGACY_SUMMARY}:
         raise ValueError(f"Unexpected catalogue summary: {metadata}")
     root.find("summary").text = SUMMARY
     if len(SUMMARY) > 72:

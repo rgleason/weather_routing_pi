@@ -27,6 +27,9 @@ inline bool CanSkipBundledDataUpdate(int installed, int major, int minor) {
   // The additional experimental method does not replace boats or polars.
   if (major == 1 && minor == 44) return installed >= 138 && installed <= 143;
   if (major == 2 && minor == 11) return installed >= 205 && installed <= 210;
+  // Corridor extends routing choices while retaining installed data.
+  if (major == 1 && minor == 45) return installed >= 138 && installed <= 144;
+  if (major == 2 && minor == 12) return installed >= 205 && installed <= 211;
   return installed >= 124 && installed <= 132 && major == 1 &&
          minor >= 25 && minor <= 33;
 }

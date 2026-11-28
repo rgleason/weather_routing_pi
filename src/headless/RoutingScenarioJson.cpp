@@ -212,8 +212,8 @@ bool LoadRoutingScenarioJson(const wxString& path,
           scenario.route.routingEngine != "original" && scenario.route.routingEngine != "auto" &&
           scenario.route.routingEngine != "all" && scenario.route.routingEngine != "quick2" &&
           scenario.route.routingEngine != "alternative" && scenario.route.routingEngine != "atlas" &&
-          scenario.route.routingEngine != "meridian") {
-        error = "routingEngine must be auto, original (Quick), quick2, quick (Standard), alternative, main (Professional), atlas, meridian, or all";
+          scenario.route.routingEngine != "meridian" && scenario.route.routingEngine != "corridor") {
+        error = "routingEngine must be auto, original (Quick), quick2, quick (Standard), alternative, main (Professional), atlas, meridian, corridor, or all";
         return false;
       }
     }

@@ -12,7 +12,7 @@
 #include "supercpn/weather_routing/Engine.h"
 
 namespace weather_routing::native {
-enum class SequenceEngine { Original, Quick2, Quick, Alternative, Main, Atlas, Meridian };
+enum class SequenceEngine { Original, Quick2, Quick, Alternative, Main, Atlas, Meridian, Corridor };
 inline RoutingEngine SequenceRoutingEngine(SequenceEngine engine) {
   switch (engine) {
     case SequenceEngine::Original: return RoutingEngine::Original;
@@ -22,6 +22,7 @@ inline RoutingEngine SequenceRoutingEngine(SequenceEngine engine) {
     case SequenceEngine::Main: return RoutingEngine::Main;
     case SequenceEngine::Atlas: return RoutingEngine::Atlas;
     case SequenceEngine::Meridian: return RoutingEngine::Meridian;
+    case SequenceEngine::Corridor: return RoutingEngine::Corridor;
   }
   return RoutingEngine::Unsupported;
 }
@@ -41,6 +42,8 @@ inline const char* SequenceEngineId(SequenceEngine engine) {
       return "atlas";
     case SequenceEngine::Meridian:
       return "meridian";
+    case SequenceEngine::Corridor:
+      return "corridor";
   }
   return "";
 }
@@ -60,6 +63,8 @@ inline const char* SequenceEngineTitle(SequenceEngine engine) {
       return "Atlas";
     case SequenceEngine::Meridian:
       return "Meridian";
+    case SequenceEngine::Corridor:
+      return "Corridor";
   }
   return "";
 }
@@ -84,6 +89,11 @@ inline bool AcceptedRoute(
   return complete && route.validation.passed && !route.legs.empty() &&
          route.legs.back().endTime > route.legs.front().startTime;
 }
+
+inline constexpr std::array kMethodOrder{
+    SequenceEngine::Original, SequenceEngine::Quick2, SequenceEngine::Atlas,
+    SequenceEngine::Meridian, SequenceEngine::Quick, SequenceEngine::Corridor,
+    SequenceEngine::Alternative, SequenceEngine::Main};
 
 // Run serially inside the existing routing worker; no additional worker or
 // host-service concurrency. Equal ETAs keep the earlier engine
@@ -116,10 +126,7 @@ supercpn::weather_routing::RoutingResult RunRoutingEngineSequence(
     last.message = "Select at least one routing engine in Advanced";
     return last;
   }
-  constexpr std::array engines{SequenceEngine::Original, SequenceEngine::Quick2, SequenceEngine::Atlas,
-                               SequenceEngine::Meridian, SequenceEngine::Quick, SequenceEngine::Alternative,
-                               SequenceEngine::Main};
-  for (const auto engine : engines) {
+  for (const auto engine : kMethodOrder) {
     if (!(enabled & EngineBit(SequenceRoutingEngine(engine)))) continue;
     if (cancel.cancelled()) {
       last = {};
